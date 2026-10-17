@@ -2,6 +2,12 @@
 
 Trading Companion is a research and decision-support assistant for China's A-share market. All trading decisions and operations remain with the user.
 
+## Documentation
+
+- [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
+- [Product agent PRD (Chinese)](docs/prd-agent-v0.1.md): first-agent scope, indicator conventions, and acceptance criteria.
+- [Agent learning notes (Chinese)](docs/agent-learning-notes.md): project concepts and concise interview Q&A.
+
 ## Current status
 
 The foundation for the first product agent is implemented:

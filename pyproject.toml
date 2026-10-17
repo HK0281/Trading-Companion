@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-companion"
+version = "0.1.0"
+description = "A research and decision-support assistant for A-share market analysis."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+data = [
+    "akshare==1.19.1",
+    "requests>=2.31,<3",
+]
+dev = [
+    "pytest>=8",
+]
+model = [
+    "requests>=2.31,<3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

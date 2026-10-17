@@ -6,7 +6,7 @@
 
 先完成一个独立的后端子模块：输入消息，返回统一格式的模型文本或明确的错误。暂不调用行情工具、不生成交易分析、不维护对话记忆。
 
-根据最近讨论，先把模型接入作为独立学习步骤；多指标计算仍未完成，后续连接分析工具前必须补齐。这个顺序调整不表示放弃PRD中的多指标需求。
+根据当时讨论，先把模型接入作为独立学习步骤；该步骤开始时多指标计算尚未完成。2026-10-16已补齐七类纯计算与独立多指标服务/证据契约，并新增独立工具消息协议、受控日线执行器与脚本Fake往返；后续仍需真实提供方工具适配、单轮编排及解释检查，才连接Agent主流程。这个顺序调整不表示放弃PRD中的多指标需求。
 
 ## 三个部分
 
@@ -47,3 +47,9 @@
 开发者随后提供了本机运行的成功输出：`status=ok`、`provider=deepseek`、请求/返回型号均为`deepseek-flash`、回答`OK`、用量29个输入token和1个输出token、`is_mock=false`。据此记录一次真实纯文本请求已验证；主Agent没有读取其密钥或另外发送付费请求。该结果不代表其他型号、工具调用或行情分析已验收。
 
 参考：[Chat Completions接口](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。这是兼容协议参考，不是DeepSeek账户或型号可用性的保证。
+
+## 后续：工具消息协议首切口（2026-10-16）
+
+新增独立 `tool_model.py`，支持工具定义、调用ID、参数、工具结果与完成/拒绝/截断状态，并用脚本Fake及固定人工结果演示往返，见[短设计](tool-model-design.md)。本文件描述的 `DeepSeekTextModel` 和原文本CLI保持纯文本语义；新增协议没有发送真实工具请求或执行行情工具，不能据此宣称DeepSeek工具调用或完整Agent已验收。
+
+随后新增 `research_tool.py` 与 `research_tool_demo.py`，把经过业务校验的白名单请求接到实际多指标计算，并以可信人工CSV和Fake验证消息往返，见[受控工具设计](research-tool-design.md)。此执行器与纯文本适配相互独立；真实DeepSeek工具协议尚未实现或联通验证。

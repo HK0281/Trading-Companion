@@ -44,3 +44,5 @@ EMA价格函数接收`DailyBar`，但DEA要平滑的是可能为负数或0的DIF
 ## 尚未接入
 
 现有行情CLI与`analyze_daily_bars`仍只输出SMA。逐指标状态、起点影响说明和交叉事实将在多指标服务阶段实现；本轮MACD的数值计算不是完整PRD功能或产品Agent。
+
+2026-10-16后续更新：独立多指标服务现已接入MACD分字段状态、快慢EMA/DEA初始化元数据、确定性交叉与证据引用，见[多指标设计](multi-indicator-design.md)。原行情CLI仍只输出SMA，模型工具执行与解释检查留M2。

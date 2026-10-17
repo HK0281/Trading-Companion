@@ -1,5 +1,5 @@
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar, Protocol
 
@@ -23,6 +23,7 @@ class DailyBarSource(Protocol):
 @dataclass(frozen=True)
 class CsvDailyBarSource:
     path: Path
+    is_synthetic: bool = field(default=False, kw_only=True)
     source_name: ClassVar[str] = "csv"
     adjustment: ClassVar[str] = "unknown"
 

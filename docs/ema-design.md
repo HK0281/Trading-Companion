@@ -40,3 +40,5 @@ $env:PYTHONPATH='src'
 ## 后续接入边界
 
 当前`analyze_daily_bars`与原行情CLI仍只输出SMA。多指标结果契约、计算起始日/递推次数和起点影响提示，留到多指标服务阶段集中接入；本轮不宣称PRD里的EMA展示功能全部完成。后续独立MACD计算与DEA数值平滑已实现，见[MACD设计](macd-design.md)，尚未接入分析服务。
+
+2026-10-16后续更新：上述多指标服务阶段现已新增独立入口，返回初始化与起点信息，见[多指标设计](multi-indicator-design.md)。原SMA分析函数和CLI继续兼容，尚未接入模型Agent。

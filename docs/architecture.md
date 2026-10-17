@@ -46,9 +46,10 @@
 | 行情数据模型 | [daily_bar.py](../src/trading_companion/daily_bar.py) | 校验价格、成交量等 OHLCV 字段；没有证券主数据和历史风险标签 |
 | 数据源接口 | [data_source.py](../src/trading_companion/data_source.py)、[csv_loader.py](../src/trading_companion/csv_loader.py) | `DailyBarSource` 统一日线读取；CSV 样例是人工数据 |
 | 在线数据源 | [tencent_adapter.py](../src/trading_companion/tencent_adapter.py)、[akshare_adapter.py](../src/trading_companion/akshare_adapter.py) | 腾讯直接 JSON 接入，以及通过 AKShare 访问东方财富；来源显式选择，无自动切换 |
-| 日期与指标 | [history.py](../src/trading_companion/history.py)、[indicators.py](../src/trading_companion/indicators.py) | 日期过滤、SMA、独立 EMA/MACD 及日期对齐结果；其他 PRD 指标待实现 |
-| 分析服务 | [analysis.py](../src/trading_companion/analysis.py) | 单 SMA 分析、结构化结果、来源信息及明确失败状态；尚未集成 EMA/MACD |
-| 模型接入 | [model.py](../src/trading_companion/model.py)、[deepseek_model.py](../src/trading_companion/deepseek_model.py) | 统一纯文本接口、假模型、DeepSeek 适配器；当前不支持工具调用消息 |
+| 日期与指标 | [history.py](../src/trading_companion/history.py)、[indicators.py](../src/trading_companion/indicators.py) | 日期过滤、SMA、独立 EMA/MACD/RSI/BOLL/ATR/量能与日期结果点；见[剩余指标设计](indicators-design.md) |
+| 分析服务 | [analysis.py](../src/trading_companion/analysis.py)、[multi_analysis.py](../src/trading_companion/multi_analysis.py)、[multi_contracts.py](../src/trading_companion/multi_contracts.py) | 旧单 SMA 接口保持兼容；独立多指标服务一次取数，返回逐字段状态、初始化元数据、关系和事实标识 |
+| 模型接入 | [model.py](../src/trading_companion/model.py)、[deepseek_model.py](../src/trading_companion/deepseek_model.py)、[tool_model.py](../src/trading_companion/tool_model.py) | 原纯文本接口/Fake/DeepSeek继续兼容；新增独立工具消息协议和脚本Fake，真实供应商工具适配待做 |
+| 只读工具执行 | [research_tool.py](../src/trading_companion/research_tool.py)、[research_tool_demo.py](../src/trading_companion/research_tool_demo.py) | 单个白名单日线工具、严格业务校验、每轮一次分析、紧凑证据视图；已用Fake和可信人工CSV离线串联，尚无完整Agent编排 |
 | 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py) | 参数式行情 CLI 与独立模型联通 CLI；尚无自然语言对话主流程 |
 | 验证 | [tests/](../tests/) | 离线回归测试；开发者另反馈一次真实 DeepSeek 文本请求成功，不等于 Agent 质量已验收 |
 
@@ -117,7 +118,7 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 业务使用统一接口，供应商适配器负责消息转换、能力差异、响应解析与错误分类。DeepSeek 为首个真实提供方，Fake 支持离线验证，OpenAI 后续接入。
 
-当前 `TextModel.complete()` 及消息校验只支持纯文本，不能直接拿来承载工具循环。工具调用阶段需新增相应契约与测试，表达工具名称、参数、调用 ID、工具结果和完成状态，并保留现有文本 CLI 的兼容性。
+原 `TextModel.complete()` 及消息校验继续只支持纯文本。M2首切口新增独立 `ToolCapableModel`、工具定义/调用/结果/状态契约及脚本Fake，见[工具模型设计](tool-model-design.md)；旧演示只验证固定结果消息往返。随后新增的白名单执行器已通过独立入口连接研究服务，见下节。真实DeepSeek工具HTTP适配和完整Agent流程仍待实现，原文本CLI保持兼容。
 
 兼容 OpenAI 风格接口不等于行为完全一致；切换提供方时必须验证消息、结构化输出、工具调用、截断和错误处理。用户显式选择提供方，不静默把对话发送给另一家服务。这里的 OpenAI 指模型 API，不是自动操作 ChatGPT 网页。
 
@@ -128,6 +129,8 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 首版只开放一个多指标日线分析工具，一次获取选定历史序列后集中计算所需指标；跨年分片仍可能产生多次 HTTP 请求，不能把一次工具执行误认为一次网络请求。
 
 工具层负责名称白名单、结构与业务参数校验、调用预算以及统一错误返回。不接受任意函数名、Python 对象、SQL、磁盘路径、终端命令或网络 URL。CSV 仅由开发者配置固定测试样例，不能让模型选文件。
+
+2026-10-16已实现上述日线执行切口，详见[受控工具设计](research-tool-design.md)：`ResearchToolExecutor`按回合实例持有一次分析额度，多调用批次整体拒绝；完整研究结果保留本地，模型接收带请求内证据别名的紧凑结果。容量与历史校验失败明确返回，不截断证据、不自动重取数。这仍不包含自然语言路由、真实工具模型或全轮时限。
 
 未来按需增加公司资料、公告检索、候选筛选和风险情景工具，不为每个指标单独暴露一次取数工具。
 
@@ -154,7 +157,7 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 ## 6. 关键数据契约
 
-下表是后续接口设计需要表达的内容，不是已经存在的类、API 或最终字段定义。详细 schema 随实施阶段单独确定。
+下表列出各阶段契约需要表达的内容。M1b已新增 `IndicatorSpec`、`MultiIndicatorRequest`、`MultiIndicatorResult` 及字段、组件、关系和事实契约，详见[多指标设计](multi-indicator-design.md)；会话、解释候选和历史版本等契约仍待后续实现。
 
 | 契约 | 必须表达的内容 |
 | --- | --- |
@@ -310,7 +313,7 @@ Trading Companion/
 | 部分 | 建议与理由 | 当前状态 |
 | --- | --- | --- |
 | 语言与计算 | Python、标准库与可独立验证的函数；不依赖大模型算数 | 已有 |
-| 模型接入 | 统一契约加供应商适配器，先 Fake 与 DeepSeek，后 OpenAI | 文本基础已有，工具消息待扩展 |
+| 模型接入 | 统一契约加供应商适配器，先 Fake 与 DeepSeek，后 OpenAI | 文本基础、工具消息协议与脚本Fake已有；真实工具模型适配待做 |
 | Agent 编排 | 先显式状态机，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 计划 |
 | HTTP API | FastAPI；Pydantic 用于外部输入校验，内部模型按需要演进 | Web 阶段 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
@@ -325,16 +328,16 @@ Trading Companion/
 | 阶段 | 交付内容 | 完成条件 |
 | --- | --- | --- |
 | 当前基础 | 数据模型、适配器、SMA、独立 EMA/MACD、文本模型接口 | 已有代码与对应测试；不称为完整 Agent |
-| M1a：补齐指标 | RSI、BOLL、ATR、量能，保持已有计算口径 | 边界、独立参考、初始化、因果性测试通过 |
-| M1b：多指标契约 | 一次取数、逐项状态、关系事实、最小证据标识 | 部分可用场景正确；旧 SMA API 与 CLI 回归通过 |
-| M2：单轮 Agent | 扩展模型协议、受控工具调用、解释与回答检查 | 完整单股票问题走通，异常有明确回退 |
+| M1a：补齐指标 | 已新增独立 RSI、BOLL、ATR、量能，保持已有计算口径 | 数值函数与测试已补齐；仍不代表多指标服务或 Agent 完成 |
+| M1b：多指标契约 | 独立服务已新增一次取数、逐字段状态、初始化元数据、关系事实和证据标识 | 默认组合与部分可用、证据依赖和旧接口回归；不等于模型工具循环已完成 |
+| M2：单轮 Agent | 已有工具消息协议、受控执行器及Fake/人工CSV真实计算往返；真实工具适配、自然语言编排与解释检查待做 | 完整单股票问题走通，异常有明确回退；离线执行验证不代表M2整体完成 |
 | M3：会话与预算 | 澄清、参数继承、对话入口、次数与截止时间 | 状态隔离、连续追问、越权和迟到结果测试通过 |
 | M4：评估与说明 | 固定场景、真实模型验证、诊断与运行文档 | 报告实测结果和局限，不把离线测试当真实模型效果 |
 | 长期扩展 | 主数据与日历、公司研究、筛选、历史版本与回放、风险情景、Web 和美股 | 每项单独定义数据契约、失败行为与验收；不一次性展开 |
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-下一步仍然是完成确定性指标层，不因本架构文档而提前重构目录、增加框架或接入新的外部模型。
+多指标服务、工具消息协议与受控日线执行器已实现，下一步是真实提供方工具适配、单轮编排及解释检查。保留当前目录与已有供应商，不因此增加框架或接入新的外部模型。
 
 ## 15. 文档维护
 

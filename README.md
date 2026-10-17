@@ -7,6 +7,9 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
 - [Product agent PRD (Chinese)](docs/prd-agent-v0.1.md): first-agent scope, indicator conventions, and acceptance criteria.
 - [Agent learning notes (Chinese)](docs/agent-learning-notes.md): project concepts and concise interview Q&A.
+- [Multi-indicator service contract (Chinese)](docs/multi-indicator-design.md): request limits, field availability, initialization metadata, deterministic relations, and evidence identifiers.
+- [Tool-model protocol and offline round trip (Chinese)](docs/tool-model-design.md): tool messages, call IDs, response states, scripted fake behavior, and validation boundaries.
+- [Controlled research-tool executor (Chinese)](docs/research-tool-design.md): strict business validation, one execution per turn, trusted source configuration, and compact evidence results.
 
 ## Current status
 
@@ -17,11 +20,15 @@ The foundation for the first product agent is implemented:
 - Trade-date filtering and deterministic closing-price simple moving averages (SMA).
 - A standalone SMA-seeded closing-price EMA calculation with date-aligned result points; not yet integrated into the analysis CLI.
 - A standalone MACD calculation with SMA-seeded DEA, aligned DIF/DEA/histogram fields, and date/period result points.
+- Standalone Wilder RSI/ATR, population-standard-deviation Bollinger bands, and volume MA/prior-window activity ratios, all with date-aligned result points and explicit zero-baseline handling.
 - A reusable analysis function with structured results, provenance, and explicit failure states.
+- A separate multi-indicator research service with one source read, aligned field-level availability, initialization metadata, deterministic relations, and query-scoped evidence.
 - A CLI with table and JSON output, plus offline tests.
 - A separate text-model interface, offline fake model, and DeepSeek HTTP adapter with configuration and response validation.
+- A separate tool-message model protocol and scripted offline fake with JSON/sequence validation and a fixed-result round-trip demonstration.
+- A controlled daily-indicator tool executor connecting validated proposals to the research service, with one analysis per turn and a compact, traceable model view.
 
-This is not yet a conversational agent. The model adapter is tested with simulated responses, and the developer reported one successful live `deepseek-flash` text request (`OK`, 29 prompt tokens and 1 completion token) on 2026-10-13. This verifies that one text request, not tool calling or market analysis. Conversation state, the remaining PRD indicators, multi-indicator integration, Jev, news, fundamentals, screening, DuckDB persistence, API/UI, and historical strategy evaluation are not implemented.
+This is not yet a conversational agent. The model adapter is tested with simulated responses, and the developer reported one successful live `deepseek-flash` text request (`OK`, 29 prompt tokens and 1 completion token) on 2026-10-13. This verifies that one text request, not tool calling or market analysis. The research tool is exercised offline with scripted model proposals and synthetic data. Real provider tool support, natural-language orchestration, explanation checking, conversation state, Jev, news, fundamentals, screening, DuckDB persistence, API/UI, and historical strategy evaluation are not implemented.
 
 The intended product scope includes main-board, STAR Market, ST, and newly listed stocks. The current foundation reads price history; it does not yet identify historical ST status, enforce board/listing-specific trading rules, or distinguish suspensions from other missing-data causes.
 
@@ -106,7 +113,73 @@ print(points[-1])
 
 Each `MacdPoint` records instrument, date, periods, DIF, DEA, and `histogram = 2 * (DIF - DEA)`. The default `(12, 26, 9)` needs 26 records for DIF and 34 for DEA/histogram; on this five-row sample, all default fields would be unavailable. Do not replace unavailable fields with zero or treat these demonstration periods as trading recommendations.
 
-Both price EMAs reuse one validated closing-price list. An internal numeric EMA core also handles negative and zero DIF values, without disguising them as positive-price OHLC records. The original `ema_close` interface and SMA seed convention remain. The market CLI still outputs SMA only; multi-indicator integration, crossover facts, and initialization warnings are later work. See the [short MACD design](docs/macd-design.md).
+Both price EMAs reuse one validated closing-price list. An internal numeric EMA core also handles negative and zero DIF values, without disguising them as positive-price OHLC records. The original `ema_close` interface and SMA seed convention remain. The market CLI still outputs SMA only; the separate multi-indicator service below now adds field states, crossover facts, and initialization metadata. See the [short MACD design](docs/macd-design.md).
+
+## Try RSI, Bollinger bands, ATR, and volume activity
+
+These are pure calculations over the same validated `bars`; the market CLI still outputs SMA only. Using the five-row synthetic sample from above, try deliberately shortened demonstration windows:
+
+```python
+from trading_companion.indicators import (
+    rsi_close_points, boll_close_points, atr_points, volume_activity_points,
+)
+print(rsi_close_points(bars, window=3)[-1])
+print(boll_close_points(bars, window=3)[-1])
+print(atr_points(bars, window=3)[-1])
+print(volume_activity_points(bars, window=3)[-1])
+```
+
+The scalar/value-list counterparts are `rsi_close`, `boll_close`, `atr`, and `volume_activity`. Defaults are RSI14, BOLL(20,2), ATR14, and a 20-record volume window. Default RSI/ATR first become available at record 15; BOLL and inclusive volume MA at record 20; the prior-20-records volume ratio at record 21. Those default indicator fields remain unavailable on the five-row sample.
+
+RSI/ATR use Wilder smoothing with an arithmetic-mean seed; BOLL uses population standard deviation (`ddof=0`). RSI is fixed at 50 for flat prices, 100 for gains without losses, and 0 for losses without gains. Flat prices can produce ATR=0 and coincident BOLL bands.
+
+Volume fields are `volume_shares`, `volume_ma` (including today), `previous_volume_ma` (excluding today), `relative_volume`, and `relative_volume_status`. The ratio status distinguishes `insufficient_history` from `undefined` when the prior mean is zero. Zero current volume with a positive baseline gives an available ratio of 0. This is a historical volume multiple, not an intraday volume-ratio measure.
+
+All functions retain input positions and full calculation precision, validate the complete ordered single-stock sequence, and do not fetch warm-up data. Pure functions accept positive integer periods; product request limits will be enforced separately. See the [calculation design and offline test commands (Chinese)](docs/indicators-design.md).
+
+## Run the multi-indicator service offline
+
+The new service is independent of the existing single-SMA CLI and `analyze_daily_bars`. It validates product request limits before reading, then calculates all requested indicators from one selected history. Run this in a source-tree Python session with `PYTHONPATH` configured as above:
+
+```python
+from datetime import date
+from pathlib import Path
+from trading_companion.data_source import CsvDailyBarSource
+from trading_companion.multi_analysis import (
+    IndicatorSpec, MultiIndicatorRequest, analyze_indicators,
+)
+
+source = CsvDailyBarSource(Path("data/sample_daily_bars_synthetic.csv"), is_synthetic=True)
+request = MultiIndicatorRequest(
+    instrument_id="000001.SZ",
+    start_date=date(2026, 9, 21),
+    as_of_date=date(2026, 9, 25),
+    source="csv",
+    indicators=(
+        IndicatorSpec("sma", window=3),
+        IndicatorSpec("ema", window=3),
+        IndicatorSpec("macd", fast=2, slow=3, signal=2),
+        IndicatorSpec("rsi", window=3),
+        IndicatorSpec("boll", window=3),
+        IndicatorSpec("atr", window=3),
+        IndicatorSpec("volume", window=3),
+    ),
+)
+result = analyze_indicators(source, request, allow_development_csv=True)
+payload = result.to_dict()
+print(payload["data_status"], payload["calculation_status"])
+for indicator in result.indicators:
+    print(indicator.indicator_id,
+          {name: value.status for name, value in indicator.latest.items()})
+```
+
+This explicitly enables development CSV mode and uses artificial data with short demonstration periods. The result labels it as development/sample data and includes unknown authenticity/adjustment warnings; it is not real-market analysis. A production model tool must not expose this switch or a file path. No external market/model request is made by this example.
+
+Omitting `indicators` uses eight instances: SMA20/60, EMA20, MACD(12,26,9), RSI14, BOLL(20,2), ATR14, and volume20. Explicit requests calculate only their selected instances and internal dependencies. Canonical duplicate instances are removed; more than 12 distinct instances or more than 366 inclusive calendar days are rejected.
+
+Data status and calculation status are separate. Each numeric field and derived relation has an availability status and record requirements; the latest values always correspond to the actual latest selected date. Thirty records retain available indicators and MACD DIF while reporting SMA60 short by 30 records and MACD DEA/histogram short by 4. A ratio with a zero baseline is `undefined`, rather than a fabricated zero.
+
+Results include seed/start information, per-component recursive-update counts, and project-defined initialization warnings. Evidence identifiers preserve the full indicator parameters; available relations reference the exact current and, where needed, previous-record facts. This supplies a basis for future answer checks; it does not yet validate model prose or call a model. See the [design and validation boundaries](docs/multi-indicator-design.md).
 
 ## Run with historical A-share data
 
@@ -197,6 +270,34 @@ Successful output has `status: "ok"`, `provider: "deepseek"`, `is_mock: false`, 
 
 See [the short design](docs/model-layer-design.md) and [the Chinese learning notes](docs/agent-learning-notes.md). Compatible response semantics were checked against [OpenAI's Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create); transport retry behavior is controlled by our own HTTP implementation, not the OpenAI SDK.
 
+## Tool-model protocol: offline round trip
+
+The tool-message protocol is independent of the old text-only API. It represents tool definitions, assistant call proposals, caller-supplied results, and complete/refused/incomplete response states. Try the offline demonstration:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m trading_companion.tool_model_demo
+```
+
+The script uses a `FakeToolModel`: it proposes a declared tool, the caller explicitly supplies a fixed artificial result with the matching call ID, and the fake returns a scripted final answer. It does not execute the tool, fetch prices, read credentials, or request a real model. This verifies protocol handling; it is not yet the research Agent.
+
+The public types are `ToolDefinition`, `ToolCall`, `ToolMessage`, `ToolModelResponse`, and `ToolCapableModel`, alongside `FakeToolModel`. Parameters/results are validated JSON objects. Message history must match every tool result to an outstanding call, and all results in a batch must arrive before proceeding. Unknown tool names, duplicate/orphan/missing results, invalid JSON, and size-limit violations produce explicit sanitized errors. Contract storage isolates nested mutable values; explicit `to_dict()` returns protocol content and must not be treated as a sanitized production log.
+
+Tool parameter schemas describe structure; this is not a full JSON Schema validator or a business authorization layer. The separate research executor below validates stock/date/indicator parameters, permissions, and its one-analysis budget before invoking the existing research service. `DeepSeekTextModel` still accepts text only; a real tool-capable provider adapter and its validation remain separate work. See the [protocol design](docs/tool-model-design.md).
+
+## Controlled research-tool execution
+
+```powershell
+$env:PYTHONPATH='src'
+python -m trading_companion.research_tool_demo
+```
+
+This demonstration uses a scripted `FakeToolModel` and a trusted, fixed synthetic CSV. Unlike the fixed-result protocol demo, it actually runs the existing multi-indicator calculations and returns their evidence under the proposed call ID. It uses no network or credentials; the final model text is still scripted.
+
+`ResearchToolExecutor` allows only `analyze_daily_indicators`. It validates explicit stock/date arguments and bounded indicator specifications before constructing a source. The model cannot select CSV files, paths, URLs, or request IDs. Online sources remain explicit Tencent/Eastmoney choices; development CSV is injected by trusted application code and stays labeled synthetic or unverified. Create one executor per user turn: its single analysis allowance is consumed before source construction, including attempts that fail. Multi-call batches are rejected before any analysis.
+
+The full research result stays local. A versioned compact view carries latest fields, initialization metadata, relations and request-scoped evidence aliases, preserving unavailable states and calculation precision. Oversized results produce an explicit failure rather than truncated evidence. This local executor budget does not implement the future Agent's complete model/token/time budgets. See the [executor design](docs/research-tool-design.md).
+
 ## Analysis interface
 
 The CLI and a future agent can share the same Python function:
@@ -264,7 +365,9 @@ $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation.
+Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA, Wilder RSI/ATR, BOLL population variance, volume window alignment and zero baselines, initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation. Multi-indicator tests additionally check one source read, partial availability, request limits, component metadata, full-precision relations, evidence dependencies, isolated calculation failures, and development-only CSV access.
+
+Tool tests cover protocol pairing and limits, strict research arguments, trusted sources, atomic one-analysis execution, batch rejection, compact states and evidence, capacity fallback, and the offline synthetic calculation demo. The complete offline suite currently has 292 tests; execution records and limits are documented in the [executor design](docs/research-tool-design.md).
 
 A successful test run does not guarantee that a public endpoint is reachable. The historical Tencent and AKShare CLI commands above are separate live smoke tests.
 
@@ -277,11 +380,14 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `history.py` / `indicators.py`: date selection and numerical calculations.
 - `errors.py`: request, source, and validation error types.
 - `analysis.py`: reusable analysis function and structured result.
+- `multi_contracts.py` / `multi_analysis.py`: validated multi-indicator requests, field states, initialization metadata, deterministic relations, and evidence.
 - `__main__.py`: command-line input and output.
 - `model.py` / `deepseek_model.py`: text model contracts, offline fake, and DeepSeek adapter.
 - `model_cli.py`: explicit offline/live model-layer demonstration.
+- `tool_model.py` / `tool_model_demo.py`: tool-message contracts, scripted fake, and an offline fixed-result round trip.
+- `research_tool.py` / `research_tool_demo.py`: controlled analysis execution, compact evidence results, and an offline synthetic calculation round trip.
 - `tests/`: offline regression tests.
 
 ## Next milestone
 
-The model layer is an independent first step toward the product agent, not a finished agent. Complete the multi-indicator calculations and result contract requested in the revised PRD before integrating the intended multi-indicator analysis tool. Then add controlled tool execution, the single-turn agent flow, answer checks, and conversation state. Broader data, screening, point-in-time storage/replay, and the product UI remain later increments.
+The seven indicator families and multi-indicator service provide validated requests, field availability, metadata, relations, and evidence. M2 now includes the tool-message protocol and controlled research-tool executor, exercised with an offline fake and synthetic calculations. Continue with real provider tool adaptation, a single-turn flow, and explanation checks/fallback. Conversation state and complete round-level budgets follow in M3. Broader data, screening, point-in-time storage/replay, and the product UI remain later increments.

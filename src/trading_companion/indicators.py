@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from math import isfinite
+from statistics import mean, pstdev
+from typing import Literal
 
 from trading_companion.daily_bar import DailyBar
 
@@ -49,6 +51,76 @@ class MacdPoint:
     histogram: float | None
 
 
+@dataclass(frozen=True)
+class RsiPoint:
+    """One Wilder-smoothed RSI tied to its instrument and trade date."""
+
+    instrument_id: str
+    trade_date: date
+    window: int
+    value: float | None
+
+
+@dataclass(frozen=True)
+class BollValue:
+    """Population-standard-deviation bands aligned with one input bar."""
+
+    middle: float | None
+    upper: float | None
+    lower: float | None
+
+
+@dataclass(frozen=True)
+class BollPoint:
+    """One set of Bollinger bands with its date and calculation parameters."""
+
+    instrument_id: str
+    trade_date: date
+    window: int
+    stddev_multiplier: float
+    middle: float | None
+    upper: float | None
+    lower: float | None
+
+
+@dataclass(frozen=True)
+class AtrPoint:
+    """One Wilder-smoothed ATR in price units, not percentage units."""
+
+    instrument_id: str
+    trade_date: date
+    window: int
+    value: float | None
+
+
+RelativeVolumeStatus = Literal["available", "insufficient_history", "undefined"]
+
+
+@dataclass(frozen=True)
+class VolumeValue:
+    """Current volume, inclusive MA, and a strictly prior-window baseline."""
+
+    volume_shares: int
+    volume_ma: float | None
+    previous_volume_ma: float | None
+    relative_volume: float | None
+    relative_volume_status: RelativeVolumeStatus
+
+
+@dataclass(frozen=True)
+class VolumePoint:
+    """Volume activity tied to its instrument, date, and record window."""
+
+    instrument_id: str
+    trade_date: date
+    window: int
+    volume_shares: int
+    volume_ma: float | None
+    previous_volume_ma: float | None
+    relative_volume: float | None
+    relative_volume_status: RelativeVolumeStatus
+
+
 def sma_close(bars: Sequence[DailyBar], window: int) -> list[float | None]:
     """Return a closing-price SMA aligned with the input bars."""
     if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
@@ -93,12 +165,11 @@ def _validate_window(window: int) -> None:
         raise ValueError("window must be a positive integer")
 
 
-def _close_values(bars: Sequence[DailyBar]) -> list[float]:
-    """Validate one ordered instrument and extract closes without sorting."""
+def _validate_bars(bars: Sequence[DailyBar]) -> None:
+    """Validate one ordered instrument without sorting or filling dates."""
     if not isinstance(bars, Sequence) or isinstance(bars, (str, bytes, bytearray)):
         raise ValueError("bars must be a sequence of DailyBar records")
 
-    closes: list[float] = []
     instrument_id: str | None = None
     previous_date = None
 
@@ -113,7 +184,12 @@ def _close_values(bars: Sequence[DailyBar]) -> list[float]:
         if previous_date is not None and bar.trade_date <= previous_date:
             raise ValueError("bars must have strictly increasing trade dates")
         previous_date = bar.trade_date
-        closes.append(bar.close_price)
+
+
+def _close_values(bars: Sequence[DailyBar]) -> list[float]:
+    """Validate one ordered instrument and extract closes without sorting."""
+    _validate_bars(bars)
+    closes = [bar.close_price for bar in bars]
 
     return closes
 
@@ -227,4 +303,180 @@ def macd_close_points(
         MacdPoint(bar.instrument_id, bar.trade_date, fast, slow, signal,
                   value.dif, value.dea, value.histogram)
         for bar, value in zip(bars, values)
+    ]
+
+
+def _wilder_values(values: Sequence[float], window: int) -> list[float | None]:
+    """Seed with n non-negative observations, then smooth with weight 1/n."""
+    _validate_window(window)
+    results: list[float | None] = []
+    seed = 0.0
+    previous: float | None = None
+    for index, value in enumerate(values):
+        if not isfinite(value) or value < 0:
+            raise ValueError("Wilder values must be finite and non-negative")
+        if previous is None:
+            seed = _ema_blend(seed, value, 1 / (index + 1))
+            if index + 1 < window:
+                results.append(None)
+                continue
+            previous = seed
+        else:
+            previous = _ema_blend(previous, value, 1 / window)
+        results.append(previous)
+    return results
+
+
+def rsi_close(bars: Sequence[DailyBar], window: int = 14) -> list[float | None]:
+    """Return Wilder RSI; n changes require n + 1 closing-price records.
+
+    A flat seed is 50; gains without losses yield 100, and the reverse is 0.
+    """
+    _validate_window(window)
+    closes = _close_values(bars)
+    if not closes:
+        return []
+    changes = [current - previous for previous, current in zip(closes, closes[1:])]
+    gains = _wilder_values([max(change, 0.0) for change in changes], window)
+    losses = _wilder_values([max(-change, 0.0) for change in changes], window)
+    results: list[float | None] = [None]
+    for gain, loss in zip(gains, losses):
+        if gain is None or loss is None:
+            results.append(None)
+        elif gain == 0 and loss == 0:
+            results.append(50.0)
+        else:
+            # Scaling avoids overflow in gain + loss and loss/gain ratios.
+            scale = max(gain, loss)
+            scaled_gain, scaled_loss = gain / scale, loss / scale
+            results.append(100 * scaled_gain / (scaled_gain + scaled_loss))
+    return results
+
+
+def rsi_close_points(bars: Sequence[DailyBar], window: int = 14) -> list[RsiPoint]:
+    """Attach instrument, date, and period to aligned RSI values."""
+    return [
+        RsiPoint(bar.instrument_id, bar.trade_date, window, value)
+        for bar, value in zip(bars, rsi_close(bars, window))
+    ]
+
+
+def _boll_multiplier(value: float) -> float:
+    """Keep product-level limits separate from finite-positive validation."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("stddev_multiplier must be finite and positive")
+    try:
+        multiplier = float(value)
+    except OverflowError:
+        raise ValueError("stddev_multiplier must be finite and positive") from None
+    if not isfinite(multiplier) or multiplier <= 0:
+        raise ValueError("stddev_multiplier must be finite and positive")
+    return multiplier
+
+
+def boll_close(
+    bars: Sequence[DailyBar], window: int = 20, stddev_multiplier: float = 2.0,
+) -> list[BollValue]:
+    """Return SMA-centered bands using population standard deviation (ddof=0)."""
+    _validate_window(window)
+    multiplier = _boll_multiplier(stddev_multiplier)
+    closes = _close_values(bars)
+    results: list[BollValue] = []
+    for index in range(len(closes)):
+        if index + 1 < window:
+            results.append(BollValue(None, None, None))
+            continue
+        sample = closes[index + 1 - window:index + 1]
+        # Recompute each window to avoid cancellation in rolling sum-of-squares.
+        middle = mean(sample)
+        width = multiplier * pstdev(sample)
+        upper, lower = middle + width, middle - width
+        if not all(isfinite(value) for value in (middle, upper, lower)):
+            raise ValueError("BOLL calculation must remain finite")
+        results.append(BollValue(middle, upper, lower))
+    return results
+
+
+def boll_close_points(
+    bars: Sequence[DailyBar], window: int = 20, stddev_multiplier: float = 2.0,
+) -> list[BollPoint]:
+    """Attach instrument, dates, and parameters to aligned Bollinger bands."""
+    values = boll_close(bars, window, stddev_multiplier)
+    return [
+        BollPoint(bar.instrument_id, bar.trade_date, window, float(stddev_multiplier),
+                  value.middle, value.upper, value.lower)
+        for bar, value in zip(bars, values)
+    ]
+
+
+def atr(bars: Sequence[DailyBar], window: int = 14) -> list[float | None]:
+    """Return Wilder ATR; the first bar has no TR without a previous close."""
+    _validate_window(window)
+    _validate_bars(bars)
+    if not bars:
+        return []
+    true_ranges = [
+        max(current.high_price - current.low_price,
+            abs(current.high_price - previous.close_price),
+            abs(current.low_price - previous.close_price))
+        for previous, current in zip(bars, bars[1:])
+    ]
+    return [None, *_wilder_values(true_ranges, window)]
+
+
+def atr_points(bars: Sequence[DailyBar], window: int = 14) -> list[AtrPoint]:
+    """Attach instrument, date, and period to ATR in CNY per share."""
+    return [
+        AtrPoint(bar.instrument_id, bar.trade_date, window, value)
+        for bar, value in zip(bars, atr(bars, window))
+    ]
+
+
+def _finite_ratio(numerator: int, denominator: int) -> float:
+    """Convert exact integer volume arithmetic to a finite result."""
+    try:
+        value = numerator / denominator
+    except OverflowError:
+        raise ValueError("Volume calculation must remain finite") from None
+    if not isfinite(value):
+        raise ValueError("Volume calculation must remain finite")
+    return value
+
+
+def volume_activity(bars: Sequence[DailyBar], window: int = 20) -> list[VolumeValue]:
+    """Return inclusive volume MA and current/prior-n-records volume ratio.
+
+    The ratio needs n + 1 records. A zero prior baseline is undefined,
+    while zero current volume with a positive baseline is an available 0.
+    """
+    _validate_window(window)
+    _validate_bars(bars)
+    results: list[VolumeValue] = []
+    running_total = 0
+    for index, bar in enumerate(bars):
+        previous_ma = None
+        relative = None
+        status: RelativeVolumeStatus = "insufficient_history"
+        if index >= window:
+            previous_ma = _finite_ratio(running_total, window)
+            if running_total == 0:
+                status = "undefined"
+            else:
+                relative = _finite_ratio(bar.volume_shares * window, running_total)
+                status = "available"
+        running_total += bar.volume_shares
+        if index >= window:
+            running_total -= bars[index - window].volume_shares
+        volume_ma = _finite_ratio(running_total, window) if index + 1 >= window else None
+        results.append(VolumeValue(bar.volume_shares, volume_ma, previous_ma, relative, status))
+    return results
+
+
+def volume_activity_points(bars: Sequence[DailyBar], window: int = 20) -> list[VolumePoint]:
+    """Attach instrument, date, and period to volume fields and ratio status."""
+    return [
+        VolumePoint(bar.instrument_id, bar.trade_date, window, value.volume_shares,
+                    value.volume_ma, value.previous_volume_ma, value.relative_volume,
+                    value.relative_volume_status)
+        for bar, value in zip(bars, volume_activity(bars, window))
     ]

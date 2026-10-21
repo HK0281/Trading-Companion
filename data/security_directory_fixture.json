@@ -1,0 +1,11 @@
+{
+  "source": "handwritten_test_fixture_not_a_live_market_directory",
+  "retrieved_at": "2026-09-26T00:00:00+08:00",
+  "is_fixture": true,
+  "securities": [
+    {"instrument_id": "000001.SZ", "name": "平安银行", "aliases": []},
+    {"instrument_id": "601318.SH", "name": "中国平安", "aliases": []},
+    {"instrument_id": "600519.SH", "name": "贵州茅台", "aliases": ["茅台"]},
+    {"instrument_id": "688981.SH", "name": "中芯国际", "aliases": []}
+  ]
+}

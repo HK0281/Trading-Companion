@@ -10,6 +10,12 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Multi-indicator service contract (Chinese)](docs/multi-indicator-design.md): request limits, field availability, initialization metadata, deterministic relations, and evidence identifiers.
 - [Tool-model protocol and offline round trip (Chinese)](docs/tool-model-design.md): tool messages, call IDs, response states, scripted fake behavior, and validation boundaries.
 - [Controlled research-tool executor (Chinese)](docs/research-tool-design.md): strict business validation, one execution per turn, trusted source configuration, and compact evidence results.
+- [DeepSeek tool adapter (Chinese)](docs/deepseek-tool-model-design.md): provider message conversion, completion states, shared transport, and mocked HTTP verification.
+- [Opt-in tool smoke test (Chinese)](docs/tool-smoke-design.md): a fixed synthetic task, offline default, explicit paid-provider selection, and stop conditions.
+- [Bounded single-turn Agent (Chinese)](docs/single-turn-agent-design.md): explicit Chinese input, request-bound proposals, partial-result handling, and unchecked explanation drafts.
+- [Natural-language research input (Chinese)](docs/natural-input-design.md): model-first interpretation, dated security snapshots, ambiguity gates, visible defaults, and an offline fixture demo.
+- [Explicit exchange-directory refresh (Chinese)](docs/security-directory-refresh-design.md): real SSE/SZSE name lists, validation limits, atomic snapshots, and separate live verification.
+- [Identity clarification continuation (Chinese)](docs/identity-clarification-design.md): per-session pending conditions, short stock-selection replies, expiry, cancellation, and replay protection.
 
 ## Current status
 
@@ -27,8 +33,14 @@ The foundation for the first product agent is implemented:
 - A separate text-model interface, offline fake model, and DeepSeek HTTP adapter with configuration and response validation.
 - A separate tool-message model protocol and scripted offline fake with JSON/sequence validation and a fixed-result round-trip demonstration.
 - A controlled daily-indicator tool executor connecting validated proposals to the research service, with one analysis per turn and a compact, traceable model view.
+- A separate DeepSeek tool-capable adapter with strict response parsing and shared HTTP transport, tested offline with mocked provider responses and actual synthetic CSV calculations.
+- An offline-by-default tool smoke-test CLI with explicit DeepSeek opt-in, a fixed synthetic task, at most two model calls, and no retries or market requests.
+- A reusable bounded single-turn runner with conservative explicit-format Chinese input, clarification before any calls, request-bound tool proposals, and separate research facts and unchecked model drafts.
+- A separate model-first natural-input runner, validating verbatim mentions against an injected security directory and applying visible date/indicator defaults before reusing the research flow.
+- An opt-in SSE/SZSE directory-refresh CLI with bounded requests, required-fragment validation and atomic local snapshots; one live refresh returned 5,224 identities, without changing supported market-analysis prefixes.
+- Optional per-conversation identity clarification: preserve validated dates and indicators while waiting for a stock selection, recheck the current directory and source configuration, and consume the pending request before execution.
 
-This is not yet a conversational agent. The model adapter is tested with simulated responses, and the developer reported one successful live `deepseek-flash` text request (`OK`, 29 prompt tokens and 1 completion token) on 2026-10-13. This verifies that one text request, not tool calling or market analysis. The research tool is exercised offline with scripted model proposals and synthetic data. Real provider tool support, natural-language orchestration, explanation checking, conversation state, Jev, news, fundamentals, screening, DuckDB persistence, API/UI, and historical strategy evaluation are not implemented.
+This is an initial bounded research flow, with both an explicit-format entry and a model-first natural-input entry. The natural entry optionally supports cross-turn stock-identity clarification, not general parameter editing or chat/result memory. These paths are tested offline; real exchange-directory refresh and local lookup are separately verified, not an end-to-end live natural-language evaluation. General language-quality evaluation and a conversational product are not complete. The developer reported a successful live `deepseek-flash` text request on 2026-10-13 and subsequently one live tool round trip using synthetic CSV data (two model calls, one local analysis, 4,500 reported tokens; recorded 2026-10-20). That supports compatibility for the fixed task and model, not real-market research quality. Explanation checking, general conversation memory, Jev, news, fundamentals, screening, DuckDB persistence, API/UI, and historical strategy evaluation are not implemented.
 
 The intended product scope includes main-board, STAR Market, ST, and newly listed stocks. The current foundation reads price history; it does not yet identify historical ST status, enforce board/listing-specific trading rules, or distinguish suspensions from other missing-data causes.
 
@@ -262,7 +274,7 @@ Successful output has `status: "ok"`, `provider: "deepseek"`, `is_mock: false`, 
 - The endpoint is fixed to `https://api.deepseek.com/chat/completions`. There is no custom URL from a prompt, no redirect, no automatic retry, and no provider fallback.
 - The adapter implements only non-streaming text through a Chat Completions-compatible payload. Provider/model compatibility remains subject to a live test; OpenAI API examples do not establish DeepSeek account availability.
 - Configuration is validated locally. Defaults are a 30-second connection/read wait and a 512-token output limit. This timeout is not the future agent's total wall-clock deadline.
-- The adapter explicitly requests `thinking: {type: "disabled"}` for this small text-only layer. Current DeepSeek models enable thinking by default; thinking-mode budgeting and tool-message handling are separate future work. See the [official thinking-mode guide](https://api-docs.deepseek.com/guides/thinking_mode/).
+- The adapter explicitly requests `thinking: {type: "disabled"}` for this small text-only layer. Current DeepSeek models enable thinking by default; thinking-mode budgeting and reasoning-history handling remain future work. The separate tool adapter below also disables thinking. See the [official thinking-mode guide](https://api-docs.deepseek.com/guides/thinking_mode/).
 - Normal completed text is returned with the requested and returned model identifiers. Missing usage stays unknown. Reasoning fields are not exposed as final answers.
 - Authentication, rate limits, timeouts, invalid JSON/schema, refusals, unsupported tool calls, and truncated output have explicit outcomes. A truncated answer is not printed as successful output.
 - Exit codes: 0 for a complete response, 1 for a model-call failure, 2 for local configuration/input errors. The CLI emits sanitized errors rather than raw provider error bodies.
@@ -283,7 +295,89 @@ The script uses a `FakeToolModel`: it proposes a declared tool, the caller expli
 
 The public types are `ToolDefinition`, `ToolCall`, `ToolMessage`, `ToolModelResponse`, and `ToolCapableModel`, alongside `FakeToolModel`. Parameters/results are validated JSON objects. Message history must match every tool result to an outstanding call, and all results in a batch must arrive before proceeding. Unknown tool names, duplicate/orphan/missing results, invalid JSON, and size-limit violations produce explicit sanitized errors. Contract storage isolates nested mutable values; explicit `to_dict()` returns protocol content and must not be treated as a sanitized production log.
 
-Tool parameter schemas describe structure; this is not a full JSON Schema validator or a business authorization layer. The separate research executor below validates stock/date/indicator parameters, permissions, and its one-analysis budget before invoking the existing research service. `DeepSeekTextModel` still accepts text only; a real tool-capable provider adapter and its validation remain separate work. See the [protocol design](docs/tool-model-design.md).
+Tool parameter schemas describe structure; this is not a full JSON Schema validator or a business authorization layer. The separate research executor below validates stock/date/indicator parameters, permissions, and its one-analysis budget before invoking the existing research service. `DeepSeekTextModel` still accepts text only; the separate `DeepSeekToolModel` adapts the tool protocol, with one developer-reported live synthetic task now verified. See the [protocol design](docs/tool-model-design.md).
+
+## DeepSeek tool adapter: offline verification
+
+`DeepSeekToolModel.complete(messages, tools=...)` converts internal declarations, assistant proposals and tool results to the provider's function-tool payload, and parses complete/tool-call/refused/incomplete responses. It does not execute tools or run an Agent loop. Truncated or refused responses never forward actionable calls. Text and tool adapters share fixed-endpoint HTTP transport, timeouts and sanitized errors; the old text CLI remains unchanged.
+
+Both adapters explicitly disable thinking. The current tool protocol does not store the reasoning history required by thinking-mode tool calls; enabling that mode needs a separate design. Tool adapter coverage includes 24 offline tests; including both research entries, directory refresh and identity clarification, all 499 regression tests pass as of 2026-10-20:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -p test_deepseek_tool_model.py -v
+```
+
+All HTTP in these tests is mocked, including the round trip that actually computes indicators from trusted synthetic CSV. No real credentials, paid model request or market request is used. `is_mock=false` identifies the provider adapter path, not evidence that HTTP was live. See the [adapter design and verification limits](docs/deepseek-tool-model-design.md).
+
+## Tool smoke test: offline default, explicit live opt-in
+
+Start with the offline CLI; it does not read model credentials:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m trading_companion.tool_smoke
+```
+
+The fixed task requests SMA3, SMA20 and volume3 for `000001.SZ` on the trusted synthetic CSV. The program accepts exactly that task (indicator order may vary), actually calculates it once, returns the result under the original call ID, and requires a completed final response. It never repairs a proposal, uses live market data, resets execution allowance, or automatically retries. There are at most two model calls and one local analysis, not an unbounded Agent loop.
+
+To test real provider compatibility, first configure the model and credentials in the same terminal using the text-model instructions above. **Only run this command when you intend to send the fixed instructions, tool definition and synthetic results to DeepSeek and incur up to two API requests:**
+
+```powershell
+.\.venv\Scripts\python.exe -B -m trading_companion.tool_smoke --provider deepseek
+```
+
+`status=ok` and `tool_round_trip_completed=true` mean the fixed protocol round trip completed. Inspect `provider`, `live_provider_selected`, per-response model metadata, `model_calls_attempted` and `analyses_used` as well. A successful default run is still offline Fake; `answer_validation=not_performed` explicitly means the model's claims have not been programmatically checked. The developer supplied one successful live `deepseek-flash` round trip with synthetic data; its manually reviewed explanation is not automated answer validation or a real-market test.
+
+Exit codes are 0 for a completed round trip, 1 for nonverification/runtime failure, and 2 for configuration/argument errors. No proposal, mismatched arguments, unusable data, refusals, incomplete output or another proposal on the second call stops the test. See the [smoke-test design](docs/tool-smoke-design.md) for output fields, costs and limitations.
+
+## Natural-language research: offline fixture demo
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m trading_companion.natural_agent_demo
+```
+
+The demo includes `看看平安银行最近的走势，关注3日均线和量能` and the ambiguous `看看平安最近的走势`. A scripted model extracts verbatim phrases; a four-record fixture resolves the first and returns two candidates for the second. The program computes missing date defaults and standard indicator parameters, retaining the exact applied conditions. No credentials, provider, directory or market network requests are used; this is not evidence of real model language quality.
+
+`run_natural_research_turn()` permits at most three model calls and one analysis for an initial request; the explicit-format entry below remains limited to two. Directory snapshots carry source/time/fixture metadata, reject stale or future data, and cannot use fixtures to authorize online research. The demo remains intentionally synthetic, using a fixed reference date of 2026-09-26. A separate real-directory refresher is available below. See the [natural-input design](docs/natural-input-design.md) for supported phrases, default policies and remaining limits.
+
+## Continue stock-identity clarification: offline demo
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m trading_companion.session_agent_demo
+```
+
+The first turn asks about the ambiguous `平安`, keeping the validated interval 2026-08-27 through 2026-09-25 and SMA3/RSI2. The reply `我指的是平安银行` selects its identity and reuses those conditions. The first turn uses one scripted model call and no analysis; selection uses two scripted calls and one real calculation on synthetic CSV data. Repeating the selection returns `no_pending_clarification` with no model or market calls. All dates, directory records and model replies in this demo are fixtures; this is not live research or a general interactive CLI.
+
+To enable continuation, trusted application code must create a separate `ResearchSession()` per conversation and pass the same object as `session=` on each turn. Without it, the natural entry remains stateless. Pending conditions expire after 15 minutes; cancellation, explicit new questions, current-directory checks, source changes and same-session concurrent access are handled without implicitly executing a stale selection. Extra edits such as changing an indicator require a complete `新问题：...`; general parameter patching is not supported. See the [identity clarification design](docs/identity-clarification-design.md) for commands, failure behavior and limits.
+
+## Refresh the real security-name directory
+
+Install `.[data]`, then explicitly opt in to public exchange requests:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m trading_companion.security_directory_refresh --live --timeout 15
+```
+
+Without `--live`, this command makes no requests or writes. A successful refresh saves `data/security_directory_live.json` (Git-ignored); all three required fragments must validate before replacement. Failures preserve an existing snapshot and its timestamp, without automatically authorizing stale data.
+
+Load it with `load_security_directory("data/security_directory_live.json")` and inject it as `directory=` into `run_natural_research_turn()`. Normal name lookup does not download lists. The offline demo still uses its four-record fixture.
+
+One live refresh returned 1,700 SSE main-board entries, 618 STAR-list entries including CDRs, and 2,906 SZSE entries: 5,224 total. SSE declared totals are checked; SZSE export completeness cannot be independently proven. BSE and historical risk/name status are not covered. Some listed identities, including `689009.SH` and `302132.SZ`, remain unsupported by the current Tencent analysis contract; identity resolution does not broaden market-data authority. See the [refresh design](docs/security-directory-refresh-design.md).
+
+## Bounded single-turn Agent: offline demo
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -B -m trading_companion.agent_demo
+```
+
+This default demo uses a scripted model and actual synthetic CSV calculations, with no credentials or network. It calls the reusable `run_research_turn()` rather than the fixed smoke-test runner. The current input grammar requires explicit stock, dates and indicator parameters, for example `分析 000001.SZ，2026-09-21 至 2026-09-25，指标：SMA3、SMA20、VOLUME3`. Ambiguous input returns clarification before calling any model or source; this is deliberately not arbitrary natural-language understanding.
+
+The runner binds the model proposal to the parsed request, permits at most two model calls and one analysis, and never changes dates or sources to fill missing values. The demo returns `limited / partial_research`: SMA3 and volume3 are usable, while SMA20 lacks 15 records. Trusted research is retained if explanation fails. `model_draft` remains unchecked and `answer_validation=not_performed`, even when a fully available request returns `completed`. See the [single-turn design](docs/single-turn-agent-design.md) for state meanings and limits.
 
 ## Controlled research-tool execution
 
@@ -367,7 +461,7 @@ $env:PYTHONPATH='src'
 
 Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA, Wilder RSI/ATR, BOLL population variance, volume window alignment and zero baselines, initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation. Multi-indicator tests additionally check one source read, partial availability, request limits, component metadata, full-precision relations, evidence dependencies, isolated calculation failures, and development-only CSV access.
 
-Tool tests cover protocol pairing and limits, strict research arguments, trusted sources, atomic one-analysis execution, batch rejection, compact states and evidence, capacity fallback, and the offline synthetic calculation demo. The complete offline suite currently has 292 tests; execution records and limits are documented in the [executor design](docs/research-tool-design.md).
+Tool and Agent tests cover protocol pairing and limits, strict research arguments, trusted sources, atomic one-analysis execution, batch rejection, compact states and evidence, capacity fallback, adapter conversion, bounded smoke testing, input clarification, request binding, partial results and explanation failures. The complete offline suite currently has 499 tests, including 33 original runner tests, 38 natural-input/directory tests, 46 exchange-refresh/save tests and 44 identity-session tests. Directory cases check required fragments, declared pagination, real-export dimension errors, atomic replacement, unchanged old timestamps and identities outside the market-analysis scope. Session cases cover condition preservation, current-directory/source changes, expiry, cancellation, isolation, repeated replies and concurrent access. Details are in the [executor design](docs/research-tool-design.md), [adapter design](docs/deepseek-tool-model-design.md), [single-turn design](docs/single-turn-agent-design.md), [natural-input design](docs/natural-input-design.md), [refresh design](docs/security-directory-refresh-design.md) and [clarification design](docs/identity-clarification-design.md).
 
 A successful test run does not guarantee that a public endpoint is reachable. The historical Tencent and AKShare CLI commands above are separate live smoke tests.
 
@@ -385,9 +479,15 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `model.py` / `deepseek_model.py`: text model contracts, offline fake, and DeepSeek adapter.
 - `model_cli.py`: explicit offline/live model-layer demonstration.
 - `tool_model.py` / `tool_model_demo.py`: tool-message contracts, scripted fake, and an offline fixed-result round trip.
+- `deepseek_tool_model.py`: DeepSeek function-tool message conversion and bounded response parsing; no tool execution.
+- `tool_smoke.py`: fixed-task tool connectivity CLI; offline default, explicit DeepSeek opt-in, and bounded synthetic execution.
 - `research_tool.py` / `research_tool_demo.py`: controlled analysis execution, compact evidence results, and an offline synthetic calculation round trip.
+- `agent_input.py` / `agent.py` / `agent_demo.py`: conservative explicit-input parsing, shared bounded orchestration, optional identity-session routing, and an offline demo; no general chat/result memory or answer checker yet.
+- `research_intent.py` / `security_directory.py` / `natural_agent_demo.py`: model-first intent candidates, grounded snapshot-based identity resolution, visible defaults and an offline fixture demo.
+- `research_session.py` / `session_agent_demo.py`: per-conversation pending identity selection, revalidation, expiry/cancellation, and an offline two-turn demo; no persisted chat history.
+- `exchange_directory.py` / `security_directory_refresh.py`: explicit SSE/SZSE reads and atomic snapshot refresh, separate from conversations and market data.
 - `tests/`: offline regression tests.
 
 ## Next milestone
 
-The seven indicator families and multi-indicator service provide validated requests, field availability, metadata, relations, and evidence. M2 now includes the tool-message protocol and controlled research-tool executor, exercised with an offline fake and synthetic calculations. Continue with real provider tool adaptation, a single-turn flow, and explanation checks/fallback. Conversation state and complete round-level budgets follow in M3. Broader data, screening, point-in-time storage/replay, and the product UI remain later increments.
+M2 now includes the protocol, executor, DeepSeek adapter, smoke-test CLI, bounded explicit/natural-input runners and a separately verified exchange-directory refresher. Limited stock-identity clarification is also implemented as an optional in-process session. This is not a completed full-market product. General parameter editing/result follow-ups, answer checking/safe presentation, real model evaluation and product entry remain separate increments. Broader conversation state and complete round-level budgets remain M3 work. Broader data, screening, point-in-time storage/replay, and the product UI remain later increments.

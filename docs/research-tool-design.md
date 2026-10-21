@@ -10,6 +10,8 @@ M2第一切口让模型协议能够表达工具调用和结果。这一步把白
 
 本次只实现工具执行与离线Fake链路。真实提供方工具适配、自然语言理解、参数澄清、解释检查、会话管理与总截止时间仍需后续实现。
 
+后续实施更新：2026-10-19完成独立DeepSeek工具适配及模拟HTTP/人工CSV往返，见[工具适配设计](deepseek-tool-model-design.md)；2026-10-20记录开发者一次真实工具固定任务反馈，另增[明确格式单轮runner](single-turn-agent-design.md)，全量371项离线测试通过。本文的Fake演示和历史验收记录不变；通用语言理解、回答检查与全轮时限仍待实现。
+
 ## 权限与执行边界
 
 - 仅开放一个只读日线指标分析工具；复用 `IndicatorSpec`、`MultiIndicatorRequest` 和 `analyze_indicators()`。

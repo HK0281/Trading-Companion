@@ -2,7 +2,7 @@
 
 版本：v0.1
 
-日期：2026-10-16（America/Los_Angeles）
+日期：2026-10-20（America/Los_Angeles）
 
 状态：目标架构与渐进实施方案；不是已完成功能清单。
 
@@ -39,7 +39,7 @@
 
 ## 3. 当前实现基线
 
-截至本文版本，项目还不是能够通过自然语言调用工具的产品 Agent。
+截至本文版本，已有明确格式入口及模型优先的自然语言研究入口；后者用注入目录快照核实名称、提供候选和可见默认值。[真实目录刷新](security-directory-refresh-design.md) 已独立接入沪深公开列表并实测保存5,224条身份，但不代表自然语言研究全链路真实验收。[股票身份澄清续接](identity-clarification-design.md) 已通过可选进程内会话实现；通用参数修改、结果追问及完整对话未完成，模型解释也尚未经过程序检查。
 
 | 模块 | 已有代码 | 实际能力与边界 |
 | --- | --- | --- |
@@ -48,10 +48,14 @@
 | 在线数据源 | [tencent_adapter.py](../src/trading_companion/tencent_adapter.py)、[akshare_adapter.py](../src/trading_companion/akshare_adapter.py) | 腾讯直接 JSON 接入，以及通过 AKShare 访问东方财富；来源显式选择，无自动切换 |
 | 日期与指标 | [history.py](../src/trading_companion/history.py)、[indicators.py](../src/trading_companion/indicators.py) | 日期过滤、SMA、独立 EMA/MACD/RSI/BOLL/ATR/量能与日期结果点；见[剩余指标设计](indicators-design.md) |
 | 分析服务 | [analysis.py](../src/trading_companion/analysis.py)、[multi_analysis.py](../src/trading_companion/multi_analysis.py)、[multi_contracts.py](../src/trading_companion/multi_contracts.py) | 旧单 SMA 接口保持兼容；独立多指标服务一次取数，返回逐字段状态、初始化元数据、关系和事实标识 |
-| 模型接入 | [model.py](../src/trading_companion/model.py)、[deepseek_model.py](../src/trading_companion/deepseek_model.py)、[tool_model.py](../src/trading_companion/tool_model.py) | 原纯文本接口/Fake/DeepSeek继续兼容；新增独立工具消息协议和脚本Fake，真实供应商工具适配待做 |
-| 只读工具执行 | [research_tool.py](../src/trading_companion/research_tool.py)、[research_tool_demo.py](../src/trading_companion/research_tool_demo.py) | 单个白名单日线工具、严格业务校验、每轮一次分析、紧凑证据视图；已用Fake和可信人工CSV离线串联，尚无完整Agent编排 |
-| 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py) | 参数式行情 CLI 与独立模型联通 CLI；尚无自然语言对话主流程 |
-| 验证 | [tests/](../tests/) | 离线回归测试；开发者另反馈一次真实 DeepSeek 文本请求成功，不等于 Agent 质量已验收 |
+| 模型接入 | [model.py](../src/trading_companion/model.py)、[deepseek_model.py](../src/trading_companion/deepseek_model.py)、[tool_model.py](../src/trading_companion/tool_model.py)、[deepseek_tool_model.py](../src/trading_companion/deepseek_tool_model.py) | 原纯文本接口继续兼容；工具消息契约、Fake与DeepSeek工具适配已有；开发者已反馈一次真实工具/人工CSV往返 |
+| 只读工具执行 | [research_tool.py](../src/trading_companion/research_tool.py)、[research_tool_demo.py](../src/trading_companion/research_tool_demo.py) | 单个白名单日线工具、严格业务校验、每轮一次分析、紧凑证据视图；独立于编排层 |
+| 受控研究编排 | [agent_input.py](../src/trading_companion/agent_input.py)、[agent.py](../src/trading_companion/agent.py) | 明确格式入口与自然语言初始请求共用执行流程，分别最多两次/三次模型调用，都最多一次分析；可选身份续接，无回答检查 |
+| 请求理解与名称目录 | [research_intent.py](../src/trading_companion/research_intent.py)、[security_directory.py](../src/trading_companion/security_directory.py) | 模型候选原文检查、快照身份匹配、歧义阻断及日期/指标默认值；目录来源不证明历史状态或行情支持范围 |
+| 股票澄清会话 | [research_session.py](../src/trading_companion/research_session.py) | 每会话一个待选请求，保留已校验日期/指标；15分钟有效期、取消、当前目录重查、执行前消费及进程内并发保护；不是完整聊天记忆 |
+| 独立目录刷新 | [exchange_directory.py](../src/trading_companion/exchange_directory.py)、[security_directory_refresh.py](../src/trading_companion/security_directory_refresh.py) | 显式联网读取沪深列表，必要分片校验后原子保存；失败不更新旧文件及时间，不证明全市场完整性 |
+| 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py)、[tool_smoke.py](../src/trading_companion/tool_smoke.py)、[agent_demo.py](../src/trading_companion/agent_demo.py)、[natural_agent_demo.py](../src/trading_companion/natural_agent_demo.py)、[session_agent_demo.py](../src/trading_companion/session_agent_demo.py) | 旧CLI与固定工具验证保持兼容，两个单轮及一个两轮澄清离线演示；尚无产品对话CLI |
+| 验证 | [tests/](../tests/) | 499项离线测试通过，含33项原单轮、38项自然输入/目录、46项目录刷新及44项澄清会话测试；另有真实目录请求，均不等于完整Agent质量验收 |
 
 当前尚无 FastAPI、Web 前端、DuckDB 持久化、Jev、新闻/基本面、筛选、完整证据台账或严格 point-in-time 系统。
 
@@ -114,11 +118,13 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 首次实现只保留内存会话，不默认保存完整原始对话。开发协作中使用的子 Agent，不等于产品运行时需要多 Agent。
 
+2026-10-20实施更新：先实现[明确格式单轮入口](single-turn-agent-design.md)，缺项零模型/行情调用；随后根据正常使用需求增加[自然语言入口](natural-input-design.md)，先调用一次模型提取原文候选，再由程序核实目录身份及条件。有歧义时零行情分析，可见默认值不覆盖用户显式要求。[真实目录刷新](security-directory-refresh-design.md) 已独立实测，离线演示仍保留人工夹具。现已补充可选[股票澄清会话](identity-clarification-design.md)：先校验和保存非股票条件，短答选定身份后重新核对当前目录、来源及契约，沿用原具体日期再执行；成功选择在执行前消费，失败不隐式重试。通用条件修改、结果记忆和上述回答检查未实现。研究事实与 `model_draft` 分离，`answer_validation=not_performed`。
+
 ### 5.3 模型接入层
 
 业务使用统一接口，供应商适配器负责消息转换、能力差异、响应解析与错误分类。DeepSeek 为首个真实提供方，Fake 支持离线验证，OpenAI 后续接入。
 
-原 `TextModel.complete()` 及消息校验继续只支持纯文本。M2首切口新增独立 `ToolCapableModel`、工具定义/调用/结果/状态契约及脚本Fake，见[工具模型设计](tool-model-design.md)；旧演示只验证固定结果消息往返。随后新增的白名单执行器已通过独立入口连接研究服务，见下节。真实DeepSeek工具HTTP适配和完整Agent流程仍待实现，原文本CLI保持兼容。
+原 `TextModel.complete()` 及消息校验继续只支持纯文本。M2首切口新增独立 `ToolCapableModel`、工具定义/调用/结果/状态契约及脚本Fake，见[工具模型设计](tool-model-design.md)；旧演示只验证固定结果消息往返。随后新增的白名单执行器已通过独立入口连接研究服务，见下节。2026-10-19新增独立 `DeepSeekToolModel`，见[工具适配设计](deepseek-tool-model-design.md)；与文本接口共享HTTP传输，均显式关闭thinking，避免在没有推理历史契约时启用思考工具调用。2026-10-20记录开发者一次真实 `deepseek-flash` 工具往返成功，使用人工CSV，不能外推为所有型号或完整Agent质量已验收。原文本CLI保持兼容。
 
 兼容 OpenAI 风格接口不等于行为完全一致；切换提供方时必须验证消息、结构化输出、工具调用、截断和错误处理。用户显式选择提供方，不静默把对话发送给另一家服务。这里的 OpenAI 指模型 API，不是自动操作 ChatGPT 网页。
 
@@ -130,7 +136,7 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 工具层负责名称白名单、结构与业务参数校验、调用预算以及统一错误返回。不接受任意函数名、Python 对象、SQL、磁盘路径、终端命令或网络 URL。CSV 仅由开发者配置固定测试样例，不能让模型选文件。
 
-2026-10-16已实现上述日线执行切口，详见[受控工具设计](research-tool-design.md)：`ResearchToolExecutor`按回合实例持有一次分析额度，多调用批次整体拒绝；完整研究结果保留本地，模型接收带请求内证据别名的紧凑结果。容量与历史校验失败明确返回，不截断证据、不自动重取数。这仍不包含自然语言路由、真实工具模型或全轮时限。
+2026-10-16已实现上述日线执行切口，详见[受控工具设计](research-tool-design.md)：`ResearchToolExecutor`按回合实例持有一次分析额度，多调用批次整体拒绝；完整研究结果保留本地，模型接收带请求内证据别名的紧凑结果。容量与历史校验失败明确返回，不截断证据、不自动重取数。随后通过模拟HTTP和开发者真实工具固定任务记录验证了连接；执行器本身不负责自然语言路由或全轮时限。单轮runner只创建一个执行器，并额外检查提议是否仍属于本轮已识别请求。
 
 未来按需增加公司资料、公告检索、候选筛选和风险情景工具，不为每个指标单独暴露一次取数工具。
 
@@ -245,6 +251,8 @@ Jev 不替代数值计算、权限校验、历史时点过滤或引用检查。�
 
 采用 PRD 的本期建议值作为后续实现和测试起点，数值仍需在实施时确认；当前代码没有完整执行这些限制。
 
+当前明确格式runner最多两次模型调用，自然语言初始请求最多三次（多一次候选理解）；两者都最多一次分析、无自动修正。股票澄清首轮最多一次模型、零分析；成功短答续接不重复理解，最多两次模型、一次分析；无效短答、取消和过期均零调用。计数属于各轮，没有实现下列完整耗时/token预算；不能把底层HTTP超时写成全轮截止时间。
+
 | 范围 | 建议约束 |
 | --- | --- |
 | 研究范围 | 每次 1 只股票、最多 12 个指标实例、含首尾最多 366 个自然日 |
@@ -313,8 +321,8 @@ Trading Companion/
 | 部分 | 建议与理由 | 当前状态 |
 | --- | --- | --- |
 | 语言与计算 | Python、标准库与可独立验证的函数；不依赖大模型算数 | 已有 |
-| 模型接入 | 统一契约加供应商适配器，先 Fake 与 DeepSeek，后 OpenAI | 文本基础、工具消息协议与脚本Fake已有；真实工具模型适配待做 |
-| Agent 编排 | 先显式状态机，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 计划 |
+| 模型接入 | 统一契约加供应商适配器，先 Fake 与 DeepSeek，后 OpenAI | 文本基础、工具契约/Fake与DeepSeek工具适配已有；一次真实工具/人工CSV固定任务反馈成功 |
+| Agent 编排 | 先显式阶段与退出分支，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 两种入口及可选身份续接已有，离线使用目录夹具验证；真实语义评估、回答检查及通用对话待做 |
 | HTTP API | FastAPI；Pydantic 用于外部输入校验，内部模型按需要演进 | Web 阶段 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
 | 前端 | React 与 TypeScript，用于聊天、图表和结构化结果；不要求依赖境外托管平台 | Web 阶段 |
@@ -330,14 +338,14 @@ Trading Companion/
 | 当前基础 | 数据模型、适配器、SMA、独立 EMA/MACD、文本模型接口 | 已有代码与对应测试；不称为完整 Agent |
 | M1a：补齐指标 | 已新增独立 RSI、BOLL、ATR、量能，保持已有计算口径 | 数值函数与测试已补齐；仍不代表多指标服务或 Agent 完成 |
 | M1b：多指标契约 | 独立服务已新增一次取数、逐字段状态、初始化元数据、关系事实和证据标识 | 默认组合与部分可用、证据依赖和旧接口回归；不等于模型工具循环已完成 |
-| M2：单轮 Agent | 已有工具消息协议、受控执行器及Fake/人工CSV真实计算往返；真实工具适配、自然语言编排与解释检查待做 | 完整单股票问题走通，异常有明确回退；离线执行验证不代表M2整体完成 |
+| M2：单轮 Agent | 已有工具契约、执行器、DeepSeek适配、一次真实固定任务验证、两种单轮入口及独立真实目录刷新；语言评估、产品入口与解释检查待做 | 完整单股票问题走通，异常有明确回退；目录联通及未校验草稿不代表M2整体完成 |
 | M3：会话与预算 | 澄清、参数继承、对话入口、次数与截止时间 | 状态隔离、连续追问、越权和迟到结果测试通过 |
 | M4：评估与说明 | 固定场景、真实模型验证、诊断与运行文档 | 报告实测结果和局限，不把离线测试当真实模型效果 |
 | 长期扩展 | 主数据与日历、公司研究、筛选、历史版本与回放、风险情景、Web 和美股 | 每项单独定义数据契约、失败行为与验收；不一次性展开 |
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具消息协议与受控日线执行器已实现，下一步是真实提供方工具适配、单轮编排及解释检查。保留当前目录与已有供应商，不因此增加框架或接入新的外部模型。
+多指标服务、工具协议、执行器与DeepSeek适配已实现。[固定工具联通](tool-smoke-design.md) 已有一次真实人工数据往返反馈；[明确格式runner](single-turn-agent-design.md)、[自然语言入口](natural-input-design.md) 及[股票澄清续接](identity-clarification-design.md) 已有离线验证，[真实目录刷新](security-directory-refresh-design.md) 已有独立实测。接下来逐项补通用条件修改/结果追问、解释检查、安全展示与产品入口，不把有限身份续接视为M3整体完成。保留现有供应商，不因此增加框架或外部模型。
 
 ## 15. 文档维护
 

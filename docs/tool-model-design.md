@@ -6,7 +6,7 @@
 
 这是M2的第一个切口：让统一模型契约能够表达工具定义、模型提出的调用、调用方返回的结果和完整文本。通过脚本Fake验证协议往返，尚未完成自然语言Agent、正式工具注册/执行器或模型解释检查。
 
-后续实施更新：受控执行器已在独立 `research_tool.py` 中接入多指标服务，以Fake和可信人工CSV验证真实计算往返，见[受控工具设计](research-tool-design.md)。本文以下仍描述第一切口的固定结果演示；旧演示保持不执行工具。真实模型工具适配、自然语言Agent和解释检查继续待做。
+后续实施更新：受控执行器已在独立 `research_tool.py` 中接入多指标服务，见[受控工具设计](research-tool-design.md)；2026-10-19补上[DeepSeek适配](deepseek-tool-model-design.md)与模拟HTTP/人工CSV计算。2026-10-20记录开发者一次真实固定任务工具反馈，新增[明确格式单轮runner](single-turn-agent-design.md)，全量371项离线测试通过。本文以下仍描述第一切口的固定结果演示；旧演示保持不执行工具。通用请求理解、解释检查与完整对话仍待做。
 
 旧 `ChatMessage`、`TextModel.complete()`、`FakeTextModel`、`DeepSeekTextModel` 与 `model_cli` 保留纯文本语义。新协议在独立 `tool_model.py` 中实现，演示入口是 `tool_model_demo.py`。不增加依赖，不读取真实密钥，不发送模型或行情请求。
 

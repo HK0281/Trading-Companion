@@ -17,3 +17,6 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Locally refreshed current security directory
+data/security_directory_live.json

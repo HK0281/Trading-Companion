@@ -76,6 +76,27 @@ DEFAULT_INDICATORS = (
 )
 
 
+def validate_research_conditions(start_date: date, as_of_date: date,
+                                 indicators: Sequence[IndicatorSpec]) -> tuple[IndicatorSpec, ...]:
+    """Validate stock-independent conditions, including requests awaiting an identity."""
+    if type(start_date) is not date or type(as_of_date) is not date:
+        raise InvalidRequestError("Request boundaries must be dates")
+    if not 1 <= (as_of_date - start_date).days + 1 <= 366:
+        raise InvalidRequestError("Request range must contain between 1 and 366 calendar days")
+    if (not isinstance(indicators, Sequence) or isinstance(indicators, (str, bytes)) or not indicators
+            or any(type(spec) is not IndicatorSpec for spec in indicators)):
+        raise InvalidRequestError("At least one validated indicator instance is required")
+    canonical = []
+    for spec in indicators:
+        # Reconstruct so malformed trusted objects cannot bypass validation.
+        validated = IndicatorSpec(spec.kind, **spec.parameters)
+        if validated not in canonical:
+            canonical.append(validated)
+    if len(canonical) > 12:
+        raise InvalidRequestError("At most 12 distinct indicator instances are allowed")
+    return tuple(canonical)
+
+
 @dataclass(frozen=True)
 class MultiIndicatorRequest:
     instrument_id: str
@@ -95,23 +116,8 @@ class MultiIndicatorRequest:
             to_tencent_symbol(self.instrument_id)
         else:
             to_akshare_symbol(self.instrument_id)
-        if type(self.start_date) is not date or type(self.as_of_date) is not date:
-            raise InvalidRequestError("Request boundaries must be dates")
-        if not 1 <= (self.as_of_date - self.start_date).days + 1 <= 366:
-            raise InvalidRequestError("Request range must contain between 1 and 366 calendar days")
-        if (not isinstance(self.indicators, Sequence)
-                or isinstance(self.indicators, (str, bytes)) or not self.indicators
-                or any(type(spec) is not IndicatorSpec for spec in self.indicators)):
-            raise InvalidRequestError("At least one validated indicator instance is required")
-        canonical = []
-        for spec in self.indicators:
-            # Reconstruct so malformed trusted objects cannot bypass validation.
-            validated = IndicatorSpec(spec.kind, **spec.parameters)
-            if validated not in canonical:
-                canonical.append(validated)
-        if len(canonical) > 12:
-            raise InvalidRequestError("At most 12 distinct indicator instances are allowed")
-        object.__setattr__(self, "indicators", tuple(canonical))
+        object.__setattr__(self, "indicators", validate_research_conditions(
+            self.start_date, self.as_of_date, self.indicators))
         if (not isinstance(self.request_id, str)
                 or re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", self.request_id) is None):
             raise InvalidRequestError("request_id must be a bounded identifier")

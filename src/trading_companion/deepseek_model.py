@@ -85,48 +85,53 @@ def parse_chat_response(payload: object, requested_model: str) -> ModelResponse:
     )
 
 
+def _post_chat(config: DeepSeekConfig, body: dict[str, object]) -> object:
+    """Share fixed-endpoint transport without mixing text and tool protocols."""
+    try:
+        import requests
+    except ImportError:
+        raise ModelConfigurationError("Install the model extra to use DeepSeek") from None
+
+    try:
+        # Requests has no automatic retries by default; redirects are refused.
+        response = requests.post(
+            DEEPSEEK_CHAT_URL,
+            headers={"Authorization": f"Bearer {config.api_key}"},
+            json=body,
+            timeout=config.timeout_seconds,
+            allow_redirects=False,
+        )
+        try:
+            status = response.status_code
+            if status in (401, 403):
+                raise ModelCallError("authentication_error", "Model authentication or access failed; check local credentials")
+            if status == 429:
+                raise ModelCallError("rate_limited", "Model request was rate-limited; retry later if appropriate")
+            if status != 200:
+                raise ModelCallError("provider_error", f"Model provider returned HTTP {status}; no automatic retry was made")
+            return response.json()
+        finally:
+            response.close()
+    except requests.exceptions.Timeout:
+        raise ModelCallError("timeout", "Model request timed out; no automatic retry was made") from None
+    except requests.exceptions.JSONDecodeError:
+        raise ModelCallError("invalid_response", "Model provider returned invalid JSON") from None
+    except requests.exceptions.RequestException:
+        raise ModelCallError("connection_error", "Could not complete the model request; check the connection") from None
+
+
 @dataclass(frozen=True)
 class DeepSeekTextModel:
     config: DeepSeekConfig
 
     def complete(self, messages: Sequence[ChatMessage]) -> ModelResponse:
         validated = validate_messages(messages)
-        try:
-            import requests
-        except ImportError:
-            raise ModelConfigurationError("Install the model extra to use DeepSeek") from None
-
-        try:
-            # Requests has no automatic retries by default; redirects are refused.
-            response = requests.post(
-                DEEPSEEK_CHAT_URL,
-                headers={"Authorization": f"Bearer {self.config.api_key}"},
-                json={
-                    "model": self.config.model,
-                    "messages": [{"role": message.role, "content": message.content} for message in validated],
-                    "max_tokens": self.config.max_output_tokens,
-                    "stream": False,
-                    # Keep this small text-only layer independent of thinking defaults.
-                    "thinking": {"type": "disabled"},
-                },
-                timeout=self.config.timeout_seconds,
-                allow_redirects=False,
-            )
-            try:
-                status = response.status_code
-                if status in (401, 403):
-                    raise ModelCallError("authentication_error", "Model authentication or access failed; check local credentials")
-                if status == 429:
-                    raise ModelCallError("rate_limited", "Model request was rate-limited; retry later if appropriate")
-                if status != 200:
-                    raise ModelCallError("provider_error", f"Model provider returned HTTP {status}; no automatic retry was made")
-                payload = response.json()
-            finally:
-                response.close()
-        except requests.exceptions.Timeout:
-            raise ModelCallError("timeout", "Model request timed out; no automatic retry was made") from None
-        except requests.exceptions.JSONDecodeError:
-            raise ModelCallError("invalid_response", "Model provider returned invalid JSON") from None
-        except requests.exceptions.RequestException:
-            raise ModelCallError("connection_error", "Could not complete the model request; check the connection") from None
+        payload = _post_chat(self.config, {
+            "model": self.config.model,
+            "messages": [{"role": message.role, "content": message.content} for message in validated],
+            "max_tokens": self.config.max_output_tokens,
+            "stream": False,
+            # Keep this small text-only layer independent of thinking defaults.
+            "thinking": {"type": "disabled"},
+        })
         return parse_chat_response(payload, self.config.model)

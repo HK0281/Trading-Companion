@@ -67,7 +67,7 @@ def main(argv=None) -> int:
     print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
           "已显式启用DeepSeek，可能计费；本轮问题、参数和指标证据会发送给该提供方。")
-    print(f"API文档：http://127.0.0.1:{args.port}/docs；访问日志关闭，请不要共享会话访问令牌。")
+    print(f"研究界面：http://127.0.0.1:{args.port}/；API文档：/docs；访问日志关闭，请不要共享会话访问令牌。")
     uvicorn.run(create_app(service=service), host="127.0.0.1", port=args.port, workers=1, access_log=False)
     return 0
 

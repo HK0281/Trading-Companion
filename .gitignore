@@ -20,3 +20,8 @@ dist/
 
 # Locally refreshed current security directory
 data/security_directory_live.json
+
+# Frontend dependencies and generated package assets
+node_modules/
+src/trading_companion/web_assets/
+*.tsbuildinfo

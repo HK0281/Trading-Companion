@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from trading_companion.api_service import ApiProblem, ResearchApiService
 from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures
 from trading_companion.followup_demo import ConversationDemoModel
+from trading_companion.web_ui import add_web_routes
 
 
 MAX_BODY_BYTES = 16384
@@ -199,4 +200,5 @@ def create_app(*, service: ResearchApiService | None = None) -> FastAPI:
         service.delete(session_id, token)
         return Response(status_code=204)
 
+    add_web_routes(app)
     return app

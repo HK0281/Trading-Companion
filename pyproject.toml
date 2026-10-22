@@ -32,6 +32,9 @@ model = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+trading_companion = ["web_assets/index.html", "web_assets/assets/*.js", "web_assets/assets/*.css"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

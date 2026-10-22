@@ -4,6 +4,8 @@
 
 日期：2026-10-20（America/Los_Angeles）
 
+增量更新：2026-10-22，整轮运行控制与本机FastAPI接口，会话令牌、幂等、配额及取消。
+
 状态：目标架构与渐进实施方案；不是已完成功能清单。
 
 阅读对象：项目开发者、协作者，以及希望理解项目技术取舍的读者。
@@ -39,7 +41,11 @@
 
 ## 3. 当前实现基线
 
-截至本文版本，已有明确格式入口及模型优先的自然语言研究入口；后者用注入目录快照核实名称、提供候选和可见默认值。[真实目录刷新](security-directory-refresh-design.md) 已独立接入沪深公开列表并实测保存5,224条身份，但不代表自然语言研究全链路真实验收。[股票身份澄清续接](identity-clarification-design.md) 已通过可选进程内会话实现；通用参数修改、结果追问及完整对话未完成，模型解释也尚未经过程序检查。
+截至2026-10-22，已有明确格式与模型优先自然语言入口，目录核名、候选澄清、可见默认值、[事实报告](safe-report-design.md)、[受限解读检查](grounded-explanation-design.md)及[薄终端](terminal-agent-design.md)。可选会话支持[股票身份续接](identity-clarification-design.md)、[明确指标替换](indicator-edit-design.md)、[结果快照/追问/知识](result-followup-design.md)与[明确条件修改](condition-update-design.md)。最新增加[整轮运行控制](turn-control-design.md)：共享90秒协作截止、模型/分析额度、已观察token停止阈值、取消信号及迟到结果隔离。新增43项、全量856项离线通过；独立进程演示及四场景离线评估通过，没有新增真实模型或行情调用。
+
+[真实目录刷新](security-directory-refresh-design.md)已独立实测5,224条身份；[四场景契约评估](agent-evaluation-design.md)仅有用户回传一次 `complete` 真实模型通过，其余3项及重复质量评估仍待做。自由复合条件修改、相对日期更新/最新查询、对话内切源、开放知识问答及任意自由文本语义检查尚未实现。现有运行预算不等于硬中断、计费上限或账户配额，不称M2/M3/M4整体完成。
+
+最新增量：[本机API](local-api-design.md)已把原Agent接入FastAPI，提供令牌隔离、幂等消息、历史/重置/删除、按请求取消及白名单响应。新增50项、当前全量906项离线通过，进程内8项检查与实际loopback TCP演示通过；不新增真实模型/行情请求。上段856项为运行控制模块完成时的记录。
 
 | 模块 | 已有代码 | 实际能力与边界 |
 | --- | --- | --- |
@@ -50,14 +56,24 @@
 | 分析服务 | [analysis.py](../src/trading_companion/analysis.py)、[multi_analysis.py](../src/trading_companion/multi_analysis.py)、[multi_contracts.py](../src/trading_companion/multi_contracts.py) | 旧单 SMA 接口保持兼容；独立多指标服务一次取数，返回逐字段状态、初始化元数据、关系和事实标识 |
 | 模型接入 | [model.py](../src/trading_companion/model.py)、[deepseek_model.py](../src/trading_companion/deepseek_model.py)、[tool_model.py](../src/trading_companion/tool_model.py)、[deepseek_tool_model.py](../src/trading_companion/deepseek_tool_model.py) | 原纯文本接口继续兼容；工具消息契约、Fake与DeepSeek工具适配已有；开发者已反馈一次真实工具/人工CSV往返 |
 | 只读工具执行 | [research_tool.py](../src/trading_companion/research_tool.py)、[research_tool_demo.py](../src/trading_companion/research_tool_demo.py) | 单个白名单日线工具、严格业务校验、每轮一次分析、紧凑证据视图；独立于编排层 |
-| 受控研究编排 | [agent_input.py](../src/trading_companion/agent_input.py)、[agent.py](../src/trading_companion/agent.py) | 明确格式入口与自然语言初始请求共用执行流程，分别最多两次/三次模型调用，都最多一次分析；可选身份续接，无回答检查 |
+| 受控研究编排 | [agent_input.py](../src/trading_companion/agent_input.py)、[agent.py](../src/trading_companion/agent.py) | 明确格式入口与自然语言初始请求共用执行流程，分别最多两次/三次模型调用，都最多一次分析；可选身份续接、结构化关系检查及默认安全展示 |
+| 整轮运行控制 | [turn_control.py](../src/trading_companion/turn_control.py)、[turn_control_demo.py](../src/trading_companion/turn_control_demo.py) | 共享单调截止、调用/分析次数、已观察token阈值、线程安全取消、会话暂存发布与迟到拒绝；同步协作检查，不是硬中断/费用保证 |
 | 请求理解与名称目录 | [research_intent.py](../src/trading_companion/research_intent.py)、[security_directory.py](../src/trading_companion/security_directory.py) | 模型候选原文检查、快照身份匹配、歧义阻断及日期/指标默认值；目录来源不证明历史状态或行情支持范围 |
 | 股票澄清会话 | [research_session.py](../src/trading_companion/research_session.py) | 每会话一个待选请求，保留已校验日期/指标；15分钟有效期、取消、当前目录重查、执行前消费及进程内并发保护；不是完整聊天记忆 |
+| 明确指标修改 | [research_edit.py](../src/trading_companion/research_edit.py)、[research_session.py](../src/trading_companion/research_session.py)、[agent.py](../src/trading_companion/agent.py) | 独立条件基准、整句校验、唯一实例替换及新请求重算；事实通过才记录，执行失败不恢复旧修改基准 |
+| 明确条件修改 | [research_update.py](../src/trading_companion/research_update.py)、[condition_update_demo.py](../src/trading_companion/condition_update_demo.py) | 单维度换股票/ISO日期/添加或删除一个指标；当前身份及原条件重查，未知或歧义股票续接pending，执行复用原链路 |
+| 保存结果与追问 | [research_memory.py](../src/trading_companion/research_memory.py)、[research_followup.py](../src/trading_companion/research_followup.py) | 一份15分钟快照、深复制隔离、current/history分开；追问最多一次模型仅选类型/指标，程序显示字段和重新核对的关系，不重新取数 |
+| 有限指标知识 | [indicator_knowledge.py](../src/trading_companion/indicator_knowledge.py) | 项目维护七类及MACD子项定义，完整有限句式0模型/0行情；不是开放知识库或RAG |
 | 独立目录刷新 | [exchange_directory.py](../src/trading_companion/exchange_directory.py)、[security_directory_refresh.py](../src/trading_companion/security_directory_refresh.py) | 显式联网读取沪深列表，必要分片校验后原子保存；失败不更新旧文件及时间，不证明全市场完整性 |
-| 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py)、[tool_smoke.py](../src/trading_companion/tool_smoke.py)、[agent_demo.py](../src/trading_companion/agent_demo.py)、[natural_agent_demo.py](../src/trading_companion/natural_agent_demo.py)、[session_agent_demo.py](../src/trading_companion/session_agent_demo.py) | 旧CLI与固定工具验证保持兼容，两个单轮及一个两轮澄清离线演示；尚无产品对话CLI |
-| 验证 | [tests/](../tests/) | 499项离线测试通过，含33项原单轮、38项自然输入/目录、46项目录刷新及44项澄清会话测试；另有真实目录请求，均不等于完整Agent质量验收 |
+| 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py)、[tool_smoke.py](../src/trading_companion/tool_smoke.py)、[agent_demo.py](../src/trading_companion/agent_demo.py)、[natural_agent_demo.py](../src/trading_companion/natural_agent_demo.py)、[session_agent_demo.py](../src/trading_companion/session_agent_demo.py) | 旧CLI与固定工具验证保持兼容，保留单轮及身份澄清离线演示；新增交互入口见下一行 |
+| 终端交互与开发夹具 | [agent_cli.py](../src/trading_companion/agent_cli.py)、[development_fixtures.py](../src/trading_companion/development_fixtures.py)、[followup_demo.py](../src/trading_companion/followup_demo.py) | 显式DeepSeek及人工/腾讯数据，默认仅帮助；单会话、目录重读、安全展示、局部额度及`/last`；有连续离线演示，固定夹具与评估入口共享预检 |
+| 本机HTTP接口 | [api_service.py](../src/trading_companion/api_service.py)、[api.py](../src/trading_companion/api.py)、[api_server.py](../src/trading_companion/api_server.py) | 单进程FastAPI/Pydantic边界、每会话Bearer令牌、有限内存/工作、消息幂等、协作取消和安全投影；默认离线，非生产鉴权/部署 |
+| 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
+| 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
+| 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
+| 验证 | [tests/](../tests/) | 当前906项离线测试通过；新增50项API/服务测试，旧四场景离线评估4/4通过；另有真实目录和单次模型反馈，不等于完整Agent质量验收 |
 
-当前尚无 FastAPI、Web 前端、DuckDB 持久化、Jev、新闻/基本面、筛选、完整证据台账或严格 point-in-time 系统。
+当前已有本机FastAPI，尚无Web前端、生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
 ## 4. 总体架构
 
@@ -98,9 +114,9 @@ flowchart TD
 
 交互层负责接收输入和展示结果。第一版采用终端对话；后续 Web 展示聊天、K 线、指标、查询条件和证据卡片。
 
-应用层协调会话、每轮请求、配置和返回结果。FastAPI 是 Web 阶段的建议入口，不是计算函数的依赖。HTTP 接口届时使用 Pydantic 校验输入，不为此全面替换当前内部 dataclass。
+应用层协调会话、每轮请求、配置和返回结果。当前已有本机FastAPI/Pydantic入口：路由负责DTO和协议，框架无关的 `ResearchApiService`负责会话、配额和幂等，复用原Agent；计算函数不依赖FastAPI，也不全面替换内部dataclass。公共响应白名单投影，不使用包含模型草稿的调试导出。
 
-前端不直接调用模型供应商，也不接触服务端 API 密钥。当前不要求账户体系；以后开放多用户访问前，必须先补身份验证、资源归属、限流与会话隔离。
+前端不直接调用模型供应商，也不接触服务端API密钥。当前用随机会话Bearer凭据隔离资源、限制Host/Origin及本机访问，不是账户体系；以后开放多用户访问前，必须先补用户身份、TLS、账户配额和共享会话等。现有同步HTTP路由在线程池运行，取消路由只发信号；不把同步模型请求放入事件循环阻塞其他请求。
 
 ### 5.2 Agent 运行层
 
@@ -118,7 +134,9 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 首次实现只保留内存会话，不默认保存完整原始对话。开发协作中使用的子 Agent，不等于产品运行时需要多 Agent。
 
-2026-10-20实施更新：先实现[明确格式单轮入口](single-turn-agent-design.md)，缺项零模型/行情调用；随后根据正常使用需求增加[自然语言入口](natural-input-design.md)，先调用一次模型提取原文候选，再由程序核实目录身份及条件。有歧义时零行情分析，可见默认值不覆盖用户显式要求。[真实目录刷新](security-directory-refresh-design.md) 已独立实测，离线演示仍保留人工夹具。现已补充可选[股票澄清会话](identity-clarification-design.md)：先校验和保存非股票条件，短答选定身份后重新核对当前目录、来源及契约，沿用原具体日期再执行；成功选择在执行前消费，失败不隐式重试。通用条件修改、结果记忆和上述回答检查未实现。研究事实与 `model_draft` 分离，`answer_validation=not_performed`。
+2026-10-22后续增量：[明确条件修改](condition-update-design.md)复用现有会话和执行器；局部修改由程序完整解析、合并并重查领域契约，不新增一次意图模型调用。换股票仍查目录，有歧义先选定；修改和指标替换共享 `_checked_edit_base()`，防止时效、来源和身份检查分叉。以下2026-10-21段落为上一阶段记录；自由复合修改和任意语义检查仍未完成。
+
+实施更新（截至2026-10-21）：先实现[明确格式单轮入口](single-turn-agent-design.md)，缺项零模型/行情调用；随后增加[自然语言入口](natural-input-design.md)，由模型提取原文候选、程序核实目录身份及条件。有歧义时零行情分析，可见默认值不覆盖用户显式要求。[真实目录刷新](security-directory-refresh-design.md) 已独立实测，离线演示仍保留人工夹具。可选[股票澄清会话](identity-clarification-design.md)保存非股票条件，短答选定身份后重查当前目录、来源及契约，沿用原具体日期；执行前消费待选状态。[程序事实摘要](safe-report-design.md)及[受限关系检查](grounded-explanation-design.md)由程序核对本轮证据和数值关系后生成中文；不合格则仅展示事实，不重试。后续增加明确指标替换、独立成功结果快照及有限追问：模型只选回答类型/指标，程序读保存字段并复查关系；知识定义走本地有限语法。通用条件修改、开放知识问答及任意自由文本语义检查未实现；各有限检查不改变 `answer_validation=not_performed` 的含义。
 
 ### 5.3 模型接入层
 
@@ -161,9 +179,13 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 回答检查不仅验证“引用存在”，还要检查日期、单位、数值与方向关系。引用有效但把“低于”写成“高于”同样不合格。自由文本的全部语义无法仅靠字段校验保证，仍需人工评估和限制可表达的结论。
 
+当前已实现事实卡片的最小版本：`research_report.py` 检查本轮请求ID、股票、区间、指标、字段及其数值/单位/日期证据，生成固定中文摘要。`ResearchToolExecutor` 可接收可信应用传入的请求ID，与编排及事实关联；模型不能设置ID。报告不解读或验证自由文本，也不生成趋势关系，草稿仍保留在调试字段。详见[安全展示设计](safe-report-design.md)。
+
+随后新增 `relation_explanation.py`：模型只能选择本轮可用关系，不能提交任意句子或目标价。程序检查引用、当前/前一记录、单位与依赖顺序，并从现有原精度数值核对关系；全段通过才渲染固定中文。`display_answer` 合并事实及通过的关系，否则回退；`safe_answer` 仍独立保留。支持七类指标与精确命名均线对，不包含跨指标冲突解释或预测质量验收，见[受限解读设计](grounded-explanation-design.md)。
+
 ## 6. 关键数据契约
 
-下表列出各阶段契约需要表达的内容。M1b已新增 `IndicatorSpec`、`MultiIndicatorRequest`、`MultiIndicatorResult` 及字段、组件、关系和事实契约，详见[多指标设计](multi-indicator-design.md)；会话、解释候选和历史版本等契约仍待后续实现。
+下表列出各阶段契约需要表达的内容。M1b已新增 `IndicatorSpec`、`MultiIndicatorRequest`、`MultiIndicatorResult` 及字段、组件、关系和事实契约，详见[多指标设计](multi-indicator-design.md)；最小股票澄清状态、事实报告及 `indicator-explanation-v1` 受限关系候选已独立实现。通用会话、自由文本解释和历史版本等契约仍待后续实现。
 
 | 契约 | 必须表达的内容 |
 | --- | --- |
@@ -249,18 +271,21 @@ Jev 不替代数值计算、权限校验、历史时点过滤或引用检查。�
 
 ### 10.2 预算与失败行为
 
-采用 PRD 的本期建议值作为后续实现和测试起点，数值仍需在实施时确认；当前代码没有完整执行这些限制。
+当前产品Agent入口已接入[共享运行控制](turn-control-design.md)，以下区分实际同步限制与尚未实现的硬中断/费用保证。
 
-当前明确格式runner最多两次模型调用，自然语言初始请求最多三次（多一次候选理解）；两者都最多一次分析、无自动修正。股票澄清首轮最多一次模型、零分析；成功短答续接不重复理解，最多两次模型、一次分析；无效短答、取消和过期均零调用。计数属于各轮，没有实现下列完整耗时/token预算；不能把底层HTTP超时写成全轮截止时间。
+当前明确格式runner最多两次模型调用，自然语言初始请求最多三次（多一次候选理解）；两者都最多一次分析、无自动修正。股票澄清首轮最多一次模型、零分析；成功短答续接不重复理解，最多两次模型、一次分析；无效短答、取消和过期均零调用。上述路径共用单轮计数、90秒单调协作期限及24,000已观察token阈值；不能把底层HTTPtimeout或协作检查写成硬期限。
 
-| 范围 | 建议约束 |
+终端层另外限制一次启动最多5条问题、15次模型转发，调用前消耗额度，重置状态不补额度；最多5次分析来自每轮执行器与输入上限的组合。启动级限制与每轮控制器独立，并不构成跨启动的账户配额或费用保证。中断时尚未返回一轮的分析次数标为未确认，不能静默记零；详见[终端设计](terminal-agent-design.md)。
+
+| 范围 | 实际约束 |
 | --- | --- |
 | 研究范围 | 每次 1 只股票、最多 12 个指标实例、含首尾最多 366 个自然日 |
 | 工具 | 每轮最多执行 1 次日线分析工具 |
-| 模型 | 理解、解释、修正合计最多 3 次；格式或证据修正共用最多 1 次机会 |
-| 截止时间 | 单次模型请求 30 秒应用层截止时间，每轮总计 90 秒应用层截止时间 |
+| 模型 | 理解、提议、解释共用最多3次；明确格式流程最多2次，没有自动修正 |
+| 截止时间 | 模型连接/读取timeout默认30秒并取剩余时间较小值；每轮90秒协作检查，不是硬中断 |
+| token | 已观察累计达到24,000停止，缺失/不一致usage另标记，不是完整账单或预调用保额 |
 
-底层 HTTP 连接/读取超时不等于应用层总截止时间。需单独实现截止控制、取消或忽略迟到结果，不能让上一轮的结果污染新状态。供应商或 SDK 自动重试默认关闭；若后续启用，每次真实请求仍计入同一预算。
+底层HTTP连接/读取timeout不等于应用层总截止时间。当前已在阶段及I/O边界检查截止/取消，迟到结果不继续调度或写入新会话状态；同步请求仍可能晚于90秒返回。新状态暂存后在取消锁内发布，旧基准消费及显式重置立即生效。供应商或SDK自动重试默认关闭；若后续启用，每次真实请求仍须计入同一预算。
 
 | 异常 | 目标行为 |
 | --- | --- |
@@ -287,6 +312,8 @@ Jev 不替代数值计算、权限校验、历史时点过滤或引用检查。�
 | 后续历史与策略评估 | 先验证版本与时点，再单独设计策略、成交假设、费用及收益/回撤评价 |
 
 真实模型评估记录模型、提示词、数据版本、日期、样本量和失败案例，人工复核语义。被成功拦截的错误、修正与回退应单独统计；不能靠大量回退就宣称产品效果优秀。
+
+当前[固定场景入口](agent-evaluation-design.md)仅实现4项契约检查：完整、部分不足、名称理解与歧义澄清。它复用原Agent，不新增另一条研究链路；最多8次模型调用、3次分析，首错后停止。状态、范围、计数、参考值及有限关系检查有独立预期，正确受限也能通过。真实模式仍使用固定人工数据，以隔离模型问题；主Agent未发真实模型请求，用户已回传一次 `complete` 通过的报告（2次模型/1次分析），其他场景待反馈。这不替代PRD中至少30场景各3次的后续实测，也未评估解释相关性或语言价值。
 
 后续 GitHub Actions 默认只运行离线测试，不配置付费模型调用。当前仓库尚无该 CI 工作流。Web 阶段再补依赖锁定、可重复部署配置与必要的接口集成验证；现阶段不为文档新增运行依赖。
 
@@ -322,11 +349,11 @@ Trading Companion/
 | --- | --- | --- |
 | 语言与计算 | Python、标准库与可独立验证的函数；不依赖大模型算数 | 已有 |
 | 模型接入 | 统一契约加供应商适配器，先 Fake 与 DeepSeek，后 OpenAI | 文本基础、工具契约/Fake与DeepSeek工具适配已有；一次真实工具/人工CSV固定任务反馈成功 |
-| Agent 编排 | 先显式阶段与退出分支，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 两种入口及可选身份续接已有，离线使用目录夹具验证；真实语义评估、回答检查及通用对话待做 |
-| HTTP API | FastAPI；Pydantic 用于外部输入校验，内部模型按需要演进 | Web 阶段 |
+| Agent 编排 | 先显式阶段与退出分支，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 两种入口、可选身份续接、受限关系检查与薄终端已有；剩余真实模型评估及通用对话待做 |
+| HTTP API | FastAPI/Pydantic外部校验，内部dataclass与Agent复用；单进程、会话凭据及幂等 | 本机版已有，生产部署后置 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
 | 前端 | React 与 TypeScript，用于聊天、图表和结构化结果；不要求依赖境外托管平台 | Web 阶段 |
-| 测试与 CI | 延续 unittest，补 Agent 评估集与 GitHub Actions | 测试已有，评估与 CI 待建 |
+| 测试与 CI | 延续 unittest，补 Agent 评估集与 GitHub Actions | 离线测试及4场景契约入口已有；真实重复评估和CI待建 |
 | Jev | 独立分类实验，有可复现收益再纳入 | 实验候选 |
 
 初期不引入微服务、Kubernetes、Redis、任务队列、向量数据库或产品多 Agent。出现明确瓶颈后再选组件；文档语义检索确有需求时再讨论 RAG，不把结构化行情数值当作向量检索问题。
@@ -338,16 +365,18 @@ Trading Companion/
 | 当前基础 | 数据模型、适配器、SMA、独立 EMA/MACD、文本模型接口 | 已有代码与对应测试；不称为完整 Agent |
 | M1a：补齐指标 | 已新增独立 RSI、BOLL、ATR、量能，保持已有计算口径 | 数值函数与测试已补齐；仍不代表多指标服务或 Agent 完成 |
 | M1b：多指标契约 | 独立服务已新增一次取数、逐字段状态、初始化元数据、关系事实和证据标识 | 默认组合与部分可用、证据依赖和旧接口回归；不等于模型工具循环已完成 |
-| M2：单轮 Agent | 已有工具契约、执行器、DeepSeek适配、一次真实固定任务验证、两种单轮入口及独立真实目录刷新；语言评估、产品入口与解释检查待做 | 完整单股票问题走通，异常有明确回退；目录联通及未校验草稿不代表M2整体完成 |
-| M3：会话与预算 | 澄清、参数继承、对话入口、次数与截止时间 | 状态隔离、连续追问、越权和迟到结果测试通过 |
-| M4：评估与说明 | 固定场景、真实模型验证、诊断与运行文档 | 报告实测结果和局限，不把离线测试当真实模型效果 |
+| M2：单轮 Agent | 已有工具契约、执行器、DeepSeek适配、两种入口、目录刷新、事实摘要、受限关系检查及薄终端；一次新契约真实完整场景反馈通过 | 完整单股票问题走通，异常有明确回退；其他实测与语义评估待做，不标整体完成 |
+| M3：会话与预算 | 身份澄清、明确修改、快照、有限追问/知识、终端及整轮协作控制已有；自由复合修改、硬中断及费用保证未实现 | 同步状态与迟到隔离已离线验证，完整语言及真实提供方验证仍待补 |
+| M4：评估与说明 | 4场景契约入口、诊断与运行文档已有；真实模型验证及更完整场景集待做 | 报告实测结果和局限，不把离线测试当真实模型效果，不标整体完成 |
 | 长期扩展 | 主数据与日历、公司研究、筛选、历史版本与回放、风险情景、Web 和美股 | 每项单独定义数据契约、失败行为与验收；不一次性展开 |
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具协议、执行器与DeepSeek适配已实现。[固定工具联通](tool-smoke-design.md) 已有一次真实人工数据往返反馈；[明确格式runner](single-turn-agent-design.md)、[自然语言入口](natural-input-design.md) 及[股票澄清续接](identity-clarification-design.md) 已有离线验证，[真实目录刷新](security-directory-refresh-design.md) 已有独立实测。接下来逐项补通用条件修改/结果追问、解释检查、安全展示与产品入口，不把有限身份续接视为M3整体完成。保留现有供应商，不因此增加框架或外部模型。
+多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制及[本机API](local-api-design.md)已有。不把协作检查称为硬中断或M3整体完成。接下来可增加同源最小Web界面，复用本机API而非再写一套Agent；仍不扩大到公网部署。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发继续而视为通过。
 
 ## 15. 文档维护
+
+2026-10-21协作更新：用户要求扩大每个“下一步”的交付范围、不再提互动理解题。后续按完整功能块说明问题、实现与验证，仍补关键取舍和学习笔记，不一次性展开整个目标系统。2026-10-22最新要求：从本机API模块起，每完成一个模块，验证并检查提交内容后commit、push；不为微小修改频繁提交。
 
 - 新能力实现后，同时更新当前状态、运行说明和对应测试，不只修改目标架构。
 - 影响权限、数据口径、供应商、状态机或存储的变化，记录原因、替代方案及验证结果。

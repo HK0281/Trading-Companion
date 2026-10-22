@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from trading_companion.agent import run_natural_research_turn
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.errors import DataSourceError, InvalidRequestError
+from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.multi_contracts import IndicatorSpec, MultiIndicatorRequest, validate_research_conditions
 from trading_companion.research_intent import INTENT_TOOL_NAME, ResearchConditions
@@ -155,7 +156,7 @@ class PendingConditionsTests(GuardedTests):
         first = self.turn(QUESTION, [intent(task="clarify", reason="instrument")])
         self.assertEqual(first.status, "needs_clarification")
         self.assertIsNotNone(self.session.pending)
-        second = self.turn("平安银行", [proposal(), completed()])
+        second = self.turn("平安银行", model=ExplanationDemoModel([proposal()]))
         self.assertEqual(second.status, "completed")
 
     def test_model_requested_confirmation_for_unique_name_is_respected(self):
@@ -188,7 +189,8 @@ class SelectionResumeTests(GuardedTests):
         self.begin()
         original = CsvDailyBarSource.read_daily_bars
         with patch.object(CsvDailyBarSource, "read_daily_bars", autospec=True, side_effect=original) as read:
-            result = self.turn("平安银行", [proposal(), completed()], current_time=NOW + timedelta(minutes=1))
+            result = self.turn("平安银行", model=ExplanationDemoModel([proposal()]),
+                               current_time=NOW + timedelta(minutes=1))
         self.assertEqual(result.status, "completed")
         self.assertEqual((result.model_calls_attempted, result.analyses_used), (2, 1))
         self.assertEqual(result.session_event, "clarification_resumed")
@@ -257,7 +259,7 @@ class SelectionResumeTests(GuardedTests):
 
     def test_old_pending_is_consumed_before_model_proposal(self):
         self.begin()
-        script = FakeToolModel([proposal(), completed()])
+        script = ExplanationDemoModel([proposal()])
         def checked(messages, *, tools):
             self.assertIsNone(self.session.pending)
             return script.complete(messages, tools=tools)
@@ -349,10 +351,10 @@ class SessionLifecycleTests(GuardedTests):
 
     def test_explicit_new_question_replaces_pending_without_inheriting_old_parameters(self):
         self.begin()
-        result = self.turn("新问题：分析平安银行最近一周，只看SMA5", [
+        result = self.turn("新问题：分析平安银行最近一周，只看SMA5", model=ExplanationDemoModel([
             intent(["平安银行"], expression="最近一周", indicators=["SMA5"]),
-            proposal(start_date="2026-09-19", indicators=[{"kind": "sma", "window": 5}]), completed(),
-        ])
+            proposal(start_date="2026-09-19", indicators=[{"kind": "sma", "window": 5}]),
+        ]))
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.confirmed_request.start_date, date(2026, 9, 19))
         self.assertEqual(result.confirmed_request.indicators, (IndicatorSpec("sma", window=5),))
@@ -414,7 +416,7 @@ class SessionLifecycleTests(GuardedTests):
     def test_newer_directory_is_allowed_when_selected_identity_is_unchanged(self):
         self.begin()
         newer = replace(self.directory, retrieved_at=self.directory.retrieved_at + timedelta(hours=1))
-        result = self.turn("平安银行", [proposal(), completed()], directory=newer)
+        result = self.turn("平安银行", model=ExplanationDemoModel([proposal()]), directory=newer)
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.understanding.directory.retrieved_at, newer.retrieved_at)
 

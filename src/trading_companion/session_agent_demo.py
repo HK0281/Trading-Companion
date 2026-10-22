@@ -6,20 +6,17 @@ from pathlib import Path
 
 from trading_companion.agent import run_natural_research_turn
 from trading_companion.data_source import CsvDailyBarSource
+from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.research_intent import INTENT_TOOL_NAME
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_tool import TOOL_NAME
 from trading_companion.security_directory import load_security_directory
-from trading_companion.tool_model import FakeToolModel, ToolCall, ToolModelResponse
+from trading_companion.tool_model import ToolCall, ToolModelResponse
 
 
-def run_demo() -> dict[str, object]:
-    root = Path(__file__).resolve().parents[2]
-    directory = load_security_directory(root / "data" / "security_directory_fixture.json")
-    source = CsvDailyBarSource(root / "data" / "sample_daily_bars_synthetic.csv", is_synthetic=True)
-    now = datetime(2026, 9, 26, 10, tzinfo=timezone(timedelta(hours=8)))
-    session = ResearchSession()
-    model = FakeToolModel([
+def build_demo_model() -> ExplanationDemoModel:
+    """Share this finite script with the terminal demo, not arbitrary user input."""
+    return ExplanationDemoModel([
         ToolModelResponse("tool_calls", tool_calls=(ToolCall("interpret_1", INTENT_TOOL_NAME, {
             "intent": "research", "instrument_mentions": ["平安"], "date_expression": "最近一个月",
             "indicator_mentions": ["SMA3", "RSI2"], "clarification_reason": None,
@@ -28,9 +25,16 @@ def run_demo() -> dict[str, object]:
             "instrument_id": "000001.SZ", "start_date": "2026-08-27", "as_of_date": "2026-09-25",
             "indicators": [{"kind": "sma", "window": 3}, {"kind": "rsi", "window": 2}],
         }),)),
-        ToolModelResponse("complete", "离线脚本草稿：保留原30自然日区间，只计算SMA3和RSI2。"
-                          "实际CSV只有5条人工日线，本演示不代表真实行情或模型理解能力。"),
     ])
+
+
+def run_demo() -> dict[str, object]:
+    root = Path(__file__).resolve().parents[2]
+    directory = load_security_directory(root / "data" / "security_directory_fixture.json")
+    source = CsvDailyBarSource(root / "data" / "sample_daily_bars_synthetic.csv", is_synthetic=True)
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone(timedelta(hours=8)))
+    session = ResearchSession()
+    model = build_demo_model()
     configuration = {"model": model, "directory": directory, "development_source": source, "session": session}
     first = run_natural_research_turn("看看平安最近一个月的走势，只看SMA3和RSI2", current_time=now, **configuration)
     second = run_natural_research_turn("我指的是平安银行", current_time=now + timedelta(minutes=1), **configuration)

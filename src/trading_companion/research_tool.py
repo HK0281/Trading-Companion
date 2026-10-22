@@ -15,6 +15,7 @@ from trading_companion.multi_analysis import IndicatorSpec, MultiIndicatorReques
 from trading_companion.multi_contracts import ALGORITHM_VERSIONS, Fact, MultiIndicatorResult
 from trading_companion.tencent_adapter import TencentDailyBarSource
 from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages
+from trading_companion.turn_control import TurnStopped, checkpoint, reserve_analysis
 
 
 TOOL_NAME = "analyze_daily_indicators"
@@ -91,7 +92,7 @@ def _iso_date(value):
         raise InvalidRequestError("Invalid ISO date") from None
 
 
-def _request(arguments, *, development):
+def _request(arguments, *, development, request_id=None):
     required = {"instrument_id", "start_date", "as_of_date"}
     if type(arguments) is not dict or arguments.keys() - (required | {"indicators", "source"}) or required - arguments.keys():
         raise InvalidRequestError("Invalid research argument keys")
@@ -104,6 +105,8 @@ def _request(arguments, *, development):
     if not development and cutoff >= datetime.now(timezone(timedelta(hours=8))).date():
         raise InvalidRequestError("Daily bars must precede today in Shanghai")
     parameters = {}
+    if request_id is not None:
+        parameters["request_id"] = request_id
     if "indicators" in arguments:
         requested = arguments["indicators"]
         if type(requested) is not list or not requested:
@@ -255,11 +258,16 @@ def _too_large(call, request_id, indicator_count, bars_used):
 class ResearchToolExecutor:
     """Trusted application creates a fresh instance per user turn; attempts cannot reset."""
 
-    def __init__(self, *, development_source: CsvDailyBarSource | None = None):
+    def __init__(self, *, development_source: CsvDailyBarSource | None = None,
+                 request_id: str | None = None):
         if development_source is not None and (type(development_source) is not CsvDailyBarSource
                                                 or type(development_source.is_synthetic) is not bool):
             raise ModelConfigurationError("Development research source must be a trusted CSV configuration")
+        if request_id is not None and (type(request_id) is not str
+                                       or re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", request_id) is None):
+            raise ModelConfigurationError("Request ID must be bounded and supplied by trusted application code")
         self._development_source = development_source
+        self._request_id = request_id
         self._used = 0
         self._lock = Lock()
 
@@ -289,7 +297,8 @@ class ResearchToolExecutor:
             return ToolExecution("rejected", rejected)
         call = response.tool_calls[0]
         try:
-            request = _request(call.arguments, development=self._development_source is not None)
+            request = _request(call.arguments, development=self._development_source is not None,
+                               request_id=self._request_id)
         except (InvalidRequestError, TypeError, ValueError):
             return ToolExecution("rejected", rejected)
         # Reserve the largest fallback envelope before any actual attempt or source construction.
@@ -298,16 +307,20 @@ class ResearchToolExecutor:
         with self._lock:
             if self._used:
                 return ToolExecution("rejected", (_error(call, "analysis_budget_exhausted"),))
+            reserve_analysis()
             # Consume before construction/read; a failed attempt cannot be retried invisibly.
             self._used = 1
         try:
             source = self._development_source if self._development_source is not None else _build_source(request)
             full_result = analyze_indicators(source, request,
                                              allow_development_csv=self._development_source is not None)
+        except TurnStopped:
+            raise
         except (ModelConfigurationError, InvalidRequestError, DataSourceError, DataValidationError):
             return ToolExecution("failed", (_error(call, "execution_failed"),))
         except Exception:
             raise ToolExecutionError("internal_error") from None
+        checkpoint()
         payload, local_facts = _project(full_result, development=self._development_source is not None)
         try:
             message = ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload)

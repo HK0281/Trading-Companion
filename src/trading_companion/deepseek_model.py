@@ -11,6 +11,7 @@ from trading_companion.model import (
     TokenUsage,
     validate_messages,
 )
+from trading_companion.turn_control import request_timeout
 
 
 DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions"
@@ -98,7 +99,7 @@ def _post_chat(config: DeepSeekConfig, body: dict[str, object]) -> object:
             DEEPSEEK_CHAT_URL,
             headers={"Authorization": f"Bearer {config.api_key}"},
             json=body,
-            timeout=config.timeout_seconds,
+            timeout=request_timeout(config.timeout_seconds),
             allow_redirects=False,
         )
         try:
@@ -109,9 +110,10 @@ def _post_chat(config: DeepSeekConfig, body: dict[str, object]) -> object:
                 raise ModelCallError("rate_limited", "Model request was rate-limited; retry later if appropriate")
             if status != 200:
                 raise ModelCallError("provider_error", f"Model provider returned HTTP {status}; no automatic retry was made")
-            return response.json()
+            payload = response.json()
         finally:
             response.close()
+        return payload
     except requests.exceptions.Timeout:
         raise ModelCallError("timeout", "Model request timed out; no automatic retry was made") from None
     except requests.exceptions.JSONDecodeError:

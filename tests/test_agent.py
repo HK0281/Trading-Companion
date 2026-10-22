@@ -16,6 +16,7 @@ from trading_companion.agent_input import (
 )
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.errors import DataSourceError
+from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.research_tool import ResearchToolExecutor, TOOL_NAME, ToolExecution
 from trading_companion.tool_model import FakeToolModel, ToolCall, ToolMessage, ToolModelResponse
@@ -194,10 +195,11 @@ class AgentTurnTests(GuardedTests):
     def test_all_requested_fields_available_is_completed_not_partial(self):
         values = arguments()
         values["indicators"] = [{"kind": "sma", "window": 3}]
-        result, _ = self.run_script([proposal(values), ToolModelResponse("complete", "Unchecked.")],
-                                    text=question("SMA3"))
+        result = run_research_turn(question("SMA3"), model=ExplanationDemoModel([proposal(values)]),
+                                   development_source=CsvDailyBarSource(FIXTURE, is_synthetic=True))
         self.assertEqual(result.research_result.calculation_status, "complete")
         self.assertEqual(result.status, "completed")
+        self.assertEqual(result.explanation_validation.status, "accepted")
         self.assertEqual(result.answer_validation, "not_performed")
 
     def test_mismatched_proposal_is_blocked_without_repair_or_executor_construction(self):

@@ -16,6 +16,15 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Natural-language research input (Chinese)](docs/natural-input-design.md): model-first interpretation, dated security snapshots, ambiguity gates, visible defaults, and an offline fixture demo.
 - [Explicit exchange-directory refresh (Chinese)](docs/security-directory-refresh-design.md): real SSE/SZSE name lists, validation limits, atomic snapshots, and separate live verification.
 - [Identity clarification continuation (Chinese)](docs/identity-clarification-design.md): per-session pending conditions, short stock-selection replies, expiry, cancellation, and replay protection.
+- [Deterministic safe-answer reports (Chinese)](docs/safe-report-design.md): request-bound fact cards, evidence consistency, explicit missing fields, and separation from unchecked model prose.
+- [Checked indicator explanations (Chinese)](docs/grounded-explanation-design.md): bounded JSON claims, current-request evidence and operand checks, application-rendered relations, and fact-only fallback.
+- [Fixed-scenario Agent contract evaluation (Chinese)](docs/agent-evaluation-design.md): pinned synthetic fixtures, independent scenario expectations, bounded model calls, fail-fast reports, and explicit DeepSeek opt-in.
+- [Terminal research entry (Chinese)](docs/terminal-agent-design.md): explicit model/data selection, safe display, per-launch session ownership, local commands, and bounded interactive input.
+- [Bounded indicator edits (Chinese)](docs/indicator-edit-design.md): checked per-session conditions, whole-message single-instance replacement, fresh requests, and failure isolation.
+- [Saved results, follow-ups and indicator knowledge (Chinese)](docs/result-followup-design.md): detached result snapshots, current/history separation, checked cached answers, local definitions, and a complete offline conversation demo.
+- [Explicit session condition updates (Chinese)](docs/condition-update-design.md): directory-grounded stock changes, exact date updates, single-indicator addition/removal, atomic validation, and failure-safe history.
+- [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
+- [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
 
 ## Current status
 
@@ -39,8 +48,18 @@ The foundation for the first product agent is implemented:
 - A separate model-first natural-input runner, validating verbatim mentions against an injected security directory and applying visible date/indicator defaults before reusing the research flow.
 - An opt-in SSE/SZSE directory-refresh CLI with bounded requests, required-fragment validation and atomic local snapshots; one live refresh returned 5,224 identities, without changing supported market-analysis prefixes.
 - Optional per-conversation identity clarification: preserve validated dates and indicators while waiting for a stock selection, recheck the current directory and source configuration, and consume the pending request before execution.
+- An application-generated `safe_answer` report with checked request/evidence alignment, explicit missing values, and no model prose; existing model drafts remain debug-only and unchecked.
+- Structured indicator-relation claims checked against this request's evidence, exact operands and full-precision comparisons; default `display_answer` includes application-rendered relations only when all selected claims pass.
+- A fixed four-scenario contract-evaluation CLI reusing those flows: one offline case by default, explicit DeepSeek selection, pinned synthetic data only, independent call counting and no retries.
+- A thin terminal entry reusing the natural-input Agent and identity session: no arguments only show help, a fixed offline demo, explicit DeepSeek plus synthetic/Tencent selection, and safe answers without raw drafts.
+- Bounded indicator edits within the same session: replace one existing instance while retaining checked stock/date/source conditions, revalidate current authority, and run a fresh analysis without reusing old results. This uses a small explicit grammar, not arbitrary conversational rewriting.
+- One detached, checked successful-result snapshot per session, valid for 15 minutes: bounded follow-ups reuse saved fields and rechecked relations without fetching bars; explicit history viewing stays separate from a failed new query.
+- Application-maintained definitions for seven indicator families and MACD components, recognized through finite whole-question patterns without model or market calls; not a general knowledge or RAG system.
+- Explicit single-dimension session updates: change a directory-verified stock, edit an ISO date range or one boundary, add one fully specified indicator, or remove one unambiguous existing instance. Other checked conditions are retained; every valid update is a fresh analysis, not an edit to old report text.
+- Shared one-shot turn control across understanding, proposal, analysis, explanation and result publication: a 90-second cooperative deadline, at most three model attempts/one analysis, a 24,000 observed-token stopping threshold, thread-safe cancellation signals and rejection of late results. Existing narrower path limits remain; neither deadlines nor token accounting are hard interruption or billing guarantees.
+- A single-process loopback FastAPI service reusing that Agent: per-session bearer capabilities, strict Pydantic input, bounded memory/work, idempotent messages, request-specific cooperative cancellation, reset/delete/history endpoints and allowlisted public output. Default mode is a fixed offline demo, not a public deployment or account system.
 
-This is an initial bounded research flow, with both an explicit-format entry and a model-first natural-input entry. The natural entry optionally supports cross-turn stock-identity clarification, not general parameter editing or chat/result memory. These paths are tested offline; real exchange-directory refresh and local lookup are separately verified, not an end-to-end live natural-language evaluation. General language-quality evaluation and a conversational product are not complete. The developer reported a successful live `deepseek-flash` text request on 2026-10-13 and subsequently one live tool round trip using synthetic CSV data (two model calls, one local analysis, 4,500 reported tokens; recorded 2026-10-20). That supports compatibility for the fixed task and model, not real-market research quality. Explanation checking, general conversation memory, Jev, news, fundamentals, screening, DuckDB persistence, API/UI, and historical strategy evaluation are not implemented.
+This is an initial bounded research flow, with both an explicit-format entry and a model-first natural-input entry. Its optional session supports identity clarification, explicit stock/date/indicator updates, one checked result snapshot, bounded result follow-ups and local definitions, not arbitrary parameter rewriting or full chat history. Fact reports and narrowly checked indicator relations are available; arbitrary model-prose validation is not implemented. These paths and the contract-evaluation entry are tested offline, including mocked DeepSeek HTTP. The user supplied one passing live `deepseek-flash` report for the new contract's `complete` synthetic case: two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20). The other three live cases and repeated evaluation are pending; see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Real exchange-directory refresh and local lookup are separately verified, not an end-to-end live natural-language evaluation. General language-quality evaluation and a conversational product are not complete. Earlier developer feedback included a successful live text request on 2026-10-13 and one legacy synthetic tool round trip (two calls, one analysis, 4,500 reported tokens; recorded 2026-10-20). None of these one-off records proves real-market research quality or model stability. Long-term conversation memory, Jev, news, fundamentals, screening, DuckDB persistence, the Web UI, production multi-user deployment and historical strategy evaluation are not implemented.
 
 The intended product scope includes main-board, STAR Market, ST, and newly listed stocks. The current foundation reads price history; it does not yet identify historical ST status, enforce board/listing-specific trading rules, or distinguish suspensions from other missing-data causes.
 
@@ -273,7 +292,7 @@ Successful output has `status: "ok"`, `provider: "deepseek"`, `is_mock: false`, 
 
 - The endpoint is fixed to `https://api.deepseek.com/chat/completions`. There is no custom URL from a prompt, no redirect, no automatic retry, and no provider fallback.
 - The adapter implements only non-streaming text through a Chat Completions-compatible payload. Provider/model compatibility remains subject to a live test; OpenAI API examples do not establish DeepSeek account availability.
-- Configuration is validated locally. Defaults are a 30-second connection/read wait and a 512-token output limit. This timeout is not the future agent's total wall-clock deadline.
+- Configuration is validated locally. Defaults are a 30-second connection/read wait and a 512-token output limit. This timeout is not a total wall-clock deadline; product Agent entries additionally clamp it to the remaining shared cooperative turn time.
 - The adapter explicitly requests `thinking: {type: "disabled"}` for this small text-only layer. Current DeepSeek models enable thinking by default; thinking-mode budgeting and reasoning-history handling remain future work. The separate tool adapter below also disables thinking. See the [official thinking-mode guide](https://api-docs.deepseek.com/guides/thinking_mode/).
 - Normal completed text is returned with the requested and returned model identifiers. Missing usage stays unknown. Reasoning fields are not exposed as final answers.
 - Authentication, rate limits, timeouts, invalid JSON/schema, refusals, unsupported tool calls, and truncated output have explicit outcomes. A truncated answer is not printed as successful output.
@@ -301,7 +320,7 @@ Tool parameter schemas describe structure; this is not a full JSON Schema valida
 
 `DeepSeekToolModel.complete(messages, tools=...)` converts internal declarations, assistant proposals and tool results to the provider's function-tool payload, and parses complete/tool-call/refused/incomplete responses. It does not execute tools or run an Agent loop. Truncated or refused responses never forward actionable calls. Text and tool adapters share fixed-endpoint HTTP transport, timeouts and sanitized errors; the old text CLI remains unchanged.
 
-Both adapters explicitly disable thinking. The current tool protocol does not store the reasoning history required by thinking-mode tool calls; enabling that mode needs a separate design. Tool adapter coverage includes 24 offline tests; including both research entries, directory refresh and identity clarification, all 499 regression tests pass as of 2026-10-20:
+Both adapters explicitly disable thinking. The current tool protocol does not store the reasoning history required by thinking-mode tool calls; enabling that mode needs a separate design. Tool adapter coverage includes 24 offline tests; the complete suite including later session, result, update, runtime and API modules has 906 passing offline tests as of 2026-10-22:
 
 ```powershell
 $env:PYTHONPATH='src'
@@ -351,7 +370,7 @@ $env:PYTHONPATH='src'
 
 The first turn asks about the ambiguous `平安`, keeping the validated interval 2026-08-27 through 2026-09-25 and SMA3/RSI2. The reply `我指的是平安银行` selects its identity and reuses those conditions. The first turn uses one scripted model call and no analysis; selection uses two scripted calls and one real calculation on synthetic CSV data. Repeating the selection returns `no_pending_clarification` with no model or market calls. All dates, directory records and model replies in this demo are fixtures; this is not live research or a general interactive CLI.
 
-To enable continuation, trusted application code must create a separate `ResearchSession()` per conversation and pass the same object as `session=` on each turn. Without it, the natural entry remains stateless. Pending conditions expire after 15 minutes; cancellation, explicit new questions, current-directory checks, source changes and same-session concurrent access are handled without implicitly executing a stale selection. Extra edits such as changing an indicator require a complete `新问题：...`; general parameter patching is not supported. See the [identity clarification design](docs/identity-clarification-design.md) for commands, failure behavior and limits.
+To enable continuation, trusted application code must create a separate `ResearchSession()` per conversation and pass the same object as `session=` on each turn. Without it, earlier conditions/results are not available. Pending conditions expire after 15 minutes; cancellation, explicit new questions, current-directory checks, source changes and same-session concurrent access are handled without implicitly executing a stale selection. While stock selection is pending, other edits require cancellation or a complete `新问题：...`; after verified research, explicit indicator and stock/date updates are supported. See the [identity clarification design](docs/identity-clarification-design.md) and [condition-update design](docs/condition-update-design.md).
 
 ## Refresh the real security-name directory
 
@@ -377,7 +396,111 @@ $env:PYTHONPATH='src'
 
 This default demo uses a scripted model and actual synthetic CSV calculations, with no credentials or network. It calls the reusable `run_research_turn()` rather than the fixed smoke-test runner. The current input grammar requires explicit stock, dates and indicator parameters, for example `分析 000001.SZ，2026-09-21 至 2026-09-25，指标：SMA3、SMA20、VOLUME3`. Ambiguous input returns clarification before calling any model or source; this is deliberately not arbitrary natural-language understanding.
 
-The runner binds the model proposal to the parsed request, permits at most two model calls and one analysis, and never changes dates or sources to fill missing values. The demo returns `limited / partial_research`: SMA3 and volume3 are usable, while SMA20 lacks 15 records. Trusted research is retained if explanation fails. `model_draft` remains unchecked and `answer_validation=not_performed`, even when a fully available request returns `completed`. See the [single-turn design](docs/single-turn-agent-design.md) for state meanings and limits.
+The runner binds the model proposal to the parsed request, permits at most two model calls and one analysis, and never changes dates or sources to fill missing values. The demo returns `limited / partial_research`: SMA3 and volume3 are usable, while SMA20 lacks 15 records. Trusted research is retained if explanation fails. The final response now requires the bounded JSON contract below: full availability alone no longer makes arbitrary prose a `completed` result. `answer_validation=not_performed` refers to arbitrary free-text semantics; `explanation_validation` separately reports the limited relation checks. See the [single-turn design](docs/single-turn-agent-design.md) and [explanation design](docs/grounded-explanation-design.md).
+
+## Safe answer display: offline fact report
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.report_demo
+```
+
+This prints only the program-generated report for the fixed synthetic Agent task: conditions, latest price/volume, requested indicator fields, missing-history notices and limitations. It does not print the model draft or make network requests. It is a fixed demo, not an interactive conversational CLI.
+
+Both reusable Agent entries now expose `result.safe_answer` and a `safe_answer` JSON field. A report uses this turn's structured facts only, checking request ID, stock, dates, indicator scope, units and evidence values. The runner passes its request ID through trusted executor configuration; the model still cannot select it. Rendering consumes no additional model or data requests, and remains available when explanation fails. With no research result, the report is `None`; with bad context/evidence, it is blocked rather than showing mixed numbers.
+
+Use `safe_answer.text` when only facts are wanted, or `display_answer` for facts plus checked relations. Compatibility/debug JSON still includes original `model_draft`, labeled `model_draft_policy=debug_only_unchecked_not_for_default_display`. The fact report does not validate arbitrary prose. See the [report design](docs/safe-report-design.md).
+
+## Checked indicator explanations: offline display
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.explanation_demo
+```
+
+This prints the synthetic fact report followed by application-rendered relations such as price above SMA3 and a two-record cross. The finite demo model copies JSON claims from the already supplied tool result; it does not evaluate language understanding, fetch prices again, or act as a real LLM.
+
+The runner requires `indicator-explanation-v1`: this request's ID, stock, actual latest trade date, and 1–8 distinct relation claims. The checker validates aliases, relation availability, exact operand fields/dates/units and numerical support. Wrong direction, old context, unknown citations or malformed JSON reject the entire explanation, with no repair call. `display_answer` then retains facts and a fixed fallback notice. All seven indicator families and exact named mean pairs are supported; ATR never implies price direction and RSI thresholds are not buy/sell signals.
+
+`explanation_validation` is independent of the fact-report status and the unchanged free-text `answer_validation=not_performed` field. Passing it does not validate predictions, source authenticity, or general model prose. The model and analysis budgets are unchanged. See the [explanation design](docs/grounded-explanation-design.md) for the contract, state meanings and remaining scope.
+
+## Terminal research: fixed demo and explicit interactive mode
+
+No arguments only show help. First try the fixed offline two-turn demonstration:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_cli --demo
+```
+
+This is a scripted ambiguity/selection example, not a fake model pretending to understand free-form input. It uses no credentials, model requests or market requests.
+
+For a longer fixed demonstration covering research, a result follow-up, definitions, an indicator edit and history viewing:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.followup_demo
+```
+
+This finite offline script performs two actual synthetic CSV analyses and six fake model calls; it does not accept arbitrary input or test real-provider language quality.
+
+For fixed examples of stock/date changes and indicator addition/removal:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.condition_update_demo
+```
+
+This separate teaching script includes an intentional rejection: the CSV contains only Ping An Bank, so switching to China Ping An must not relabel the old stock's bars. It then explicitly views the earlier successful result. Its ten fake model calls and five analysis attempts are offline, not real-provider verification or an increase to the interactive terminal's limits.
+
+To type your own questions, explicitly choose DeepSeek and a data mode in a terminal with model configuration already set:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_cli --provider deepseek --data synthetic
+```
+
+At the prompt, try `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`, or ask about `平安` and reply with the full name when prompted. This mode sends questions, checked parameters and compact evidence to DeepSeek and may incur charges, but uses only five artificial bars and a four-identity fixture. The date anchor stays 2026-09-26; pending-selection expiry uses the real clock.
+
+After a research turn with verified facts, try `把SMA3改成5日，其他不变`. The same session retains checked conditions for 15 minutes, changes only that instance, and executes a fresh query with a new request ID (up to two model calls and one analysis). An ambiguous target, invalid parameter or extra requirement is rejected locally. If execution starts but yields no trustworthy facts, the old edit base is not restored. This is explicitly bounded editing, not arbitrary rewriting; see the [edit design](docs/indicator-edit-design.md).
+
+The session separately saves one checked result for 15 minutes. Try `这里的RSI为什么偏高` for its definition, actual fields and checked reference zone (at most one model call, no new bars), or `查看上次结果` / `/last` for an explicit history view (no model call). Generic indicators matching multiple saved instances require clarification; uncomputed indicators are not silently calculated. A failed new query leaves the old successful result explicitly viewable, but cannot use it to answer an implicit current-result question or restore the old edit base. Views do not renew expiry. `RSI是什么` and `解释一下MACD里的DIF和DEA` use local definitions even before any research, with no model or market calls; this is a small finite knowledge entry, not open-ended financial Q&A. See the [follow-up design](docs/result-followup-design.md).
+
+After a verified research turn, `换成中国平安`, `把截止日期改成2026-09-24`, `添加ATR2` and `删除RSI2` each change one dimension and retain everything else. An executable update uses a fresh request, at most two model calls and one analysis; ambiguity/invalid changes use no calls. Stock ambiguity reuses the existing name-selection gate. Addition requires explicit parameters; removal cannot empty the indicator set or silently choose between multiple instances. These are finite whole-message commands, not arbitrary conversational rewriting. Source changes, relative-date updates and “latest” remain unsupported. See the [update design](docs/condition-update-design.md).
+
+`/help`, `/last`, `/reset` and `/exit` are local commands. Reset/exit clear pending identities, checked conditions and saved results; explicit `新问题：` also clears the old context. One launch accepts at most five nonempty questions (including updates, ordinary follow-ups and definitions), forwards at most fifteen model calls, and uses the original one-analysis-per-turn executor. Slash commands including `/last` do not use or replenish those allowances. The display includes only application answers and checked relations, never raw model drafts; no chat/report files are saved. Free-form compound editing remains unsupported. Token/cost/global-deadline budgets remain unimplemented.
+
+Only after explicitly deciding to request real historical prices, with a current non-fixture local directory, select:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_cli --provider deepseek --data tencent
+```
+
+The default snapshot is `data/security_directory_live.json`; `--directory` may select another trusted local snapshot in Tencent mode only. The entry re-reads and checks it before each question and stops if it becomes unusable. It never refreshes directories or switches sources automatically. The entry is verified offline with mocked provider/market paths, not a newly verified live conversational flow; remaining fixed-case live evaluations are still pending. See the [terminal design](docs/terminal-agent-design.md).
+
+## Fixed-scenario Agent contract evaluation
+
+Start with the default offline case, or run all four offline scenarios:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation --case all
+```
+
+| Case | Expected behavior | Maximum model calls / analyses |
+| --- | --- | --- |
+| `complete` (default) | Explicit stock, seven short-period indicator families, complete facts and accepted relations | 2 / 1 |
+| `partial` | Five synthetic bars leave SMA20 unavailable; `limited/partial_research` is the correct result | 2 / 1 |
+| `natural` | Resolve the exact name against the fixed directory, preserve dates and indicators, accept checked relations | 3 / 1 |
+| `clarification` | Ambiguous name keeps two candidates and the original conditions, without fetching bars | 1 / 0 |
+
+Only explicit provider selection enables potentially paid model requests:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation --provider deepseek --case complete
+```
+
+This still uses pinned synthetic CSV and directory fixtures, never a market or directory request. It checks fixture hashes before reading model configuration. The default does not read credentials. A single complete case forwards at most two model calls; `--case all` allows at most eight calls and three analyses, stopping at the first failed case without retry. Reports go to stdout only, without raw model drafts or full tool payloads. Missing token usage stays `null`; reported values are not a cost estimate, and measured elapsed time is not a hard round deadline.
+
+Read `checks` and `failed_checks`, not just HTTP success. A scenario can pass while its Agent result is correctly `limited` or `needs_clarification`. Exit code is 0 for all selected cases passing, 2 for model configuration or CLI-argument errors, and 1 for a failed scenario or unusable fixture. In addition to offline/mock verification, the user supplied one passing live `complete` report; `partial`, `natural` and `clarification` live reports are still pending. Even four one-off passes would not prove model stability, unrestricted language quality, prediction accuracy or the PRD's full evaluation criteria. See the [evaluation design and feedback record](docs/agent-evaluation-design.md).
 
 ## Controlled research-tool execution
 
@@ -390,7 +513,7 @@ This demonstration uses a scripted `FakeToolModel` and a trusted, fixed syntheti
 
 `ResearchToolExecutor` allows only `analyze_daily_indicators`. It validates explicit stock/date arguments and bounded indicator specifications before constructing a source. The model cannot select CSV files, paths, URLs, or request IDs. Online sources remain explicit Tencent/Eastmoney choices; development CSV is injected by trusted application code and stays labeled synthetic or unverified. Create one executor per user turn: its single analysis allowance is consumed before source construction, including attempts that fail. Multi-call batches are rejected before any analysis.
 
-The full research result stays local. A versioned compact view carries latest fields, initialization metadata, relations and request-scoped evidence aliases, preserving unavailable states and calculation precision. Oversized results produce an explicit failure rather than truncated evidence. This local executor budget does not implement the future Agent's complete model/token/time budgets. See the [executor design](docs/research-tool-design.md).
+The full research result stays local. A versioned compact view carries latest fields, initialization metadata, relations and request-scoped evidence aliases, preserving unavailable states and calculation precision. Oversized results produce an explicit failure rather than truncated evidence. The executor retains its local one-attempt check and also consumes the shared allowance when called inside a controlled product turn. Standalone executor use does not acquire an Agent deadline automatically. See the [executor design](docs/research-tool-design.md) and [turn-control design](docs/turn-control-design.md).
 
 ## Analysis interface
 
@@ -450,6 +573,26 @@ CSV price adjustment and authenticity are unknown; the loader does not infer the
 
 The requested cutoff and latest actual bar date are separate. An earlier last bar is reported explicitly; the application does not guess whether it reflects a holiday, suspension, stale data, or another cause.
 
+## Local HTTP API
+
+Install the optional API/runtime and test extras, then try the in-process offline walkthrough:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[api,model,dev]"
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_demo
+```
+
+Start the actual local server in fixed-demo mode:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server --demo
+```
+
+Open [local API docs](http://127.0.0.1:8000/docs). Create a session with `{}`, use its `access_token` in Swagger's Authorize/Bearer field, and POST a message with a unique 32-character lowercase hexadecimal `request_id` and `question`. The first scripted question is `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`; the next scripted follow-up is `这里的RSI为什么偏高`. This finite fake is not a general model. Stop with Ctrl+C; no arguments only show help.
+
+DeepSeek requires explicit `--provider deepseek --data synthetic` (possibly paid), or `--data tencent` with a current local directory. Neither credentials nor source/path/budget overrides are accepted in HTTP bodies. The launcher binds only 127.0.0.1, one worker, without access logging; do not expose it publicly. Per-session tokens are capabilities, not account authentication. See the [API design](docs/local-api-design.md) for PowerShell calls, cancellation, idempotency, TTL and limits.
+
 ## Tests
 
 Install `.[data]` first: adapter tests use the requests exception classes included with the data dependency. All tests stub the external provider; the suite does not require live market access.
@@ -461,7 +604,20 @@ $env:PYTHONPATH='src'
 
 Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA, Wilder RSI/ATR, BOLL population variance, volume window alignment and zero baselines, initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation. Multi-indicator tests additionally check one source read, partial availability, request limits, component metadata, full-precision relations, evidence dependencies, isolated calculation failures, and development-only CSV access.
 
-Tool and Agent tests cover protocol pairing and limits, strict research arguments, trusted sources, atomic one-analysis execution, batch rejection, compact states and evidence, capacity fallback, adapter conversion, bounded smoke testing, input clarification, request binding, partial results and explanation failures. The complete offline suite currently has 499 tests, including 33 original runner tests, 38 natural-input/directory tests, 46 exchange-refresh/save tests and 44 identity-session tests. Directory cases check required fragments, declared pagination, real-export dimension errors, atomic replacement, unchanged old timestamps and identities outside the market-analysis scope. Session cases cover condition preservation, current-directory/source changes, expiry, cancellation, isolation, repeated replies and concurrent access. Details are in the [executor design](docs/research-tool-design.md), [adapter design](docs/deepseek-tool-model-design.md), [single-turn design](docs/single-turn-agent-design.md), [natural-input design](docs/natural-input-design.md), [refresh design](docs/security-directory-refresh-design.md) and [clarification design](docs/identity-clarification-design.md).
+The complete offline suite has 906 tests (2026-10-22), adding 50 API/service cases to the previous 856-test baseline. Install the API/dev extras for HTTP tests; the optional HTTP test module is skipped when they are absent. Tool and Agent cases cover protocol limits, request binding, trusted sources, atomic analysis attempts, compact evidence, provider errors, input clarification, isolated sessions, checked reports/relations, pinned fixtures, fail-fast evaluation, shared budgets, interruptions and mocked HTTP paths. Saved-result cases cover nested-data isolation, current/history separation, expiry, finite knowledge and relation revalidation.
+
+API coverage includes capability-token isolation, upload/DTO boundaries, host/origin guards, replay/conflict/retired IDs, quotas, responsive cooperative cancellation, expiry/shutdown and safe output. The in-process walkthrough passes eight checks; a separately launched loopback demo also returned HTTP 200/research_completed. No new external model or market requests were made.
+
+New runtime cases use fake monotonic clocks and event signals, not real long waits: late understanding/proposals/analysis/explanations, cancellation during final staging, incomplete/inconsistent token usage, no budget refunds, nested transport timeout clamping, session publication and independent-process demo checks. No new paid or real-market calls were made. Run the five-case offline demonstration with:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.turn_control_demo
+```
+
+Fake-clock elapsed times are constructed conditions, not measured real latency. Synchronous requests may return after the deadline; their late content cannot start further work or publish new session results. Missing usage remains unknown, not zero spending. See the [runtime design](docs/turn-control-design.md).
+
+New update cases cover exact stock identity/aliases, supported STAR/ST/new-listing samples, ambiguous-name continuation, atomic command parsing, retained fields, explicit dates, indicator limits and removal ambiguity, no-op rejection, malicious model proposals, cross-stock CSV rejection, stale contexts, cancellation and a standalone fixed demo. See the linked design documents for the individual boundaries, especially the [condition-update design](docs/condition-update-design.md). None of these tests is a new live-provider or real-market quality evaluation.
 
 A successful test run does not guarantee that a public endpoint is reachable. The historical Tencent and AKShare CLI commands above are separate live smoke tests.
 
@@ -482,12 +638,24 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `deepseek_tool_model.py`: DeepSeek function-tool message conversion and bounded response parsing; no tool execution.
 - `tool_smoke.py`: fixed-task tool connectivity CLI; offline default, explicit DeepSeek opt-in, and bounded synthetic execution.
 - `research_tool.py` / `research_tool_demo.py`: controlled analysis execution, compact evidence results, and an offline synthetic calculation round trip.
-- `agent_input.py` / `agent.py` / `agent_demo.py`: conservative explicit-input parsing, shared bounded orchestration, optional identity-session routing, and an offline demo; no general chat/result memory or answer checker yet.
+- `agent_input.py` / `agent.py` / `agent_demo.py`: conservative explicit-input parsing, shared bounded orchestration, optional identity/edit/follow-up session routing, checked structured relations, local knowledge and an offline demo; no full chat history.
 - `research_intent.py` / `security_directory.py` / `natural_agent_demo.py`: model-first intent candidates, grounded snapshot-based identity resolution, visible defaults and an offline fixture demo.
 - `research_session.py` / `session_agent_demo.py`: per-conversation pending identity selection, revalidation, expiry/cancellation, and an offline two-turn demo; no persisted chat history.
+- `research_report.py` / `report_demo.py`: application-generated latest-field reports, request/evidence alignment and a fact-only offline display; not model-prose validation.
+- `relation_explanation.py` / `explanation_demo.py` / `explanation_demo_model.py`: strict relation claims, current-evidence/operand checks, application-rendered text, and an explicitly fake finite demonstration.
+- `agent_evaluation.py`: fixed synthetic scenarios reusing the existing Agent, independent expectations/call caps, sanitized JSON reports, offline defaults and explicit DeepSeek selection.
+- `research_edit.py`: bounded whole-message indicator replacements, unique instance matching, existing parameter checks and fresh research requests.
+- `research_update.py` / `condition_update_demo.py`: finite stock/date/add/remove updates, unchanged-field inheritance, revalidated conditions and an offline failure-aware teaching script.
+- `research_memory.py` / `research_followup.py`: detached successful snapshots, bounded metadata-only follow-up interpretation, saved-field rendering and rechecked evidence relations; no new market requests.
+- `indicator_knowledge.py`: versioned application-maintained definitions and finite whole-question matching; no knowledge retrieval or model generation.
+- `followup_demo.py`: a fixed offline research/follow-up/definition/edit/history conversation, not an interactive fake LLM.
+- `agent_cli.py`: thin, explicitly enabled terminal interaction, current-directory checks, one identity/edit/result session per launch, safe display, `/last` and local call/input caps.
+- `development_fixtures.py`: shared hash-pinned synthetic CSV/directory loading for evaluation and terminal entry points.
+- `turn_control.py` / `turn_control_demo.py`: shared one-shot cooperative limits, cancellation and safe-publication metadata, plus five fixed fake-clock scenarios.
+- `api_service.py` / `api.py` / `api_server.py` / `api_demo.py`: framework-independent session service, strict local HTTP adapter, explicit loopback launcher and in-process offline walkthrough.
 - `exchange_directory.py` / `security_directory_refresh.py`: explicit SSE/SZSE reads and atomic snapshot refresh, separate from conversations and market data.
 - `tests/`: offline regression tests.
 
 ## Next milestone
 
-M2 now includes the protocol, executor, DeepSeek adapter, smoke-test CLI, bounded explicit/natural-input runners and a separately verified exchange-directory refresher. Limited stock-identity clarification is also implemented as an optional in-process session. This is not a completed full-market product. General parameter editing/result follow-ups, answer checking/safe presentation, real model evaluation and product entry remain separate increments. Broader conversation state and complete round-level budgets remain M3 work. Broader data, screening, point-in-time storage/replay, and the product UI remain later increments.
+M2 includes the protocol, executor, DeepSeek adapter, bounded explicit/natural-input runners, directory refresh, fact reports and narrowly checked explanations. M3 now has identity clarification, explicit stock/date/indicator updates, one saved result, checked follow-ups, finite definitions, a terminal entry and shared cooperative turn controls, not unrestricted conversation or hard interruption/billing guarantees. A thin local backend API now reuses this application boundary. A minimal same-origin browser UI can next consume it, without introducing public deployment. Remaining `partial`, natural-name and ambiguous-name live evaluations still require explicit opt-in; the one user-reported live `complete` pass is not a repeated quality evaluation. Free-form compound edits and full model/semantic evaluation remain open. Broader data, screening and point-in-time storage/replay remain later work; M2/M3/M4 are not marked complete.

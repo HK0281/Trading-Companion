@@ -271,7 +271,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         result = replace(result, intent=draft["intent"])
         if draft["intent"] == "knowledge":
             return replace(result, status="out_of_scope", code="knowledge_entry_not_connected",
-                           message="已识别为知识问题，不查询行情；独立知识回答入口尚未接入。")
+                           message="已识别为知识问题，不查询行情；当前仅支持明确的指标定义问法，例如“RSI是什么”，不生成开放知识回答。")
         if draft["intent"] == "unsupported":
             return replace(result, status="out_of_scope", code="unsupported_intent",
                            message="当前入口仅支持只读单股票日线研究，不支持交易执行、新闻选股或目标价。")

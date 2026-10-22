@@ -8,6 +8,7 @@ from typing import ClassVar
 
 from trading_companion.daily_bar import DailyBar
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
+from trading_companion.turn_control import checkpoint, request_timeout
 
 
 SHARES_PER_HAND = 100
@@ -108,7 +109,7 @@ class AkshareDailyBarSource:
                 start_date=self.start_date.strftime("%Y%m%d"),
                 end_date=self.end_date.strftime("%Y%m%d"),
                 adjust="",
-                timeout=self.timeout_seconds,
+                timeout=request_timeout(self.timeout_seconds),
             )
         except JSONDecodeError as error:
             raise DataValidationError("AKShare returned invalid JSON") from error
@@ -119,6 +120,7 @@ class AkshareDailyBarSource:
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise DataValidationError("AKShare returned an invalid response") from error
 
+        checkpoint()
         try:
             columns = list(frame.columns)
             records = frame.to_dict(orient="records")

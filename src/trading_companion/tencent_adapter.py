@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from trading_companion.daily_bar import DailyBar
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
+from trading_companion.turn_control import checkpoint, request_timeout
 
 
 TENCENT_DAILY_URL = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
@@ -114,7 +115,7 @@ class TencentDailyBarSource:
                 response = requests.get(
                     TENCENT_DAILY_URL,
                     params={"param": f"{symbol},day,{chunk_start.isoformat()},{chunk_end.isoformat()},{MAX_RECORDS},"},
-                    timeout=self.timeout_seconds,
+                    timeout=request_timeout(self.timeout_seconds),
                 )
                 try:
                     response.raise_for_status()
@@ -128,6 +129,7 @@ class TencentDailyBarSource:
                     f"Tencent request failed for {self.instrument_id}; check the connection or retry later"
                 ) from error
 
+            checkpoint()
             raw_rows = _daily_rows(payload, symbol)
             dates: set[date] = set()
             for row in raw_rows:

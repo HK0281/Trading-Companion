@@ -26,6 +26,7 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
 - [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
 - [Local React research workspace (Chinese)](docs/web-workspace-design.md): build/start instructions, same-origin delivery, in-memory sessions, uncertainty-safe retries, evidence display and browser verification.
+- [Offline acceptance and CI (Chinese)](docs/ci-design.md): shared local/Actions gates, no-skip tests, compiled-resource/ASGI checks, clean wheel validation and explicit offline boundaries.
 
 ## Current status
 
@@ -60,6 +61,7 @@ The foundation for the first product agent is implemented:
 - Shared one-shot turn control across understanding, proposal, analysis, explanation and result publication: a 90-second cooperative deadline, at most three model attempts/one analysis, a 24,000 observed-token stopping threshold, thread-safe cancellation signals and rejection of late results. Existing narrower path limits remain; neither deadlines nor token accounting are hard interruption or billing guarantees.
 - A single-process loopback FastAPI service reusing that Agent: per-session bearer capabilities, strict Pydantic input, bounded memory/work, idempotent messages, request-specific cooperative cancellation, reset/delete/history endpoints and allowlisted public output. Default mode is a fixed offline demo, not a public deployment or account system.
 - A minimal React/TypeScript research workspace served by that same FastAPI process: safe answers and evidence, explicit candidate selection, history, session controls, request cancellation and same-id recovery after a lost response. No client-side model credentials, persistent transcript, external CDN or additional server is needed.
+- A shared Python/frontend/build acceptance entry and Ubuntu/Windows GitHub Actions workflow, rejecting empty or skipped suites and checking actual compiled resources through ASGI and inside a cleanly built wheel; no model credentials or deployment.
 
 This is an initial bounded research flow, with both an explicit-format entry and a model-first natural-input entry. Its optional session supports identity clarification, explicit stock/date/indicator updates, one checked result snapshot, bounded result follow-ups and local definitions, not arbitrary parameter rewriting or full chat history. Fact reports and narrowly checked indicator relations are available; arbitrary model-prose validation is not implemented. These paths and the contract-evaluation entry are tested offline, including mocked DeepSeek HTTP. The user supplied one passing live `deepseek-flash` report for the new contract's `complete` synthetic case: two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20). The other three live cases and repeated evaluation are pending; see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Real exchange-directory refresh and local lookup are separately verified, not an end-to-end live natural-language evaluation. General language-quality evaluation and a conversational product are not complete. Earlier developer feedback included a successful live text request on 2026-10-13 and one legacy synthetic tool round trip (two calls, one analysis, 4,500 reported tokens; recorded 2026-10-20). None of these one-off records proves real-market research quality or model stability. Long-term conversation memory, Jev, news, fundamentals, screening, DuckDB persistence, candlestick charts, production multi-user deployment and historical strategy evaluation are not implemented.
 
@@ -93,13 +95,25 @@ This setting applies to the current terminal. Alternatively, install the package
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-For online data sources and the full test suite, install the optional data dependencies:
+For online data sources, install the optional data dependencies:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[data]"
 ```
 
 AKShare is pinned to 1.19.1. Tencent uses requests directly, with an explicit dependency of `requests>=2.31,<3`; it does not call the AKShare Tencent wrapper. The CSV runtime itself needs no third-party packages. In VS Code, use **Python: Select Interpreter** and select the project's `.venv\Scripts\python.exe`.
+
+## Full acceptance and CI
+
+Install test/API dependencies and the locked frontend dependencies, then run the same gates as CI:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[api,model,dev]"
+pnpm.cmd --dir frontend install --frozen-lockfile
+.\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py all
+```
+
+Use Python 3.11 and Node 24 for the CI baseline; pnpm is pinned in `frontend/package.json`. No environment activation, `PYTHONPATH`, model key or live data is required. Individual gates are `python`, `web` and `bundle` (build with `web` first). They fail on skipped/empty tests and propagate subprocess failures. The workflow runs on pushes and pull requests with read-only permissions, without deployment. Python dependency ranges are not a complete lock; dependency installation/build isolation can access package services. See the [CI design](docs/ci-design.md) for scope and limitations.
 
 ## Run with synthetic data
 
@@ -322,7 +336,7 @@ Tool parameter schemas describe structure; this is not a full JSON Schema valida
 
 `DeepSeekToolModel.complete(messages, tools=...)` converts internal declarations, assistant proposals and tool results to the provider's function-tool payload, and parses complete/tool-call/refused/incomplete responses. It does not execute tools or run an Agent loop. Truncated or refused responses never forward actionable calls. Text and tool adapters share fixed-endpoint HTTP transport, timeouts and sanitized errors; the old text CLI remains unchanged.
 
-Both adapters explicitly disable thinking. The current tool protocol does not store the reasoning history required by thinking-mode tool calls; enabling that mode needs a separate design. Tool adapter coverage includes 24 offline tests; the complete Python suite including later session, result, update, runtime, API and web-routing modules has 917 passing offline tests as of 2026-10-22:
+Both adapters explicitly disable thinking. The current tool protocol does not store the reasoning history required by thinking-mode tool calls; enabling that mode needs a separate design. Tool adapter coverage includes 24 offline tests; the complete Python suite including later session, result, update, runtime, API, web-routing and acceptance modules has 946 passing offline tests as of 2026-10-22:
 
 ```powershell
 $env:PYTHONPATH='src'
@@ -622,7 +636,7 @@ $env:PYTHONPATH='src'
 
 Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA, Wilder RSI/ATR, BOLL population variance, volume window alignment and zero baselines, initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation. Multi-indicator tests additionally check one source read, partial availability, request limits, component metadata, full-precision relations, evidence dependencies, isolated calculation failures, and development-only CSV access.
 
-The complete Python offline suite has 917 tests (2026-10-22): 11 new web-routing cases follow the 906-test API baseline. The frontend separately has 43 passing Vitest/React tests; TypeScript checking, Vite build and wheel asset inclusion were also verified. Install the API/dev extras for HTTP tests; optional HTTP modules are skipped when absent. Tool and Agent cases cover protocol limits, request binding, trusted sources, atomic analysis attempts, compact evidence, provider errors, input clarification, isolated sessions, checked reports/relations, pinned fixtures, fail-fast evaluation, shared budgets, interruptions and mocked HTTP paths. Saved-result cases cover nested-data isolation, current/history separation, expiry, finite knowledge and relation revalidation.
+The complete Python offline suite has 946 tests (2026-10-22): 29 acceptance-gate cases follow the 917-test web baseline. The frontend separately has 43 passing Vitest/React tests; TypeScript checking, Vite build, real ASGI asset responses and clean wheel asset inclusion were also verified in a fresh Windows environment. Install `.[api,model,dev]` for the full suite. Ordinary unittest discovery allows missing optional HTTP modules to skip; use `scripts/verify.py` for strict zero-skip acceptance. Tool and Agent cases cover protocol limits, request binding, trusted sources, atomic analysis attempts, compact evidence, provider errors, input clarification, isolated sessions, checked reports/relations, pinned fixtures, fail-fast evaluation, shared budgets, interruptions and mocked HTTP paths. Saved-result cases cover nested-data isolation, current/history separation, expiry, finite knowledge and relation revalidation. GitHub Actions runs the same gates on Windows and Ubuntu; inspect the run for its actual remote result.
 
 Frontend cases cover lost responses, same-id recovery, gateway uncertainty, cancellation races, explicit paid-provider consent, escaped HTML, candidate confirmation, reset quotas, labelled history and Chinese IME input. A real local browser walkthrough verified research, follow-up, knowledge, indicator replacement and history at desktop and mobile sizes; it used only the fake provider and synthetic data. Browser checks are not a live-model evaluation.
 
@@ -676,7 +690,8 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `web_ui.py` / `frontend/`: bounded compiled-asset delivery and the same-origin React/TypeScript workspace, HTTP client, independent state machine and browser-interaction tests.
 - `exchange_directory.py` / `security_directory_refresh.py`: explicit SSE/SZSE reads and atomic snapshot refresh, separate from conversations and market data.
 - `tests/`: offline regression tests.
+- `scripts/verify.py` / `.github/workflows/ci.yml`: strict local/CI acceptance, actual static-resource checks and clean wheel asset validation.
 
 ## Next milestone
 
-M2 includes the protocol, executor, DeepSeek adapter, bounded explicit/natural-input runners, directory refresh, fact reports and narrowly checked explanations. M3 now has identity clarification, explicit stock/date/indicator updates, one saved result, checked follow-ups, finite definitions, a terminal entry and shared cooperative turn controls, not unrestricted conversation or hard interruption/billing guarantees. The local backend API and minimal same-origin React workspace reuse this application boundary, without introducing public deployment. A useful next module is CI and reproducible cross-layer regression for the Python/frontend/build paths. Remaining `partial`, natural-name and ambiguous-name live evaluations still require explicit opt-in; the one user-reported live `complete` pass is not a repeated quality evaluation. Free-form compound edits and full model/semantic evaluation remain open. Broader data, screening, charts and point-in-time storage/replay remain later work; M2/M3/M4 are not marked complete.
+M2 includes the protocol, executor, DeepSeek adapter, bounded explicit/natural-input runners, directory refresh, fact reports and narrowly checked explanations. M3 now has identity clarification, explicit stock/date/indicator updates, one saved result, checked follow-ups, finite definitions, a terminal entry and shared cooperative turn controls, not unrestricted conversation or hard interruption/billing guarantees. The local backend API, same-origin React workspace and shared offline CI gates reuse this boundary, without public deployment. Next candidates are source-grounded candlestick/indicator visualization and stronger security/calendar data contracts, each requiring a separate module scope. Remaining `partial`, natural-name and ambiguous-name live evaluations still require explicit opt-in; the one user-reported live `complete` pass is not a repeated quality evaluation. Free-form compound edits and full model/semantic evaluation remain open. Broader data, screening and point-in-time storage/replay remain later work; M2/M3/M4 are not marked complete.

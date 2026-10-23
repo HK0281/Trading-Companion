@@ -47,7 +47,9 @@
 
 接口增量：[本机API](local-api-design.md)已把原Agent接入FastAPI，提供令牌隔离、幂等消息、历史/重置/删除、按请求取消及白名单响应。新增50项、当时全量906项离线通过，进程内8项检查与实际loopback TCP演示通过；不新增真实模型/行情请求。上段856项为运行控制模块完成时的记录。
 
-最新增量：[本机Web工作台](web-workspace-design.md)已复用该API，提供React/TypeScript对话、事实与证据、澄清填入、会话操作、协作取消和未确认请求的原编号恢复。前端43项测试通过；新增11项路由检查，当前Python全量917项通过。构建资源与API同源提供，未放宽跨域或扩大研究权限；桌面/手机真实浏览器离线演示通过。
+交互增量：[本机Web工作台](web-workspace-design.md)已复用该API，提供React/TypeScript对话、事实与证据、澄清填入、会话操作、协作取消和未确认请求的原编号恢复。前端43项测试通过；新增11项路由检查，当时Python全量917项通过。构建资源与API同源提供，未放宽跨域或扩大研究权限；桌面/手机真实浏览器离线演示通过。
+
+最新工程增量：[统一离线验收与CI](ci-design.md)在Windows全新虚拟环境通过Python946项、前端43项、Agent 4/4及API 8/8；新增29项验收器测试，检查零跳过、实际构建的同源资源及干净wheel。GitHub Actions配置Windows/Ubuntu矩阵，不注入模型密钥或部署；远端状态按对应提交的运行记录，不以本机结果替代。
 
 | 模块 | 已有代码 | 实际能力与边界 |
 | --- | --- | --- |
@@ -71,10 +73,11 @@
 | 终端交互与开发夹具 | [agent_cli.py](../src/trading_companion/agent_cli.py)、[development_fixtures.py](../src/trading_companion/development_fixtures.py)、[followup_demo.py](../src/trading_companion/followup_demo.py) | 显式DeepSeek及人工/腾讯数据，默认仅帮助；单会话、目录重读、安全展示、局部额度及`/last`；有连续离线演示，固定夹具与评估入口共享预检 |
 | 本机HTTP接口 | [api_service.py](../src/trading_companion/api_service.py)、[api.py](../src/trading_companion/api.py)、[api_server.py](../src/trading_companion/api_server.py) | 单进程FastAPI/Pydantic边界、每会话Bearer令牌、有限内存/工作、消息幂等、协作取消和安全投影；默认离线，非生产鉴权/部署 |
 | 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无K线图、客户端密钥、用户账户或公网部署 |
+| 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | 本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；Windows/Ubuntu矩阵，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
 | 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
-| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Python917项、前端43项离线通过，旧四场景离线评估4/4通过；本机浏览器流程验证不等于真实模型质量验收 |
+| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python946项、前端43项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
 
 当前已有本机FastAPI和最小Web前端，尚无K线图、生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
@@ -356,7 +359,7 @@ Trading Companion/
 | HTTP API | FastAPI/Pydantic外部校验，内部dataclass与Agent复用；单进程、会话凭据及幂等 | 本机版已有，生产部署后置 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
 | 前端 | React、TypeScript、Vite；同源静态资源，Vitest/React交互测试，不依赖境外CDN | 最小本机工作台已有，图表/流式输出后置 |
-| 测试与 CI | 延续 unittest，补 Agent 评估集与 GitHub Actions | 离线测试及4场景契约入口已有；真实重复评估和CI待建 |
+| 测试与 CI | 延续 unittest、Vitest与固定契约入口，GitHub Actions调用同一验收器 | 严格本地与Windows/Ubuntu工作流已有；Python未锁全部依赖，真实重复评估待做 |
 | Jev | 独立分类实验，有可复现收益再纳入 | 实验候选 |
 
 初期不引入微服务、Kubernetes、Redis、任务队列、向量数据库或产品多 Agent。出现明确瓶颈后再选组件；文档语义检索确有需求时再讨论 RAG，不把结构化行情数值当作向量检索问题。
@@ -375,7 +378,7 @@ Trading Companion/
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)和[最小Web](web-workspace-design.md)已有。不把协作检查称为硬中断或M3整体完成。接下来可把Python、前端和构建检查接入CI，补可复现跨层回归；仍不扩大到公网部署。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发继续而视为通过。
+多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)及[统一验收/CI](ci-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一模块可围绕有来源的K线/指标展示或主数据/日历分别定义契约，不扩大到公网部署。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
 
 ## 15. 文档维护
 

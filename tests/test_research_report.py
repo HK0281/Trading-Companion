@@ -316,14 +316,23 @@ class ResearchReportTests(unittest.TestCase):
 
     def test_bad_model_draft_is_debug_only_and_never_becomes_the_safe_answer(self):
         bad = "600000.SH的SMA20已经可用，收盘价999元，明天保证涨停。"
-        result, model = self.agent_result(ToolModelResponse("complete", bad))
+        # A legitimate timestamp may contain the same digits as an unsupported price.
+        retrieved_at = datetime(2026, 9, 26, 2, 0, 0, 899928, tzinfo=timezone.utc)
+        with patch("trading_companion.multi_analysis.datetime", wraps=datetime) as clock:
+            clock.now.return_value = retrieved_at
+            result, model = self.agent_result(ToolModelResponse("complete", bad))
         payload = result.to_dict()
         self.assertEqual(payload["model_draft"], bad)
         self.assertEqual(payload["answer_validation"], "not_performed")
         self.assertEqual(payload["model_draft_policy"], "debug_only_unchecked_not_for_default_display")
         self.assertEqual(payload["safe_answer"]["origin"], "application")
         self.assertNotIn("600000.SH", payload["safe_answer"]["text"])
-        self.assertNotIn("999", payload["safe_answer"]["text"])
+        self.assertIn(retrieved_at.isoformat(), payload["safe_answer"]["text"])
+        self.assertNotIn("收盘价999元", payload["safe_answer"]["text"])
+        prices = [field["value"] for field in payload["safe_answer"]["fields"]
+                  if field["indicator_id"] == "daily_bar" and field["field"] == "close_price"]
+        self.assertEqual(prices, [10.4])
+        self.assertTrue(all(field["value"] != 999 for field in payload["safe_answer"]["fields"]))
         self.assertNotIn("保证涨停", payload["safe_answer"]["text"])
         self.assertEqual((result.model_calls_attempted, result.analyses_used), (2, 1))
         self.assertEqual(model.complete.call_count, 2)

@@ -133,11 +133,16 @@ class MemoryTests(GuardedTests):
             self.assertNotIn(private, encoded)
 
     def test_nested_original_result_mutation_cannot_change_saved_facts(self):
-        initial = self.begin()
+        with patch("trading_companion.multi_analysis.datetime", wraps=datetime) as clock:
+            clock.now.return_value = NOW.replace(microsecond=899928)
+            initial = self.begin()
         fields = initial.research_result.indicators[0].series[-1].fields
         fields["value"] = replace(fields["value"], value=999)
         shown = self.turn("查看上次结果")
-        self.assertNotIn("999", shown.display_answer)
+        self.assertIn("899928", shown.display_answer)
+        self.assertNotIn("SMA(3)：999", shown.display_answer)
+        saved = self.lookup().snapshot.result.indicators[0].latest["value"].value
+        self.assertAlmostEqual(saved, 10.166666666666666)
         self.assertIn("10.166667", shown.display_answer)
 
     def test_lookup_snapshots_and_returned_results_are_both_detached(self):

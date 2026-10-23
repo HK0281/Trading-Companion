@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from hmac import compare_digest
 from math import isfinite
@@ -14,9 +14,12 @@ from uuid import uuid4
 
 from trading_companion.agent import AgentTurnResult, run_natural_research_turn
 from trading_companion.agent_input import request_arguments
+from trading_companion.chart_projection import build_chart_projection
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.research_session import ResearchSession
+from trading_companion.research_memory import SavedResearch
+from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits
 
 
@@ -78,14 +81,40 @@ class _Entry:
     messages_used: int = 0
 
 
-def public_turn(result: AgentTurnResult) -> dict:
+def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
     """Explicit allowlist; never use the Agent's debug-oriented to_dict() here."""
     report = result.safe_answer
+    request = result.confirmed_request
+    analysis = result.research_result
+    context, saved_at = "current", None
+    followup = result.followup_answer
+    chart = ({"version": "research-chart-v1", "status": "unavailable", "code": "chart_data_unavailable"}
+             if followup is not None and followup.status == "accepted" else None)
+    # A saved chart belongs only to the accepted answer that named this snapshot.
+    if (type(saved) is SavedResearch and result.status == "completed"
+            and followup is not None and followup.status == "accepted"
+            and followup.request_id == saved.request.request_id):
+        try:
+            candidate = saved.result
+            checked = build_research_report(candidate, expected_request=saved.request)
+            if checked.status in ("complete", "limited"):
+                report, request, analysis = checked, saved.request, candidate
+                context, saved_at = "saved", saved.saved_at
+        except Exception:
+            # The optional snapshot view must not discard an already accepted answer.
+            pass
+    if analysis is not None:
+        try:
+            chart = build_chart_projection(analysis, expected_request=request, context=context, saved_at=saved_at)
+        except Exception:
+            # Optional visualization cannot turn a confirmed text response into a transport failure.
+            chart = {"version": "research-chart-v1", "status": "unavailable", "code": "chart_integrity_mismatch"}
     understanding = result.understanding
     return {
         "status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
-        "parameters": request_arguments(result.confirmed_request) if result.confirmed_request else None,
+        "parameters": {**request_arguments(request), "source": request.source} if request else None,
+        "chart": chart,
         "candidates": [candidate.to_dict() for candidate in understanding.candidates[:5]] if understanding else [],
         "applied_defaults": list(understanding.applied_defaults) if understanding else [],
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
@@ -210,7 +239,22 @@ class ResearchApiService:
             result = run_natural_research_turn(question, model=entry.model, directory=directory,
                 development_source=self._development_source, reference_date=self._reference_date,
                 session=entry.session, current_time=timestamp, control=control)
-            response = {"request_id": request_id, "replayed": False, "result": public_turn(result)}
+            saved = None
+            if (result.status == "completed" and result.followup_answer is not None
+                    and result.followup_answer.status == "accepted"):
+                reference = (self._reference_date if self._reference_date is not None else
+                             timestamp.astimezone(timezone(timedelta(hours=8))).date())
+                try:
+                    lookup = entry.session.saved_result(directory=directory,
+                        source="csv" if self._development_source is not None else "tencent",
+                        development_source=self._development_source, reference_date=reference,
+                        now=timestamp, allow_history=result.followup_answer.historical)
+                    if lookup.status == "ready":
+                        saved = lookup.snapshot
+                except Exception:
+                    # Rechecking optional chart context has no external side effects or retries.
+                    pass
+            response = {"request_id": request_id, "replayed": False, "result": public_turn(result, saved=saved)}
         except ApiProblem as error:
             problem = error
         except Exception:

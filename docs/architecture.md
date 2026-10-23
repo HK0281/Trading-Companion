@@ -4,7 +4,7 @@
 
 日期：2026-10-20（America/Los_Angeles）
 
-增量更新：2026-10-22，整轮运行控制、本机FastAPI接口与同源React/TypeScript工作台。
+增量更新：2026-10-22，整轮运行控制、本机FastAPI、同源React/TypeScript、统一验收/CI及历史K线/指标展示。
 
 状态：目标架构与渐进实施方案；不是已完成功能清单。
 
@@ -72,14 +72,15 @@
 | 运行入口 | [__main__.py](../src/trading_companion/__main__.py)、[model_cli.py](../src/trading_companion/model_cli.py)、[tool_smoke.py](../src/trading_companion/tool_smoke.py)、[agent_demo.py](../src/trading_companion/agent_demo.py)、[natural_agent_demo.py](../src/trading_companion/natural_agent_demo.py)、[session_agent_demo.py](../src/trading_companion/session_agent_demo.py) | 旧CLI与固定工具验证保持兼容，保留单轮及身份澄清离线演示；新增交互入口见下一行 |
 | 终端交互与开发夹具 | [agent_cli.py](../src/trading_companion/agent_cli.py)、[development_fixtures.py](../src/trading_companion/development_fixtures.py)、[followup_demo.py](../src/trading_companion/followup_demo.py) | 显式DeepSeek及人工/腾讯数据，默认仅帮助；单会话、目录重读、安全展示、局部额度及`/last`；有连续离线演示，固定夹具与评估入口共享预检 |
 | 本机HTTP接口 | [api_service.py](../src/trading_companion/api_service.py)、[api.py](../src/trading_companion/api.py)、[api_server.py](../src/trading_companion/api_server.py) | 单进程FastAPI/Pydantic边界、每会话Bearer令牌、有限内存/工作、消息幂等、协作取消和安全投影；默认离线，非生产鉴权/部署 |
-| 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无K线图、客户端密钥、用户账户或公网部署 |
+| 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无客户端密钥、用户账户或公网部署 |
+| 历史K线与指标 | [chart_projection.py](../src/trading_companion/chart_projection.py)、[ResearchChart.tsx](../frontend/src/ResearchChart.tsx)、[charts.ts](../frontend/src/charts.ts) | 同一次研究结果的有界投影与SVG，缺失断线、分单位轴、保存快照与失败隔离；不取新行情、不新增模型调用，不等于全历史证据认证 |
 | 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | 本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；Windows/Ubuntu矩阵，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
 | 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
-| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python946项、前端43项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
+| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python986项、前端136项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
 
-当前已有本机FastAPI和最小Web前端，尚无K线图、生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
+当前已有本机FastAPI、最小Web及历史K线/指标展示，尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
 ## 4. 总体架构
 
@@ -87,7 +88,7 @@
 
 ```mermaid
 flowchart TD
-    Entry["交互层：CLI / 本机 Web，后续图表"] --> App["应用层：请求与会话协调"]
+    Entry["交互层：CLI / 本机 Web / 历史图表"] --> App["应用层：请求与会话协调"]
     App --> Agent["Agent 运行层：理解、澄清、行动提议"]
     Agent <--> Models["模型接入层：DeepSeek / OpenAI / Fake"]
     Agent --> Tools["只读工具层：白名单、参数与预算校验"]
@@ -118,7 +119,7 @@ flowchart TD
 
 ### 5.1 交互层与应用层
 
-交互层负责接收输入和展示结果。第一版采用终端对话；现已补React/TypeScript本机工作台，展示对话、指标字段、查询条件和证据，K线图后置。页面状态机和HTTP客户端独立于React渲染，不复制Agent；前端构建后由原FastAPI同源提供，运行时不另启Node服务。TypeScript之外仍检查HTTP结果结构及请求编号，未确认响应保留原问题/编号，不自动重试或放行新研究。
+交互层负责接收输入和展示结果。第一版采用终端对话；现已补React/TypeScript本机工作台，展示对话、指标字段、查询条件和证据，以及[历史K线/指标](chart-workspace-design.md)。图表直接投影本次研究数据，不重新取数，历史必须绑定已核实快照；图表失败不影响文字。页面状态机和HTTP客户端独立于React渲染，不复制Agent；前端构建后由原FastAPI同源提供，运行时不另启Node服务。TypeScript之外仍检查HTTP结果结构及请求编号，未确认响应保留原问题/编号，不自动重试或放行新研究。
 
 应用层协调会话、每轮请求、配置和返回结果。当前已有本机FastAPI/Pydantic入口：路由负责DTO和协议，框架无关的 `ResearchApiService`负责会话、配额和幂等，复用原Agent；计算函数不依赖FastAPI，也不全面替换内部dataclass。公共响应白名单投影，不使用包含模型草稿的调试导出。
 
@@ -358,7 +359,7 @@ Trading Companion/
 | Agent 编排 | 先显式阶段与退出分支，便于理解、约束与测试；复杂恢复确有需求后再评估 LangGraph | 两种入口、可选身份续接、受限关系检查与薄终端已有；剩余真实模型评估及通用对话待做 |
 | HTTP API | FastAPI/Pydantic外部校验，内部dataclass与Agent复用；单进程、会话凭据及幂等 | 本机版已有，生产部署后置 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
-| 前端 | React、TypeScript、Vite；同源静态资源，Vitest/React交互测试，不依赖境外CDN | 最小本机工作台已有，图表/流式输出后置 |
+| 前端 | React、TypeScript、Vite；原生SVG、同源静态资源，Vitest/React交互测试，不依赖境外CDN | 最小本机工作台及历史图表已有，实时/流式输出后置 |
 | 测试与 CI | 延续 unittest、Vitest与固定契约入口，GitHub Actions调用同一验收器 | 严格本地与Windows/Ubuntu工作流已有；Python未锁全部依赖，真实重复评估待做 |
 | Jev | 独立分类实验，有可复现收益再纳入 | 实验候选 |
 
@@ -378,7 +379,7 @@ Trading Companion/
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)及[统一验收/CI](ci-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一模块可围绕有来源的K线/指标展示或主数据/日历分别定义契约，不扩大到公网部署。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
+多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)、[统一验收/CI](ci-design.md)及[历史K线/指标](chart-workspace-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一模块优先证券主数据/交易日历及状态契约，不扩大到公网部署；图表模块本轮浏览器访问被策略拒绝，实际浏览器增量验收待补。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
 
 ## 15. 文档维护
 

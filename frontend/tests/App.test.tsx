@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import App from "../src/App";
 import { ConnectionError, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
-import { credentials, deferred, health, mockApi, reply } from "./fixtures";
+import { chartReply, credentials, deferred, health, mockApi, reply } from "./fixtures";
 
 async function workspace(paid = false) {
   const api = mockApi();
@@ -46,6 +46,31 @@ describe("research workspace", () => {
     api.send.mockImplementationOnce(async (_session, id) => { const value = reply(id); value.result.answer = '<img src=x onerror="alert(1)">'; return value; });
     send(); await screen.findByText('<img src=x onerror="alert(1)">');
     expect(container.querySelector("img")).toBeNull();
+  });
+  it("integrates a request-bound chart without extra API calls", async () => {
+    const { api } = await workspace(); await start();
+    api.send.mockImplementationOnce(async (_session, id) => chartReply(id));
+    send(); await screen.findByText("research_completed");
+    const summary = screen.getByText("历史 K 线与指标");
+    const details = summary.closest("details")!;
+    details.open = true; fireEvent(details, new Event("toggle"));
+    await screen.findByRole("img", { name: /000001.SZ 历史日 K 线/ });
+    expect(screen.getByText("人工样例 · 非真实行情")).toBeInTheDocument();
+    expect(api.send).toHaveBeenCalledOnce();
+    expect(api.history).not.toHaveBeenCalled();
+  });
+  it.each(["source", "context", "data_authenticity"]) ("keeps confirmed text when optional chart %s is malformed", async (key) => {
+    const { api } = await workspace(); await start();
+    api.send.mockImplementationOnce(async (_session, id) => {
+      const value = chartReply(id); value.result.chart = { ...(value.result.chart as object), [key]: { toString: 0 } };
+      return value;
+    });
+    send(); await screen.findByText("research_completed");
+    expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
+    expect(screen.getByText(/图表暂不可用或未通过范围校验/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试原请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
+    expect(api.send).toHaveBeenCalledOnce();
   });
   it("fills a verified candidate only; the user must explicitly submit it", async () => {
     const { api } = await workspace(); await start();

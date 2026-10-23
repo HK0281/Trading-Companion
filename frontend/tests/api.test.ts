@@ -27,6 +27,12 @@ describe("same-origin HTTP client", () => {
     await expect(createApi(fetcher).send(credentials, ID, "问题")).rejects.toThrow(ConnectionError);
     expect(fetcher).toHaveBeenCalledOnce();
   });
+  it("keeps confirmed text responses when an optional chart is invalid", async () => {
+    const value = reply(); value.result.chart = { status: "available", bars: "invalid" };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(value));
+    expect(await createApi(fetcher).send(credentials, ID, "问题")).toEqual(value);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("maps server codes without displaying untrusted messages", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ error: { code: "service_busy", message: "private-key-details" } }, 429));
     await expect(createApi(fetcher).send(credentials, ID, "问题")).rejects.toThrow("服务的并行研究数已满");

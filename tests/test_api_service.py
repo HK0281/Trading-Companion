@@ -1,6 +1,7 @@
 """Framework-independent, offline API session/service contracts."""
 
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from threading import Event, Thread
@@ -14,6 +15,8 @@ from trading_companion.development_fixtures import REFERENCE_DATE, load_developm
 from trading_companion.followup_demo import ConversationDemoModel, QUESTION, FOLLOWUP
 from trading_companion.model import ModelConfigurationError
 from trading_companion.errors import DataSourceError
+from trading_companion.data_source import CsvDailyBarSource
+from trading_companion.research_session import ResearchSession
 
 
 NOW = datetime(2026, 9, 26, 2, tzinfo=timezone.utc)
@@ -91,6 +94,113 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(history["result"]["runtime"]["limits"]["model_calls"], 0)
         self.assertEqual(self.service.inspect(self.sid, self.token)["model_calls_forwarded"], 4)
 
+    def test_current_chart_uses_the_same_analysis_and_preserves_missing_values(self):
+        response = self.send()
+        turn, chart = response["result"], response["result"]["chart"]
+        self.assertEqual(chart["status"], "available")
+        self.assertEqual(chart["request_id"], turn["report"]["request_id"])
+        self.assertNotEqual(chart["request_id"], response["request_id"])
+        self.assertEqual((chart["context"], chart["saved_at"], chart["data_authenticity"]),
+                         ("current", None, "synthetic"))
+        self.assertEqual(len(chart["bars"]), 5)
+        self.assertEqual(chart["bars"][0]["close"], 10.2)
+        sma = next(item for item in chart["series"] if item["kind"] == "sma")
+        self.assertEqual(sma["values"][:2], [None, None])
+        self.assertEqual(sma["statuses"][:2], ["insufficient_history"] * 2)
+        self.assertEqual((turn["model_calls_attempted"], turn["analyses_used"]), (3, 1))
+        self.assertEqual(self.loader.call_count, 1)
+
+    def test_followup_and_history_attach_only_the_named_saved_snapshot_without_data_reads(self):
+        initial = self.send()["result"]
+        with patch.object(CsvDailyBarSource, "read_daily_bars", side_effect=AssertionError("No chart fetch")):
+            followup = self.send(FOLLOWUP)["result"]
+            history = self.service.history(self.sid, self.token)["result"]
+        for turn in (followup, history):
+            self.assertEqual(turn["chart"]["context"], "saved")
+            self.assertEqual(turn["chart"]["saved_at"], NOW.isoformat())
+            for key in ("request_id", "bars", "series", "retrieved_at"):
+                self.assertEqual(turn["chart"][key], initial["chart"][key])
+            self.assertEqual(turn["parameters"], initial["parameters"])
+            self.assertEqual(turn["report"], initial["report"])
+            self.assertEqual(turn["analyses_used"], 0)
+        self.assertEqual(history["model_calls_attempted"], 0)
+        self.assertEqual(self.service.inspect(self.sid, self.token)["model_calls_forwarded"], 4)
+
+    def test_failed_new_analysis_has_no_old_chart_but_explicit_history_can_show_it(self):
+        initial = self.send()["result"]["chart"]
+        self.send(FOLLOWUP)
+        with patch.object(CsvDailyBarSource, "read_daily_bars", side_effect=DataSourceError(PRIVATE)):
+            failed = self.send("把SMA3改成5日，其他不变")["result"]
+        self.assertNotEqual(failed["chart"], initial)
+        self.assertNotEqual((failed["chart"] or {}).get("status"), "available")
+        blocked = self.send("这里RSI多少")["result"]
+        self.assertEqual(blocked["code"], "no_current_result")
+        self.assertIsNone(blocked["chart"])
+        history = self.service.history(self.sid, self.token)["result"]
+        self.assertEqual(history["chart"]["bars"], initial["bars"])
+        self.assertEqual(history["chart"]["context"], "saved")
+        self.assertEqual(history["chart"]["series"], initial["series"])
+
+    def test_knowledge_cancellation_and_expiration_do_not_attach_old_charts(self):
+        self.send()
+        for question in ("RSI是什么", "取消"):
+            self.assertIsNone(self.send(question)["result"]["chart"])
+        self.service._wall_clock = lambda: NOW + timedelta(minutes=15)
+        history = self.service.history(self.sid, self.token)["result"]
+        self.assertEqual(history["code"], "saved_result_expired")
+        self.assertIsNone(history["chart"])
+
+    def test_chart_exception_keeps_accepted_text_and_is_cached_without_retry(self):
+        key = uuid4().hex
+        with patch("trading_companion.api_service.build_chart_projection", side_effect=RuntimeError(PRIVATE)) as project:
+            original = self.send(request_id=key)
+            replay = self.send(request_id=key)
+        self.assertEqual(original["result"]["code"], "research_completed")
+        self.assertIn("10.166667", original["result"]["answer"])
+        self.assertEqual(original["result"]["chart"], {"version": "research-chart-v1",
+            "status": "unavailable", "code": "chart_integrity_mismatch"})
+        self.assertNotIn(PRIVATE, json.dumps(original))
+        self.assertEqual(replay["result"], original["result"])
+        project.assert_called_once()
+
+    def test_optional_snapshot_recheck_failure_does_not_lose_followup_text(self):
+        self.send()
+        original_lookup = ResearchSession.saved_result
+        calls = 0
+        def lookup(session, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError(PRIVATE)
+            return original_lookup(session, **kwargs)
+        with patch.object(ResearchSession, "saved_result", lookup):
+            followup = self.send(FOLLOWUP)["result"]
+        self.assertEqual(followup["code"], "saved_question_answered")
+        self.assertIn("79.545455", followup["answer"])
+        self.assertEqual(followup["chart"]["status"], "unavailable")
+        self.assertIsNone(followup["parameters"])
+        self.assertNotIn(PRIVATE, json.dumps(followup))
+
+    def test_mismatched_optional_snapshot_cannot_attach_another_research_chart(self):
+        self.send()
+        entry = self.service._entries[self.sid]
+        snapshot = entry.session.saved_result(directory=self.directory, source="csv",
+            development_source=self.source, reference_date=REFERENCE_DATE, now=NOW).snapshot
+        captured = []
+        from trading_companion.api_service import run_natural_research_turn
+        def capture(*args, **kwargs):
+            result = run_natural_research_turn(*args, **kwargs)
+            captured.append(result)
+            return result
+        with patch("trading_companion.api_service.run_natural_research_turn", side_effect=capture):
+            self.send(FOLLOWUP)
+        other = replace(snapshot, request=replace(snapshot.request, request_id="other-result"))
+        turn = public_turn(captured[0], saved=other)
+        self.assertEqual(turn["chart"]["status"], "unavailable")
+        self.assertIsNone(turn["parameters"])
+        self.assertIsNone(turn["report"])
+        self.assertNotIn("other-result", json.dumps(turn))
+
     def test_repeated_request_is_replayed_without_extra_model_or_directory_reads(self):
         key = uuid4().hex
         original = self.send(request_id=key)
@@ -102,6 +212,8 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.service.inspect(self.sid, self.token)["messages_used"], 1)
         replay["result"]["runtime"]["stop_code"] = PRIVATE
         self.assertIsNone(self.send(request_id=key)["result"]["runtime"]["stop_code"])
+        replay["result"]["chart"]["bars"][0]["close"] = -999
+        self.assertEqual(self.send(request_id=key)["result"]["chart"]["bars"][0]["close"], 10.2)
 
     def test_reuse_id_for_different_question_is_conflict(self):
         key = uuid4().hex
@@ -231,6 +343,7 @@ class ServiceTests(unittest.TestCase):
             thread.join(3)
         self.assertFalse(thread.is_alive())
         self.assertEqual(results[0]["result"]["code"], "turn_cancelled")
+        self.assertIsNone(results[0]["result"]["chart"])
         self.assertIsNone(self.service.inspect(self.sid, self.token)["research"]["saved_result"])
         self.assertTrue(self.send(request_id=key)["replayed"])
         self.problem("request_not_cancellable", lambda: self.service.cancel(self.sid, self.token, key), 409)

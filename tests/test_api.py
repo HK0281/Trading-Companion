@@ -164,6 +164,9 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(result["code"], "research_completed")
         self.assertIn("10.166667", result["answer"])
         self.assertEqual((result["model_calls_attempted"], result["analyses_used"]), (3, 1))
+        self.assertEqual(result["chart"]["status"], "available")
+        self.assertEqual(result["chart"]["request_id"], result["report"]["request_id"])
+        self.assertEqual(len(result["chart"]["bars"]), 5)
         for forbidden in ("model_draft", "model_responses", "research_result", str(self.source.path), self.token):
             self.assertNotIn(forbidden, response.text)
 
@@ -208,10 +211,12 @@ class HttpTests(unittest.TestCase):
         self.send()
         answer = self.send(FOLLOWUP).json()
         self.assertIn("Wilder", answer["result"]["answer"])
+        self.assertEqual(answer["result"]["chart"]["context"], "saved")
         response = self.client.get(self.path + "/result", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         self.assertIn("历史查看", response.json()["result"]["answer"])
         self.assertEqual(response.json()["result"]["model_calls_attempted"], 0)
+        self.assertEqual(response.json()["result"]["chart"]["bars"], answer["result"]["chart"]["bars"])
 
     def test_reset_delete_and_replay_retirement(self):
         key = uuid4().hex

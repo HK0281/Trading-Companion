@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { Health, MessageResponse, SessionCredentials, SessionView } from "../src/api";
+import type { ResearchChartData } from "../src/charts";
 
 export const ID = "b".repeat(32);
 export const health: Health = { status: "ok", provider: "fake", data_mode: "synthetic", trading_enabled: false };
@@ -15,6 +16,29 @@ export function reply(id = ID): MessageResponse {
       { indicator_id: "sma:3", field: "value", label: "SMA(3)", trade_date: "2026-09-25", value: 10.166666,
         unit: "CNY/share", status: "available", missing_bars: 0, fact_id: "request:fact:sma" },
     ] } } };
+}
+export function chartReply(id = ID): MessageResponse {
+  const value = reply(id);
+  const chart: ResearchChartData = {
+    version: "research-chart-v1", status: "available", code: "aligned_research_series",
+    validation_scope: "request_bound_aligned_series_not_full_historical_evidence", request_id: "research-fixture",
+    instrument_id: "000001.SZ", start_date: "2026-09-21", as_of_date: "2026-09-25", source: "csv",
+    price_adjustment: "unknown", data_authenticity: "synthetic", retrieved_at: "2026-09-26T02:00:00Z",
+    context: "current", saved_at: null,
+    bars: [
+      { date: "2026-09-21", open: 10, high: 10.3, low: 9.9, close: 10.2, volume: 100000 },
+      { date: "2026-09-22", open: 10.2, high: 10.5, low: 10, close: 10.35, volume: 120000 },
+      { date: "2026-09-25", open: 10.1, high: 10.5, low: 10, close: 10.4, volume: 130000 },
+    ],
+    series: [{ id: "sma(window=3):value", indicator_id: "sma(window=3)", kind: "sma", parameters: { window: 3 },
+      algorithm_version: "sma-close-v1", field: "value", label: "SMA(3)", unit: "CNY/share", start_effect_warning: false,
+      values: [null, null, 10.316667], statuses: ["insufficient_history", "insufficient_history", "available"] }],
+  };
+  value.result.chart = chart;
+  value.result.parameters = { ...value.result.parameters!, source: "csv", indicators: [{ kind: "sma", window: 3 }] };
+  value.result.report!.request_id = chart.request_id;
+  value.result.report!.fields[0] = { ...value.result.report!.fields[0], indicator_id: "sma(window=3)", value: 10.316667 };
+  return value;
 }
 export function mockApi() {
   return {

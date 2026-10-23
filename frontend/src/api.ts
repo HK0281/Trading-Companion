@@ -39,12 +39,14 @@ export interface PublicTurn {
   message: string;
   stage: string;
   answer: string | null;
-  parameters: { instrument_id: string; start_date: string; as_of_date: string } | null;
+  parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
+    indicators?: { kind: string; [key: string]: string | number }[] } | null;
+  chart?: unknown;
   candidates: { name: string; instrument_id: string }[];
   applied_defaults: string[];
   model_calls_attempted: number;
   analyses_used: number;
-  report: { fields: ReportField[]; limitations: string[] } | null;
+  report: { request_id?: string; fields: ReportField[]; limitations: string[] } | null;
 }
 
 export interface MessageResponse {

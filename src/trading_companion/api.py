@@ -50,6 +50,7 @@ class PublicTurn(BaseModel):
     answer: str | None
     report: dict | None
     parameters: dict | None
+    chart: dict | None
     candidates: list[dict]
     applied_defaults: list[str]
     model_calls_attempted: int

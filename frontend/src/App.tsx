@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { createApi, type PublicTurn } from "./api";
 import { ResearchController, type Entry } from "./controller";
+import { ResearchChart } from "./ResearchChart";
 
 const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
 const samples = [
@@ -59,6 +60,8 @@ function Answer({ entry, choose, canChoose }: { entry: Entry; choose: (text: str
         {!!turn.applied_defaults.length && <div className="defaults"><strong>本轮默认口径</strong>
           <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
         <Facts turn={turn} />
+        <ResearchChart value={turn.chart} parameters={turn.parameters}
+          reportRequestId={turn.report?.request_id} historical={entry.history} />
         <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次
           {response?.replayed && " · 本次未重做"}</span></div>
       </>}
@@ -185,7 +188,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               disabled={!canSend || !characters || characters > 2000}>{phase === "working" ? "正在研究…" : "发送问题"} <span aria-hidden="true">↑</span></button></div>
         </form>
         {exhausted && <p className="error-text">本会话问题额度已用完；仍可查看历史，结束后可新建会话。</p>}
-        <p className="disclaimer">仅用于研究与知识学习，不承诺走势或收益。无下单权限，交易由你自行完成。当前无 K 线图、新闻或选股。</p>
+        <p className="disclaimer">仅用于研究与知识学习，不承诺走势或收益。无下单权限，交易由你自行完成。图表只展示研究使用的历史日线；当前无新闻或选股。</p>
       </section>
     </main>
   </div>;

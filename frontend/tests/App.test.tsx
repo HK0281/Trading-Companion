@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import App from "../src/App";
 import { ConnectionError, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
-import { chartReply, credentials, deferred, health, mockApi, reply } from "./fixtures";
+import { chartReply, credentials, deferred, health, marketContextReply, mockApi, reply } from "./fixtures";
 
 async function workspace(paid = false) {
   const api = mockApi();
@@ -71,6 +71,37 @@ describe("research workspace", () => {
     expect(screen.queryByRole("button", { name: "重试原请求" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
     expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("integrates request-bound market context without extra calls or changing the answer", async () => {
+    const { api } = await workspace(); await start();
+    api.send.mockImplementationOnce(async (_session, id) => marketContextReply(id));
+    send(); await screen.findByRole("region", { name: "证券状态与交易日历" });
+    expect(screen.getByText("人工样例 · 非真实市场事实")).toBeInTheDocument();
+    expect(screen.getByText("24 个自然日")).toBeInTheDocument();
+    expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
+    expect(api.send).toHaveBeenCalledOnce(); expect(api.history).not.toHaveBeenCalled();
+  });
+  it.each(["security", "request_id", "data_authenticity"])("isolates malformed optional market context %s", async (key) => {
+    const { api } = await workspace(); await start();
+    api.send.mockImplementationOnce(async (_session, id) => {
+      const value = marketContextReply(id);
+      value.result.market_context = { ...(value.result.market_context as object), [key]: { toString: 0 } };
+      return value;
+    });
+    send(); await screen.findByText("research_completed");
+    expect(screen.getByText(/市场上下文暂不可用或未通过范围校验/)).toBeInTheDocument();
+    expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试原请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
+    expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("marks saved market context as historical without a new research request", async () => {
+    const { api } = await workspace(); await start();
+    api.history.mockImplementationOnce(async () => marketContextReply());
+    fireEvent.click(screen.getByRole("button", { name: /查看上次结果/ }));
+    await screen.findByText("已保存上下文 · 非新查询");
+    expect(screen.getByText("展示上次保存的上下文，没有重新查询或刷新证券状态。")).toBeInTheDocument();
+    expect(api.history).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
   });
   it("fills a verified candidate only; the user must explicitly submit it", async () => {
     const { api } = await workspace(); await start();

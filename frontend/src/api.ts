@@ -42,6 +42,7 @@ export interface PublicTurn {
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;
+  market_context?: unknown;
   candidates: { name: string; instrument_id: string }[];
   applied_defaults: string[];
   model_calls_attempted: number;

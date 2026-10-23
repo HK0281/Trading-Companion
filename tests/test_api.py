@@ -18,7 +18,7 @@ except ImportError:
 from trading_companion.api import MAX_BODY_BYTES, create_app
 from trading_companion.api_server import main as server_main
 from trading_companion.api_service import ApiLimits, ResearchApiService
-from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures
+from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures, load_development_market_context
 from trading_companion.followup_demo import ConversationDemoModel, QUESTION, FOLLOWUP
 from trading_companion.errors import DataSourceError
 
@@ -170,6 +170,31 @@ class HttpTests(unittest.TestCase):
         for forbidden in ("model_draft", "model_responses", "research_result", str(self.source.path), self.token):
             self.assertNotIn(forbidden, response.text)
 
+    def test_optional_market_context_survives_http_response_projection(self):
+        loader = Mock(return_value=load_development_market_context())
+        self.service._market_context_loader = loader
+        response = self.send().json()
+        turn = response["result"]
+        self.assertEqual(turn["code"], "research_completed")
+        self.assertEqual(turn["market_context"]["status"], "available")
+        self.assertEqual(turn["market_context"]["request_id"], turn["report"]["request_id"])
+        self.assertNotEqual(turn["market_context"]["request_id"], response["request_id"])
+        self.assertEqual(turn["market_context"]["data_authenticity"], "synthetic")
+        self.assertEqual(turn["market_context"]["security"]["listing_age_calendar_days"], 24)
+        loader.assert_called_once_with(NOW)
+        history = self.client.get(self.path + "/result", headers=self.headers).json()
+        self.assertEqual(history["result"]["market_context"], turn["market_context"])
+        loader.assert_called_once()
+
+    def test_http_question_cannot_configure_market_context(self):
+        for key in ("market_context", "snapshot_id", "market_context_path"):
+            with self.subTest(key=key):
+                response = self.client.post(self.path + "/messages", headers=self.headers,
+                    json={"question": QUESTION, "request_id": uuid4().hex, key: PRIVATE})
+                self.assertEqual(response.status_code, 422)
+                self.assertNotIn(PRIVATE, response.text)
+        self.loader.assert_not_called()
+
     def test_rejected_model_prose_is_not_exposed(self):
         delegate = ConversationDemoModel()
         def bad_explanation(messages, *, tools):
@@ -285,7 +310,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_invalid_combinations_fail_before_server_or_credentials(self):
         for args in (["--provider", "deepseek"], ["--data", "synthetic"], ["--demo", "--data", "synthetic"],
-                     ["--demo", "--port", "0"], ["--provider", "deepseek", "--data", "synthetic", "--directory", PRIVATE]):
+                     ["--demo", "--port", "0"], ["--provider", "deepseek", "--data", "synthetic", "--directory", PRIVATE],
+                     ["--market-context", PRIVATE], ["--demo", "--market-context", PRIVATE]):
             with self.subTest(args=args), redirect_stderr(StringIO()), self.assertRaises(SystemExit) as caught:
                 server_main(args)
             self.assertEqual(caught.exception.code, 2)
@@ -303,6 +329,39 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(server_main(["--provider", "deepseek", "--data", "synthetic"]), 2)
         self.assertNotIn(PRIVATE, output.getvalue())
         run.assert_not_called()
+
+    def test_live_modes_only_configure_background_at_the_trusted_startup_boundary(self):
+        from trading_companion.api import create_app as real_app
+        from trading_companion.security_directory import SecurityDirectory
+        for mode, custom in (("synthetic", False), ("synthetic", True), ("tencent", False), ("tencent", True)):
+            services = []
+            def capture(*, service):
+                services.append(service)
+                return real_app(service=service)
+            args = ["--provider", "deepseek", "--data", mode]
+            if custom:
+                args += ["--market-context", PRIVATE]
+            with self.subTest(mode=mode, custom=custom), redirect_stdout(StringIO()), patch("uvicorn.run"), patch(
+                "trading_companion.api.create_app", side_effect=capture), patch(
+                "trading_companion.deepseek_model.DeepSeekConfig.from_env", return_value=object()), patch(
+                "trading_companion.market_context.load_market_context", return_value="configured-snapshot") as local, patch(
+                "trading_companion.security_directory.load_security_directory", return_value=Mock(spec=SecurityDirectory)) as directory:
+                self.assertEqual(server_main(args), 0)
+                self.assertEqual(len(services), 1)
+                local.assert_not_called()
+                if mode == "tencent":
+                    directory.return_value.assert_usable.assert_called_once()
+                if mode == "tencent" and not custom:
+                    self.assertIsNone(services[0]._market_context_loader)
+                    continue
+                value = services[0]._market_context_loader(NOW)
+                if custom:
+                    from pathlib import Path
+                    local.assert_called_once_with(Path(PRIVATE))
+                    self.assertEqual(value, "configured-snapshot")
+                else:
+                    self.assertTrue(value.is_fixture)
+                    local.assert_not_called()
 
 
 if __name__ == "__main__":

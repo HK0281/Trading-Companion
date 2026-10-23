@@ -20,6 +20,7 @@ dist/
 
 # Locally refreshed current security directory
 data/security_directory_live.json
+data/market_context_local.json
 
 # Frontend dependencies and generated package assets
 node_modules/

@@ -4,7 +4,7 @@
 
 日期：2026-10-20（America/Los_Angeles）
 
-增量更新：2026-10-22，整轮运行控制、本机FastAPI、同源React/TypeScript、统一验收/CI及历史K线/指标展示。
+增量更新：2026-10-22，整轮运行控制、本机FastAPI、同源React/TypeScript、统一验收/CI、历史K线/指标及本地证券状态／交易日历背景。
 
 状态：目标架构与渐进实施方案；不是已完成功能清单。
 
@@ -53,7 +53,7 @@
 
 | 模块 | 已有代码 | 实际能力与边界 |
 | --- | --- | --- |
-| 行情数据模型 | [daily_bar.py](../src/trading_companion/daily_bar.py) | 校验价格、成交量等 OHLCV 字段；没有证券主数据和历史风险标签 |
+| 行情数据模型 | [daily_bar.py](../src/trading_companion/daily_bar.py) | 校验价格、成交量等 OHLCV 字段；证券状态在独立背景契约中表达，不污染价格模型 |
 | 数据源接口 | [data_source.py](../src/trading_companion/data_source.py)、[csv_loader.py](../src/trading_companion/csv_loader.py) | `DailyBarSource` 统一日线读取；CSV 样例是人工数据 |
 | 在线数据源 | [tencent_adapter.py](../src/trading_companion/tencent_adapter.py)、[akshare_adapter.py](../src/trading_companion/akshare_adapter.py) | 腾讯直接 JSON 接入，以及通过 AKShare 访问东方财富；来源显式选择，无自动切换 |
 | 日期与指标 | [history.py](../src/trading_companion/history.py)、[indicators.py](../src/trading_companion/indicators.py) | 日期过滤、SMA、独立 EMA/MACD/RSI/BOLL/ATR/量能与日期结果点；见[剩余指标设计](indicators-design.md) |
@@ -74,13 +74,14 @@
 | 本机HTTP接口 | [api_service.py](../src/trading_companion/api_service.py)、[api.py](../src/trading_companion/api.py)、[api_server.py](../src/trading_companion/api_server.py) | 单进程FastAPI/Pydantic边界、每会话Bearer令牌、有限内存/工作、消息幂等、协作取消和安全投影；默认离线，非生产鉴权/部署 |
 | 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无客户端密钥、用户账户或公网部署 |
 | 历史K线与指标 | [chart_projection.py](../src/trading_companion/chart_projection.py)、[ResearchChart.tsx](../frontend/src/ResearchChart.tsx)、[charts.ts](../frontend/src/charts.ts) | 同一次研究结果的有界投影与SVG，缺失断线、分单位轴、保存快照与失败隔离；不取新行情、不新增模型调用，不等于全历史证据认证 |
+| 证券状态／交易日历背景 | [market_context.py](../src/trading_companion/market_context.py)、[MarketContext.tsx](../frontend/src/MarketContext.tsx)、[背景设计](market-context-design.md) | 独立本地快照、有效期／发布时间、未知、自然日年龄、日历对照与来源冲突；原研究ID冻结，失败降级；不发送模型、不猜测、不执行规则，不证明PIT |
 | 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | 本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；Windows/Ubuntu矩阵，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
 | 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
-| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python986项、前端136项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
+| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python1054项、前端256项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
 
-当前已有本机FastAPI、最小Web及历史K线/指标展示，尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
+当前已有本机FastAPI、最小Web、历史K线/指标及独立本地证券状态／日历背景展示。真实主数据／日历适配器尚无；默认是明确人工夹具。也尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
 ## 4. 总体架构
 
@@ -180,7 +181,7 @@ Agent 负责区分知识问答、行情研究、已有结果追问和超范围�
 
 ### 5.6 数据与证据层
 
-数据层统一外部来源、数值单位、时间、复权口径和版本。长期补齐证券主数据、交易日历、历史 ST/上市/停复牌信息及公司行动。
+数据层统一外部来源、数值单位、时间、复权口径和版本。本地[证券状态／交易日历背景契约](market-context-design.md)已有，按有效区间与发布时间保留unknown，并与原bars作非破坏性冲突提示。真实master/calendar接入、完整历史ST/上市/停复牌版本及公司行动仍待实现；当前背景不进入模型或筛选，不将today快照冒充历史已知事实。
 
 证据模块把结果整理成可定位的事实。事实卡片由程序渲染；模型引用事实标识解释，不改写事实数字。未来新闻与公告引用还需定位原文、文档版本和支持结论的具体片段。
 
@@ -322,7 +323,7 @@ Jev 不替代数值计算、权限校验、历史时点过滤或引用检查。�
 
 当前[固定场景入口](agent-evaluation-design.md)仅实现4项契约检查：完整、部分不足、名称理解与歧义澄清。它复用原Agent，不新增另一条研究链路；最多8次模型调用、3次分析，首错后停止。状态、范围、计数、参考值及有限关系检查有独立预期，正确受限也能通过。真实模式仍使用固定人工数据，以隔离模型问题；主Agent未发真实模型请求，用户已回传一次 `complete` 通过的报告（2次模型/1次分析），其他场景待反馈。这不替代PRD中至少30场景各3次的后续实测，也未评估解释相关性或语言价值。
 
-后续 GitHub Actions 默认只运行离线测试，不配置付费模型调用。当前仓库尚无该 CI 工作流。Web 阶段再补依赖锁定、可重复部署配置与必要的接口集成验证；现阶段不为文档新增运行依赖。
+GitHub Actions现已配置Windows/Ubuntu离线矩阵，本地与远端共用 `scripts/verify.py`，不配置付费模型调用。前端已锁定依赖，Python仍是版本范围；构建/ASGI/wheel检查不等于生产部署或全环境逐字节复现。详情见[CI设计](ci-design.md)。
 
 ## 12. 目标目录与渐进迁移
 
@@ -379,7 +380,7 @@ Trading Companion/
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)、[统一验收/CI](ci-design.md)及[历史K线/指标](chart-workspace-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一模块优先证券主数据/交易日历及状态契约，不扩大到公网部署；图表模块本轮浏览器访问被策略拒绝，实际浏览器增量验收待补。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
+多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)、[统一验收/CI](ci-design.md)、[历史K线/指标](chart-workspace-design.md)及[本地证券状态／日历背景](market-context-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一增量优先核实并接入真实master/calendar来源，再考虑把可信状态用于Agent；公司行动和完整历史版本仍待做，不扩大到公网部署。图表／背景的实际浏览器增量验收因访问策略阻断待补。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
 
 ## 15. 文档维护
 

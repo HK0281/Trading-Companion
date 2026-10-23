@@ -16,17 +16,18 @@ def main(argv=None) -> int:
     entry.add_argument("--provider", choices=("deepseek",), help="Explicitly enable potentially paid model calls")
     parser.add_argument("--data", choices=("synthetic", "tencent"))
     parser.add_argument("--directory", help="Existing local security snapshot; Tencent mode only")
+    parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
     if not args.demo and args.provider is None:
-        if args.data or args.directory:
+        if args.data or args.directory or args.market_context:
             parser.error("Select --demo or --provider deepseek first")
         parser.print_help()
         return 0
-    if args.demo and (args.data or args.directory):
-        parser.error("Demo uses pinned fixtures; do not specify data or directory")
+    if args.demo and (args.data or args.directory or args.market_context):
+        parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
     if args.provider and args.data is None:
         parser.error("Explicitly choose --data synthetic or --data tencent")
     if args.data == "synthetic" and args.directory:
@@ -35,7 +36,10 @@ def main(argv=None) -> int:
         import uvicorn
         from trading_companion.api import create_app, create_demo_service
         from trading_companion.api_service import ResearchApiService
-        from trading_companion.development_fixtures import REFERENCE_DATE, ROOT, load_development_fixtures
+        from trading_companion.development_fixtures import (
+            REFERENCE_DATE, ROOT, load_development_fixtures, load_development_market_context,
+        )
+        from trading_companion.market_context import load_market_context
         if args.demo:
             service = create_demo_service()
         else:
@@ -55,9 +59,17 @@ def main(argv=None) -> int:
                     return directory
                 loader(datetime.now(timezone.utc))
             config = DeepSeekConfig.from_env()
+            if args.market_context:
+                context_path = Path(args.market_context)
+                context_loader = lambda _: load_market_context(context_path)
+            elif source is not None:
+                context_loader = lambda _: load_development_market_context()
+            else:
+                context_loader = None
             service = ResearchApiService(model_factory=lambda: DeepSeekToolModel(config), directory_loader=loader,
                 provider="deepseek", data_mode=args.data, development_source=source,
-                reference_date=REFERENCE_DATE if args.data == "synthetic" else None)
+                reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
+                market_context_loader=context_loader)
     except ImportError:
         print("Install API dependencies first: python -m pip install -e '.[api,model]'", file=sys.stderr)
         return 2
@@ -67,6 +79,7 @@ def main(argv=None) -> int:
     print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
           "已显式启用DeepSeek，可能计费；本轮问题、参数和指标证据会发送给该提供方。")
+    print("证券状态与日历仅为本地快照背景；未知不猜测、不据此下单，不自动刷新，也不发送给模型。")
     print(f"研究界面：http://127.0.0.1:{args.port}/；API文档：/docs；访问日志关闭，请不要共享会话访问令牌。")
     uvicorn.run(create_app(service=service), host="127.0.0.1", port=args.port, workers=1, access_log=False)
     return 0

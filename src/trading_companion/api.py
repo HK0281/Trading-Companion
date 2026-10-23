@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from trading_companion.api_service import ApiProblem, ResearchApiService
-from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures
+from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures, load_development_market_context
 from trading_companion.followup_demo import ConversationDemoModel
 from trading_companion.web_ui import add_web_routes
 
@@ -51,6 +51,7 @@ class PublicTurn(BaseModel):
     report: dict | None
     parameters: dict | None
     chart: dict | None
+    market_context: dict | None
     candidates: list[dict]
     applied_defaults: list[str]
     model_calls_attempted: int
@@ -130,7 +131,7 @@ def create_demo_service() -> ResearchApiService:
     source, _ = load_development_fixtures()
     return ResearchApiService(model_factory=ConversationDemoModel,
         directory_loader=lambda _: load_development_fixtures()[1], development_source=source,
-        reference_date=REFERENCE_DATE)
+        reference_date=REFERENCE_DATE, market_context_loader=lambda _: load_development_market_context())
 
 
 def create_app(*, service: ResearchApiService | None = None) -> FastAPI:

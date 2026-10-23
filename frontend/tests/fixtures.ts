@@ -40,6 +40,26 @@ export function chartReply(id = ID): MessageResponse {
   value.result.report!.fields[0] = { ...value.result.report!.fields[0], indicator_id: "sma(window=3)", value: 10.316667 };
   return value;
 }
+export function marketContextReply(id = ID): MessageResponse {
+  const value = chartReply(id);
+  value.result.market_context = {
+    version: "research-market-context-v1", status: "available", code: "reported_market_context",
+    request_id: value.result.report!.request_id, ...value.result.parameters!,
+    snapshot_id: "artificial-market-context-20260920-v1", retrieved_at: "2026-09-20T02:00:00+08:00",
+    data_authenticity: "synthetic", validation_scope: "reported_business_date_context_not_point_in_time",
+    historical_availability: "not_established",
+    security: { status: "available", reason: "reported_state_at_analysis_date", effective_from: "2026-09-21", effective_to: "2026-09-27",
+      published_at: "2026-09-20T01:00:00+08:00", source: "synthetic_fixture", reference: "artificial-security-not-market-facts",
+      board: "szse_main", listing_date: "2026-09-01", st_status: "not_st", suspension_status: "not_full_day_suspended", listing_age_calendar_days: 24 },
+    calendar: { exchange: "SZ", coverage_start: "2026-09-21", coverage_end: "2026-09-27", published_at: "2026-09-20T01:00:00+08:00",
+      source: "synthetic_fixture", reference: "artificial-calendar-not-market-facts",
+      open_dates: ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"],
+      closed_dates: [], unknown_dates: [], missing_bar_dates: ["2026-09-23", "2026-09-24"], unexpected_bar_dates: [] },
+    conflicts: [], warnings: ["not_point_in_time", "calendar_not_instrument_tradability", "no_trading_rules_evaluated",
+      "synthetic_context_not_market_facts", "open_dates_without_bars_do_not_imply_suspension"],
+  };
+  return value;
+}
 export function mockApi() {
   return {
     health: vi.fn(async () => ({ ...health })), create: vi.fn(async () => ({ ...credentials })),

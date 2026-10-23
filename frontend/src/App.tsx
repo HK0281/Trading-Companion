@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } fro
 import { createApi, type PublicTurn } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
+import { MarketContext } from "./MarketContext";
 
 const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
 const samples = [
@@ -61,6 +62,8 @@ function Answer({ entry, choose, canChoose }: { entry: Entry; choose: (text: str
           <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
         <Facts turn={turn} />
         <ResearchChart value={turn.chart} parameters={turn.parameters}
+          reportRequestId={turn.report?.request_id} historical={entry.history} />
+        <MarketContext value={turn.market_context} parameters={turn.parameters}
           reportRequestId={turn.report?.request_id} historical={entry.history} />
         <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次
           {response?.replayed && " · 本次未重做"}</span></div>

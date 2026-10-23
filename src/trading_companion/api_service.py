@@ -15,6 +15,7 @@ from uuid import uuid4
 from trading_companion.agent import AgentTurnResult, run_natural_research_turn
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
+from trading_companion.market_context import build_market_context
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.research_session import ResearchSession
@@ -76,6 +77,7 @@ class _Entry:
     model: _SessionModel = field(repr=False)
     session: ResearchSession = field(default_factory=ResearchSession, repr=False)
     records: dict[str, _Record] = field(default_factory=dict, repr=False)
+    market_contexts: dict[str, dict] = field(default_factory=dict, repr=False)
     active_id: str | None = None
     control: TurnControl | None = field(default=None, repr=False)
     messages_used: int = 0
@@ -115,6 +117,7 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
         "chart": chart,
+        "market_context": None,
         "candidates": [candidate.to_dict() for candidate in understanding.candidates[:5]] if understanding else [],
         "applied_defaults": list(understanding.applied_defaults) if understanding else [],
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
@@ -127,17 +130,19 @@ class ResearchApiService:
     """Own isolated capability-token sessions, bounded work and idempotent message results."""
 
     def __init__(self, *, model_factory, directory_loader, provider="fake", data_mode="synthetic",
-                 development_source=None, reference_date=None, limits=None,
+                 development_source=None, reference_date=None, limits=None, market_context_loader=None,
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=TurnControl):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek")
                 or data_mode not in ("synthetic", "tencent") or not callable(model_factory)
-                or not callable(directory_loader) or not callable(clock) or not callable(control_factory)):
+                or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
+                or market_context_loader is not None and not callable(market_context_loader)):
             raise ModelConfigurationError("Use trusted API application configuration")
         if (data_mode == "synthetic") != (development_source is not None):
             raise ModelConfigurationError("Synthetic mode requires explicit trusted development data")
         self.provider, self.data_mode = provider, data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
+        self._market_context_loader = market_context_loader
         self._development_source, self._reference_date = development_source, reference_date
         self._clock, self._wall_clock, self._control_factory = clock, wall_clock or (lambda: datetime.now(timezone.utc)), control_factory
         self._entries: dict[str, _Entry] = {}
@@ -153,6 +158,7 @@ class ResearchApiService:
                     entry.control.cancel()
                 else:
                     entry.session.clear()
+                    entry.market_contexts.clear()
                     del self._entries[key]
 
     def _entry(self, session_id, token):
@@ -225,11 +231,58 @@ class ResearchApiService:
             self._active += 1
             return entry, control, None
 
+    def _saved_for_view(self, entry, result, directory, timestamp):
+        """Recheck committed research, never promote stopped-but-retained facts to memory."""
+        if result.runtime is not None and result.runtime.get("stop_code") is not None:
+            return None
+        followup = result.followup_answer
+        accepted_followup = followup is not None and followup.status == "accepted"
+        research = result.research_result is not None and result.confirmed_request is not None
+        if result.status not in ("completed", "limited") or not (accepted_followup or research):
+            return None
+        reference = (self._reference_date if self._reference_date is not None else
+                     timestamp.astimezone(timezone(timedelta(hours=8))).date())
+        try:
+            lookup = entry.session.saved_result(directory=directory,
+                source="csv" if self._development_source is not None else "tencent",
+                development_source=self._development_source, reference_date=reference,
+                now=timestamp, allow_history=accepted_followup and followup.historical)
+            expected = followup.request_id if accepted_followup else result.confirmed_request.request_id
+            if lookup.status == "ready" and lookup.snapshot is not None and lookup.snapshot.request.request_id == expected:
+                return lookup.snapshot
+        except Exception:
+            # Optional views cannot discard an already confirmed core answer.
+            pass
+        return None
+
+    def _market_context_view(self, entry, result, saved, timestamp):
+        """Prepare bounded local context; history only reads the originally frozen projection."""
+        followup = result.followup_answer
+        if saved is None:
+            return None, None
+        key = saved.request.request_id
+        if followup is not None:
+            value = entry.market_contexts.get(key, {
+                "version": "research-market-context-v1", "status": "unavailable", "code": "context_cache_miss"})
+            return deepcopy(value), None
+        if key in entry.market_contexts:
+            return deepcopy(entry.market_contexts[key]), None
+        if len(entry.market_contexts) >= self.limits.messages:
+            return {"version": "research-market-context-v1", "status": "unavailable", "code": "context_cache_limit"}, None
+        try:
+            snapshot = self._market_context_loader(timestamp) if self._market_context_loader is not None else None
+            value = build_market_context(saved.result, expected_request=saved.request,
+                                         snapshot=snapshot, reference_at=timestamp)
+        except Exception:
+            value = {"version": "research-market-context-v1", "status": "unavailable", "code": "context_unusable"}
+        return deepcopy(value), (key, deepcopy(value))
+
     def message(self, session_id, token, request_id, question, *, history=False):
         entry, control, replay = self._admit(session_id, token, request_id, question, history=history)
         if replay is not None:
             return replay
-        problem, response = None, None
+        problem, response, staged_context = None, None, None
+        reset_contexts = False
         try:
             try:
                 timestamp = self._wall_clock()
@@ -239,22 +292,11 @@ class ResearchApiService:
             result = run_natural_research_turn(question, model=entry.model, directory=directory,
                 development_source=self._development_source, reference_date=self._reference_date,
                 session=entry.session, current_time=timestamp, control=control)
-            saved = None
-            if (result.status == "completed" and result.followup_answer is not None
-                    and result.followup_answer.status == "accepted"):
-                reference = (self._reference_date if self._reference_date is not None else
-                             timestamp.astimezone(timezone(timedelta(hours=8))).date())
-                try:
-                    lookup = entry.session.saved_result(directory=directory,
-                        source="csv" if self._development_source is not None else "tencent",
-                        development_source=self._development_source, reference_date=reference,
-                        now=timestamp, allow_history=result.followup_answer.historical)
-                    if lookup.status == "ready":
-                        saved = lookup.snapshot
-                except Exception:
-                    # Rechecking optional chart context has no external side effects or retries.
-                    pass
-            response = {"request_id": request_id, "replayed": False, "result": public_turn(result, saved=saved)}
+            saved = self._saved_for_view(entry, result, directory, timestamp)
+            projected = public_turn(result, saved=saved)
+            projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
+            reset_contexts = result.code == "session_reset"
+            response = {"request_id": request_id, "replayed": False, "result": projected}
         except ApiProblem as error:
             problem = error
         except Exception:
@@ -263,6 +305,12 @@ class ResearchApiService:
             problem = ApiProblem(500, "research_internal_error", "本轮服务处理失败；没有自动重试，请检查服务端。")
         finally:
             with self._lock:
+                if reset_contexts:
+                    entry.market_contexts.clear()
+                if problem is None and staged_context is not None:
+                    key, value = staged_context
+                    if len(entry.market_contexts) < self.limits.messages or key in entry.market_contexts:
+                        entry.market_contexts[key] = deepcopy(value)
                 entry.active_id, entry.control = None, None
                 self._active -= 1
                 if not history:
@@ -292,6 +340,7 @@ class ResearchApiService:
             if entry.control is not None:
                 raise ApiProblem(409, "session_busy", "请先取消并等待当前请求结束，再重置会话。")
             entry.session.clear()
+            entry.market_contexts.clear()
             for record in entry.records.values():
                 record.response, record.problem, record.retired = None, None, True
             return {"status": "reset", "session": self._view(entry)}
@@ -302,6 +351,7 @@ class ResearchApiService:
             if entry.control is not None:
                 raise ApiProblem(409, "session_busy", "请先取消并等待当前请求结束，再删除会话。")
             entry.session.clear()
+            entry.market_contexts.clear()
             del self._entries[session_id]
 
     def close(self):
@@ -312,4 +362,5 @@ class ResearchApiService:
                     entry.control.cancel()
                 else:
                     entry.session.clear()
+                    entry.market_contexts.clear()
             self._entries = {key: entry for key, entry in self._entries.items() if entry.control is not None}

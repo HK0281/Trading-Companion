@@ -137,7 +137,7 @@ class UpdateParsingTests(unittest.TestCase):
         for text in ("不要换成中国平安", "换成中国平安，然后买入", "换成中国平安并且添加RSI2",
                      "换成中国平安；source=csv", "换成中国平安为什么高", "换成中国平安\n其他不变", "换成中国平安\x16",
                      "把日期改成2026-09-21至2026-09-24，另外换成茅台", "换成000001.SZ/path",
-                     "把日期改成最近一个月", "把截止日期改成今天"):
+                     "把日期改成最近一个月，另外换成茅台", "把截止日期改成今天"):
             with self.subTest(text=text), self.assertRaises(InputIssue):
                 parse_condition_update(text)
 

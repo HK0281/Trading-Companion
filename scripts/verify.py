@@ -25,6 +25,18 @@ SAFE_ENVIRONMENT = (
     "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL",
     "VIRTUAL_ENV", "CI", "GITHUB_ACTIONS",
 )
+MVP_CASE_NAMES = (
+    "single_sma", "single_ema", "single_macd", "single_rsi", "single_boll", "single_atr", "single_volume",
+    "complete_combination", "partial_history", "default_indicators", "natural_name", "bare_code",
+    "ambiguous_name", "unknown_name", "multiple_stocks", "today_rejected", "future_rejected", "default_dates",
+    "knowledge", "news_not_supported", "order_not_supported", "target_not_supported", "followup_without_result",
+    "identity_continuation", "indicator_edit", "ambiguous_edit", "latest_refresh", "relative_range_update",
+    "saved_followup", "explicit_history",
+)
+MVP_REQUIRED_CHECKS = {
+    "agent_status", "agent_code", "model_calls", "agent_model_count", "analysis_count", "report_status",
+    "explanation_status", "no_failure_code", "synthesis_status", "response_count", "provider_mode", "no_raw_draft_display",
+}
 
 
 class VerificationError(RuntimeError):
@@ -112,16 +124,44 @@ def check_evaluation(report):
             "All four Agent contract scenarios must run and pass")
 
 
+def check_mvp_evaluation(report):
+    """Require every independent repeat and its checks, not just a green summary."""
+    summary, cases = report["summary"], report["cases"]
+    require(report["version"] == "mvp-synthetic-evaluation-v1" and report["status"] == "passed"
+            and report["provider"] == "fake" and report["live_provider_selected"] is False
+            and report["fixture_data_authenticity"] == "synthetic" and report["market_data_requested"] is False
+            and report["directory_network_requested"] is False and report["human_review_required"] is True
+            and summary["quality_acceptance"] == "pending_live_repeats_and_human_review",
+            "MVP evaluation must remain offline and must not claim live quality acceptance")
+    require(report["repeat"] == 3 and set(report["selected_cases"]) == set(MVP_CASE_NAMES)
+            and len(report["selected_cases"]) == 30 and len(cases) == 90
+            and summary["selected"] == summary["executed"] == summary["passed"] == 90
+            and summary["failed"] == summary["not_run"] == 0
+            and {(item["case"], item["repeat"]) for item in cases}
+                == {(name, repetition) for name in MVP_CASE_NAMES for repetition in (1, 2, 3)},
+            "All 30 named MVP scenarios must pass three independent repeats without omissions")
+    require(report["planned_model_calls"] == summary["model_calls_attempted"]
+            == summary["provider_calls_forwarded"] == 201 and summary["analyses_used"] == 72
+            and all(item["status"] == "passed" and item["steps"]
+                and all(step["status"] == "passed" and step["failed_checks"] == []
+                    and MVP_REQUIRED_CHECKS <= step["checks"].keys()
+                    and all(value is True for value in step["checks"].values()) for step in item["steps"])
+                for item in cases),
+            "MVP model/analysis counts or per-step evidence and explanation checks did not pass")
+
+
 def python_checks():
     with clean_environment(), offline_network():
         suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT / "tests"))
         count = run_strict_suite(suite)
         from trading_companion.agent_evaluation import run_evaluation
         from trading_companion.api_demo import main as api_demo
+        from trading_companion.mvp_evaluation import run_mvp_evaluation
 
         check_evaluation(run_evaluation(provider="fake", case="all"))
+        check_mvp_evaluation(run_mvp_evaluation(case="all", repeat=3, model_call_limit=201))
         require(api_demo() == 0, "In-process API walkthrough failed")
-    print(f"PASS: {count} Python tests, 4 Agent scenarios and API walkthrough; no skips", flush=True)
+    print(f"PASS: {count} Python tests, 4 Agent scenarios, 90 MVP repeats and API walkthrough; no skips", flush=True)
 
 
 def command(arguments, *, timeout=300):

@@ -150,6 +150,70 @@ class EvaluationGateTests(unittest.TestCase):
                 verify.check_evaluation(report)
 
 
+class MvpEvaluationGateTests(unittest.TestCase):
+    def report(self):
+        return {"version": "mvp-synthetic-evaluation-v1", "status": "passed", "provider": "fake",
+                "live_provider_selected": False, "fixture_data_authenticity": "synthetic",
+                "market_data_requested": False, "directory_network_requested": False, "human_review_required": True,
+                "repeat": 3, "selected_cases": list(verify.MVP_CASE_NAMES), "planned_model_calls": 201,
+                "summary": {"selected": 90, "executed": 90, "passed": 90, "failed": 0, "not_run": 0,
+                    "model_calls_attempted": 201, "provider_calls_forwarded": 201, "analyses_used": 72,
+                    "quality_acceptance": "pending_live_repeats_and_human_review"},
+                "cases": [{"case": name, "repeat": repeat, "status": "passed",
+                    "steps": [{"status": "passed", "failed_checks": [],
+                               "checks": dict.fromkeys(verify.MVP_REQUIRED_CHECKS, True)}]}
+                    for name in verify.MVP_CASE_NAMES for repeat in (1, 2, 3)]}
+
+    def test_all_named_offline_repeats_with_step_checks_are_accepted(self):
+        verify.check_mvp_evaluation(self.report())
+
+    def test_live_data_or_a_premature_quality_claim_is_rejected(self):
+        for field, value in (("provider", "deepseek"), ("live_provider_selected", True),
+                             ("market_data_requested", True), ("directory_network_requested", True),
+                             ("fixture_data_authenticity", "unverified"), ("human_review_required", False)):
+            report = self.report()
+            report[field] = value
+            with self.subTest(field=field), self.assertRaises(verify.VerificationError):
+                verify.check_mvp_evaluation(report)
+        report = self.report()
+        report["summary"]["quality_acceptance"] = "accepted"
+        with self.assertRaises(verify.VerificationError):
+            verify.check_mvp_evaluation(report)
+
+    def test_duplicate_missing_or_replaced_repeat_cannot_hide_behind_ninety_passes(self):
+        for changes in ({"case": "invented_case"}, {"repeat": 2}, {"status": "not_run"}):
+            report = self.report()
+            report["cases"][0].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(verify.VerificationError):
+                verify.check_mvp_evaluation(report)
+
+    def test_incorrect_call_or_analysis_count_is_rejected(self):
+        for field in ("model_calls_attempted", "provider_calls_forwarded", "analyses_used"):
+            report = self.report()
+            report["summary"][field] -= 1
+            with self.subTest(field=field), self.assertRaises(verify.VerificationError):
+                verify.check_mvp_evaluation(report)
+
+    def test_green_summary_cannot_hide_a_failed_missing_or_empty_check(self):
+        for mode in ("failed", "missing", "empty", "non_boolean", "failed_keys", "no_steps"):
+            report = self.report()
+            step = report["cases"][0]["steps"][0]
+            if mode == "failed":
+                step["checks"]["explanation_status"] = False
+            elif mode == "missing":
+                del step["checks"]["synthesis_status"]
+            elif mode == "empty":
+                step["checks"] = {}
+            elif mode == "non_boolean":
+                step["checks"]["no_failure_code"] = 1
+            elif mode == "failed_keys":
+                step["failed_checks"] = ["explanation_status"]
+            else:
+                report["cases"][0]["steps"] = []
+            with self.subTest(mode=mode), self.assertRaises(verify.VerificationError):
+                verify.check_mvp_evaluation(report)
+
+
 HTML = b'<script type="module" src="/assets/app-check.js"></script><link rel="stylesheet" href="/assets/index-check.css">'
 
 

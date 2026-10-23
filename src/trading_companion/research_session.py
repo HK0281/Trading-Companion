@@ -10,10 +10,12 @@ import unicodedata
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.agent_input import InputIssue, request_arguments
-from trading_companion.multi_contracts import MultiIndicatorRequest, MultiIndicatorResult
+from trading_companion.multi_contracts import IndicatorSpec, MultiIndicatorRequest, MultiIndicatorResult
 from trading_companion.research_memory import SavedResearch, ResultLookup
 from trading_companion.research_report import build_research_report
-from trading_companion.research_edit import replace_indicator
+from trading_companion.research_edit import (
+    indicator_selection, indicator_selection_label, replace_indicator, window_edit_candidates,
+)
 from trading_companion.research_intent import PreparedResearchInput, ResearchConditions
 from trading_companion.research_update import parse_condition_update, update_conditions
 from trading_companion.security_directory import Security, SecurityDirectory, SecurityMatch
@@ -61,11 +63,26 @@ class ConfirmedResearch:
         return self.confirmed_at + CONFIRMED_LIFETIME
 
 
+@dataclass(frozen=True)
+class PendingIndicatorEdit:
+    request: MultiIndicatorRequest
+    security: Security
+    window: int
+    candidates: tuple[IndicatorSpec, ...]
+    created_at: datetime
+    development_source: CsvDailyBarSource | None = field(default=None, repr=False)
+
+    @property
+    def expires_at(self) -> datetime:
+        return self.created_at + PENDING_LIFETIME
+
+
 class ResearchSession:
     """One trusted application-owned object per conversation; no process-global pending task."""
 
     def __init__(self):
         self._pending: PendingResearch | None = None
+        self._pending_edit: PendingIndicatorEdit | None = None
         self._confirmed: ConfirmedResearch | None = None
         self._last_result: SavedResearch | None = None
         self._result_current = False
@@ -77,6 +94,7 @@ class ResearchSession:
         working = ResearchSession()
         # Conditions are immutable; saved-result access already returns detached copies.
         working._pending, working._confirmed, working._last_result = self._pending, self._confirmed, self._last_result
+        working._pending_edit = self._pending_edit
         working._result_current = self._result_current
         working._turn_parent = self
         return working
@@ -84,11 +102,16 @@ class ResearchSession:
     def _publish_turn(self, working):
         """Publish bounded local references atomically with respect to turn cancellation."""
         self._pending, self._confirmed, self._last_result = working._pending, working._confirmed, working._last_result
+        self._pending_edit = working._pending_edit
         self._result_current = working._result_current
 
     @property
     def pending(self) -> PendingResearch | None:
         return self._pending
+
+    @property
+    def pending_edit(self) -> PendingIndicatorEdit | None:
+        return self._pending_edit
 
     @property
     def confirmed(self) -> ConfirmedResearch | None:
@@ -107,6 +130,7 @@ class ResearchSession:
 
     def begin_research(self) -> None:
         """Old facts remain explicitly viewable, but cannot answer an implicit new-result question."""
+        self.clear_pending()
         self.clear_confirmed()
         self._result_current = False
         if self._turn_parent is not None:
@@ -156,9 +180,11 @@ class ResearchSession:
 
     def clear_pending(self) -> None:
         self._pending = None
+        self._pending_edit = None
 
     def clear_confirmed(self) -> None:
         self._confirmed = None
+        self._pending_edit = None
 
     def remember_confirmed(self, prepared: PreparedResearchInput, *, now: datetime,
                            development_source: CsvDailyBarSource | None) -> bool:
@@ -175,6 +201,7 @@ class ResearchSession:
         if not (prepared.status == "needs_clarification" and prepared.clarification_resumable
                 and prepared.conditions is not None and prepared.request is None):
             return False
+        self._pending_edit = None
         self._pending = PendingResearch(prepared.conditions, prepared.candidates, now, development_source)
         return True
 
@@ -187,6 +214,14 @@ class ResearchSession:
             "confirmed_at": confirmed.confirmed_at.isoformat(), "expires_at": confirmed.expires_at.isoformat(),
         }
         memory = None if self._last_result is None else self._last_result.metadata(current=self._result_current)
+        if self._pending_edit is not None:
+            edit = self._pending_edit
+            return {"state": "awaiting_indicator", "confirmed": base, "saved_result": memory, "pending": {
+                "kind": "indicator_edit", "target_window": edit.window,
+                "base_request_id": edit.request.request_id,
+                "candidates": [indicator_selection_label(spec) for spec in edit.candidates],
+                "created_at": edit.created_at.isoformat(), "expires_at": edit.expires_at.isoformat(),
+            }}
         if pending is None:
             return {"state": "idle", "pending": None, "confirmed": base, "saved_result": memory}
         return {"state": "awaiting_instrument", "confirmed": base, "saved_result": memory, "pending": {
@@ -244,20 +279,78 @@ class ResearchSession:
     def prepare_indicator_edit(self, question: str, *, directory: SecurityDirectory, source: str,
                                development_source: CsvDailyBarSource | None, reference_date: date,
                                now: datetime) -> PreparedResearchInput:
-        """Preserve the existing one-instance replacement contract and error codes."""
+        """Resolve bounded edits without guessing a target or extending the trusted base."""
         base = self._checked_edit_base(directory=directory, source=source, development_source=development_source,
                                        reference_date=reference_date, now=now)
         if base.status != "ready":
             return base
         try:
+            window_edit = window_edit_candidates(base.request, question)
+            if window_edit is not None:
+                window, candidates = window_edit
+                if not candidates:
+                    raise InputIssue("needs_clarification", "indicator_edit_target_missing",
+                        "原组合没有可单独修改窗口的指标；MACD需要明确完整参数，没有查询行情。")
+                if len(candidates) > 1:
+                    self._pending = None
+                    self._pending_edit = PendingIndicatorEdit(base.request, base.security, window, candidates,
+                                                              now, development_source)
+                    labels = "、".join(indicator_selection_label(spec) for spec in candidates)
+                    return replace(base, status="needs_clarification", code="indicator_edit_ambiguous", request=None,
+                        message=f"要把哪一个指标改成{window}日？请只回复一个原指标：{labels}。"
+                                "原股票、日期和来源保持不变；待澄清请求15分钟内有效，也可回复“取消”。没有查询行情。")
+                question = f"把{indicator_selection_label(candidates[0])}改成{window}日"
             request = replace_indicator(base.request, question)
-            defaults = tuple(item for item in base.applied_defaults if item not in (
-                "indicators:default_eight", "indicators:inherited_then_updated"))
-            defaults = tuple(dict.fromkeys((*defaults, "indicators:inherited_then_edited")))
-            conditions = replace(base.conditions, indicators=request.indicators, applied_defaults=defaults)
-            return replace(base, code="indicator_edit_ready", request=request,
-                           conditions=conditions, applied_defaults=defaults,
-                           message="仅修改已指定指标；股票、原起止日期及来源保持不变，将重新计算，不复用旧结果。")
+            self._pending_edit = None
+            return self._edited_input(base, request)
+        except InputIssue as issue:
+            return replace(base, status=issue.status, code=issue.code, request=None, message=str(issue))
+
+    @staticmethod
+    def _edited_input(base: PreparedResearchInput, request: MultiIndicatorRequest) -> PreparedResearchInput:
+        defaults = tuple(item for item in base.applied_defaults if item not in (
+            "indicators:default_eight", "indicators:inherited_then_updated"))
+        defaults = tuple(dict.fromkeys((*defaults, "indicators:inherited_then_edited")))
+        conditions = replace(base.conditions, indicators=request.indicators, applied_defaults=defaults)
+        return replace(base, code="indicator_edit_ready", request=request,
+            conditions=conditions, applied_defaults=defaults,
+            message="仅修改已指定指标；股票、原起止日期及来源保持不变，将重新计算，不复用旧结果。")
+
+    def resume_indicator_edit(self, reply: str, *, directory: SecurityDirectory, source: str,
+                              development_source: CsvDailyBarSource | None, reference_date: date,
+                              now: datetime) -> PreparedResearchInput:
+        """Bind a short selection to the original edit and recheck its full authority."""
+        pending = self._pending_edit
+        result = PreparedResearchInput(intent="research", stage="clarification", directory=directory)
+        if pending is None:
+            return replace(result, status="needs_clarification", code="no_pending_indicator_edit",
+                message="当前没有待补全的指标修改；请提供完整修改句，没有查询行情。")
+        if not pending.created_at <= now < pending.expires_at:
+            self.clear_pending()
+            return replace(result, status="needs_clarification", code="indicator_edit_expired",
+                message="待澄清指标修改已超过15分钟或时间异常，已清除；请重新描述完整研究问题。")
+        base = self._checked_edit_base(directory=directory, source=source, development_source=development_source,
+                                       reference_date=reference_date, now=now)
+        if base.status != "ready":
+            self.clear_pending()
+            return base
+        if (base.request != pending.request or base.security != pending.security
+                or development_source != pending.development_source):
+            self.clear_pending()
+            return replace(base, status="needs_clarification", code="indicator_edit_context_changed", request=None,
+                message="原研究基准、证券身份或数据配置已变化，待修改请求已清除；请重新描述完整问题。")
+        selected = indicator_selection(reply)
+        if selected not in pending.candidates:
+            return replace(base, status="needs_clarification", code="indicator_edit_reply_not_specific", request=None,
+                message=f"仍待确认要把哪个原指标改成{pending.window}日。请只回复"
+                        + "、".join(indicator_selection_label(spec) for spec in pending.candidates)
+                        + "中的一个；不会忽略额外条件或延长原请求有效期，也可回复“取消”。")
+        # Consume the selection before any later model or data side effect.
+        self.clear_pending()
+        try:
+            request = replace_indicator(base.request,
+                f"把{indicator_selection_label(selected)}改成{pending.window}日")
+            return self._edited_input(base, request)
         except InputIssue as issue:
             return replace(base, status=issue.status, code=issue.code, request=None, message=str(issue))
 
@@ -286,9 +379,22 @@ class ResearchSession:
                 if security.instrument_id == base.security.instrument_id:
                     raise InputIssue("needs_clarification", "condition_update_unchanged", "研究股票没有变化，未重复查询。")
             request = conditions.for_security(security.instrument_id)
-            return replace(base, code="condition_update_ready", request=request, security=security,
+            code = "condition_update_ready"
+            message = "已修改本轮明确的一类条件，其他条件保留；将使用新请求重新计算，不复用旧结果。"
+            if update.kind == "relative_range":
+                code = "relative_range_ready"
+                message = "按固定自然日规则修改区间（月按30天、年按365天），截止上海前一自然日；股票、指标和来源不变，将重新计算。"
+            elif update.kind == "refresh":
+                code = "refresh_latest_ready"
+                message = "已保留股票、指标和原自然日区间长度，截止上海前一自然日；这是历史日线刷新，不是实时行情，也不保证前一天为交易日。"
+                if "refresh:same_dates" in conditions.applied_defaults:
+                    message += "区间未变化，按明确刷新重新计算，不代表发现了新行情。"
+                if development_source is not None and development_source.is_synthetic:
+                    message += "当前为固定参考日期的合成样例，刷新只重跑样例，不查询真实市场。"
+            message += f"研究区间：{conditions.start_date.isoformat()}至{conditions.as_of_date.isoformat()}。"
+            return replace(base, code=code, request=request, security=security,
                 candidates=(security,), conditions=conditions, applied_defaults=conditions.applied_defaults,
-                message="已修改本轮明确的一类条件，其他条件保留；将使用新请求重新计算，不复用旧结果。")
+                message=message)
         except InputIssue as issue:
             return replace(base, status=issue.status, code=issue.code, request=None, message=str(issue))
         except (InvalidRequestError, DataValidationError):

@@ -4,7 +4,7 @@
 
 日期：2026-10-20（America/Los_Angeles）
 
-增量更新：2026-10-22，整轮运行控制、本机FastAPI、同源React/TypeScript、统一验收/CI、历史K线/指标及本地证券状态／交易日历背景。
+增量更新：2026-10-22，整轮运行控制、本机FastAPI、同源React/TypeScript、统一验收/CI、历史K线/指标、本地证券背景，以及跨指标综合、会话收口、显式选源和MVP重复评估。
 
 状态：目标架构与渐进实施方案；不是已完成功能清单。
 
@@ -43,7 +43,9 @@
 
 截至2026-10-22，已有明确格式与模型优先自然语言入口，目录核名、候选澄清、可见默认值、[事实报告](safe-report-design.md)、[受限解读检查](grounded-explanation-design.md)及[薄终端](terminal-agent-design.md)。可选会话支持[股票身份续接](identity-clarification-design.md)、[明确指标替换](indicator-edit-design.md)、[结果快照/追问/知识](result-followup-design.md)与[明确条件修改](condition-update-design.md)。最新增加[整轮运行控制](turn-control-design.md)：共享90秒协作截止、模型/分析额度、已观察token停止阈值、取消信号及迟到结果隔离。新增43项、全量856项离线通过；独立进程演示及四场景离线评估通过，没有新增真实模型或行情调用。
 
-[真实目录刷新](security-directory-refresh-design.md)已独立实测5,224条身份；[四场景契约评估](agent-evaluation-design.md)仅有用户回传一次 `complete` 真实模型通过，其余3项及重复质量评估仍待做。自由复合条件修改、相对日期更新/最新查询、对话内切源、开放知识问答及任意自由文本语义检查尚未实现。现有运行预算不等于硬中断、计费上限或账户配额，不称M2/M3/M4整体完成。
+[真实目录刷新](security-directory-refresh-design.md)已独立实测5,224条身份；[四场景契约评估](agent-evaluation-design.md)仅有用户回传一次 `complete` 真实模型通过，其余真实重复质量评估仍待做。本轮已实现有限的相对日期/历史刷新、模糊窗口短答续接及启动固定来源；不接受对话内切源。自由复合修改、开放问答及任意自由文本语义检查不作为本次MVP前置。现有预算不等于硬中断、计费上限或账户配额，代码完成不等于真实验收完成。
+
+最新[MVP代码交付](mvp-completion.md)补上[程序跨指标综合](research-synthesis-design.md)、[会话澄清/日期收口](mvp-conversation-design.md)、[产品显式选源](source-selection-design.md)及30场景×3评估。Windows离线Python1172项、前端269项通过；原Agent 4/4、新MVP 90/90、API 8/8及类型/构建/ASGI/wheel通过。没有新增真实模型/行情请求；新增浏览器验收仍受当前工具访问策略限制。
 
 接口增量：[本机API](local-api-design.md)已把原Agent接入FastAPI，提供令牌隔离、幂等消息、历史/重置/删除、按请求取消及白名单响应。新增50项、当时全量906项离线通过，进程内8项检查与实际loopback TCP演示通过；不新增真实模型/行情请求。上段856项为运行控制模块完成时的记录。
 
@@ -79,7 +81,9 @@
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
 | 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
-| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 当前Windows本地Python1054项、前端256项零跳过通过，四场景Agent 4/4、API演示8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
+| 跨指标综合 | [research_synthesis.py](../src/trading_companion/research_synthesis.py) | 最新/紧邻前一数值证据重查，四维度、相容/分歧/未知及条件观察；程序生成，不额外调用模型或行情，不投票或预测 |
+| MVP重复评估 | [mvp_evaluation.py](../src/trading_companion/mvp_evaluation.py)、[mvp_evaluation_cases.py](../src/trading_companion/mvp_evaluation_cases.py) | 30场景、最多3次独立重复；解释和综合均核对，调用额度读配置前检查，首错停止，真实效果须另行人工验收 |
+| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | Windows本地Python1172项、前端269项零跳过通过，Agent 4/4、MVP 90/90、API 8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
 
 当前已有本机FastAPI、最小Web、历史K线/指标及独立本地证券状态／日历背景展示。真实主数据／日历适配器尚无；默认是明确人工夹具。也尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
@@ -220,6 +224,7 @@ MACD 的 DIF、DEA 和柱值可以在不同记录数下就绪。部分指标可�
 4. 工具调用研究服务，由选定适配器读取日线；校验字段、单位、顺序和日期范围。
 5. 同一份日线集中计算请求的指标，产生逐字段状态、初始化信息和确定性关系。
 6. 证据模块生成事实标识。给模型的是必要字段、关系和缺项说明，而不是全部历史序列。
+   程序综合独立重查它实际使用的最新/紧邻前一数值，生成四维度参考比较，不采用任意模型文本；默认回答和历史概览复用它。停止不生成综合，取消不展示本轮结果。
 7. Agent 组织解释；程序核对引用与允许关系，不合格时按剩余预算修正，或回退为事实摘要。
 8. 展示查询条件、实际最新交易日、事实、解释和限制；保存本轮匹配的确认条件与结果。
 
@@ -374,13 +379,13 @@ Trading Companion/
 | M1a：补齐指标 | 已新增独立 RSI、BOLL、ATR、量能，保持已有计算口径 | 数值函数与测试已补齐；仍不代表多指标服务或 Agent 完成 |
 | M1b：多指标契约 | 独立服务已新增一次取数、逐字段状态、初始化元数据、关系事实和证据标识 | 默认组合与部分可用、证据依赖和旧接口回归；不等于模型工具循环已完成 |
 | M2：单轮 Agent | 已有工具契约、执行器、DeepSeek适配、两种入口、目录刷新、事实摘要、受限关系检查及薄终端；一次新契约真实完整场景反馈通过 | 完整单股票问题走通，异常有明确回退；其他实测与语义评估待做，不标整体完成 |
-| M3：会话与预算 | 身份澄清、明确修改、快照、有限追问/知识、终端及整轮协作控制已有；自由复合修改、硬中断及费用保证未实现 | 同步状态与迟到隔离已离线验证，完整语言及真实提供方验证仍待补 |
-| M4：评估与说明 | 4场景契约入口、诊断与运行文档已有；真实模型验证及更完整场景集待做 | 报告实测结果和局限，不把离线测试当真实模型效果，不标整体完成 |
+| M3：会话与预算 | 身份/指标澄清、明确修改、相对日期/刷新、快照、有限追问/知识、终端/API/Web及协作控制已有 | 代码和同步契约已离线验证，不代表真实语言质量、硬中断或费用保证 |
+| M4：评估与说明 | 原4场景和新30场景×3、逐步预期、诊断与交付说明已有 | 离线通过；真实重复评估、人工复核及增量浏览器验收仍待做 |
 | 长期扩展 | 主数据与日历、公司研究、筛选、历史版本与回放、风险情景、Web 和美股 | 每项单独定义数据契约、失败行为与验收；不一次性展开 |
 
 严格历史策略评估必须等对应的股票池、版本与可得性约束足够明确后进行。先补主数据与公司研究来源，再逐步验证筛选和回放，最后研究有依据的风险情景；新增 UI 不改变交易权限边界。
 
-多指标服务、工具协议、执行器、DeepSeek适配、两种研究入口、身份续接、事实及关系检查、评估、终端、有限连续会话、共享运行控制、[本机API](local-api-design.md)、[最小Web](web-workspace-design.md)、[统一验收/CI](ci-design.md)、[历史K线/指标](chart-workspace-design.md)及[本地证券状态／日历背景](market-context-design.md)已有。不把协作检查称为硬中断或M3整体完成。下一增量优先核实并接入真实master/calendar来源，再考虑把可信状态用于Agent；公司行动和完整历史版本仍待做，不扩大到公网部署。图表／背景的实际浏览器增量验收因访问策略阻断待补。`partial`/名称/歧义真实反馈及重复评估仍需显式启用，不因离线开发或CI通过而视为通过。
+MVP代码收口后，下一步优先进行真实模型重复评估与人工复核、真实历史行情试用及允许访问环境下的浏览器增量验收。真实master/calendar、公司行动和完整历史版本是后续数据能力，不再作为当前日线MVP的代码前置。不得绕过现有浏览器访问策略；不因离线开发或CI通过而将真实质量视为通过，不扩展公网部署或交易权限。
 
 ## 15. 文档维护
 

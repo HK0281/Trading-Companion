@@ -163,3 +163,7 @@ $env:PYTHONPATH='src'
 $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.turn_control_demo
 ```
+
+## 12. MVP收口增量
+
+2026-10-22已接入模糊窗口澄清短答、相对日期修改和有限历史刷新；`/help`同步列出这些能力。`--data`现在支持显式 `akshare_eastmoney`，与腾讯一样需要当前可用的本地目录；缺AKShare依赖在读取模型配置前固定报错。默认回答加入独立程序综合，历史概览也重新核对原数值，停止不生成综合。来源由启动固定，不在对话内切换。详见[MVP清单](mvp-completion.md)、[会话收口](mvp-conversation-design.md)和[选源设计](source-selection-design.md)；此前章节的未实现列表为相应阶段记录。

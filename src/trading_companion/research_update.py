@@ -1,14 +1,14 @@
 """Whole-message, one-dimension updates over application-confirmed conditions."""
 
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 import re
 import unicodedata
 
 from trading_companion.agent_input import InputIssue
 from trading_companion.errors import InvalidRequestError
 from trading_companion.research_edit import indicator_candidates, parse_indicator_instance
-from trading_companion.research_intent import ResearchConditions
+from trading_companion.research_intent import ResearchConditions, _dates
 from trading_companion.multi_contracts import MultiIndicatorRequest
 
 
@@ -19,12 +19,16 @@ _CUE = re.compile(r"添加|增加|加上|删除|移除|去掉|不要再看|"
                   r"^(?:(?:请帮我|请|帮我)\s*)?(?:换成|换为|改成|改看)|"
                   r"(?:股票|证券|研究对象|" + _DATE_TARGET + r")\s*(?:改|换|调)")
 _DATE_FLAGS = {"cutoff:previous_shanghai_day", "range:365_calendar_days",
-               "relative_unit:30_days_per_month_365_per_year", "dates:explicit_update"}
+               "relative_unit:30_days_per_month_365_per_year", "dates:explicit_update",
+               "dates:relative_update", "dates:refresh_latest_previous_day", "refresh:same_dates"}
+_RELATIVE = r"(?:最近|近|过去)\s*[0-9零一二两三四五六七八九十百]+\s*(?:个)?\s*(?:自然日|天|日|周|月|年)"
+_REFRESH = {"看最新的", "更新到最新", "刷新行情", "刷新日线", "更新行情", "更新到最新日线"}
 
 
 def is_condition_update(question: str) -> bool:
     """Catch supported and incomplete mutations before fresh-query defaults or follow-ups."""
-    return bool(_CUE.search(unicodedata.normalize("NFKC", question).strip()))
+    text = unicodedata.normalize("NFKC", question).strip()
+    return bool(_CUE.search(text) or re.match(r"(?:(?:请帮我|请|帮我)\s*)?(?:看最新的|更新到最新|刷新行情|刷新日线|更新行情)", text))
 
 
 def _issue(code: str, message: str) -> InputIssue:
@@ -45,7 +49,11 @@ def parse_condition_update(question: str) -> ConditionUpdate:
     text = re.sub(r"[。.!！]$", "", text).strip()
     text = re.sub(r"\s*[,;]\s*(?:其他|其它|其余)(?:都)?不变$", "", text).strip()
     text = re.sub(r"^(?:请帮我|请|帮我)\s*", "", text)
+    if text in _REFRESH:
+        return ConditionUpdate("refresh", "previous_shanghai_day")
     forms = (
+        ("relative_range", r"(?:(?:把|将)?\s*(?:日期区间|日期|时间范围|研究区间|区间)\s*)?" + _VERB
+         + r"\s*(" + _RELATIVE + r")"),
         ("range", r"(?:把|将)?\s*(?:日期区间|日期|时间范围|研究区间|区间)\s*" + _VERB +
          r"\s*(" + _ISO + r"\s*(?:至|到|~)\s*" + _ISO + r")"),
         ("start", r"(?:把|将)?\s*(?:开始日期|起始日期|起始日)\s*" + _VERB + r"\s*(" + _ISO + r")"),
@@ -62,7 +70,7 @@ def parse_condition_update(question: str) -> ConditionUpdate:
             if kind == "instrument" and value.upper() in (
                     "腾讯", "东方财富", "东财", "AKSHARE", "今天", "昨天", "最新", "最近"):
                 raise _issue("condition_update_not_supported",
-                    "这不是股票修改；本入口不切换来源或自动查询最新日期，请用明确日期修改或完整新问题。")
+                    "这不是股票修改；来源由启动配置固定。日期请用明确修改句，刷新请单独说“刷新行情”，不是实时查询。")
             if kind == "instrument" and re.match(
                     r"(?:SMA|EMA|RSI|ATR|MACD|BOLL|VOLUME|DIF|DEA)(?:$|[0-9(])|均线|布林带|量能",
                     value, re.IGNORECASE):
@@ -75,7 +83,7 @@ def parse_condition_update(question: str) -> ConditionUpdate:
             return ConditionUpdate(kind, value)
     raise _issue("condition_update_not_supported",
         "请一次明确修改一类条件，例如“换成中国平安”“把日期改成2026-09-21至2026-09-24”"
-        "“添加ATR2”或“删除RSI2”；不会忽略附加要求，不支持在这里切换数据源或查询最新行情。")
+        "“添加ATR2”“删除RSI2”“改成最近一个月”或“刷新行情”；不会忽略附加要求，最新只指上海前一自然日截止的历史日线，不是实时行情。")
 
 
 def update_conditions(conditions: ResearchConditions, update: ConditionUpdate, *,
@@ -84,17 +92,32 @@ def update_conditions(conditions: ResearchConditions, update: ConditionUpdate, *
     start, cutoff, specs = conditions.start_date, conditions.as_of_date, conditions.indicators
     flags = conditions.applied_defaults
     try:
-        if update.kind in ("range", "start", "cutoff"):
-            if update.kind == "range":
+        if update.kind in ("range", "start", "cutoff", "relative_range", "refresh"):
+            if update.kind == "refresh":
+                days = (cutoff - start).days + 1
+                cutoff = reference_date - timedelta(days=1)
+                start = cutoff - timedelta(days=days - 1)
+            elif update.kind == "relative_range":
+                start, cutoff, relative_flags = _dates(update.value, update.value, reference_date)
+            elif update.kind == "range":
                 left, right = re.split(r"\s*(?:至|到|~)\s*", update.value)
                 start, cutoff = date.fromisoformat(left), date.fromisoformat(right)
             elif update.kind == "start":
                 start = date.fromisoformat(update.value)
             else:
                 cutoff = date.fromisoformat(update.value)
-            if (start, cutoff) == (conditions.start_date, conditions.as_of_date):
+            unchanged = (start, cutoff) == (conditions.start_date, conditions.as_of_date)
+            if unchanged and update.kind != "refresh":
                 raise _issue("condition_update_unchanged", "日期没有变化，未重复查询。")
-            flags = tuple(item for item in flags if item not in _DATE_FLAGS) + ("dates:explicit_update",)
+            flags = tuple(item for item in flags if item not in _DATE_FLAGS)
+            if update.kind == "refresh":
+                flags += ("dates:refresh_latest_previous_day", "cutoff:previous_shanghai_day")
+                if unchanged:
+                    flags += ("refresh:same_dates",)
+            elif update.kind == "relative_range":
+                flags += (*relative_flags, "dates:relative_update")
+            else:
+                flags += ("dates:explicit_update",)
         elif update.kind == "add":
             added = parse_indicator_instance(update.value)
             if added in specs:
@@ -118,7 +141,7 @@ def update_conditions(conditions: ResearchConditions, update: ConditionUpdate, *
             flags += ("indicators:inherited_then_updated",)
         merged = replace(conditions, start_date=start, as_of_date=cutoff, indicators=specs,
                          applied_defaults=flags,
-                         reference_date=reference_date if update.kind in ("range", "start", "cutoff") else conditions.reference_date)
+                         reference_date=reference_date if update.kind in ("range", "start", "cutoff", "relative_range", "refresh") else conditions.reference_date)
         # Validate current online authority even when the original relative-date anchor is preserved.
         replace(merged, reference_date=reference_date)
         return merged

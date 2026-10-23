@@ -2,7 +2,7 @@
 export interface Health {
   status: "ok";
   provider: "fake" | "deepseek";
-  data_mode: "synthetic" | "tencent";
+  data_mode: "synthetic" | "tencent" | "akshare_eastmoney";
   trading_enabled: false;
 }
 
@@ -103,7 +103,8 @@ const count = (value: unknown): value is number => typeof value === "number" && 
 const text = (value: unknown): value is string => typeof value === "string";
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(text);
 const mode = (value: unknown): value is Record<string, unknown> & Pick<Health, "provider" | "data_mode"> => record(value)
-  && ["fake", "deepseek"].includes(String(value.provider)) && ["synthetic", "tencent"].includes(String(value.data_mode));
+  && typeof value.provider === "string" && ["fake", "deepseek"].includes(value.provider)
+  && typeof value.data_mode === "string" && ["synthetic", "tencent", "akshare_eastmoney"].includes(value.data_mode);
 const sessionView = (value: unknown): value is SessionView => record(value) && text(value.state)
   && (value.active_request_id === null || identifier(value.active_request_id))
   && count(value.messages_used) && count(value.model_calls_forwarded);

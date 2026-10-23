@@ -419,7 +419,7 @@ class AgentExplanationTests(GuardedTests):
         self.assertEqual(result.safe_answer.status, "complete")
         self.assertEqual(result.model_draft, bad)
         self.assertNotIn(bad, result.display_answer)
-        self.assertIn("仅展示事实摘要", result.display_answer)
+        self.assertIn("仅展示经程序核验的内容", result.display_answer)
 
     def test_rejected_structured_claims_do_not_leak_or_trigger_repair_calls(self):
         delegate = ExplanationDemoModel([proposal(self.request)])

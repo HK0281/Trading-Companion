@@ -52,6 +52,55 @@ def indicator_candidates(request: MultiIndicatorRequest, text: str) -> tuple[Ind
         spec for spec in request.indicators if spec == parse_indicator_instance(text))
 
 
+def indicator_selection_label(spec: IndicatorSpec) -> str:
+    """An explicit instance users can copy into a short clarification reply."""
+    values = spec.parameters
+    if spec.kind == "macd":
+        return "MACD({fast},{slow},{signal})".format(**values)
+    if spec.kind == "boll":
+        return "BOLL({window},{stddev_multiplier})".format(**values)
+    return f"{spec.kind.upper()}{values['window']}"
+
+
+def indicator_selection(question: str) -> IndicatorSpec | None:
+    """Read a whole short, explicit answer; do not discard additional clauses."""
+    text = unicodedata.normalize("NFKC", question).strip().rstrip("。.!！").strip()
+    if not text or len(text) > 80 or not all(char.isprintable() for char in text):
+        return None
+    text = re.sub(r"^(?:我指的是|选择|就选|选)\s*", "", text)
+    try:
+        return parse_indicator_instance(text)
+    except (InvalidRequestError, ValueError, OverflowError):
+        return None
+
+
+def window_edit_candidates(request: MultiIndicatorRequest, question: str):
+    """Recognize only a whole window command; ambiguity is persisted by the session."""
+    text = unicodedata.normalize("NFKC", question).strip()
+    if not text or not all(char.isprintable() for char in text):
+        return None
+    generic = re.fullmatch(
+        r"(?:(?:请帮我|请|帮我)\s*)?(?:(?:把|将)?\s*(?:窗口|周期)\s*)?"
+        r"(?:改成|改为|换成|换为|调整为)\s*([0-9]+)\s*(?:日|天)"
+        r"(?:\s*[,;]\s*(?:其他|其它|其余)(?:都)?不变)?\s*[。.!！]?", text)
+    if generic:
+        return int(generic[1]), tuple(spec for spec in request.indicators if "window" in spec.parameters)
+    match = _EDIT.fullmatch(text)
+    if match is None:
+        return None
+    target, replacement = (part.strip() for part in match.groups())
+    window = re.fullmatch(r"([0-9]+)\s*(?:日|天)?", replacement)
+    if not window or target.upper() not in _KINDS:
+        return None
+    return int(window[1]), indicator_candidates(request, target)
+
+
+def is_window_edit(question: str) -> bool:
+    """Keep target-less numeric window edits out of the stock-update parser."""
+    text = unicodedata.normalize("NFKC", question).strip()
+    return re.match(r"(?:(?:请帮我|请|帮我)\s*)?(?:改成|改为|换成|换为|调整为)\s*[0-9]+\s*(?:日|天)", text) is not None
+
+
 def replace_indicator(request: MultiIndicatorRequest, question: str) -> MultiIndicatorRequest:
     """Change one existing instance; preserve every other field and allocate a fresh run ID."""
     text = unicodedata.normalize("NFKC", question).strip()

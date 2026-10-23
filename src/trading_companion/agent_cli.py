@@ -8,6 +8,7 @@ import sys
 from typing import Callable
 
 from trading_companion.agent import AgentTurnResult, run_natural_research_turn
+from trading_companion.api_service import DATA_MODES, DataModeDependencyError, ensure_data_mode_dependencies
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.deepseek_tool_model import DeepSeekToolModel
@@ -46,15 +47,16 @@ class ConversationData:
             if (self.directory_path is not None or type(source) is not CsvDailyBarSource
                     or source.is_synthetic is not True or source.path != ROOT / "data" / FIXTURES[0][0]):
                 raise ModelConfigurationError("Synthetic chat requires the pinned CSV and fixture directory")
-        elif self.mode != "tencent" or self.development_source is not None or not isinstance(self.directory_path, Path):
+        elif self.mode not in ("tencent", "akshare_eastmoney") or self.development_source is not None or not isinstance(self.directory_path, Path):
             raise ModelConfigurationError("Online chat requires a selected local directory without a CSV source")
+        ensure_data_mode_dependencies(self.mode)
 
     @classmethod
     def from_options(cls, mode: str, directory_path: str | None = None):
         if mode == "synthetic" and directory_path is None:
             source, _ = load_development_fixtures()
             return cls(mode, development_source=source)
-        if mode == "tencent":
+        if mode in ("tencent", "akshare_eastmoney"):
             return cls(mode, Path(directory_path) if directory_path else ROOT / "data/security_directory_live.json")
         raise ModelConfigurationError("Choose an explicit supported data mode")
 
@@ -93,7 +95,10 @@ def _help(write: Callable[[str], None]) -> None:
     write("支持“RSI是什么”“解释一下MACD里的DIF和DEA”等指标定义，不调用模型或行情。")
     write("支持“换成中国平安”“把日期改成2026-09-21至2026-09-24”“添加ATR2”“删除RSI2”，其他条件保留并重新计算。")
     write("每条只修改一类条件；添加须明确参数，删除含糊时先澄清；换股票有歧义时回复完整名称或代码。")
-    write("暂不支持对话内切换来源、“看最新的”、复合条件修改及开放知识问答；请用完整新问题。")
+    write("“改成5日”有多个指标候选时先澄清；只回复原指标标签（例如SMA3）可继续原修改。")
+    write("支持“把日期改成最近一个月”“看最新的”；月按30自然日，最新仅截止上海前一自然日，不是实时行情；人工模式只重跑样例。")
+    write("来源由启动参数--data固定，对话不能切源，失败不自动换源；需要换源请结束并按新配置重新启动。")
+    write("暂不支持复合条件修改及开放知识问答；请用完整新问题。")
     write("等待股票选择时，如需改条件，请输入“新问题：”加完整问题；也可输入“取消”。")
 
 
@@ -142,7 +147,8 @@ def run_conversation(*, model: ToolCapableModel, data: ConversationData, provide
     exit_code = 0
     write("Trading Companion：只读单股票日线研究；不下单、不管理资金、不承诺收益。")
     if provider == "fake":
-        write("离线固定脚本演示，不是语言模型，不接受自由输入，也不代表真实模型评估。")
+        write(("离线固定脚本演示" if data.mode == "synthetic" else "固定模型脚本，行情来源仍以所选模式为准")
+              + "，不是语言模型，不接受自由输入，也不代表真实模型评估。")
     else:
         write("已显式选择DeepSeek；每条研究输入可能产生付费模型请求，不自动重试。")
         write("本轮问题、校验后的参数及紧凑指标证据会发送到DeepSeek；不发送完整聊天历史，密钥只用于接口认证。")
@@ -150,7 +156,8 @@ def run_conversation(*, model: ToolCapableModel, data: ConversationData, provide
         write("人工样例 / 非真实行情。平安银行仅5条日线、目录4项身份；日期锚点固定为2026-09-26。")
         write("输入示例：分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2。")
     else:
-        write("行情：腾讯不复权历史日线；目录仅从本地读取并在每条研究输入前重查，不自动刷新。")
+        label = "腾讯" if data.mode == "tencent" else "AKShare / 东方财富"
+        write(f"行情：{label}不复权历史日线；目录仅从本地读取并在每条研究输入前重查，不自动刷新。")
         write("输入示例：分析平安银行最近一个月的走势，关注SMA3和RSI2。")
     write(f"本次启动最多处理{MAX_TURNS}条非空问题，最多转发{MAX_TURNS * 3}次模型调用、执行{MAX_TURNS}次分析；"
           "空行和本地命令不占问题次数。")
@@ -197,6 +204,7 @@ def run_conversation(*, model: ToolCapableModel, data: ConversationData, provide
             active_control = TurnControl()
             result = run_natural_research_turn(
                 question, model=meter, directory=directory, session=session,
+                source="tencent" if data.mode == "synthetic" else data.mode,
                 development_source=data.development_source, current_time=timestamp,
                 reference_date=REFERENCE_DATE if data.mode == "synthetic" else None,
                 control=active_control,
@@ -230,8 +238,9 @@ def main(argv: list[str] | None = None) -> int:
     entry = parser.add_mutually_exclusive_group()
     entry.add_argument("--demo", action="store_true", help="Run two fixed offline turns, not free-form fake chat")
     entry.add_argument("--provider", choices=("deepseek",), help="Explicitly enable potentially paid model calls")
-    parser.add_argument("--data", choices=("synthetic", "tencent"), help="Required for interactive DeepSeek mode")
-    parser.add_argument("--directory", help="Trusted local snapshot path; tencent mode only, never auto-refreshed")
+    parser.add_argument("--data", choices=DATA_MODES,
+                        help="Startup-pinned mode; AKShare requires python -m pip install -e '.[data]'")
+    parser.add_argument("--directory", help="Trusted local snapshot; Tencent/AKShare modes only, never auto-refreshed")
     args = parser.parse_args(argv)
     if args.demo and (args.data is not None or args.directory is not None):
         parser.error("--demo uses fixed artificial inputs; do not supply data or directory options")
@@ -241,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     if args.provider and args.data is None:
-        parser.error("Explicitly choose --data synthetic or --data tencent")
+        parser.error("Explicitly choose --data synthetic, --data tencent or --data akshare_eastmoney")
     if args.data == "synthetic" and args.directory is not None:
         parser.error("Synthetic mode uses a pinned fixture directory only")
     try:
@@ -258,6 +267,9 @@ def main(argv: list[str] | None = None) -> int:
 
             return run_conversation(model=build_demo_model(), data=data, provider="fake", read_line=read_demo)
         model = DeepSeekToolModel(DeepSeekConfig.from_env())
+    except DataModeDependencyError:
+        print("[data_dependency_missing] AKShare可选依赖未安装；先运行 python -m pip install -e '.[data]'。未读取模型配置或查询行情，不自动切换来源。", file=sys.stderr)
+        return 2
     except ModelConfigurationError:
         print("[model_configuration_error] 模型配置缺失或无效；检查当前终端的模型名和密钥，不要发送密钥。", file=sys.stderr)
         return 2

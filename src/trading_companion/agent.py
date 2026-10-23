@@ -19,12 +19,13 @@ from trading_companion.relation_explanation import (
     EXPLANATION_INSTRUCTION, ExplanationValidation, validate_indicator_explanation,
 )
 from trading_companion.research_intent import PreparedResearchInput, prepare_research_question
-from trading_companion.research_edit import is_indicator_edit
+from trading_companion.research_edit import indicator_selection, is_indicator_edit, is_window_edit
 from trading_companion.research_update import is_condition_update
 from trading_companion.indicator_knowledge import KnowledgeAnswer, parse_knowledge_question
 from trading_companion.research_followup import FollowupAnswer, answer_saved_question, is_followup_question, is_result_view
 from trading_companion.research_session import ResearchSession, selection_match
 from trading_companion.research_report import ResearchReport, build_research_report
+from trading_companion.research_synthesis import ResearchSynthesis, build_research_synthesis
 from trading_companion.security_directory import SecurityDirectory
 from trading_companion.tool_model import MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn, checkpoint
@@ -70,6 +71,22 @@ class AgentTurnResult:
                                               expected_request=self.confirmed_request)
 
     @property
+    def _is_stopped(self) -> bool:
+        return (self.status == "cancelled" or self.failure_code in (
+            "turn_cancelled", "turn_deadline_exceeded", "model_call_budget_exhausted",
+            "analysis_budget_exhausted", "token_budget_exhausted")
+            or self.runtime is not None and self.runtime.get("stop_code") is not None)
+
+    @property
+    def research_synthesis(self) -> ResearchSynthesis | None:
+        """Revalidate numeric dependencies without a model call or another data read."""
+        report = self.safe_answer
+        if (self._is_stopped or report is None or report.status not in ("complete", "limited")
+                or not _has_research(self)):
+            return None
+        return build_research_synthesis(self.research_result, expected_request=self.confirmed_request)
+
+    @property
     def display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
         if self.knowledge_answer is not None:
@@ -79,12 +96,23 @@ class AgentTurnResult:
         report = self.safe_answer
         if report is None:
             return None
+        if self._is_stopped:
+            return report.text + "\n\n本轮仅展示停止前已核验的事实，不生成综合解读。"
+        parts = [report.text]
+        prepared = self.understanding
+        if (prepared is not None and prepared.status == "ready"
+                and prepared.code in ("refresh_latest_ready", "relative_range_ready")
+                and prepared.request == self.confirmed_request):
+            parts.insert(0, prepared.message)
         validation = self.explanation_validation
         if validation.status == "accepted" and report.status in ("complete", "limited"):
-            return report.text + "\n\n" + validation.text
-        if report.status in ("complete", "limited"):
-            return report.text + "\n\n本轮未取得通过检查的指标解读，仅展示事实摘要。"
-        return report.text
+            parts.append(validation.text)
+        elif report.status in ("complete", "limited"):
+            parts.append("本轮未取得通过检查的模型解读；仅展示经程序核验的内容，不展示模型原文。")
+        synthesis = self.research_synthesis
+        if synthesis is not None:
+            parts.append(synthesis.text)
+        return "\n\n".join(parts)
 
     def to_dict(self) -> dict[str, object]:
         """Export explicitly; drafts and evidence are not sanitized production logs."""
@@ -95,6 +123,7 @@ class AgentTurnResult:
                 "status", "provider", "requested_model", "model", "is_mock", "usage",
             )})
         report = self.safe_answer
+        synthesis = self.research_synthesis
         return {
             "status": self.status, "code": self.code, "message": self.message, "stage": self.stage,
             "confirmed_parameters": request_arguments(self.confirmed_request) if self.confirmed_request else None,
@@ -103,6 +132,7 @@ class AgentTurnResult:
             "answer_validation_scope": "free_text_semantics_not_performed",
             "model_draft_policy": "debug_only_unchecked_not_for_default_display",
             "safe_answer": report.to_dict() if report is not None else None,
+            "research_synthesis": synthesis.to_dict() if synthesis is not None else None,
             "explanation_validation": self.explanation_validation.to_dict(),
             "display_answer": self.display_answer,
             "model_responses": metadata, "model_calls_attempted": self.model_calls_attempted,
@@ -249,6 +279,9 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         if is_followup_question(question) and not is_condition_update(question):
             return AgentTurnResult(status="needs_clarification", code="no_saved_result", input_mode="natural",
                                    message="无状态入口不能查看上一轮结果，请使用同一会话并先完成研究。")
+        if indicator_selection(question) is not None:
+            return AgentTurnResult(status="needs_clarification", code="no_pending_indicator_edit", input_mode="natural",
+                                   message="无状态入口没有待补全的指标修改；请提供完整研究问题，没有查询行情。")
     if (type(question) is str and len(question) <= MAX_USER_CHARACTERS
             and (is_indicator_edit(question) or is_condition_update(question))):
         return AgentTurnResult(status="needs_clarification", code="no_confirmed_research", input_mode="natural",
@@ -292,6 +325,8 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
             # Consume the previous base before side effects, including failures and interruptions.
             session.begin_research()
         outcome = _run_prepared(prepared, model=model, development_source=development_source)
+        if prepared.status == "ready" and prepared.code in ("refresh_latest_ready", "relative_range_ready"):
+            outcome = replace(outcome, message=prepared.message + " " + outcome.message)
         # A stopped turn cannot stage new result or clarification state for publication.
         if outcome.failure_code in ("turn_cancelled", "turn_deadline_exceeded", "model_call_budget_exhausted",
                                     "analysis_budget_exhausted", "token_budget_exhausted"):
@@ -319,7 +354,7 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
     if knowledge is not None:
         return attach(AgentTurnResult(status="completed", code="indicator_knowledge_answered", stage="knowledge",
             input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge), "knowledge")
-    if is_result_view(question) or (session.pending is None and is_followup_question(question)
+    if is_result_view(question) or (session.pending is None and session.pending_edit is None and is_followup_question(question)
                                    and not is_condition_update(question)):
         lookup = session.saved_result(directory=directory, source="csv" if development_source is not None else source,
             development_source=development_source, reference_date=reference, now=now, allow_history=is_result_view(question))
@@ -345,18 +380,29 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
                  "clarification_pending" if session.pending is not None else "clarification_invalidated")
         # resume() has already consumed a valid selection, even if downstream execution fails.
         return execute(prepared, event)
-    elif is_condition_update(question):
+    elif session.pending_edit is not None and not is_indicator_edit(question):
+        prepared = session.resume_indicator_edit(question, directory=directory,
+            source="csv" if development_source is not None else source,
+            development_source=development_source, reference_date=reference, now=now)
+        event = ("indicator_edit_resumed" if prepared.status == "ready" else
+                 "indicator_edit_pending" if session.pending_edit is not None else "indicator_edit_invalidated")
+        return execute(prepared, event)
+    elif is_condition_update(question) and not is_window_edit(question):
         prepared = session.prepare_condition_update(
             question, directory=directory, source="csv" if development_source is not None else source,
             development_source=development_source, reference_date=reference, now=now)
         remembered = session.remember(prepared, now=now, development_source=development_source)
         return execute(prepared, "condition_update_pending" if remembered else
                        "condition_update" if prepared.status == "ready" else "condition_update_blocked")
-    elif is_indicator_edit(question):
+    elif is_indicator_edit(question) or is_window_edit(question):
         prepared = session.prepare_indicator_edit(
             question, directory=directory, source="csv" if development_source is not None else source,
             development_source=development_source, reference_date=reference, now=now)
-        return execute(prepared, "indicator_edit" if prepared.status == "ready" else "indicator_edit_blocked")
+        return execute(prepared, "indicator_edit" if prepared.status == "ready" else
+                       "indicator_edit_pending" if session.pending_edit is not None else "indicator_edit_blocked")
+    elif indicator_selection(question) is not None:
+        return reply("needs_clarification", "no_pending_indicator_edit",
+                     "当前没有待补全的指标修改；请提供完整修改句或完整研究问题，没有查询行情。", "no_pending")
     elif selection_match(question, directory).status != "not_found":
         return reply("needs_clarification", "no_pending_clarification",
                      "当前没有待补全的选股请求；请描述完整研究问题，例如“分析中国平安最近走势”。", "no_pending")
@@ -433,7 +479,7 @@ def _run_request(request: MultiIndicatorRequest, *, model: ToolCapableModel,
             outcome = replace(outcome, failure_code=validation.code)
             return _finish(outcome, "limited", "partial_research" if result.calculation_status != "complete"
                            else "explanation_rejected",
-                           "研究事实与缺项已保留，但模型提交的指标解读未通过本轮证据检查；仅展示事实摘要，未重试。")
+                           "研究事实与缺项已保留，但模型提交的指标解读未通过本轮证据检查；仅展示经程序核验的内容，未重试。")
         if result.calculation_status != "complete":
             return _finish(outcome, "limited", "partial_research",
                            "部分指标字段不可用；有效事实、缺项及通过检查的指标关系已保留，不生成收益预测。")

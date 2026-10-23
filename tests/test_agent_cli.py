@@ -131,7 +131,7 @@ class EntryPointTests(GuardedTests):
                  ["--demo", "--provider", "deepseek"], ["--demo", "--data", "synthetic"],
                  ["--demo", "--directory", "anything.json"], ["--provider", "fake"],
                  ["--provider", "deepseek", "--data", "synthetic", "--directory", "anything.json"],
-                 ["--provider", "deepseek", "--data", "akshare_eastmoney"], ["--output", "report.json"],
+                 ["--output", "report.json"],
                  ["--max-turns", "100"])
         with patch("trading_companion.agent_cli.ConversationData.from_options", side_effect=AssertionError("No setup")):
             for argv in cases:
@@ -437,7 +437,7 @@ class ConversationTests(GuardedTests):
         self.assertNotIn(PRIVATE, output)
         self.assertIn("limited/explanation_rejected", output)
         self.assertIn("收盘价：10.4", output)
-        self.assertIn("仅展示事实摘要", output)
+        self.assertIn("仅展示经程序核验的内容", output)
 
     def test_wrong_stock_proposal_is_blocked_before_csv_read(self):
         model = FakeToolModel([intent(), proposal(instrument="600519.SH")])

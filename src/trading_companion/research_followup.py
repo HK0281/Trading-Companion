@@ -12,6 +12,7 @@ from trading_companion.multi_contracts import IndicatorSpec
 from trading_companion.relation_explanation import MAX_CLAIMS, validate_indicator_explanation
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report, render_report_fields, indicator_label
+from trading_companion.research_synthesis import build_research_synthesis
 from trading_companion.research_tool import ToolExecution
 from trading_companion.security_directory import SecurityDirectory
 from trading_companion.tool_model import ToolCapableModel, ToolDefinition, ToolMessage, ToolModelResponse
@@ -157,6 +158,9 @@ def render_saved_answer(snapshot: SavedResearch, *, action="overview", mentions=
                  f"结果保存于：{snapshot.saved_at.isoformat()}；查看不会延长有效期。"]
         if action == "overview":
             lines.append(report.text)
+            if result.synthesis_allowed:
+                synthesis = build_research_synthesis(result, expected_request=request)
+                lines.append(synthesis.text)
         else:
             lines.append("人工样例 / 非真实行情。" if result.data_authenticity == "synthetic" else
                          "开发CSV / 真实性未经验证。" if result.source == "csv" else "供应商历史日线，未经独立认证。")

@@ -15,6 +15,8 @@ const units: Record<string, string> = { "CNY/share": "元/股", shares: "股", m
 const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要澄清",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
 const missing: Record<string, string> = { insufficient_history: "历史不足", undefined: "未定义", calculation_error: "计算失败" };
+const sourceLabel = (source: unknown) => source === "synthetic" || source === "csv" ? "人工行情 · 非真实"
+  : source === "tencent" ? "腾讯历史日线" : source === "akshare_eastmoney" ? "AKShare / 东方财富历史日线" : "未提供";
 
 function Facts({ turn }: { turn: PublicTurn }) {
   const fields = turn.report?.fields ?? [];
@@ -49,7 +51,8 @@ function Answer({ entry, choose, canChoose }: { entry: Entry; choose: (text: str
       </div>
       {turn && <>
         {turn.parameters && <div className="scope"><strong>{turn.parameters.instrument_id}</strong>
-          <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span><span>已确认范围</span></div>}
+          <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span><span>已确认范围</span>
+          {turn.parameters.source !== undefined && <span>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
         <div className="answer-text">{turn.answer ?? turn.message}</div>
         {turn.status === "needs_clarification" && !entry.history && !!turn.candidates.length && <div className="candidates" aria-label="候选股票">
           <p>请选择要研究的股票。点击仅填入输入框，确认后再发送。</p>
@@ -120,13 +123,15 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         <div className="mode-top"><span className={`connection-dot ${health ? "connected" : ""}`} />
           <strong>{health ? "本机服务已连接" : loading ? "正在连接" : "服务未连接"}</strong></div>
         <dl><div><dt>模型</dt><dd>{health?.provider === "fake" ? "Fake · 固定脚本" : paid ? "DeepSeek · 可能计费" : "—"}</dd></div>
-          <div><dt>数据</dt><dd>{health?.data_mode === "synthetic" ? "人工行情 · 非真实" : health?.data_mode === "tencent" ? "腾讯历史日线" : "—"}</dd></div>
+          <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div>
           <div><dt>交易权限</dt><dd>无 · 仅研究</dd></div></dl>
+        {health && <p className="muted">来源由服务启动固定；失败不自动切换。更换来源需要重启服务，不能通过对话切换。</p>}
         {!health && <button type="button" disabled={loading} onClick={() => void controller.load()}>重新连接</button>}
       </section>
       {paid && <label className="consent"><input type="checkbox" checked={state.consent}
         onChange={(event) => controller.setConsent(event.target.checked)} />
-        <span>我同意将问题、参数和证据发送至 DeepSeek，并了解可能产生费用。密钥只在服务端配置。</span></label>}
+        <span>我同意将问题、参数和证据发送至 DeepSeek，并了解可能产生费用。密钥只在服务端配置。
+          {health?.data_mode !== "synthetic" && ` 股票与日期将用于查询${sourceLabel(health?.data_mode)}，不自动换源。`}</span></label>}
       {!session ? <button type="button" className="primary start" disabled={!health || loading || !consented}
         onClick={() => void controller.start()}>开始会话 <span aria-hidden="true">＋</span></button> : <>
         <section className="session-panel" aria-label="会话额度"><div className="session-title"><strong>当前会话</strong><code>{session.shortId}</code></div>
@@ -153,8 +158,9 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     <main className="main">
       <header className="topbar"><div><span className="eyebrow">RESEARCH, NOT EXECUTION</span><h2>先看证据，再做判断。</h2></div>
         <span className="readonly-badge"><span aria-hidden="true">◈</span> 只读研究</span></header>
-      {health?.provider === "fake" && <section className="demo-banner" aria-label="演示说明"><strong>离线演示</strong>
-        <p>人工数据固定在 2026-09-21 至 09-25，不代表真实行情。按下方 01 → 02 → 03 顺序尝试；指标知识可穿插。任意自由提问可能超出脚本。</p></section>}
+      {health?.provider === "fake" && <section className="demo-banner" aria-label="演示说明"><strong>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"}</strong>
+        <p>{health.data_mode === "synthetic" ? "人工数据固定在 2026-09-21 至 09-25，不代表真实行情。按下方 01 → 02 → 03 顺序尝试；指标知识可穿插。任意自由提问可能超出脚本。"
+          : "模型为固定脚本，不代表真实模型能力；行情来源仍以服务模式为准，固定模型不等于人工或离线行情。"}</p></section>}
       <div className="live-notice" role="status" aria-live="polite">{state.notice}</div>
 
       <section className="conversation" aria-label="研究对话" aria-busy={phase === "working"}>

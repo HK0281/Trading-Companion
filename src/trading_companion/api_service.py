@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from hmac import compare_digest
+from importlib.util import find_spec
 from math import isfinite
 from secrets import token_urlsafe
 from threading import Lock
@@ -22,6 +23,26 @@ from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits
+
+
+DATA_MODES = ("synthetic", "tencent", "akshare_eastmoney")
+
+
+class DataModeDependencyError(ModelConfigurationError):
+    """A fixed startup error without import paths or underlying dependency details."""
+
+
+def ensure_data_mode_dependencies(data_mode: str) -> None:
+    """Inspect optional package availability without importing it or making a request."""
+    if data_mode not in DATA_MODES:
+        raise ModelConfigurationError("Choose an explicit supported data mode")
+    if data_mode == "akshare_eastmoney":
+        try:
+            available = find_spec("akshare") is not None
+        except (ImportError, AttributeError, ValueError):
+            available = False
+        if not available:
+            raise DataModeDependencyError("Install the data extra to enable AKShare") from None
 
 
 class ApiProblem(Exception):
@@ -134,13 +155,16 @@ class ResearchApiService:
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=TurnControl):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek")
-                or data_mode not in ("synthetic", "tencent") or not callable(model_factory)
+                or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
                 or market_context_loader is not None and not callable(market_context_loader)):
             raise ModelConfigurationError("Use trusted API application configuration")
         if (data_mode == "synthetic") != (development_source is not None):
             raise ModelConfigurationError("Synthetic mode requires explicit trusted development data")
+        ensure_data_mode_dependencies(data_mode)
         self.provider, self.data_mode = provider, data_mode
+        # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
+        self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
         self._market_context_loader = market_context_loader
         self._development_source, self._reference_date = development_source, reference_date
@@ -244,7 +268,7 @@ class ResearchApiService:
                      timestamp.astimezone(timezone(timedelta(hours=8))).date())
         try:
             lookup = entry.session.saved_result(directory=directory,
-                source="csv" if self._development_source is not None else "tencent",
+                source="csv" if self._development_source is not None else self._research_source,
                 development_source=self._development_source, reference_date=reference,
                 now=timestamp, allow_history=accepted_followup and followup.historical)
             expected = followup.request_id if accepted_followup else result.confirmed_request.request_id
@@ -290,6 +314,7 @@ class ResearchApiService:
             except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                 raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
             result = run_natural_research_turn(question, model=entry.model, directory=directory,
+                source=self._research_source,
                 development_source=self._development_source, reference_date=self._reference_date,
                 session=entry.session, current_time=timestamp, control=control)
             saved = self._saved_for_view(entry, result, directory, timestamp)

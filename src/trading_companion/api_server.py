@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from trading_companion.model import ModelConfigurationError
+from trading_companion.local_env import load_model_environment
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.api_service import DATA_MODES, DataModeDependencyError, ensure_data_mode_dependencies
 
@@ -61,7 +62,7 @@ def main(argv=None) -> int:
                     directory.assert_usable(now.astimezone(timezone(timedelta(hours=8))).date(), development=False)
                     return directory
                 loader(datetime.now(timezone.utc))
-            config = DeepSeekConfig.from_env()
+            config = DeepSeekConfig.from_env(load_model_environment())
             if args.market_context:
                 context_path = Path(args.market_context)
                 context_loader = lambda _: load_market_context(context_path)

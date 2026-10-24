@@ -43,6 +43,9 @@ def response_payload() -> dict:
 
 class ModelLayerTests(unittest.TestCase):
     def setUp(self) -> None:
+        local_file = patch("trading_companion.local_env._read_local_values", return_value={})
+        local_file.start()
+        self.addCleanup(local_file.stop)
         # An accidental network call fails rather than using real credentials.
         env_patch = patch.dict(os.environ, {}, clear=True)
         env_patch.start()

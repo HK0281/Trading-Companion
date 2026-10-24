@@ -40,6 +40,9 @@ def response_payload(*, tool=False):
 
 class ToolSmokeTests(unittest.TestCase):
     def setUp(self):
+        local_file = patch("trading_companion.local_env._read_local_values", return_value={})
+        local_file.start()
+        self.addCleanup(local_file.stop)
         environment = patch.dict(os.environ, {}, clear=True)
         environment.start()
         self.addCleanup(environment.stop)

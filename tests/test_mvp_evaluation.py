@@ -21,6 +21,7 @@ PRIVATE = "private-provider-marker-not-for-report"
 class MvpEvaluationTests(unittest.TestCase):
     def setUp(self):
         for guard in (patch.dict(os.environ, {}, clear=True),
+                      patch("trading_companion.local_env._read_local_values", return_value={}),
                       patch("requests.get", side_effect=AssertionError("No real market request")),
                       patch("requests.post", side_effect=AssertionError("No real model request")),
                       patch("trading_companion.deepseek_model.DeepSeekConfig.from_env",

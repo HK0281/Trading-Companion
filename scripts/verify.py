@@ -53,7 +53,7 @@ def clean_environment():
     """Do not forward provider credentials, proxies or custom Python hooks."""
     environment = {name: os.environ[name] for name in SAFE_ENVIRONMENT if name in os.environ}
     environment.update(PYTHONPATH=os.pathsep.join((str(ROOT / "src"), str(ROOT))),
-                       PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
+                       PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1", PYTHON_DOTENV_DISABLED="1")
     with patch.dict(os.environ, environment, clear=True):
         yield
 

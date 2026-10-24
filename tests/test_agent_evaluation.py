@@ -44,6 +44,7 @@ def final_payload(view):
 class GuardedTests(unittest.TestCase):
     def setUp(self):
         for context in (
+            patch("trading_companion.local_env._read_local_values", return_value={}),
             patch.dict(os.environ, {}, clear=True),
             patch("requests.get", side_effect=AssertionError("No directory or market HTTP")),
             patch("trading_companion.research_tool._build_source", side_effect=AssertionError("No online source")),

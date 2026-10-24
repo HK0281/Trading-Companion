@@ -15,6 +15,7 @@ from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.errors import DataSourceError, DataValidationError
 from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError, ModelConfigurationError
+from trading_companion.local_env import load_model_environment
 from trading_companion.multi_contracts import IndicatorSpec, MultiIndicatorRequest
 from trading_companion.research_intent import INTENT_TOOL_NAME
 from trading_companion.research_tool import TOOL_NAME
@@ -242,7 +243,7 @@ def run_evaluation(*, provider: str = "fake", case: str = "complete") -> dict[st
     try:
         source, directory = _fixtures()
         # Only explicit DeepSeek selection reads environment credentials.
-        config = DeepSeekConfig.from_env() if provider == "deepseek" else None
+        config = DeepSeekConfig.from_env(load_model_environment()) if provider == "deepseek" else None
         stopped = False
         for item in selected:
             if stopped:

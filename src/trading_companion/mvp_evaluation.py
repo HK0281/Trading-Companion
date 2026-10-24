@@ -13,6 +13,7 @@ from trading_companion.development_fixtures import REFERENCE_DATE, load_developm
 from trading_companion.errors import DataSourceError, DataValidationError
 from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError, ModelConfigurationError
+from trading_companion.local_env import load_model_environment
 from trading_companion.mvp_evaluation_cases import SCENARIOS
 from trading_companion.research_followup import FOLLOWUP_TOOL_NAME
 from trading_companion.research_intent import INTENT_TOOL_NAME
@@ -192,7 +193,7 @@ def run_mvp_evaluation(*, provider="fake", case="single_sma", repeat=1, model_ca
         source, directory = load_development_fixtures()
         if provider == "deepseek":
             from trading_companion.deepseek_model import DeepSeekConfig
-            config = DeepSeekConfig.from_env()
+            config = DeepSeekConfig.from_env(load_model_environment())
     except (DataSourceError, DataValidationError, OSError):
         report.update(status="invalid_request", code="fixture_unavailable")
     except ModelConfigurationError:

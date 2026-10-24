@@ -8,6 +8,7 @@ from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
+from trading_companion.local_env import load_model_environment
 from trading_companion.research_tool import (
     RESEARCH_TOOL_DEFINITION, TOOL_NAME, ResearchToolExecutor, ToolExecutionError,
 )
@@ -89,7 +90,8 @@ def run_smoke_test(*, provider: str = "fake") -> dict[str, object]:
     }
     try:
         model: ToolCapableModel
-        model = _fake_model() if provider == "fake" else DeepSeekToolModel(DeepSeekConfig.from_env())
+        model = _fake_model() if provider == "fake" else DeepSeekToolModel(
+            DeepSeekConfig.from_env(load_model_environment()))
         messages = _messages()
         tools = (RESEARCH_TOOL_DEFINITION,)
 

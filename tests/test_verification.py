@@ -84,6 +84,7 @@ class OfflineBoundaryTests(unittest.TestCase):
                     self.assertNotIn(name, os.environ)
                 self.assertEqual(os.environ["PYTHONPATH"], os.pathsep.join((str(verify.ROOT / "src"), str(verify.ROOT))))
                 self.assertEqual(os.environ["PYTHONUTF8"], "1")
+                self.assertEqual(os.environ["PYTHON_DOTENV_DISABLED"], "1")
             self.assertEqual(os.environ["CUSTOM_SECRET"], "artificial-only")
 
 

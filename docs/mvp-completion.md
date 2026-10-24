@@ -44,6 +44,8 @@ Web / 终端
 
 ## 4. 如何运行
 
+真实 DeepSeek 模式现在支持源码项目根目录 `.env`：填写 `DEEPSEEK_API_KEY` 与 `DEEPSEEK_MODEL` 后启动，不再需要每次终端输入；终端环境变量仍优先。见[本地配置与启动](local-environment.md)。离线 `--demo` 不读取文件或密钥。
+
 项目根目录中，先完成已有安装与构建，不必激活虚拟环境：
 
 ```powershell

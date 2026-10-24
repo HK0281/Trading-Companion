@@ -292,6 +292,11 @@ class HttpTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def setUp(self):
+        local_file = patch("trading_companion.local_env._read_local_values", return_value={})
+        local_file.start()
+        self.addCleanup(local_file.stop)
+
     def test_fixed_inprocess_demo_completes_without_printing_tokens(self):
         from trading_companion.api_demo import main
         with redirect_stdout(StringIO()) as output, patch.dict(os.environ, {}, clear=True), patch(

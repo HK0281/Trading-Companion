@@ -294,9 +294,18 @@ To prepare a future DeepSeek connectivity test, install the optional dependency 
 .\.venv\Scripts\python.exe -m pip install -e ".[model]"
 ```
 
-`requests` is already included by `.[data]`; no OpenAI SDK or agent framework is required for this small HTTP adapter. Configure `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` in your local environment. Use a model identifier available to your account; none is guessed by the application. Do not paste credentials into chat or commit them. `.env` files are not automatically loaded.
+The model extra installs `requests` and `python-dotenv`; no OpenAI SDK or agent framework is required for this small HTTP adapter. Configure `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` either in the terminal environment or in the source project's root `.env`. Use a model identifier available to your account; none is guessed by the application. Do not paste credentials into chat or commit them.
 
-Create an API key in the [DeepSeek API platform](https://platform.deepseek.com/). The [official getting-started guide](https://api-docs.deepseek.com/zh-cn/) currently lists `deepseek-flash` (checked on 2026-10-13); use a model supported by your account. Set the values in the same PowerShell terminal that will run Python:
+For local development, copy `.env.example` to `.env` if it does not already exist, and fill in your own key in your editor:
+
+```dotenv
+DEEPSEEK_API_KEY=your_actual_api_key
+DEEPSEEK_MODEL=deepseek-flash
+```
+
+Only explicitly selected DeepSeek startup paths read that fixed file. Existing terminal variables take precedence, including empty values; the loader does not modify the process environment, expand `${...}`, load unrelated settings or search parent directories. Demo/fake/help paths never read it. `.env` is Git-ignored plaintext, not encrypted storage; `.env.example` contains no credentials. Restart the server after editing. `PYTHON_DOTENV_DISABLED=1` disables file loading, including in offline verification. See [local configuration and startup](docs/local-environment.md).
+
+Create an API key in the [DeepSeek API platform](https://platform.deepseek.com/). The [official getting-started guide](https://api-docs.deepseek.com/zh-cn/) listed `deepseek-flash` when checked on 2026-10-13; use a model supported by your account. Alternatively, keep configuration temporary by setting the values in the same PowerShell terminal that will run Python:
 
 ```powershell
 $env:PYTHONPATH='src'
@@ -315,7 +324,7 @@ Paste the key only into the masked prompt, not as part of a shell command. This 
 .\.venv\Scripts\python.exe -m trading_companion.model_cli "Reply with OK." --provider deepseek
 ```
 
-Successful output has `status: "ok"`, `provider: "deepseek"`, `is_mock: false`, and a completed `text` answer. This verifies one text request, not trading analysis or tool execution. After testing, remove the key from the terminal environment with `Remove-Item Env:DEEPSEEK_API_KEY`; closing the terminal also ends this session configuration.
+Successful output has `status: "ok"`, `provider: "deepseek"`, `is_mock: false`, and a completed `text` answer. This verifies one text request, not trading analysis or tool execution. Remove a temporary terminal key with `Remove-Item Env:DEEPSEEK_API_KEY`; closing the terminal also ends that session configuration. This does not erase `.env`: if a key is saved there, subsequent explicit DeepSeek startups can still read it.
 
 - The endpoint is fixed to `https://api.deepseek.com/chat/completions`. There is no custom URL from a prompt, no redirect, no automatic retry, and no provider fallback.
 - The adapter implements only non-streaming text through a Chat Completions-compatible payload. Provider/model compatibility remains subject to a live test; OpenAI API examples do not establish DeepSeek account availability.
@@ -693,6 +702,7 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `multi_contracts.py` / `multi_analysis.py`: validated multi-indicator requests, field states, initialization metadata, deterministic relations, and evidence.
 - `__main__.py`: command-line input and output.
 - `model.py` / `deepseek_model.py`: text model contracts, offline fake, and DeepSeek adapter.
+- `local_env.py`: startup-only local `.env` loading; terminal settings take precedence without global environment mutation.
 - `model_cli.py`: explicit offline/live model-layer demonstration.
 - `tool_model.py` / `tool_model_demo.py`: tool-message contracts, scripted fake, and an offline fixed-result round trip.
 - `deepseek_tool_model.py`: DeepSeek function-tool message conversion and bounded response parsing; no tool execution.

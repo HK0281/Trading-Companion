@@ -44,6 +44,9 @@ def scripted_model(source):
 
 class SourceSelectionTests(unittest.TestCase):
     def setUp(self):
+        local_file = patch("trading_companion.local_env._read_local_values", return_value={})
+        local_file.start()
+        self.addCleanup(local_file.stop)
         for guard in (patch("requests.get", side_effect=AssertionError("No network")),
                       patch("requests.post", side_effect=AssertionError("No paid provider")),
                       patch("trading_companion.deepseek_model.DeepSeekConfig.from_env", side_effect=AssertionError("No credentials"))):

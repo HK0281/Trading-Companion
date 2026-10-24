@@ -15,6 +15,7 @@ from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.development_fixtures import FIXTURES, REFERENCE_DATE, ROOT, load_development_fixtures
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.model import ModelCallError, ModelConfigurationError
+from trading_companion.local_env import load_model_environment
 from trading_companion.research_report import indicator_label
 from trading_companion.research_session import ResearchSession
 from trading_companion.security_directory import SecurityDirectory, load_security_directory
@@ -266,12 +267,12 @@ def main(argv: list[str] | None = None) -> int:
                 return question
 
             return run_conversation(model=build_demo_model(), data=data, provider="fake", read_line=read_demo)
-        model = DeepSeekToolModel(DeepSeekConfig.from_env())
+        model = DeepSeekToolModel(DeepSeekConfig.from_env(load_model_environment()))
     except DataModeDependencyError:
         print("[data_dependency_missing] AKShare可选依赖未安装；先运行 python -m pip install -e '.[data]'。未读取模型配置或查询行情，不自动切换来源。", file=sys.stderr)
         return 2
     except ModelConfigurationError:
-        print("[model_configuration_error] 模型配置缺失或无效；检查当前终端的模型名和密钥，不要发送密钥。", file=sys.stderr)
+        print("[model_configuration_error] 模型配置缺失或无效；检查项目根目录.env或当前终端的模型名和密钥，不要发送密钥。", file=sys.stderr)
         return 2
     except (DataSourceError, DataValidationError, InvalidRequestError):
         print("[directory_unusable] 本地目录或人工夹具不可用；未读取模型配置或发起网络请求。", file=sys.stderr)

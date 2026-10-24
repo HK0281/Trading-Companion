@@ -2,6 +2,7 @@ import argparse
 import json
 
 from trading_companion.deepseek_model import DeepSeekConfig, DeepSeekTextModel
+from trading_companion.local_env import load_model_environment
 from trading_companion.model import (
     ChatMessage,
     FakeTextModel,
@@ -20,7 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         model: TextModel
-        model = FakeTextModel() if args.provider == "fake" else DeepSeekTextModel(DeepSeekConfig.from_env())
+        model = FakeTextModel() if args.provider == "fake" else DeepSeekTextModel(
+            DeepSeekConfig.from_env(load_model_environment()))
         result = model.complete([
             ChatMessage("system", "This is a connectivity test, not market analysis. Do not claim to fetch data or execute actions."),
             ChatMessage("user", args.prompt),

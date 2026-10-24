@@ -63,6 +63,8 @@ class FollowupAnswer:
     historical: bool = False
     relation_count: int = 0
     relations_truncated: bool = False
+    definition_topics: tuple[str, ...] = ()
+    relation_texts: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {"version": "saved-research-answer-v1", "origin": "application",
@@ -156,6 +158,7 @@ def render_saved_answer(snapshot: SavedResearch, *, action="overview", mentions=
         lines = [title + "。", f"原研究：{snapshot.security.name}（{request.instrument_id}），"
                  f"{request.start_date} 至 {request.as_of_date}；实际最新交易日：{result.latest_trade_date}。",
                  f"结果保存于：{snapshot.saved_at.isoformat()}；查看不会延长有效期。"]
+        topics = ()
         if action == "overview":
             lines.append(report.text)
             if result.synthesis_allowed:
@@ -184,7 +187,7 @@ def render_saved_answer(snapshot: SavedResearch, *, action="overview", mentions=
         lines.append("不据此解释新闻原因、预测涨跌或给出交易目标；本轮没有查询行情。")
         return FollowupAnswer("accepted", "saved_result_shown" if action == "overview" else "saved_question_answered",
             "\n".join(lines), request.request_id, action, tuple(spec.indicator_id for spec in selected),
-            historical, len(relations), truncated)
+            historical, len(relations), truncated, definition_topics=topics, relation_texts=relations)
     except InputIssue as issue:
         return FollowupAnswer(issue.status, issue.code, str(issue), request.request_id, action, historical=historical)
 

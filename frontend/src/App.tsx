@@ -1,78 +1,75 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { createApi, type PublicTurn } from "./api";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from "react";
+import { createApi } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { MarketContext } from "./MarketContext";
+import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
+import { parsePresentation, sourceLabel } from "./presentation";
 
 const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
 const samples = [
-  { label: "01 初始研究", question: INITIAL },
-  { label: "02 追问 RSI", question: "这里的RSI为什么偏高" },
-  { label: "指标知识", question: "解释一下MACD里的DIF和DEA" },
-  { label: "03 修改指标", question: "把SMA3改成5日，其他不变" },
+  { label: "个股研究", question: INITIAL, description: "从价格、均线和动量开始", icon: "chart" },
+  { label: "理解指标", question: "解释一下MACD里的DIF和DEA", description: "弄懂指标背后的计算逻辑", icon: "book" },
+  { label: "调整条件", question: "把SMA3改成5日，其他不变", description: "沿用当前研究，修改指标参数", icon: "sliders" },
 ];
-const units: Record<string, string> = { "CNY/share": "元/股", shares: "股", multiple: "倍", index_points: "点" };
-const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要澄清",
+const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要补充",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
-const missing: Record<string, string> = { insufficient_history: "历史不足", undefined: "未定义", calculation_error: "计算失败" };
-const sourceLabel = (source: unknown) => source === "synthetic" || source === "csv" ? "人工行情 · 非真实"
-  : source === "tencent" ? "腾讯历史日线" : source === "akshare_eastmoney" ? "AKShare / 东方财富历史日线" : "未提供";
 
-function Facts({ turn }: { turn: PublicTurn }) {
-  const fields = turn.report?.fields ?? [];
-  if (!fields.length) return null;
-  return <details className="facts">
-    <summary>指标字段与证据 <span>{fields.length} 个字段</span></summary>
-    <div className="table-scroll"><table>
-      <thead><tr><th>字段 / 交易日</th><th>数值</th><th>可用性</th><th>证据编号</th></tr></thead>
-      <tbody>{fields.map((field) => <tr key={`${field.indicator_id}-${field.field}`}>
-        <td>{field.label}<small>{field.trade_date}</small></td>
-        <td className="number">{field.value === null ? "—" : new Intl.NumberFormat("zh-CN", { maximumSignificantDigits: 8 }).format(field.value)}
-          {field.value !== null && <small>{units[field.unit] ?? field.unit}</small>}</td>
-        <td>{field.status === "available" ? "可用" : missing[field.status] ?? "不可用"}
-          {field.missing_bars > 0 && <small>还缺 {field.missing_bars} 条</small>}</td>
-        <td><code>{field.fact_id ?? "无可用证据"}</code></td>
-      </tr>)}</tbody>
-    </table></div>
-  </details>;
+function Icon({ name, className = "" }: { name: string; className?: string }) {
+  const paths: Record<string, string> = {
+    chart: "M4 19h16M6 15l4-5 4 2 5-7M15 5h4v4", plus: "M12 5v14M5 12h14",
+    chat: "M5 4h14a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1Z",
+    book: "M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v14",
+    sliders: "M5 4v7m0 4v5M12 4v2m0 4v10M19 4v10m0 4v2M2 11h6m1-5h6m1 8h6",
+    arrow: "M12 19V5m-6 6 6-6 6 6", menu: "M4 6h16M4 12h16M4 18h16",
+    clock: "M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+  };
+  return <svg className={`icon ${className}`} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.chart} /></svg>;
 }
 
-function Answer({ entry, choose, canChoose }: { entry: Entry; choose: (text: string) => void; canChoose: boolean }) {
-  const response = entry.response;
-  const turn = response?.result;
-  return <article className={`exchange ${entry.history ? "historical" : ""}`}>
-    <div className="question"><span className="eyebrow">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
+function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement> }) {
+  const response = entry.response, turn = response?.result;
+  const structured = turn && parsePresentation(turn);
+  return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
+    <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
     <div className="answer">
-      <div className="answer-heading"><span className="assistant-mark" aria-hidden="true">TC</span>
-        <h3>{entry.history ? "已保存的研究 · 非新分析" : "研究助手"}</h3>
-        {turn && <span className={`status-tag ${turn.status === "completed" ? "positive" : ""}`}>
-          {statuses[turn.status] ?? "处理结果"}</span>}
+      <div className="answer-heading"><span className="assistant-mark" aria-hidden="true"><Icon name="chart" /></span>
+        <h3>{entry.history ? "已保存的研究 · 非新分析" : "Trading Companion"}</h3>
+        {turn && <span className={`status-tag ${turn.status === "completed" ? "positive" : ""}`}>{statuses[turn.status] ?? "处理结果"}</span>}
         {response?.replayed && <span className="status-tag">原请求重放</span>}
       </div>
-      {turn && <>
+      <div className="answer-body">{turn && <>
         {turn.parameters && <div className="scope"><strong>{turn.parameters.instrument_id}</strong>
-          <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span><span>已确认范围</span>
-          {turn.parameters.source !== undefined && <span>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
-        <div className="answer-text">{turn.answer ?? turn.message}</div>
+          <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
+          {turn.applied_defaults.length > 0 && <span>已采用 {turn.applied_defaults.length} 项默认设置 · 见本轮详情</span>}
+          {turn.parameters.source !== undefined && <span className={turn.parameters.source === "csv" ? "synthetic-label" : ""}>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
+        {turn.status !== "completed" && structured && <p className="data-note" role="note">{turn.message}</p>}
+        <ResponseContent turn={turn} />
         {turn.status === "needs_clarification" && !entry.history && !!turn.candidates.length && <div className="candidates" aria-label="候选股票">
-          <p>请选择要研究的股票。点击仅填入输入框，确认后再发送。</p>
+          <p>选择股票填入输入框，再发送确认。</p>
           {turn.candidates.map((candidate) => <button className="candidate" type="button" disabled={!canChoose}
             key={candidate.instrument_id} onClick={() => choose(candidate.instrument_id)}>
-            {candidate.name} <span>{candidate.instrument_id}</span>
-          </button>)}
+            {candidate.name} <span>{candidate.instrument_id}</span></button>)}
         </div>}
-        {!!turn.applied_defaults.length && <div className="defaults"><strong>本轮默认口径</strong>
-          <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-        <Facts turn={turn} />
-        <ResearchChart value={turn.chart} parameters={turn.parameters}
-          reportRequestId={turn.report?.request_id} historical={entry.history} />
-        <MarketContext value={turn.market_context} parameters={turn.parameters}
-          reportRequestId={turn.report?.request_id} historical={entry.history} />
-        <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次
-          {response?.replayed && " · 本次未重做"}</span></div>
+        <div className="answer-attachments">
+          <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} />
+          <EvidenceTable turn={turn} />
+          {turn.market_context != null && <details className="disclosure"><summary>证券状态与交易日历 <span>查看背景</span></summary>
+            <MarketContext value={turn.market_context} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} /></details>}
+          {structured && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
+            <ReadableText text={turn.answer ?? turn.message} /></details>}
+          <details className="disclosure diagnostics"><summary>本轮详情 <span>参数与执行记录</span></summary>
+            {!!turn.applied_defaults.length && <div className="defaults"><strong>本轮默认口径</strong>
+              <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+            <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次
+              {response?.replayed && " · 本次未重做"}</span></div>
+          </details>
+        </div>
       </>}
       {entry.error && <p className="error-text" role="alert">{entry.error}</p>}
-      {!turn && !entry.error && <p className="waiting">正在处理问题，请稍候…</p>}
+      {!turn && !entry.error && <div className="waiting" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>正在整理数据与指标…</div>}
+      </div>
     </div>
   </article>;
 }
@@ -81,12 +78,13 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const [controller] = useState(() => supplied ?? new ResearchController(createApi()));
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
   const [question, setQuestion] = useState("");
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<"reset" | "end" | null>(null);
-  const textarea = useRef<HTMLTextAreaElement>(null);
-  const latest = useRef<HTMLDivElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null), latest = useRef<HTMLElement>(null);
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const followBottom = useRef(true);
   const { health, session, loading, phase } = state;
-  const locked = loading || phase !== "idle";
-  const paid = health?.provider === "deepseek";
+  const locked = loading || phase !== "idle", paid = health?.provider === "deepseek";
   const consented = !paid || state.consent;
   const exhausted = !!session && session.view.messages_used >= session.limit;
   const canSend = !!session && !locked && consented && !exhausted && session.view.state !== "busy";
@@ -95,14 +93,26 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   useEffect(() => { void controller.load(); }, [controller]);
   useEffect(() => { if (session) textarea.current?.focus(); }, [session?.shortId]);
   useEffect(() => {
-    if (state.entries.length) latest.current?.scrollIntoView?.({ block: "nearest", behavior: "auto" });
-  }, [state.entries.length]);
+    const container = scrollArea.current, message = latest.current;
+    if (followBottom.current && container && message) {
+      // Scroll the message pane only; scrollIntoView would also move the document on mobile.
+      const top = container.scrollTop + message.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
+      container.scrollTo?.({ top: Math.max(0, top), behavior: "auto" });
+    }
+  }, [state.entries]);
+  useEffect(() => {
+    if (textarea.current) {
+      textarea.current.style.height = "auto";
+      textarea.current.style.height = `${Math.min(textarea.current.scrollHeight || 54, 160)}px`;
+    }
+  }, [question]);
 
-  const choose = (value: string) => { setQuestion(value); textarea.current?.focus(); };
+  const choose = (value: string) => { setQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend || !characters || characters > 2000) return;
     const original = question;
+    followBottom.current = true;
     setQuestion("");
     void controller.send(original);
   };
@@ -113,92 +123,113 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     else if (action === "end") { setQuestion(""); void controller.end(); }
   };
 
-  return <div className="workspace" id="workspace">
-    <aside className="sidebar">
-      <a href="#workspace" className="brand" aria-label="Trading Companion 页首"><span className="brand-icon" aria-hidden="true">↗</span>
-        <span>Trading<br /><strong>Companion</strong></span></a>
-      <div className="sidebar-section"><span className="eyebrow">WORKSPACE / 01</span><h1>A 股研究工作台</h1>
-        <p className="muted">把问题交给助手，<br />把交易决定留给自己。</p></div>
-      <section className="mode-panel" aria-label="服务模式">
-        <div className="mode-top"><span className={`connection-dot ${health ? "connected" : ""}`} />
-          <strong>{health ? "本机服务已连接" : loading ? "正在连接" : "服务未连接"}</strong></div>
-        <dl><div><dt>模型</dt><dd>{health?.provider === "fake" ? "Fake · 固定脚本" : paid ? "DeepSeek · 可能计费" : "—"}</dd></div>
-          <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div>
-          <div><dt>交易权限</dt><dd>无 · 仅研究</dd></div></dl>
-        {health && <p className="muted">来源由服务启动固定；失败不自动切换。更换来源需要重启服务，不能通过对话切换。</p>}
-        {!health && <button type="button" disabled={loading} onClick={() => void controller.load()}>重新连接</button>}
-      </section>
-      {paid && <label className="consent"><input type="checkbox" checked={state.consent}
-        onChange={(event) => controller.setConsent(event.target.checked)} />
-        <span>我同意将问题、参数和证据发送至 DeepSeek，并了解可能产生费用。密钥只在服务端配置。
-          {health?.data_mode !== "synthetic" && ` 股票与日期将用于查询${sourceLabel(health?.data_mode)}，不自动换源。`}</span></label>}
+  return <div className={`workspace ${navigationOpen ? "navigation-open" : ""}`} id="workspace"
+    onKeyDown={(event) => { if (event.key === "Escape") setNavigationOpen(false); }}>
+    {navigationOpen && <button className="sidebar-scrim" aria-label="关闭导航" onClick={() => setNavigationOpen(false)} />}
+    <aside className="sidebar" id="navigation" aria-label="工作台导航">
+      <a href="#workspace" className="brand" aria-label="Trading Companion 页首"><span className="brand-icon"><Icon name="chart" /></span>
+        <span>Trading Companion<small>你的 A 股研究助手</small></span></a>
       {!session ? <button type="button" className="primary start" disabled={!health || loading || !consented}
-        onClick={() => void controller.start()}>开始会话 <span aria-hidden="true">＋</span></button> : <>
-        <section className="session-panel" aria-label="会话额度"><div className="session-title"><strong>当前会话</strong><code>{session.shortId}</code></div>
-          <div className="quota"><span>已接纳问题</span><strong>{session.view.messages_used} / {session.limit}</strong></div>
-          <div className="quota"><span>模型方法转发</span><strong>{session.view.model_calls_forwarded} / {session.modelLimit}</strong></div>
-          <p className="muted">额度以最近一次状态查询为准。创建后 30 分钟失效，重置不退额度。</p>
-        </section>
-        <div className="session-actions">
-          <button type="button" disabled={locked} onClick={() => void controller.history()}>查看上次结果 <span>0 模型调用</span></button>
-          <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查会话状态</button>
-          <button type="button" disabled={locked} onClick={() => setConfirmation("reset")}>清空研究条件</button>
-          <button type="button" disabled={locked} onClick={() => setConfirmation("end")}>结束会话</button>
-        </div>
-      </>}
-      {confirmation && <div className="confirm-panel" role="group" aria-label="确认会话操作">
-        <p>{confirmation === "reset" ? "清空研究条件和结果？额度不会返还，也不会重启离线脚本。" : "结束并删除服务端会话？当前页面记录也会清空。"}</p>
-        <button type="button" disabled={locked} onClick={confirmAction}>确认{confirmation === "reset" ? "清空" : "结束"}</button>
-        <button type="button" onClick={() => setConfirmation(null)}>返回</button>
-      </div>}
-      <div className="sidebar-footer"><a href="/docs" target="_blank" rel="noreferrer">接口文档 ↗</a>
-        <p>会话凭据与页面记录仅在内存中。刷新会丢失访问凭据，旧会话等待失效。</p></div>
+        onClick={() => { setNavigationOpen(false); void controller.start(); }}><Icon name="plus" />开始会话</button>
+        : <button type="button" className="new-research" disabled={locked} onClick={() => setConfirmation("reset")}><Icon name="plus" />清空研究条件</button>}
+      <div className="nav-item active"><Icon name="chat" /><span>研究对话</span><span className="nav-badge">A 股</span></div>
+      <section className="conversation-index" aria-label="本次对话记录"><span className="sidebar-caption">本次对话</span>
+        {!state.entries.length ? <p className="empty-index">你的研究会显示在这里</p> : <nav>{state.entries.map((entry, index) =>
+          <a key={entry.id} href={`#message-${entry.id}`} onClick={() => { followBottom.current = false; setNavigationOpen(false); }}>
+            <span>{String(index + 1).padStart(2, "0")}</span>{entry.question}</a>)}</nav>}
+      </section>
+      <div className="sidebar-bottom">
+        {session && <>
+          <button className="history-button" type="button" disabled={locked} onClick={() => { setNavigationOpen(false); followBottom.current = true; void controller.history(); }}>
+            <Icon name="clock" />查看上次结果</button>
+          <section className="session-panel" aria-label="会话额度"><div className="quota"><span>问题</span><strong>{session.view.messages_used} / {session.limit}</strong></div>
+            <div className="quota"><span>模型调用</span><strong>{session.view.model_calls_forwarded} / {session.modelLimit}</strong></div></section>
+        </>}
+        <details className="settings"><summary><span className={`connection-dot ${health ? "connected" : ""}`} />
+          {health ? "本机服务已连接" : loading ? "正在连接" : "服务未连接"}<span className="settings-chevron">⌄</span></summary>
+          <div className="settings-content"><section aria-label="服务模式">
+            <dl><div><dt>模型</dt><dd>{health?.provider === "fake" ? "Fake · 固定脚本" : paid ? "DeepSeek" : "—"}</dd></div>
+              <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div></dl>
+            <p>来源由服务启动固定；失败不自动切换。不能通过对话切换。</p>
+            {!health && <button type="button" disabled={loading} onClick={() => void controller.load()}>重新连接</button>}
+          </section>
+          {session && <div className="session-actions"><p>会话 {session.shortId} · 创建后 30 分钟到期。刷新会丢失当前记录；重置不退额度。</p>
+            <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查会话状态</button>
+            <button type="button" disabled={locked} onClick={() => setConfirmation("end")}>结束会话</button></div>}
+          <details className="technical-status"><summary>连接与诊断</summary><p>{state.notice}</p><a href="/docs" target="_blank" rel="noreferrer">接口文档 ↗</a></details>
+        </div></details>
+        {paid && <label className="consent"><input type="checkbox" checked={state.consent} onChange={(event) => controller.setConsent(event.target.checked)} />
+          <span>允许向 DeepSeek 发送问题与研究数据（可能计费）
+            {health?.data_mode !== "synthetic" && <small>股票与日期将用于查询{sourceLabel(health?.data_mode)}。</small>}</span></label>}
+        {confirmation && <div className="confirm-panel" role="group" aria-label="确认会话操作">
+          <p>{confirmation === "reset" ? "清空当前对话与研究条件？已使用额度不会返还。" : "结束会话并清空当前页面记录？"}</p>
+          <button type="button" disabled={locked} onClick={confirmAction}>确认{confirmation === "reset" ? "清空" : "结束"}</button>
+          <button type="button" onClick={() => setConfirmation(null)}>返回</button>
+        </div>}
+      </div>
     </aside>
 
     <main className="main">
-      <header className="topbar"><div><span className="eyebrow">RESEARCH, NOT EXECUTION</span><h2>先看证据，再做判断。</h2></div>
-        <span className="readonly-badge"><span aria-hidden="true">◈</span> 只读研究</span></header>
-      {health?.provider === "fake" && <section className="demo-banner" aria-label="演示说明"><strong>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"}</strong>
-        <p>{health.data_mode === "synthetic" ? "人工数据固定在 2026-09-21 至 09-25，不代表真实行情。按下方 01 → 02 → 03 顺序尝试；指标知识可穿插。任意自由提问可能超出脚本。"
-          : "模型为固定脚本，不代表真实模型能力；行情来源仍以服务模式为准，固定模型不等于人工或离线行情。"}</p></section>}
-      <div className="live-notice" role="status" aria-live="polite">{state.notice}</div>
+      <header className="topbar"><div className="topbar-title"><button className="mobile-menu" aria-label="展开导航" aria-expanded={navigationOpen}
+        aria-controls="navigation" onClick={() => setNavigationOpen(!navigationOpen)}><Icon name="menu" /></button>
+        <h1>研究对话</h1><span className="header-divider" /><span className="market-badge">A 股</span></div>
+        <div className="header-status"><span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}>
+          {health?.data_mode === "synthetic" ? "人工行情 · 非真实" : health ? sourceLabel(health.data_mode) : "连接中"}</span>
+          <span className="model-pill">{paid ? "DeepSeek" : health ? "演示模式" : "—"}</span></div></header>
 
-      <section className="conversation" aria-label="研究对话" aria-busy={phase === "working"}>
-        {!state.entries.length ? <div className="empty-state"><div className="empty-mark" aria-hidden="true">↗</div>
-          <span className="eyebrow">YOUR RESEARCH STARTS HERE</span><h2>从一个具体问题开始</h2>
-          <p>写下股票名称、日期和想看的指标。信息不明确时，助手会先澄清；指标计算和事实检查由程序完成。</p>
-          <div className="capabilities"><span>单股票 · 多指标</span><span>证据可查</span><span>不下单</span></div>
-          <div className="example-box"><span className="eyebrow">示例问题</span><p>{INITIAL}</p>
-            <button type="button" disabled={locked} onClick={() => choose(INITIAL)}>填入这个问题 ↗</button></div>
-        </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose}
-          canChoose={canSend && index === state.entries.length - 1} />)}
-        <div ref={latest} />
-      </section>
+      <div className="conversation-scroll" ref={scrollArea} onScroll={() => {
+        const element = scrollArea.current;
+        if (element) followBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+      }}>
+        <section className={`conversation ${!state.entries.length ? "is-empty" : ""}`} aria-label="研究对话" aria-busy={phase === "working"}>
+          {!state.entries.length ? <div className="empty-state"><div className="empty-mark" aria-hidden="true"><Icon name="chart" /></div>
+            <span className="eyebrow">TRADING COMPANION</span><h2>把行情，聊清楚。</h2>
+            <p>研究一只股票，读懂一组指标。<br />从你的问题开始。</p>
+            <div className="starter-grid">{samples.map((sample) => <button type="button" key={sample.label} className="starter-card"
+              disabled={locked} onClick={() => choose(sample.question)}><Icon name={sample.icon} /><strong>{sample.label}</strong>
+              <span>{sample.description}</span><span className="starter-arrow" aria-hidden="true">↗</span></button>)}</div>
+            {health?.provider === "fake" && <details className="demo-guide" aria-label="演示说明"><summary>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"} · 查看使用方式</summary>
+              <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
+                : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
+            {!session && <div className="start-hint"><p>{paid && !consented ? "请先在导航栏允许模型调用，再开始会话。" : "点击「开始会话」，开启你的研究。"}</p>
+              <button className="primary mobile-start" type="button" aria-label="开始研究会话" disabled={!health || loading}
+                onClick={() => { if (!consented) setNavigationOpen(true); else void controller.start(); }}>开始会话 ↗</button></div>}
+          </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose}
+            elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && index === state.entries.length - 1} />)}
+        </section>
+      </div>
 
-      {state.pendingId && <div className="request-controls" aria-label="当前请求控制">
-        <span>{phase === "uncertain" ? "响应未确认" : "处理中"} <code>{state.pendingId.slice(0, 8)}</code></span>
-        {phase === "uncertain" && <button type="button" disabled={loading || !consented} onClick={() => void controller.retry()}>重试原请求</button>}
-        {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查原请求状态</button>}
-        <button type="button" disabled={state.cancelPending} onClick={() => void controller.cancel()}>
-          {state.cancelPending ? "发送取消信号中…" : "请求取消"}</button>
-      </div>}
-      <section className="composer-area" aria-label="输入研究问题">
-        <div className="samples">{samples.map((sample) => <button type="button" key={sample.label}
-          disabled={locked} onClick={() => choose(sample.question)}>{sample.label}</button>)}</div>
-        <form className="composer" onSubmit={submit}>
+      <div className="composer-dock"><div className="composer-container">
+        {state.pendingId && <div className="request-controls" aria-label="当前请求控制">
+          <span>{phase === "uncertain" ? "响应未确认" : "正在研究"}</span>
+          {phase === "uncertain" && <button type="button" disabled={loading || !consented} onClick={() => void controller.retry()}>重试原请求</button>}
+          {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查原请求状态</button>}
+          <button type="button" disabled={state.cancelPending} onClick={() => void controller.cancel()}>{state.cancelPending ? "正在请求取消…" : "请求取消"}</button>
+        </div>}
+        <div className="sr-only" role="status" aria-live="polite">{state.notice}</div>
+        {state.noticeLevel === "error" || phase === "uncertain"
+          ? <p className="connection-notice" role="alert">{state.notice}</p> : null}
+        {session && !!state.entries.length && !locked && <div className="followup-chips">
+          <button type="button" onClick={() => choose("这里的RSI为什么偏高")}>追问 RSI</button>
+          <button type="button" onClick={() => choose("解释一下MACD里的DIF和DEA")}>DIF 与 DEA 是什么？</button>
+          <button type="button" onClick={() => choose("把SMA3改成5日，其他不变")}>调整指标</button>
+        </div>}
+        <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
-          <textarea ref={textarea} id="question" rows={3} maxLength={4000} value={question} disabled={!session || locked}
-            placeholder={session ? "例如：分析平安银行，指定日期区间和指标…" : "请先在左侧开始会话"}
+          <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={!session || locked}
+            placeholder={session ? "输入股票名称、日期，或继续追问…" : "开始会话后，在这里输入你的问题…"}
             onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) submit(event);
+              if (event.key === "Escape") setNavigationOpen(false);
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) submit(event);
             }} />
-          <div className="composer-bottom"><span className={characters > 2000 ? "error-text" : "muted"}>
-            {characters} / 2000 · Ctrl + Enter 发送</span><button className="primary" type="submit"
-              disabled={!canSend || !characters || characters > 2000}>{phase === "working" ? "正在研究…" : "发送问题"} <span aria-hidden="true">↑</span></button></div>
+          <div className="composer-bottom"><div><span className="composer-context"><Icon name="chart" />A 股研究</span>
+            <span className={characters > 2000 ? "error-text" : "character-count"}>{characters} / 2000</span></div>
+            <button className="primary send-button" type="submit" aria-label={phase === "working" ? "正在研究" : "发送问题"}
+              disabled={!canSend || !characters || characters > 2000}><Icon name="arrow" /></button></div>
         </form>
+        <div className="composer-hint"><span>Enter 发送 · Shift + Enter 换行</span><span>会话仅保留在当前页面</span></div>
         {exhausted && <p className="error-text">本会话问题额度已用完；仍可查看历史，结束后可新建会话。</p>}
-        <p className="disclaimer">仅用于研究与知识学习，不承诺走势或收益。无下单权限，交易由你自行完成。图表只展示研究使用的历史日线；当前无新闻或选股。</p>
-      </section>
+      </div></div>
     </main>
   </div>;
 }

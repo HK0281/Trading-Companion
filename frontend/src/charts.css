@@ -5,6 +5,8 @@
 .chart-provenance strong { color: #34533f; }
 .chart-provenance p { margin-top: 5px; }
 .chart-provenance small { display: block; margin-top: 7px; }
+.chart-source-details { margin-top: 7px; }
+.chart-source-details > summary { cursor: pointer; font-size: 10px; }
 .chart-synthetic { background: #fcf6e9; border-color: #e9dfc7; }
 .chart-synthetic strong { color: #82632e; }
 .chart-workspace { padding: 14px; min-width: 0; }

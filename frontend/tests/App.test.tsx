@@ -10,7 +10,7 @@ async function workspace(paid = false) {
   if (paid) { api.health.mockResolvedValue({ ...health, provider: "deepseek" }); api.create.mockResolvedValue({ ...credentials, provider: "deepseek" }); }
   const controller = new ResearchController(api);
   const rendered = render(<App controller={controller} />);
-  await screen.findByText(/服务已连接。开始会话/);
+  await waitFor(() => expect(controller.snapshot().health).not.toBeNull());
   return { api, controller, ...rendered };
 }
 async function start() {
@@ -25,12 +25,12 @@ function send(question = "分析平安银行") {
 describe("research workspace", () => {
   it("shows read-only synthetic boundaries without creating a session on load", async () => {
     const { api } = await workspace();
-    expect(screen.getByText("人工行情 · 非真实")).toBeInTheDocument();
+    expect(screen.getAllByText("人工行情 · 非真实").length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeDisabled();
     expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
   });
   it("fills examples without automatically sending or creating sessions", async () => {
-    const { api } = await workspace(); fireEvent.click(screen.getByRole("button", { name: "01 初始研究" }));
+    const { api } = await workspace(); fireEvent.click(screen.getByRole("button", { name: /个股研究/ }));
     expect(screen.getByRole("textbox", { name: "研究问题" })).toHaveValue("分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2");
     expect(api.send).not.toHaveBeenCalled(); expect(api.create).not.toHaveBeenCalled();
   });
@@ -75,7 +75,9 @@ describe("research workspace", () => {
   it("integrates request-bound market context without extra calls or changing the answer", async () => {
     const { api } = await workspace(); await start();
     api.send.mockImplementationOnce(async (_session, id) => marketContextReply(id));
-    send(); await screen.findByRole("region", { name: "证券状态与交易日历" });
+    send(); await screen.findByText("research_completed");
+    fireEvent.click(screen.getByText("证券状态与交易日历", { selector: "summary" }));
+    await screen.findByRole("region", { name: "证券状态与交易日历" });
     expect(screen.getByText("人工样例 · 非真实市场事实")).toBeInTheDocument();
     expect(screen.getByText("24 个自然日")).toBeInTheDocument();
     expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
@@ -100,6 +102,7 @@ describe("research workspace", () => {
     api.history.mockImplementationOnce(async () => marketContextReply());
     fireEvent.click(screen.getByRole("button", { name: /查看上次结果/ }));
     await screen.findByText("已保存上下文 · 非新查询");
+    fireEvent.click(screen.getByText("证券状态与交易日历", { selector: "summary" }));
     expect(screen.getByText("展示上次保存的上下文，没有重新查询或刷新证券状态。")).toBeInTheDocument();
     expect(api.history).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
   });

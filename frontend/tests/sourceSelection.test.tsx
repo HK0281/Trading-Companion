@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { ConnectionError, createApi, type Health } from "../src/api";
@@ -46,14 +46,14 @@ async function workspace(data_mode: Health["data_mode"] = "akshare_eastmoney") {
   api.create.mockResolvedValue({ ...credentials, provider: "deepseek", data_mode });
   const controller = new ResearchController(api);
   render(<App controller={controller} />);
-  await screen.findByText(/服务已连接。开始会话/);
+  await waitFor(() => expect(controller.snapshot().health).not.toBeNull());
   return { api, controller };
 }
 
 describe("source-aware workspace", () => {
   it("shows AKShare as the actual source and requires explicit model/data consent", async () => {
     const { api } = await workspace();
-    expect(screen.getByText("AKShare / 东方财富历史日线")).toBeInTheDocument();
+    expect(screen.getAllByText("AKShare / 东方财富历史日线").length).toBeGreaterThan(0);
     expect(screen.getByText(/股票与日期将用于查询AKShare \/ 东方财富历史日线/)).toBeInTheDocument();
     expect(screen.getByText(/来源由服务启动固定；失败不自动切换/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /开始会话/ })).toBeDisabled();
@@ -76,7 +76,7 @@ describe("source-aware workspace", () => {
   });
   it("keeps Tencent and synthetic labels distinct and offers no in-session source selector", async () => {
     const { api } = await workspace("tencent");
-    expect(screen.getByText("腾讯历史日线")).toBeInTheDocument();
+    expect(screen.getAllByText("腾讯历史日线").length).toBeGreaterThan(0);
     expect(screen.getByText(/不能通过对话切换/)).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /来源/ })).not.toBeInTheDocument();
     expect(screen.queryByText("AKShare / 东方财富历史日线")).not.toBeInTheDocument();
@@ -85,8 +85,8 @@ describe("source-aware workspace", () => {
   it("does not label an online source as synthetic merely because its model is a test script", async () => {
     const api = mockApi(); api.health.mockResolvedValue({ ...health, data_mode: "akshare_eastmoney" });
     render(<App controller={new ResearchController(api)} />);
-    await screen.findByText("AKShare / 东方财富历史日线");
-    expect(screen.getByText("固定模型脚本")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("AKShare / 东方财富历史日线").length).toBeGreaterThan(0));
+    expect(screen.getByText(/固定模型脚本 · 查看使用方式/)).toBeInTheDocument();
     expect(screen.queryByText(/人工数据固定在/)).not.toBeInTheDocument();
   });
 });

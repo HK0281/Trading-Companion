@@ -168,6 +168,10 @@ describe("research chart component", () => {
     expect(screen.getByText(/复权：未知/)).toBeInTheDocument();
     expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument(); openChart();
+    expect(screen.getByText("人工样例 · 非真实行情")).toBeVisible();
+    expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).not.toBeVisible();
+    fireEvent.click(screen.getByText("数据口径与采集记录"));
+    expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).toBeVisible();
     expect(screen.getByRole("img", { name: /历史日 K 线/ })).toBeInTheDocument();
     expect(screen.getByText(/红涨 \/ 绿跌 \/ 灰平/)).toBeInTheDocument();
   });

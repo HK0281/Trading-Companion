@@ -98,13 +98,13 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
     <label className="chart-slider" htmlFor={`${id}-date`}>选定交易日：<strong aria-live="polite">{bar.date}</strong>
       <input id={`${id}-date`} type="range" min={offset} max={data.bars.length - 1} step="1" value={selected}
         aria-valuetext={bar.date} onChange={(event) => setSelectedIndex(Number(event.target.value))} />
-      <small>支持键盘方向键逐日查看；数值显示保留7位有效数字，不改变原计算精度。图形不构成预测。</small>
+      <small>可用键盘方向键逐日查看，数值显示保留7位有效数字。</small>
     </label>
     <dl className="chart-ohlcv" aria-label="选定交易日行情">{[["开盘", bar.open], ["最高", bar.high], ["最低", bar.low], ["收盘", bar.close], ["成交量", bar.volume]].map(([name, value]) => <div key={name}>
       <dt>{name}</dt><dd>{format(Number(value))} {name === "成交量" ? "股" : "元/股"}</dd>
     </div>)}</dl>
     {!!data.series.length && <div className="chart-table-scroll"><table className="chart-values">
-      <caption>{bar.date} 指标读数 · 图表点不是独立证据编号</caption>
+      <caption>{bar.date} 指标读数</caption>
       <thead><tr><th>指标 / 字段</th><th>数值</th><th>状态与限制</th></tr></thead>
       <tbody>{data.series.map((series) => <tr key={series.id}><td>{series.indicator_id}<small>{series.label}</small></td>
         <td>{series.values[selected] === null ? "—" : `${format(series.values[selected]!)} ${unitNames[series.unit]}`}</td>
@@ -126,10 +126,13 @@ export function ResearchChart({ value, parameters, reportRequestId, historical =
     <summary>历史 K 线与指标 <span>{data.bars.length} 条日线 · {saved ? "已保存快照，非新分析" : "本轮数据快照"}</span></summary>
     <div className={`chart-provenance ${data.data_authenticity === "synthetic" ? "chart-synthetic" : ""}`}>
       <strong>{data.data_authenticity === "synthetic" ? "人工样例 · 非真实行情" : data.data_authenticity === "unverified_csv" ? "CSV 输入 · 真实性未核验" : "数据提供方报告值 · 未独立核验"}</strong>
-      <p>{saved ? "历史上下文，不是新行情或重新分析。" : "历史日线快照，不是实时行情。"}来源：{data.source === "csv" ? "CSV" : data.source === "tencent" ? "腾讯" : "AKShare / 东方财富"}；复权：{data.price_adjustment === "unknown" ? "未知，不能假定未复权" : "不复权"}。</p>
+      <p>来源：{data.source === "csv" ? "CSV" : data.source === "tencent" ? "腾讯" : "AKShare / 东方财富"}；复权：{data.price_adjustment === "unknown" ? "未知，不能假定未复权" : "不复权"}。</p>
+      <details className="chart-source-details"><summary>数据口径与采集记录</summary>
+      <p>{saved ? "历史上下文，不是新行情或重新分析。" : "历史日线快照，不是实时行情。"}</p>
       <p>请求范围：{data.start_date} — {data.as_of_date}；实际范围：{data.bars[0].date} — {data.bars.at(-1)!.date}。</p>
       <p>获取时间：{data.retrieved_at ?? "未提供"}{data.saved_at && `；保存时间：${data.saved_at}`}。</p>
       <small>图表仅校验请求绑定、字段口径与日线对齐；不等于所有历史点已建立独立证据。研究结论以报告证据为准。</small>
+      </details>
     </div>
     {expanded && <ChartWorkspace data={data} key={`${data.request_id}:${data.context}`} />}
   </details>;

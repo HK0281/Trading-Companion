@@ -20,6 +20,7 @@ export interface WorkspaceState {
   consent: boolean;
   entries: Entry[];
   notice: string;
+  noticeLevel: "info" | "error";
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
@@ -35,7 +36,7 @@ export class ResearchController {
   private running = false;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { health: null, session: null, phase: "idle", loading: false,
-    cancelPending: false, pendingId: null, consent: false, entries: [], notice: "正在检查本机服务…" };
+    cancelPending: false, pendingId: null, consent: false, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
 
   constructor(private readonly api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", "")) {}
@@ -44,7 +45,8 @@ export class ResearchController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
 
   private update(patch: Partial<WorkspaceState>) {
-    this.state = { ...this.state, ...patch };
+    this.state = { ...this.state, ...patch,
+      ...(patch.notice !== undefined ? { noticeLevel: patch.noticeLevel ?? "info" } : {}) };
     this.listeners.forEach((listener) => listener());
   }
   private append(entry: Entry) { this.update({ entries: [...this.state.entries, entry].slice(-40) }); }
@@ -58,7 +60,7 @@ export class ResearchController {
   }
   private failure(error: unknown) {
     if (error instanceof ApiError && [401, 404].includes(error.status)) this.forget();
-    this.update({ notice: explanation(error) });
+    this.update({ notice: explanation(error), noticeLevel: "error" });
   }
   private view(view: SessionView) {
     if (this.state.session) this.update({ session: { ...this.state.session, view } });
@@ -74,7 +76,7 @@ export class ResearchController {
     try {
       const health = await this.api.health();
       this.update({ health, consent: false, notice: "服务已连接。开始会话后再发送问题；此时尚未调用模型。" });
-    } catch (error) { this.update({ health: null, notice: explanation(error) }); }
+    } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
 
@@ -120,19 +122,19 @@ export class ResearchController {
       this.amend(pending.id, { response });
       this.pending = null;
       this.update({ phase: "idle", pendingId: null, notice: response.replayed
-        ? "已取回原请求响应，没有再次调用模型；这不是一次新的研究。" : "本轮已返回，请结合结果状态阅读，不把处理成功当作投资结论正确。" });
+        ? "已取回原请求响应，没有再次调用模型。" : "本轮回答已完成。" });
       // Quota refresh is read-only and must not hide a received research result.
       try { this.view(await this.api.inspect(credentials)); }
       catch (error) {
         if (error instanceof ApiError && [401, 404].includes(error.status)) this.failure(error);
-        else this.update({ notice: "本轮答复已收到，但会话状态刷新失败。可手动检查状态；不会重做研究。" });
+        else this.update({ notice: "本轮答复已收到，但会话状态刷新失败。可手动检查状态；不会重做研究。", noticeLevel: "error" });
       }
     } catch (error) {
       this.amend(pending.id, { error: explanation(error) });
       // Unknown proxy/server failures may have happened after execution; retain the id.
       const unresolved = !(error instanceof ApiError)
         || ![401, 404].includes(error.status) && !terminalCodes.has(error.code);
-      if (unresolved) this.update({ phase: "uncertain", notice: explanation(error) });
+      if (unresolved) this.update({ phase: "uncertain", notice: explanation(error), noticeLevel: "error" });
       else {
         this.pending = null;
         this.update({ phase: "idle", pendingId: null });
@@ -150,7 +152,7 @@ export class ResearchController {
       if (this.pending?.id === pending.id)
         this.update({ notice: "取消信号已发送。仍需等待原请求返回；远程请求可能还在执行或计费。" });
     } catch (error) {
-      if (this.pending?.id === pending.id) this.update({ notice: explanation(error) });
+      if (this.pending?.id === pending.id) this.update({ notice: explanation(error), noticeLevel: "error" });
     } finally { this.update({ cancelPending: false }); }
   }
 

@@ -14,6 +14,7 @@ from time import monotonic
 from uuid import uuid4
 
 from trading_companion.agent import AgentTurnResult, run_natural_research_turn
+from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
 from trading_companion.market_context import build_market_context
@@ -133,9 +134,15 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
             # Optional visualization cannot turn a confirmed text response into a transport failure.
             chart = {"version": "research-chart-v1", "status": "unavailable", "code": "chart_integrity_mismatch"}
     understanding = result.understanding
+    try:
+        presentation = build_answer_presentation(result, report=report, request=request, analysis=analysis)
+    except Exception:
+        # An optional UI view must not discard an accepted answer or leak exception details.
+        presentation = None
     return {
         "status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
+        "presentation": presentation,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
         "chart": chart,
         "market_context": None,

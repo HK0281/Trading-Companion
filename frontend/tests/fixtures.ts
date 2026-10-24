@@ -60,6 +60,15 @@ export function marketContextReply(id = ID): MessageResponse {
   };
   return value;
 }
+export function presentationReply(id = ID): MessageResponse {
+  const value = chartReply(id);
+  value.result.presentation = {
+    version: "answer-presentation-v1", kind: "research", request_id: value.result.report!.request_id,
+    instrument_id: "000001.SZ", trade_date: "2026-09-25", headline: "先看已核对的指标表现",
+    sections: [{ id: "trend", title: "均线位置", items: ["收盘价高于SMA(3)。", "SMA(3)比前一条记录增加。", "价格向上穿过均线。"] }],
+  };
+  return value;
+}
 export function mockApi() {
   return {
     health: vi.fn(async () => ({ ...health })), create: vi.fn(async () => ({ ...credentials })),

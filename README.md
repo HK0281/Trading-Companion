@@ -26,6 +26,7 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
 - [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
 - [Local React research workspace (Chinese)](docs/web-workspace-design.md): build/start instructions, same-origin delivery, in-memory sessions, uncertainty-safe retries, evidence display and browser verification.
+- [Conversation-first interface (Chinese)](docs/conversation-ui-design.md): compact checked answers, relevant follow-up metrics, collapsible sources, fixed composer, responsive navigation and compatibility boundaries.
 - [Offline acceptance and CI (Chinese)](docs/ci-design.md): shared local/Actions gates, no-skip tests, compiled-resource/ASGI checks, clean wheel validation and explicit offline boundaries.
 - [Historical chart workspace (Chinese)](docs/chart-workspace-design.md): same-analysis candlesticks and indicators, bounded chart DTOs, missing-value gaps, unit-separated axes, saved context and optional-view failure isolation.
 - [MVP delivery and remaining acceptance (Chinese)](docs/mvp-completion.md): completed code, launch instructions, 30-scenario repeated evaluation, and the separate live/browser acceptance checklist.

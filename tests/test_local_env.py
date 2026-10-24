@@ -158,7 +158,15 @@ class LocalEnvironmentTests(unittest.TestCase):
         module = package / "local_env.py"
         self.assertIsNone(local_env._source_env_file(module))
         (self.path.parent / "pyproject.toml").write_text("# Artificial checkout marker\n", encoding="utf-8")
-        self.assertEqual(local_env._source_env_file(module), self.path)
+        # Match the resolver's canonical path, including Windows short-name expansion.
+        self.assertEqual(local_env._source_env_file(module), self.path.resolve())
+
+    def test_source_layout_resolves_parent_directory_segments(self):
+        package = self.path.parent / "src" / "trading_companion"
+        package.mkdir(parents=True)
+        (self.path.parent / "pyproject.toml").write_text("# Artificial checkout marker\n", encoding="utf-8")
+        module = package / ".." / "trading_companion" / "local_env.py"
+        self.assertEqual(local_env._source_env_file(module), self.path.resolve())
 
     def test_wheel_layout_never_uses_virtual_environment_ancestors(self):
         module = self.path.parent / ".venv" / "Lib" / "site-packages" / "trading_companion" / "local_env.py"

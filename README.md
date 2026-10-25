@@ -14,6 +14,7 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Opt-in tool smoke test (Chinese)](docs/tool-smoke-design.md): a fixed synthetic task, offline default, explicit paid-provider selection, and stop conditions.
 - [Bounded single-turn Agent (Chinese)](docs/single-turn-agent-design.md): explicit Chinese input, request-bound proposals, partial-result handling, and unchecked explanation drafts.
 - [Natural-language research input (Chinese)](docs/natural-input-design.md): model-first interpretation, dated security snapshots, ambiguity gates, visible defaults, and an offline fixture demo.
+- [Natural single-stock analysis and outlook scope (Chinese)](docs/natural-research-scope-design.md): date-free analysis requests, separate historical windows and future horizons, directory-checked continuation and fresh research rather than stale-snapshot forecasts.
 - [Explicit exchange-directory refresh (Chinese)](docs/security-directory-refresh-design.md): real SSE/SZSE name lists, validation limits, atomic snapshots, and separate live verification.
 - [Identity clarification continuation (Chinese)](docs/identity-clarification-design.md): per-session pending conditions, short stock-selection replies, expiry, cancellation, and replay protection.
 - [Deterministic safe-answer reports (Chinese)](docs/safe-report-design.md): request-bound fact cards, evidence consistency, explicit missing fields, and separation from unchecked model prose.
@@ -52,6 +53,20 @@ The Web **Dev Mode** button switches an idle page to a separate, server-configur
 
 For an entirely offline launch, use `--demo`; it never reads `.env` and cannot switch back to normal mode. `--provider`, `--data` and `--port` remain explicit overrides for the normal backend. These new defaults apply to **`api_server` only**: `agent_cli` and evaluation/demo CLIs retain their existing explicit modes. See the [configuration guide](docs/local-environment.md) and [mode design](docs/dev-mode-design.md).
 
+## Ask naturally
+
+In normal mode, a single-stock request does not need dates, a ticker or indicator parameters. For example:
+
+- `分析一下中际旭创`
+- `预测一下中际旭创下个月的走势`
+- After confirming a stock in the same session: `那下个月呢`
+
+The Agent resolves names against the security directory and uses bounded historical-date/indicator defaults when omitted. A future horizon such as next week, next month or the next N days is an **outlook objective**, not a request for future market bars. It produces conditional scenarios and confirmation/invalidation criteria from available historical evidence, not guaranteed direction, invented future prices or calibrated forecast probabilities.
+
+An implicit same-stock outlook continuation requires unexpired, directory-rechecked conditions (15-minute lifetime). It starts a new research request using the checked historical window and fixed source; it does not relabel an old snapshot as freshly fetched market data or automatically move the historical cutoff. A missing, ambiguous or expired identity still needs clarification. The offline Dev Mode remains a fixed artificial example, not a real-market research substitute. See the [scope design](docs/natural-research-scope-design.md).
+
+Current tools cover one stock's historical daily bars and technical indicators. Multi-stock comparison, news/financial-statement research, stock screening and trade execution are not connected; a general request to “analyze” does not silently authorize or claim those capabilities.
+
 ## Current status
 
 The bounded single-stock daily-research MVP code is implemented; live-model, real-market and incremental browser acceptance remain separate. See the [delivery checklist](docs/mvp-completion.md). Implemented capabilities include:
@@ -72,11 +87,12 @@ The bounded single-stock daily-research MVP code is implemented; live-model, rea
 - An offline-by-default tool smoke-test CLI with explicit DeepSeek opt-in, a fixed synthetic task, at most two model calls, and no retries or market requests.
 - A reusable bounded single-turn runner with conservative explicit-format Chinese input, clarification before any calls, request-bound tool proposals, and separate research facts and unchecked model drafts.
 - A separate model-first natural-input runner, validating verbatim mentions against an injected security directory and applying visible date/indicator defaults before reusing the research flow.
+- Natural single-stock analysis and conditional outlook objectives, keeping the authorized historical data window separate from the requested future horizon. A bounded same-stock continuation rechecks saved conditions and performs a fresh research request; it is not unrestricted conversation memory or a future-price data source.
 - An opt-in SSE/SZSE directory-refresh CLI with bounded requests, required-fragment validation and atomic local snapshots; one live refresh returned 5,224 identities, without changing supported market-analysis prefixes.
 - Optional per-conversation identity clarification: preserve validated dates and indicators while waiting for a stock selection, recheck the current directory and source configuration, and consume the pending request before execution.
 - An application-generated `safe_answer` report with checked request/evidence alignment, explicit missing values, and no model prose; existing model drafts remain debug-only and unchecked.
 - A separate web `conversation` response: the model receives the original question and tool results and writes a direct answer, conditional outlook and observation criteria. Relation claims and citations are checked; prose semantics and predictive accuracy are not. Synthetic or insufficient data produces a short application-owned explanation instead of an indicator dump.
-- A bounded research loop enabled by the Web/API and live terminal entry: the model can choose daily analysis, local indicator definitions, snapshot inspection and one supplementary calculation of up to three indicators on the same frozen bars. The original report/chart stays primary; supplementary claims have an independent evidence namespace. Research steps and checked supplementary relations are collapsed separately from the chat answer. This is not news, fundamentals, realtime data or unrestricted browsing.
+- A bounded research loop enabled by the Web/API and live terminal entry: the model can choose daily analysis, local indicator definitions, snapshot inspection and one supplementary calculation of up to three indicators on the same frozen bars. The original report/chart stays primary; supplementary claims have an independent evidence namespace. The backend retains checked tool records, while the main chat omits internal execution diagnostics. This is not news, fundamentals, realtime data or unrestricted browsing.
 - Structured indicator-relation claims checked against this request's evidence, exact operands and full-precision comparisons; default `display_answer` includes application-rendered relations only when all selected claims pass.
 - A fixed four-scenario contract-evaluation CLI reusing those flows: one offline case by default, explicit DeepSeek selection, pinned synthetic data only, independent call counting and no retries.
 - A thin terminal entry reusing the natural-input Agent and identity session: no arguments only show help, a fixed offline demo, explicit DeepSeek plus synthetic/Tencent selection, and safe answers without raw drafts.

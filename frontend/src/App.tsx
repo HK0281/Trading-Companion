@@ -8,10 +8,11 @@ import { parsePresentation, sourceLabel } from "./presentation";
 
 const samples = (development: boolean) => [
   { label: "个股研究", question: development ? "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2"
-    : "分析平安银行最近的走势，关注趋势与动量", description: "从价格、均线和动量开始", icon: "chart" },
+    : "分析平安银行最近的走势，关注趋势与动量", description: development ? "从价格、均线和动量开始" : "不用填写日期或指标", icon: "chart" },
   { label: "理解指标", question: "解释一下MACD里的DIF和DEA", description: "弄懂指标背后的计算逻辑", icon: "book" },
-  { label: "调整条件", question: development ? "把SMA3改成5日，其他不变" : "把RSI改成9日，其他不变",
-    description: "沿用当前研究，修改指标参数", icon: "sliders" },
+  development ? { label: "调整条件", question: "把SMA3改成5日，其他不变",
+    description: "沿用当前研究，修改指标参数", icon: "sliders" }
+    : { label: "后续展望", question: "分析平安银行下个月可能的走势", description: "看条件情景与后续观察点", icon: "chart" },
 ];
 const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要补充",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
@@ -42,7 +43,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
       </div>
       <div className="answer-body">{turn && <>
         {turn.parameters && <div className="scope"><strong>{turn.parameters.instrument_id}</strong>
-          <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
+          <span>历史数据：{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
           {turn.parameters.source !== undefined && <span className={turn.parameters.source === "csv" ? "synthetic-label" : ""}>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
         {turn.status !== "completed" && structured && turn.conversation == null && <p className="data-note" role="note">{turn.message}</p>}
         <ResponseContent turn={turn} />
@@ -201,7 +202,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         <section className={`conversation ${!state.entries.length ? "is-empty" : ""}`} aria-label="研究对话" aria-busy={phase === "working"}>
           {!state.entries.length ? <div className="empty-state"><div className="empty-mark" aria-hidden="true"><Icon name="chart" /></div>
             <span className="eyebrow">TRADING COMPANION</span><h2>把行情，聊清楚。</h2>
-            <p>研究一只股票，读懂一组指标。<br />从你的问题开始。</p>
+            <p>{development ? <>研究一只股票，读懂一组指标。<br />从你的问题开始。</>
+              : <>直接说股票名称即可。<br />也可以聊聊下周或下个月的可能走势。</>}</p>
             <div className="starter-grid">{samples(development).map((sample) => <button type="button" key={sample.label} className="starter-card"
               disabled={locked} onClick={() => choose(sample.question)}><Icon name={sample.icon} /><strong>{sample.label}</strong>
               <span>{sample.description}</span><span className="starter-arrow" aria-hidden="true">↗</span></button>)}</div>
@@ -233,7 +235,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
           <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={state.switching || (loading && !!health) || phase !== "idle"}
-            placeholder="输入股票名称、日期，或直接问一个问题…"
+            placeholder={development ? "输入股票名称、日期，或直接问一个问题…" : "输入股票名称，聊聊走势或接下来的方向…"}
             onChange={(event) => editQuestion(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Escape") setNavigationOpen(false);
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) submit(event);

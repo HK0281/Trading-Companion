@@ -11,6 +11,9 @@ from trading_companion.multi_contracts import (
     DEFAULT_INDICATORS, IndicatorSpec, MultiIndicatorRequest, validate_research_conditions,
 )
 from trading_companion.security_directory import Security, SecurityDirectory
+from trading_companion.research_objective import (
+    ResearchObjective, extract_outlook, mask_outlook_expressions, parse_outlook_expression,
+)
 from trading_companion.tool_model import (
     MAX_USER_CHARACTERS, ToolCapableModel, ToolDefinition, ToolMessage, ToolModelResponse,
 )
@@ -20,14 +23,19 @@ INTENT_TOOL_NAME = "interpret_research_question"
 INTENT_TOOL = ToolDefinition(INTENT_TOOL_NAME,
     "Submit an interpretation, not permission to query prices. Copy instrument, date and indicator "
     "phrases verbatim from the user. Never replace a name with a remembered code, invent defaults, "
-    "drop a second stock, or convert relative dates yourself. A general trend request is research; "
-    "indicator definitions are knowledge. Orders, news screening and price targets are unsupported.",
+    "drop a second stock, or convert relative dates yourself. General single-stock analysis, including "
+    "'分析一下中际旭创', needs no dates or indicators from the user: omitted fields use application defaults. "
+    "Prediction/outlook requests mean conditional scenarios from historical daily bars, not future prices. "
+    "Put past data windows in date_expression, future horizons (e.g. 下个月) in outlook_expression; "
+    "never request clarification merely for omitted dates/indicators. Indicator definitions are knowledge. "
+    "Orders, news/fundamental research, screening and price targets are unsupported.",
     {"type": "object", "additionalProperties": False,
      "required": ["intent", "instrument_mentions", "date_expression", "indicator_mentions", "clarification_reason"],
      "properties": {
          "intent": {"type": "string", "enum": ["research", "knowledge", "unsupported", "clarify"]},
          "instrument_mentions": {"type": "array", "maxItems": 12, "items": {"type": "string"}},
          "date_expression": {"type": ["string", "null"]},
+         "outlook_expression": {"type": ["string", "null"]},
          "indicator_mentions": {"type": "array", "maxItems": 12, "items": {"type": "string"}},
          "clarification_reason": {"type": ["string", "null"],
                                   "enum": [None, "instrument", "date", "indicator", "request"]},
@@ -46,6 +54,30 @@ _INDICATOR_CUE = re.compile(
     r"(?<![A-Za-z])(?:MACD|BOLL|SMA|EMA|RSI|ATR|VOLUME)(?![A-Za-z])"
     r"(?:\s*(?:[（(][^）)]*(?:[）)]|$)|[+＋－-]?[0-9]+(?:\.[0-9]+)?))?|"
     r"KDJ|OBV|指数移动平均线|简单移动平均线|布林带|布林线|均线|量能|成交量", re.IGNORECASE)
+_UNSUPPORTED_CAPABILITY = re.compile(
+    r"下单|自动交易|代我交易|执行交易|帮我(?:买|卖)|替我(?:买|卖)|"
+    r"新闻|财报|基本面|公告|估值|营收|市盈率|资产负债|现金流|"
+    r"目标价|目标价格|止盈|止损|涨到多少|跌到多少|收益率|胜率|"
+    r"选股|筛选股票|推荐股票")
+_RESEARCH_CUE = re.compile(r"分析|研究|预测|展望|走势|趋势|怎么看|怎么样|如何|后市|看看|看一下|看下")
+_SUPPORTED_WORDS = re.compile("|".join(re.escape(value) for value in sorted((
+    "请帮我", "能不能", "可不可以", "帮我", "麻烦", "我想", "你觉得", "你看", "给我", "请", "一下",
+    "分析", "研究", "预测", "展望", "看看", "看一下", "看一看", "看下", "判断", "评估",
+    "走势", "趋势", "表现", "怎么看", "怎么样", "如何", "后市", "方向", "技术面", "技术指标",
+    "详细", "综合", "整体", "股票", "证券", "这只", "A股", "日线", "K线", "指标", "均线",
+    "关注", "只看", "结合", "参考", "以及", "并且", "然后", "的", "和", "与", "来", "对", "从",
+), key=len, reverse=True)))
+
+
+def _bounded_research_shape(question, draft):
+    """Repair a model's spurious clarification only for a fully checked, limited request shape."""
+    if not draft["instrument_mentions"] or not _RESEARCH_CUE.search(question):
+        return False
+    phrases = [*draft["instrument_mentions"], *draft["indicator_mentions"]]
+    phrases.extend(value for value in (draft["date_expression"], draft.get("outlook_expression")) if value)
+    remaining = mask_outlook_expressions(_masked(question, _spans(question, phrases)))
+    remaining = _SUPPORTED_WORDS.sub("", remaining)
+    return re.fullmatch(r"[\s，,。.!！?？、;；:：]*", remaining) is not None
 
 
 @dataclass(frozen=True)
@@ -58,13 +90,15 @@ class ResearchConditions:
     source: str
     reference_date: date
     applied_defaults: tuple[str, ...] = ()
+    objective: ResearchObjective = ResearchObjective()
 
     def __post_init__(self):
-        if self.source not in ("tencent", "akshare_eastmoney", "csv") or type(self.reference_date) is not date:
+        if (self.source not in ("tencent", "akshare_eastmoney", "csv")
+                or type(self.reference_date) is not date or type(self.objective) is not ResearchObjective):
             raise InvalidRequestError("Invalid research-condition configuration")
         object.__setattr__(self, "indicators", validate_research_conditions(
             self.start_date, self.as_of_date, self.indicators))
-        if self.source != "csv" and self.as_of_date >= self.reference_date:
+        if self.as_of_date >= self.reference_date:
             raise InputIssue("needs_clarification", "completed_daily_bars_required",
                              "当前只支持上海当日之前的已完成日线，请明确一个过去的截止日期。")
 
@@ -76,7 +110,7 @@ class ResearchConditions:
         return {"start_date": self.start_date.isoformat(), "as_of_date": self.as_of_date.isoformat(),
                 "indicators": [{"kind": spec.kind, **spec.parameters} for spec in self.indicators],
                 "source": self.source, "reference_date": self.reference_date.isoformat(),
-                "applied_defaults": list(self.applied_defaults)}
+                "applied_defaults": list(self.applied_defaults), "objective": self.objective.to_dict()}
 
 
 @dataclass(frozen=True)
@@ -156,7 +190,8 @@ def _candidate(response: ToolModelResponse, question: str) -> dict:
             or response.tool_calls[0].name != INTENT_TOOL_NAME):
         raise InputIssue("failed", "invalid_intent_response", "模型未返回完整、可校验的请求理解结果；没有查询行情。")
     arguments = response.tool_calls[0].arguments
-    if arguments.keys() != {"intent", "instrument_mentions", "date_expression", "indicator_mentions", "clarification_reason"}:
+    required = {"intent", "instrument_mentions", "date_expression", "indicator_mentions", "clarification_reason"}
+    if (required - arguments.keys() or arguments.keys() - (required | {"outlook_expression"})):
         raise InputIssue("failed", "invalid_intent_response", "请求理解字段不符合约定；没有查询行情。")
     if (arguments["intent"] not in ("research", "knowledge", "unsupported", "clarify")
             or arguments["clarification_reason"] not in (None, "instrument", "date", "indicator", "request")):
@@ -166,12 +201,12 @@ def _candidate(response: ToolModelResponse, question: str) -> dict:
         if type(phrases) is not list or len(phrases) > 12 or any(
             type(phrase) is not str or not phrase.strip() or len(phrase) > 80 for phrase in phrases):
             raise InputIssue("failed", "invalid_intent_response", "请求理解中的名称或指标字段无效。")
-    expression = arguments["date_expression"]
-    if expression is not None and (type(expression) is not str or not expression.strip() or len(expression) > 120):
-        raise InputIssue("failed", "invalid_intent_response", "请求理解中的日期字段无效。")
+    expressions = [arguments["date_expression"], arguments.get("outlook_expression")]
+    if any(value is not None and (type(value) is not str or not value.strip() or len(value) > 120)
+           for value in expressions):
+        raise InputIssue("failed", "invalid_intent_response", "请求理解中的日期或展望字段无效。")
     copied = [*arguments["instrument_mentions"], *arguments["indicator_mentions"]]
-    if expression is not None:
-        copied.append(expression)
+    copied.extend(value for value in expressions if value is not None)
     if any(phrase not in question for phrase in copied):
         raise InputIssue("needs_clarification", "ungrounded_intent",
                          "模型提取了原问题中不存在的名称或条件；请重述研究问题，没有使用模型记忆补码。")
@@ -260,7 +295,10 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         ToolMessage("system", "Understand the user's A-share question and submit exactly one "
                     "interpret_research_question call. You do not execute research. Extract all instrument "
                     "mentions verbatim, including any explicit codes, without choosing between ambiguous "
-                    "names. Copy the complete time expression and explicit indicators including periods. "
+                    "names. Copy historical data time expressions into date_expression and any separate "
+                    "future horizon into outlook_expression, and copy explicit indicators including periods. "
+                    "A broad single-stock analysis or conditional outlook is research; dates and indicators "
+                    "can be omitted without clarification. Never turn a future horizon into a historical cutoff. "
                     "Use null/empty lists when omitted; defaults belong to the application. Do not add "
                     "fields, paths, URLs, providers or confidence scores. Shanghai reference date: " + reference.isoformat()),
         ToolMessage("user", question),
@@ -271,15 +309,19 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         result = replace(result, model_response=response)
         draft = _candidate(response, question)
         result = replace(result, intent=draft["intent"])
+        if _UNSUPPORTED_CAPABILITY.search(question):
+            return replace(result, status="out_of_scope", code="unsupported_intent",
+                           message="当前可基于历史日线做单股技术分析与条件性展望；尚无新闻、财报、选股或目标价工具，也不执行交易。")
         if draft["intent"] == "knowledge":
             return replace(result, status="out_of_scope", code="knowledge_entry_not_connected",
                            message="已识别为知识问题，不查询行情；当前仅支持明确的指标定义问法，例如“RSI是什么”，不生成开放知识回答。")
-        if draft["intent"] == "unsupported":
+        bounded_shape = _bounded_research_shape(question, draft)
+        if draft["intent"] == "unsupported" and not bounded_shape:
             return replace(result, status="out_of_scope", code="unsupported_intent",
                            message="当前入口仅支持只读单股票日线研究，不支持交易执行、新闻选股或目标价。")
         instrument_clarification = draft["clarification_reason"] == "instrument"
-        if ((draft["intent"] == "clarify" or draft["clarification_reason"] is not None)
-                and not instrument_clarification):
+        model_clarification = draft["intent"] == "clarify" or draft["clarification_reason"] is not None
+        if model_clarification and not instrument_clarification and not bounded_shape:
             raise InputIssue("needs_clarification", "intent_needs_clarification",
                              "研究目标或条件尚不明确，请补充希望研究的股票、时间或指标；暂不查询行情。")
         selected_sources = re.findall(r"(?:数据源\s*(?:为|是|[:：])?|使用|采用|用)\s*"
@@ -298,8 +340,20 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         remaining = _masked(question, spans)
         indicators, indicator_defaults = _indicators(draft["indicator_mentions"], remaining)
         date_question = _masked(remaining, _spans(remaining, draft["indicator_mentions"]))
-        start, cutoff, defaults = _dates(draft["date_expression"], date_question, reference)
-        conditions = ResearchConditions(start, cutoff, indicators, source, reference, (*defaults, *indicator_defaults))
+        historical_expression = draft["date_expression"]
+        if historical_expression is not None and extract_outlook(historical_expression) is not None:
+            # Compatibility: older interpreters put one future phrase in the old date field.
+            if mask_outlook_expressions(historical_expression).strip():
+                raise InputIssue("needs_clarification", "conflicting_dates",
+                                 "请将历史数据区间与未来展望期限分别说明；没有把未来时间当作行情日期。")
+            historical_expression = None
+        if draft.get("outlook_expression") is not None:
+            parse_outlook_expression(draft["outlook_expression"])
+        objective = extract_outlook(date_question) or ResearchObjective()
+        historical_question = mask_outlook_expressions(date_question)
+        start, cutoff, defaults = _dates(historical_expression, historical_question, reference)
+        conditions = ResearchConditions(start, cutoff, indicators, source, reference,
+                                        (*defaults, *indicator_defaults), objective)
         result = replace(result, conditions=conditions, applied_defaults=conditions.applied_defaults)
         if not mentions:
             result = replace(result, clarification_resumable=True)
@@ -308,7 +362,11 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         candidates = tuple(sorted({item.instrument_id: item for match in matches for item in match.candidates}.values(),
                                   key=lambda item: item.instrument_id))
         result = replace(result, candidates=candidates)
-        if not all(match.status == "resolved" for match in matches) or len(candidates) != 1 or instrument_clarification:
+        unique_identity = all(match.status == "resolved" for match in matches) and len(candidates) == 1
+        if model_clarification and not instrument_clarification and not unique_identity:
+            raise InputIssue("needs_clarification", "intent_needs_clarification",
+                             "研究目标或证券尚未明确，请补充希望研究的股票；暂不查询行情。")
+        if not unique_identity or (instrument_clarification and not bounded_shape):
             # Multiple distinct mentions require a full single-stock restatement, not slot filling.
             result = replace(result, clarification_resumable=len(set(mentions)) == 1)
             choices = "、".join(f"{item.name}（{item.instrument_id}）" for item in candidates[:5])
@@ -318,7 +376,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         security = candidates[0]
         result = replace(result, security=security, stage="parameters")
         request = conditions.for_security(security.instrument_id)
-        return replace(result, status="ready", code="research_input_ready", request=request,
+        return replace(result, status="ready", code="research_input_ready", request=request, intent="research",
                        message="证券身份及研究参数已校验；默认值和实际区间将随结果展示。")
     except InputIssue as issue:
         return replace(result, status=issue.status, code=issue.code, message=str(issue))

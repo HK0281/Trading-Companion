@@ -159,11 +159,13 @@ class PendingConditionsTests(GuardedTests):
         second = self.turn("平安银行", model=ExplanationDemoModel([proposal()]))
         self.assertEqual(second.status, "completed")
 
-    def test_model_requested_confirmation_for_unique_name_is_respected(self):
+    def test_spurious_model_clarification_for_a_checked_unique_name_does_not_block_research(self):
         first = self.turn(QUESTION.replace("平安", "平安银行"),
-                          [intent(["平安银行"], reason="instrument")])
-        self.assertEqual(first.status, "needs_clarification")
-        self.assertEqual(len(self.session.pending.candidates), 1)
+                          model=ExplanationDemoModel([intent(["平安银行"], reason="instrument"), proposal()]))
+        self.assertEqual(first.status, "completed")
+        self.assertEqual(first.confirmed_request.instrument_id, "000001.SZ")
+        self.assertEqual(first.analyses_used, 1)
+        self.assertIsNone(self.session.pending)
 
     def test_other_clarification_reasons_and_model_failure_do_not_create_pending(self):
         for response in (intent(task="clarify", reason="date"), completed()):

@@ -253,6 +253,29 @@ class ResearchWorkflowIntegrationTests(unittest.TestCase):
         self.assertTrue({"consumed_knowledge_result", "consumed_snapshot_summary"} <= final_statuses)
         self.market.read_daily_bars.assert_called_once()
 
+    def test_outlook_keeps_full_default_and_supplement_evidence_within_context_limits(self):
+        self.market.read_daily_bars.return_value = self.artificial_hundred_bars()
+        for horizon in ("下个月", "未来366天", "未来十二个月"):
+            with self.subTest(horizon=horizon):
+                self.source_mock.reset_mock()
+                self.market.read_daily_bars.reset_mock()
+                question = "分析平安银行，2026-05-01 至 2026-09-25，预测" + horizon + "的走势"
+                model = WorkflowScriptModel(("primary", "knowledge", "availability", "default_supplement", "final"),
+                    date_expression="2026-05-01 至 2026-09-25", indicator_mentions=())
+                result = self.turn(model, question=question)
+                self.assertEqual(result.status, "completed", (result.code, result.failure_code, model.call_sizes))
+                self.assertEqual((result.model_calls_attempted, result.analyses_used), (6, 2))
+                self.assertEqual(len(result.workflow_observations), 2, result.workflow_trace)
+                self.assertTrue(all(step["status"] == "executed" for step in result.workflow_trace["steps"]))
+                self.assertEqual({claim.evidence_id.split(":")[0] for claim in result.explanation_validation.claims},
+                                 {"primary", "supplement"})
+                self.assertEqual(set(WorkflowScriptModel.views(model.calls[-1])), {"primary", "supplement"})
+                self.assertTrue(all(size <= 20000 for size in model.call_sizes), model.call_sizes)
+                self.assertIn("\noutlook_reference_date=2026-09-26", model.calls[-1][0].content)
+                self.assertEqual(model.calls[-1][1].content, question)
+                self.source_mock.assert_called_once()
+                self.market.read_daily_bars.assert_called_once()
+
     def test_four_tools_complete_six_model_calls_two_calculations_and_one_market_read(self):
         model = WorkflowScriptModel(FULL_ACTIONS)
         result = self.turn(model)

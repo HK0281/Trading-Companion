@@ -20,6 +20,7 @@ from trading_companion.research_response import (
     RESPONSE_INSTRUCTION, ResponseValidation, build_conversation_answer, validate_research_response,
 )
 from trading_companion.research_intent import PreparedResearchInput, prepare_research_question
+from trading_companion.research_context import contextual_outlook_expression, objective_context
 from trading_companion.research_edit import indicator_selection, is_indicator_edit, is_window_edit
 from trading_companion.research_update import is_condition_update
 from trading_companion.indicator_knowledge import KnowledgeAnswer, parse_knowledge_question
@@ -312,6 +313,9 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         if knowledge is not None:
             return AgentTurnResult(status="completed", code="indicator_knowledge_answered", stage="knowledge",
                                    input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge)
+        if contextual_outlook_expression(question) is not None:
+            return AgentTurnResult(status="needs_clarification", code="no_confirmed_research", input_mode="natural",
+                                   message="你希望展望哪只股票？请提供名称，例如“分析平安银行下个月的走势”。")
         if is_followup_question(question) and not is_condition_update(question):
             return AgentTurnResult(status="needs_clarification", code="no_saved_result", input_mode="natural",
                                    message="无状态入口不能查看上一轮结果，请使用同一会话并先完成研究。")
@@ -397,6 +401,12 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
     if knowledge is not None:
         return attach(AgentTurnResult(status="completed", code="indicator_knowledge_answered", stage="knowledge",
             input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge), "knowledge")
+    outlook_expression = contextual_outlook_expression(question)
+    if outlook_expression is not None and session.pending is None and session.pending_edit is None:
+        prepared = session.prepare_outlook(outlook_expression, question=question, directory=directory,
+            source="csv" if development_source is not None else source, development_source=development_source,
+            reference_date=reference, now=now)
+        return execute(prepared, "contextual_outlook" if prepared.status == "ready" else "contextual_outlook_blocked")
     if is_result_view(question) or (session.pending is None and session.pending_edit is None and is_followup_question(question)
                                    and not is_condition_update(question)):
         lookup = session.saved_result(directory=directory, source="csv" if development_source is not None else source,
@@ -474,7 +484,8 @@ def _run_request(request: MultiIndicatorRequest, *, model: ToolCapableModel,
                     "one explicit request, shown in the next user message. Propose exactly one "
                     "analyze_daily_indicators call with those parameters; never change stock, dates, "
                     "source or indicators. Do not pass paths, URLs or request IDs in tool arguments. "
-                    + (RESPONSE_INSTRUCTION if conversational else EXPLANATION_INSTRUCTION)),
+                    + (RESPONSE_INSTRUCTION + objective_context(outcome.understanding)
+                       if conversational else EXPLANATION_INSTRUCTION)),
         ToolMessage("user", json.dumps(user_content, ensure_ascii=False, separators=(",", ":"))),
     ]
     tools = (RESEARCH_TOOL_DEFINITION,)

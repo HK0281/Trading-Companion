@@ -6,6 +6,7 @@ import json
 from trading_companion.agent import AgentTurnResult, _finish, _has_research, _model_failure, _stopped
 from trading_companion.agent_input import request_arguments
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
+from trading_companion.research_context import objective_context
 from trading_companion.research_tool import ToolExecutionError
 from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.turn_control import TurnStopped, checkpoint
@@ -46,7 +47,8 @@ def run_workflow(request, *, model, development_source, outcome: AgentTurnResult
     # Scope is sent once as trusted system content; preserve the original user question separately.
     question = outcome.user_question or "请研究已确认的股票并回答走势问题。"
     scope = json.dumps(request_arguments(request), ensure_ascii=True, separators=(",", ":"))
-    instruction = WORKFLOW_INSTRUCTION + WORKFLOW_RESPONSE_INSTRUCTION + "\nconfirmed_request=" + scope
+    instruction = (WORKFLOW_INSTRUCTION + WORKFLOW_RESPONSE_INSTRUCTION
+                   + objective_context(outcome.understanding) + "\nconfirmed_request=" + scope)
     messages = [ToolMessage("system", instruction + _OPEN_BUDGET), ToolMessage("user", question)]
 
     def capture(reason):

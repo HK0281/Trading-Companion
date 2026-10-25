@@ -17,6 +17,7 @@ from trading_companion.research_edit import (
     indicator_selection, indicator_selection_label, replace_indicator, window_edit_candidates,
 )
 from trading_companion.research_intent import PreparedResearchInput, ResearchConditions
+from trading_companion.research_objective import parse_outlook_expression
 from trading_companion.research_update import parse_condition_update, update_conditions
 from trading_companion.security_directory import Security, SecurityDirectory, SecurityMatch
 from trading_companion.tool_model import MAX_USER_CHARACTERS
@@ -262,7 +263,8 @@ class ResearchSession:
                 raise InvalidRequestError("Cutoff must still precede the current Shanghai date")
             # Reconstruct both contracts, rather than trusting a previously accepted object forever.
             conditions = ResearchConditions(saved.conditions.start_date, saved.conditions.as_of_date,
-                saved.conditions.indicators, source, reference_date, saved.conditions.applied_defaults)
+                saved.conditions.indicators, source, reference_date, saved.conditions.applied_defaults,
+                saved.conditions.objective)
             conditions.for_security(saved.security.instrument_id)
             return replace(result, status="ready", code="checked_edit_base", request=saved.request,
                            conditions=saved.conditions, security=current.candidates[0],
@@ -277,6 +279,25 @@ class ResearchSession:
             self.clear_confirmed()
             return replace(result, status="needs_clarification", code="invalid_research_context",
                            message="原条件不符合当前研究限制，旧基准已清除；不会改日期或换源。")
+
+    def prepare_outlook(self, expression: str, *, question: str, directory: SecurityDirectory, source: str,
+                        development_source: CsvDailyBarSource | None, reference_date: date,
+                        now: datetime) -> PreparedResearchInput:
+        """Revalidate inherited identity, then create a new research request, not a saved answer."""
+        base = self._checked_edit_base(directory=directory, source=source, development_source=development_source,
+                                       reference_date=reference_date, now=now)
+        if base.status != "ready":
+            return replace(base, user_question=question)
+        try:
+            objective = parse_outlook_expression(expression)
+            conditions = replace(base.conditions, objective=objective, reference_date=reference_date)
+            request = conditions.for_security(base.security.instrument_id)
+            return replace(base, code="contextual_outlook_ready", conditions=conditions, request=request,
+                           candidates=(base.security,), user_question=question,
+                           message="沿用已确认股票及历史数据范围，重新取数并分析指定期限的条件情景；不查询未来行情。")
+        except InputIssue as issue:
+            return replace(base, status=issue.status, code=issue.code, request=None,
+                           user_question=question, message=str(issue))
 
     def prepare_indicator_edit(self, question: str, *, directory: SecurityDirectory, source: str,
                                development_source: CsvDailyBarSource | None, reference_date: date,

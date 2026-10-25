@@ -27,6 +27,7 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
 - [Local React research workspace (Chinese)](docs/web-workspace-design.md): build/start instructions, same-origin delivery, in-memory sessions, uncertainty-safe retries, evidence display and browser verification.
 - [Conversation-first interface (Chinese)](docs/conversation-ui-design.md): compact checked answers, relevant follow-up metrics, collapsible sources, fixed composer, responsive navigation and compatibility boundaries.
+- [Natural-language research responses (Chinese)](docs/natural-research-response-design.md): original-question context, model-written conditional analysis, checked relation references and concise data-readiness answers.
 - [Offline acceptance and CI (Chinese)](docs/ci-design.md): shared local/Actions gates, no-skip tests, compiled-resource/ASGI checks, clean wheel validation and explicit offline boundaries.
 - [Historical chart workspace (Chinese)](docs/chart-workspace-design.md): same-analysis candlesticks and indicators, bounded chart DTOs, missing-value gaps, unit-separated axes, saved context and optional-view failure isolation.
 - [MVP delivery and remaining acceptance (Chinese)](docs/mvp-completion.md): completed code, launch instructions, 30-scenario repeated evaluation, and the separate live/browser acceptance checklist.
@@ -57,6 +58,7 @@ The bounded single-stock daily-research MVP code is implemented; live-model, rea
 - An opt-in SSE/SZSE directory-refresh CLI with bounded requests, required-fragment validation and atomic local snapshots; one live refresh returned 5,224 identities, without changing supported market-analysis prefixes.
 - Optional per-conversation identity clarification: preserve validated dates and indicators while waiting for a stock selection, recheck the current directory and source configuration, and consume the pending request before execution.
 - An application-generated `safe_answer` report with checked request/evidence alignment, explicit missing values, and no model prose; existing model drafts remain debug-only and unchecked.
+- A separate web `conversation` response: the model receives the original question and tool results and writes a direct answer, conditional outlook and observation criteria. Relation claims and citations are checked; prose semantics and predictive accuracy are not. Synthetic or insufficient data produces a short application-owned explanation instead of an indicator dump.
 - Structured indicator-relation claims checked against this request's evidence, exact operands and full-precision comparisons; default `display_answer` includes application-rendered relations only when all selected claims pass.
 - A fixed four-scenario contract-evaluation CLI reusing those flows: one offline case by default, explicit DeepSeek selection, pinned synthetic data only, independent call counting and no retries.
 - A thin terminal entry reusing the natural-input Agent and identity session: no arguments only show help, a fixed offline demo, explicit DeepSeek plus synthetic/Tencent selection, and safe answers without raw drafts.
@@ -663,6 +665,8 @@ The workspace also shows optional **security state and exchange calendar** conte
 
 ## Tests
 
+Latest local acceptance (2026-10-24): 1,229 Python tests and 339 frontend tests, plus offline scenarios, TypeScript/build and ASGI/wheel checks. The new natural-language response protocol has fixture coverage, not a new real-DeepSeek quality evaluation. See the [response design](docs/natural-research-response-design.md).
+
 Install `.[data]` first: adapter tests use the requests exception classes included with the data dependency. All tests stub the external provider; the suite does not require live market access.
 
 ```powershell
@@ -710,6 +714,7 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `tool_smoke.py`: fixed-task tool connectivity CLI; offline default, explicit DeepSeek opt-in, and bounded synthetic execution.
 - `research_tool.py` / `research_tool_demo.py`: controlled analysis execution, compact evidence results, and an offline synthetic calculation round trip.
 - `agent_input.py` / `agent.py` / `agent_demo.py`: conservative explicit-input parsing, shared bounded orchestration, optional identity/edit/follow-up session routing, checked structured relations, local knowledge and an offline demo; no full chat history.
+- `research_response.py`: original-question natural responses, checked relation citations, explicit prose-validation limits and concise data-readiness fallbacks; no additional model call.
 - `research_intent.py` / `security_directory.py` / `natural_agent_demo.py`: model-first intent candidates, grounded snapshot-based identity resolution, visible defaults and an offline fixture demo.
 - `research_session.py` / `session_agent_demo.py`: per-conversation pending identity selection, revalidation, expiry/cancellation, and an offline two-turn demo; no persisted chat history.
 - `research_report.py` / `report_demo.py`: application-generated latest-field reports, request/evidence alignment and a fact-only offline display; not model-prose validation.

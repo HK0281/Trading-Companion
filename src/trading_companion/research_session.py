@@ -44,6 +44,7 @@ class PendingResearch:
     candidates: tuple[Security, ...]
     created_at: datetime
     development_source: CsvDailyBarSource | None = field(default=None, repr=False)
+    user_question: str = field(default="", repr=False)
 
     @property
     def expires_at(self) -> datetime:
@@ -202,7 +203,8 @@ class ResearchSession:
                 and prepared.conditions is not None and prepared.request is None):
             return False
         self._pending_edit = None
-        self._pending = PendingResearch(prepared.conditions, prepared.candidates, now, development_source)
+        self._pending = PendingResearch(prepared.conditions, prepared.candidates, now, development_source,
+                                        prepared.user_question)
         return True
 
     def to_dict(self) -> dict[str, object]:
@@ -425,7 +427,7 @@ class ResearchSession:
             return replace(result, code="directory_unusable",
                            message="当前证券目录不可用，旧请求已清除；请显式刷新目录后重新提问。")
         result = replace(result, conditions=pending.conditions, candidates=pending.candidates,
-                         applied_defaults=pending.conditions.applied_defaults)
+                         applied_defaults=pending.conditions.applied_defaults, user_question=pending.user_question)
         if type(reply) is not str or not reply.strip() or len(reply) > MAX_USER_CHARACTERS:
             return replace(result, status="needs_clarification", code="invalid_input",
                            clarification_resumable=True,

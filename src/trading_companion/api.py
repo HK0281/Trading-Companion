@@ -49,6 +49,7 @@ class PublicTurn(BaseModel):
     stage: str
     answer: str | None
     presentation: dict | None = None
+    conversation: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None

@@ -1,4 +1,4 @@
-"""Bounded research orchestration with fact reports and checked relation explanations."""
+"""Bounded research with fact reports, checked relations and grounded model prose."""
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
@@ -15,8 +15,9 @@ from trading_companion.multi_contracts import MultiIndicatorRequest, MultiIndica
 from trading_companion.research_tool import (
     RESEARCH_TOOL_DEFINITION, TOOL_NAME, ResearchToolExecutor, ToolExecution, ToolExecutionError,
 )
-from trading_companion.relation_explanation import (
-    EXPLANATION_INSTRUCTION, ExplanationValidation, validate_indicator_explanation,
+from trading_companion.relation_explanation import EXPLANATION_INSTRUCTION, ExplanationValidation
+from trading_companion.research_response import (
+    RESPONSE_INSTRUCTION, ResponseValidation, build_conversation_answer, validate_research_response,
 )
 from trading_companion.research_intent import PreparedResearchInput, prepare_research_question
 from trading_companion.research_edit import indicator_selection, is_indicator_edit, is_window_edit
@@ -53,6 +54,7 @@ class AgentTurnResult:
     knowledge_answer: KnowledgeAnswer | None = field(default=None, repr=False)
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
     runtime: dict[str, object] | None = field(default=None, repr=False)
+    user_question: str = field(default="", repr=False)
 
     @property
     def safe_answer(self) -> ResearchReport | None:
@@ -62,13 +64,21 @@ class AgentTurnResult:
         return build_research_report(self.research_result, expected_request=self.confirmed_request)
 
     @property
-    def explanation_validation(self) -> ExplanationValidation:
-        """Recheck the current context; a stored success must not outlive its evidence."""
+    def response_validation(self) -> ResponseValidation:
+        """A stored success must not outlive its evidence; prose is not a verified fact."""
         if self.model_draft is None or self._explanation_execution is None:
-            return ExplanationValidation()
+            return ResponseValidation()
         execution = replace(self._explanation_execution, full_result=self.research_result)
-        return validate_indicator_explanation(self.model_draft, execution=execution,
-                                              expected_request=self.confirmed_request)
+        return validate_research_response(self.model_draft, execution=execution,
+                                         expected_request=self.confirmed_request)
+
+    @property
+    def explanation_validation(self) -> ExplanationValidation:
+        return self.response_validation.relations
+
+    @property
+    def conversation_answer(self) -> dict | None:
+        return build_conversation_answer(self)
 
     @property
     def _is_stopped(self) -> bool:
@@ -135,6 +145,7 @@ class AgentTurnResult:
             "research_synthesis": synthesis.to_dict() if synthesis is not None else None,
             "explanation_validation": self.explanation_validation.to_dict(),
             "display_answer": self.display_answer,
+            "conversation": self.conversation_answer,
             "model_responses": metadata, "model_calls_attempted": self.model_calls_attempted,
             "analyses_used": self.analyses_used, "failure_code": self.failure_code,
             "input_mode": self.input_mode,
@@ -291,17 +302,18 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         source="csv" if development_source is not None else source,
         reference_date=reference_date, development=development_source is not None,
     )
-    return _run_prepared(prepared, model=model, development_source=development_source)
+    return _run_prepared(prepared, model=model, development_source=development_source, question=question)
 
 
 def _run_prepared(prepared: PreparedResearchInput, *, model: ToolCapableModel,
-                  development_source: CsvDailyBarSource | None) -> AgentTurnResult:
+                  development_source: CsvDailyBarSource | None, question: str = "") -> AgentTurnResult:
     """Use the same proposal binding and executor for initial and resumed requests."""
     outcome = AgentTurnResult(
         input_mode="natural", understanding=prepared, stage=prepared.stage,
         confirmed_request=prepared.request, model_calls_attempted=prepared.model_calls_attempted,
         model_responses=(prepared.model_response,) if prepared.model_response is not None else (),
         failure_code=prepared.failure_code,
+        user_question=prepared.user_question or question,
     )
     if prepared.status != "ready":
         return _finish(outcome, prepared.status, prepared.code, prepared.message)
@@ -324,7 +336,7 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
         if prepared.status == "ready":
             # Consume the previous base before side effects, including failures and interruptions.
             session.begin_research()
-        outcome = _run_prepared(prepared, model=model, development_source=development_source)
+        outcome = _run_prepared(prepared, model=model, development_source=development_source, question=question)
         if prepared.status == "ready" and prepared.code in ("refresh_latest_ready", "relative_range_ready"):
             outcome = replace(outcome, message=prepared.message + " " + outcome.message)
         # A stopped turn cannot stage new result or clarification state for publication.
@@ -422,13 +434,17 @@ def _run_request(request: MultiIndicatorRequest, *, model: ToolCapableModel,
                  development_source: CsvDailyBarSource | None, outcome: AgentTurnResult) -> AgentTurnResult:
     """Share execution policy; never reset an earlier interpretation's call count."""
     outcome = replace(outcome, confirmed_request=request, stage="proposal")
+    conversational = outcome.input_mode == "natural"
+    user_content = request_arguments(request)
+    if conversational:
+        user_content = {"original_question": outcome.user_question, "confirmed_request": user_content}
     messages = [
         ToolMessage("system", "You are a read-only A-share research assistant. The application has parsed "
                     "one explicit request, shown in the next user message. Propose exactly one "
                     "analyze_daily_indicators call with those parameters; never change stock, dates, "
                     "source or indicators. Do not pass paths, URLs or request IDs in tool arguments. "
-                    + EXPLANATION_INSTRUCTION),
-        ToolMessage("user", json.dumps(request_arguments(request), separators=(",", ":"))),
+                    + (RESPONSE_INSTRUCTION if conversational else EXPLANATION_INSTRUCTION)),
+        ToolMessage("user", json.dumps(user_content, ensure_ascii=False, separators=(",", ":"))),
     ]
     tools = (RESEARCH_TOOL_DEFINITION,)
     try:
@@ -484,6 +500,8 @@ def _run_request(request: MultiIndicatorRequest, *, model: ToolCapableModel,
             return _finish(outcome, "limited", "partial_research",
                            "部分指标字段不可用；有效事实、缺项及通过检查的指标关系已保留，不生成收益预测。")
         return _finish(outcome, "completed", "research_completed",
+                       "研究事实和引用关系已核对；模型观点是条件性解读，不是经过验证的未来走势。"
+                       if outcome.response_validation.status == "accepted" else
                        "研究事实和所选指标关系已核对；展示文本由程序生成，不代表预测能力或自由文本语义已验收。")
     except TurnStopped as stop:
         return _stopped(outcome, stop.code)

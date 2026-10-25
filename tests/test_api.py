@@ -337,6 +337,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_live_modes_only_configure_background_at_the_trusted_startup_boundary(self):
         from trading_companion.api import create_app as real_app
+        from trading_companion.deepseek_model import DeepSeekConfig
         from trading_companion.security_directory import SecurityDirectory
         for mode, custom in (("synthetic", False), ("synthetic", True), ("tencent", False), ("tencent", True)):
             services = []
@@ -348,7 +349,8 @@ class LauncherTests(unittest.TestCase):
                 args += ["--market-context", PRIVATE]
             with self.subTest(mode=mode, custom=custom), redirect_stdout(StringIO()), patch("uvicorn.run"), patch(
                 "trading_companion.api.create_app", side_effect=capture), patch(
-                "trading_companion.deepseek_model.DeepSeekConfig.from_env", return_value=object()), patch(
+                "trading_companion.deepseek_model.DeepSeekConfig.from_env",
+                return_value=DeepSeekConfig("fixture-model", "artificial-test-key")), patch(
                 "trading_companion.market_context.load_market_context", return_value="configured-snapshot") as local, patch(
                 "trading_companion.security_directory.load_security_directory", return_value=Mock(spec=SecurityDirectory)) as directory:
                 self.assertEqual(server_main(args), 0)

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PublicTurn } from "./api";
-import { formatNumber, parsePresentation, unavailableLabel, unitLabel } from "./presentation";
+import { formatNumber, parseConversation, parsePresentation, unavailableLabel, unitLabel } from "./presentation";
 
 export function ReadableText({ text }: { text: string }) {
   // Render as text nodes; provider or source content never becomes executable HTML.
@@ -10,10 +10,16 @@ export function ReadableText({ text }: { text: string }) {
 
 export function ResponseContent({ turn }: { turn: PublicTurn }) {
   const presentation = parsePresentation(turn);
+  const conversation = parseConversation(turn);
   const [allMetrics, setAllMetrics] = useState(false);
   const fields = (turn.report?.fields ?? []).filter((field) => !presentation?.indicator_ids?.length
     || presentation.indicator_ids.includes(field.indicator_id));
   const unavailable = fields.filter((field) => field.status !== "available");
+  if (conversation) return <div className="conversation-response readable-text">
+    {conversation.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+    {conversation.origin === "model" && <small className="response-origin">基于本轮历史日线的模型解读</small>}
+  </div>;
+  if (turn.conversation != null) return <ReadableText text="本轮回答未能正常显示，请查看下方研究数据。本次没有重新调用模型。" />;
   if (!presentation) return <ReadableText text={turn.answer ?? turn.message} />;
   const isResearch = presentation.kind !== "knowledge";
   return <div className="response-content">

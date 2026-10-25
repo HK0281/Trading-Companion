@@ -142,6 +142,7 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
     return {
         "status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
+        "conversation": result.conversation_answer,
         "presentation": presentation,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
         "chart": chart,

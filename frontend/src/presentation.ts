@@ -15,6 +15,43 @@ const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 2000;
 
+export interface ConversationAnswer {
+  version: "conversation-answer-v1";
+  origin: "model" | "application";
+  request_id: string;
+  instrument_id: string;
+  trade_date: string | null;
+  grounding_scope: string;
+  paragraphs: string[];
+  citations: { role: "answer" | "outlook" | "watch_for"; fact_ids: string[] }[];
+}
+
+/** Citation binding is not a semantic proof of the model's prose. */
+export function parseConversation(turn: PublicTurn): ConversationAnswer | null {
+  const value = turn.conversation;
+  if (!record(value) || value.version !== "conversation-answer-v1"
+    || (value.origin !== "model" && value.origin !== "application")
+    || !turn.parameters || !turn.report?.request_id || value.request_id !== turn.report.request_id
+    || value.instrument_id !== turn.parameters.instrument_id
+    || !Array.isArray(value.paragraphs) || !value.paragraphs.length || value.paragraphs.length > 3
+    || !value.paragraphs.every(text) || !Array.isArray(value.citations)
+    || (value.trade_date !== null && (!text(value.trade_date)
+      || value.trade_date < turn.parameters.start_date || value.trade_date > turn.parameters.as_of_date))
+    || turn.report.fields.some((field) => field.trade_date !== value.trade_date)) return null;
+  if (value.origin === "model") {
+    if (value.grounding_scope !== "request_and_relation_claims_checked_prose_semantics_not_verified"
+      || !text(value.trade_date) || !["completed", "limited"].includes(turn.status) || turn.parameters.source === "csv"
+      || value.paragraphs.length !== 3 || value.citations.length !== 3
+      || !value.citations.every((item, index) => record(item)
+        && item.role === ["answer", "outlook", "watch_for"][index]
+        && Array.isArray(item.fact_ids) && item.fact_ids.length > 0 && item.fact_ids.length <= 8
+        && item.fact_ids.every((id) => text(id)
+          && id.startsWith(`${value.request_id}|${value.instrument_id}|${value.trade_date}|`))
+        && new Set(item.fact_ids).size === item.fact_ids.length)) return null;
+  } else if (value.grounding_scope !== "application_data_readiness" || value.citations.length) return null;
+  return value as unknown as ConversationAnswer;
+}
+
 /** Optional presentation errors never invalidate the core response or trigger a retry. */
 export function parsePresentation(turn: PublicTurn): AnswerPresentation | null {
   const value = turn.presentation;

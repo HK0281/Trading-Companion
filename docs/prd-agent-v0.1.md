@@ -5,6 +5,8 @@
 状态：供确认和拆分开发任务；不是已完成功能说明  
 本期主题：中文单股票多指标日线研究助手
 
+2026-10-24范围修订：网页新研究回复应围绕原问题，以自然语言先给主要判断，再给有前提的方向和观察条件，不以指标清单替代回答。允许明确不确定性的模型意见，不提供确定性预测、胜率、收益保证或无依据目标价。人工或不足数据应直接说明无法判断。程序事实与模型观点分别展示；引用校验不等于语义或预测验证。实现与验收见[自然语言答复设计](natural-research-response-design.md)。
+
 2026-10-22 MVP代码收口：[交付与验收清单](mvp-completion.md)记录本轮补齐的[跨指标综合](research-synthesis-design.md)、[窗口澄清/相对日期/刷新](mvp-conversation-design.md)、[启动固定来源](source-selection-design.md)及30场景重复评估。MVP代码已具备，真实模型/行情与增量浏览器验收仍待做；下文早期测试数保留为当时记录。
 
 修订说明：根据用户反馈，将本期从单SMA扩展为趋势、动量、波动和量能联合分析。实施更新（截至2026-10-22）：七类计算、多指标研究/证据、工具协议、执行器、DeepSeek适配、[自然语言入口](natural-input-design.md)、[股票澄清续接](identity-clarification-design.md)、[事实报告](safe-report-design.md)、[受限关系检查](grounded-explanation-design.md)、[固定场景评估](agent-evaluation-design.md)和[终端](terminal-agent-design.md)已有。后续补[指标替换](indicator-edit-design.md)、[结果/追问/知识](result-followup-design.md)、[明确股票/日期/指标增删](condition-update-design.md)及[整轮运行控制](turn-control-design.md)，全量856项离线测试通过。

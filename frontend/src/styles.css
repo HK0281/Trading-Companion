@@ -161,6 +161,10 @@ textarea::placeholder { color: #a1aaa0; }
 .readable-text { font-size: 14px; color: #596c4e; line-height: 1.95; }
 .readable-text p { white-space: pre-wrap; margin: 0 0 14px; }
 .readable-text p:last-child { margin-bottom: 0; }
+.conversation-response { color: #364630; font-size: 15px; line-height: 2; }
+.conversation-response p:first-child { color: #293c25; font-weight: 500; }
+.response-origin { display: block; font-size: 10px; color: #88967d; margin-top: 18px; }
+.response-citations { padding: 8px 0; font-size: 11px; color: #88967d; overflow-wrap: anywhere; }
 .answer-attachments { margin-top: 23px; border-top: 1px solid var(--line); }
 .disclosure { border-bottom: 1px solid var(--line); }
 .disclosure > summary { cursor: pointer; padding: 12px 1px; font-size: 11px; color: #627a53; font-weight: 550; }

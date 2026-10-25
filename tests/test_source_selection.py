@@ -203,11 +203,13 @@ class SourceSelectionTests(unittest.TestCase):
         self.assertEqual(build.call_args.args[0].source, "akshare_eastmoney")
 
     def test_server_startup_keeps_live_market_context_opt_in_and_does_not_load_it(self):
+        from trading_companion.deepseek_model import DeepSeekConfig
         services = []
         with redirect_stdout(StringIO()) as output, patch("trading_companion.api_service.find_spec", return_value=object()), patch(
             "trading_companion.security_directory.load_security_directory", return_value=SimpleNamespace(assert_usable=Mock())), patch(
             "trading_companion.api.create_app", side_effect=lambda *, service: services.append(service) or "test-app"), patch(
-            "trading_companion.deepseek_model.DeepSeekConfig.from_env", return_value=object()), patch(
+            "trading_companion.deepseek_model.DeepSeekConfig.from_env",
+            return_value=DeepSeekConfig("fixture-model", "artificial-test-key")), patch(
             "trading_companion.market_context.load_market_context", side_effect=AssertionError("No implicit snapshot")), patch("uvicorn.run") as run:
             self.assertEqual(server_main(["--provider", "deepseek", "--data", "akshare_eastmoney"]), 0)
         self.assertEqual(len(services), 1)

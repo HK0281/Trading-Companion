@@ -1,6 +1,7 @@
 """Explicit local-server launcher; no arguments show help and never read model credentials."""
 
 import argparse
+from dataclasses import replace
 from datetime import timedelta, timezone
 from pathlib import Path
 import sys
@@ -62,7 +63,10 @@ def main(argv=None) -> int:
                     directory.assert_usable(now.astimezone(timezone(timedelta(hours=8))).date(), development=False)
                     return directory
                 loader(datetime.now(timezone.utc))
-            config = DeepSeekConfig.from_env(load_model_environment())
+            from trading_companion.research_response import RESPONSE_OUTPUT_TOKENS
+            # Structured prose plus citations needs more space than the old relation-only JSON.
+            config = replace(DeepSeekConfig.from_env(load_model_environment()),
+                             max_output_tokens=RESPONSE_OUTPUT_TOKENS)
             if args.market_context:
                 context_path = Path(args.market_context)
                 context_loader = lambda _: load_market_context(context_path)

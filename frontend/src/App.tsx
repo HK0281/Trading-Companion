@@ -4,7 +4,7 @@ import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { MarketContext } from "./MarketContext";
 import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
-import { parsePresentation, sourceLabel } from "./presentation";
+import { parseConversation, parsePresentation, sourceLabel } from "./presentation";
 
 const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
 const samples = [
@@ -31,6 +31,7 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
 function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement> }) {
   const response = entry.response, turn = response?.result;
   const structured = turn && parsePresentation(turn);
+  const conversation = turn && parseConversation(turn);
   return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
     <div className="answer">
@@ -44,7 +45,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
           <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
           {turn.applied_defaults.length > 0 && <span>已采用 {turn.applied_defaults.length} 项默认设置 · 见本轮详情</span>}
           {turn.parameters.source !== undefined && <span className={turn.parameters.source === "csv" ? "synthetic-label" : ""}>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
-        {turn.status !== "completed" && structured && <p className="data-note" role="note">{turn.message}</p>}
+        {turn.status !== "completed" && structured && turn.conversation == null && <p className="data-note" role="note">{turn.message}</p>}
         <ResponseContent turn={turn} />
         {turn.status === "needs_clarification" && !entry.history && !!turn.candidates.length && <div className="candidates" aria-label="候选股票">
           <p>选择股票填入输入框，再发送确认。</p>
@@ -57,9 +58,14 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
           <EvidenceTable turn={turn} />
           {turn.market_context != null && <details className="disclosure"><summary>证券状态与交易日历 <span>查看背景</span></summary>
             <MarketContext value={turn.market_context} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} /></details>}
-          {structured && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
+          {(structured || turn.conversation != null) && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
             <ReadableText text={turn.answer ?? turn.message} /></details>}
           <details className="disclosure diagnostics"><summary>本轮详情 <span>参数与执行记录</span></summary>
+            {conversation?.origin === "model" && <div className="response-citations">
+              <p>模型引用的指标关系已核对；自然语言含义与未来方向判断并未由程序验证。</p>
+              {conversation.citations.map((item) => <div key={item.role}><strong>{({ answer: "主要判断", outlook: "后续方向", watch_for: "观察条件" })[item.role]}</strong>
+                <ul>{item.fact_ids.map((id) => <li key={id}><code>{id}</code></li>)}</ul></div>)}
+            </div>}
             {!!turn.applied_defaults.length && <div className="defaults"><strong>本轮默认口径</strong>
               <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
             <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次

@@ -96,6 +96,7 @@ class PreparedResearchInput:
     failure_code: str | None = None
     conditions: ResearchConditions | None = field(default=None, repr=False)
     clarification_resumable: bool = False
+    user_question: str = field(default="", repr=False)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -254,6 +255,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
     result = PreparedResearchInput(directory=directory)
     if type(question) is not str or not question.strip() or len(question) > MAX_USER_CHARACTERS:
         return replace(result, status="needs_clarification", code="invalid_input", message="请用不超过2000字符描述一个研究问题。")
+    result = replace(result, user_question=question)
     messages = [
         ToolMessage("system", "Understand the user's A-share question and submit exactly one "
                     "interpret_research_question call. You do not execute research. Extract all instrument "

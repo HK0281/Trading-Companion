@@ -54,23 +54,23 @@ describe("source-aware workspace", () => {
   it("shows AKShare as the actual source and requires explicit model/data consent", async () => {
     const { api } = await workspace();
     expect(screen.getAllByText("AKShare / 东方财富历史日线").length).toBeGreaterThan(0);
-    expect(screen.getByText(/股票与日期将用于查询AKShare \/ 东方财富历史日线/)).toBeInTheDocument();
     expect(screen.getByText(/来源由服务启动固定；失败不自动切换/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /开始会话/ })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    expect(screen.getByText(/股票与日期将用于查询AKShare \/ 东方财富历史日线/)).toBeVisible();
     expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: /开始会话/ }));
-    await screen.findByLabelText("会话额度"); expect(api.create).toHaveBeenCalledOnce();
-    expect(api.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
+    await screen.findByText("research_completed"); expect(api.create).toHaveBeenCalledOnce();
+    expect(api.send).toHaveBeenCalledOnce();
   });
   it("shows each confirmed research source independently from the server mode", async () => {
     const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => { const value = reply(id);
       value.result.parameters = { ...value.result.parameters!, source: "akshare_eastmoney" }; return value; });
-    fireEvent.click(screen.getByRole("checkbox")); fireEvent.click(screen.getByRole("button", { name: /开始会话/ }));
-    await screen.findByLabelText("会话额度");
     fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: /发送问题/ }));
+    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
     expect(await screen.findByText("来源：AKShare / 东方财富历史日线")).toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
   });

@@ -115,9 +115,12 @@ describe("research controller", () => {
     expect(controller.snapshot().entries).toEqual([]); expect(controller.snapshot().session?.view.model_calls_forwarded).toBe(3);
     expect(api.create).toHaveBeenCalledOnce(); expect(controller.snapshot().notice).toContain("额度不退");
   });
-  it("ending a session discards credentials and requires a new explicit start", async () => {
-    await ready(); await controller.end(); await controller.send("问题");
-    expect(controller.snapshot().session).toBeNull(); expect(api.end).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+  it("ending a session waits for the next explicit message before creating another", async () => {
+    await ready(); expect(await controller.end()).toBe(true);
+    expect(controller.snapshot().session).toBeNull(); expect(api.end).toHaveBeenCalledOnce();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    await controller.send("问题");
+    expect(api.create).toHaveBeenCalledTimes(2); expect(api.send).toHaveBeenCalledOnce();
   });
   it("rejects blank and oversized input before creating any message", async () => {
     await ready(); expect(await controller.send(" \n ")).toBe(false); expect(await controller.send("中".repeat(2001))).toBe(false);
@@ -136,5 +139,104 @@ describe("research controller", () => {
     let calls = 0; const unsubscribe = controller.subscribe(() => calls++);
     await controller.load(); expect(calls).toBeGreaterThan(0); unsubscribe();
     const previous = calls; controller.setConsent(true); expect(calls).toBe(previous);
+  });
+  it("creates a session and submits the first message without an explicit start", async () => {
+    await controller.load();
+    expect(await controller.send("  第一条问题  ")).toBe(true);
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+    expect(api.send.mock.calls[0][0]).toEqual(credentials);
+    expect(api.send.mock.calls[0][2]).toBe("第一条问题");
+    expect(controller.snapshot().entries).toHaveLength(1);
+    expect(controller.snapshot().phase).toBe("idle");
+  });
+  it("reuses the same credentials for subsequent messages", async () => {
+    await controller.load(); await controller.send("第一个问题"); await controller.send("追问");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledTimes(2);
+    expect(api.send.mock.calls[0][0]).toBe(api.send.mock.calls[1][0]);
+    expect(api.send.mock.calls[0][1]).not.toBe(api.send.mock.calls[1][1]);
+  });
+  it("locks the complete first-send sequence while session creation is waiting", async () => {
+    await controller.load(); const creation = deferred<typeof credentials>();
+    api.create.mockReturnValueOnce(creation.promise);
+    const first = controller.send("第一条");
+    expect(controller.snapshot().loading).toBe(true);
+    expect(await controller.send("第二条")).toBe(false);
+    await controller.start(); expect(await controller.end()).toBe(false);
+    await controller.load(); await controller.reset();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    expect(api.end).not.toHaveBeenCalled(); expect(api.reset).not.toHaveBeenCalled();
+    creation.resolve(credentials); await first;
+    expect(api.send).toHaveBeenCalledOnce(); expect(api.send.mock.calls[0][2]).toBe("第一条");
+  });
+  it.each([new ConnectionError(), new ApiError(429, "session_capacity")])("does not submit or auto-retry after a creation failure %s", async (error) => {
+    await controller.load(); api.create.mockRejectedValueOnce(error);
+    expect(await controller.send("保留的问题")).toBe(false);
+    expect(controller.snapshot().session).toBeNull(); expect(controller.snapshot().entries).toEqual([]);
+    expect(controller.snapshot().pendingId).toBeNull(); expect(controller.snapshot().loading).toBe(false);
+    expect(controller.snapshot().notice).toContain("问题尚未发送");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    expect(await controller.send("保留的问题")).toBe(true);
+    expect(api.create).toHaveBeenCalledTimes(2); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it.each([{ provider: "deepseek" as const }, { data_mode: "tencent" as const }])("does not send the first message after a creation mode mismatch %j", async (change) => {
+    await controller.load(); api.create.mockResolvedValueOnce({ ...credentials, ...change });
+    expect(await controller.send("问题")).toBe(false);
+    expect(controller.snapshot().session).toBeNull(); expect(api.send).not.toHaveBeenCalled();
+  });
+  it("requires live-provider permission before even lazy session creation", async () => {
+    api.health.mockResolvedValue({ ...health, provider: "deepseek" });
+    api.create.mockResolvedValue({ ...credentials, provider: "deepseek" });
+    await controller.load(); expect(await controller.send("问题")).toBe(false);
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+    controller.setConsent(true); await controller.send("问题");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("rechecks permission after session creation before sending research", async () => {
+    api.health.mockResolvedValue({ ...health, provider: "deepseek" });
+    const creation = deferred<typeof credentials>(); api.create.mockReturnValueOnce(creation.promise);
+    await controller.load(); controller.setConsent(true);
+    const first = controller.send("问题"); controller.setConsent(false);
+    creation.resolve({ ...credentials, provider: "deepseek" });
+    expect(await first).toBe(false); expect(api.send).not.toHaveBeenCalled();
+    expect(controller.snapshot().session).not.toBeNull(); expect(controller.snapshot().entries).toEqual([]);
+    controller.setConsent(true); await controller.send("问题");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("rejects invalid input and an unavailable service before creating a session", async () => {
+    expect(await controller.send("问题")).toBe(false);
+    await controller.load();
+    expect(await controller.send(" \n ")).toBe(false);
+    expect(await controller.send("中".repeat(2001))).toBe(false);
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+  });
+  it("does not create or delete a server session when clearing an empty chat", async () => {
+    await controller.load(); expect(await controller.end()).toBe(true);
+    expect(api.create).not.toHaveBeenCalled(); expect(api.end).not.toHaveBeenCalled();
+  });
+  it("keeps the current chat when server cleanup is unconfirmed", async () => {
+    await controller.load(); await controller.send("原问题");
+    api.end.mockRejectedValueOnce(new ConnectionError());
+    expect(await controller.end()).toBe(false);
+    expect(controller.snapshot().session).not.toBeNull(); expect(controller.snapshot().entries).toHaveLength(1);
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it.each([401, 404])("can explicitly discard a session already unavailable with HTTP %i", async (status) => {
+    await controller.load(); await controller.send("原问题");
+    api.end.mockRejectedValueOnce(new ApiError(status, "session_not_found"));
+    expect(await controller.end()).toBe(true);
+    expect(controller.snapshot().session).toBeNull(); expect(controller.snapshot().entries).toEqual([]);
+    expect(api.create).toHaveBeenCalledOnce();
+  });
+  it("does not start a new session to bypass the current message quota", async () => {
+    await controller.load(); api.inspect.mockResolvedValueOnce({ ...idle, messages_used: credentials.limits.messages });
+    await controller.send("最后一个问题"); expect(await controller.send("额度外的问题")).toBe(false);
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("keeps the original session and request id after the first message response is lost", async () => {
+    await controller.load(); api.send.mockRejectedValueOnce(new ConnectionError());
+    await controller.send("第一条问题"); const original = api.send.mock.calls[0];
+    expect(await controller.send("新的问题")).toBe(false);
+    await controller.retry();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send.mock.calls[1]).toEqual(original);
   });
 });

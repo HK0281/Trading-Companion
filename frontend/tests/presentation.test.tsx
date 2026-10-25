@@ -102,8 +102,6 @@ async function openChat() {
   const controller = new ResearchController(api);
   const rendered = render(<App controller={controller} />);
   await waitFor(() => expect(controller.snapshot().health).not.toBeNull());
-  fireEvent.click(screen.getByRole("button", { name: "开始会话" }));
-  await screen.findByLabelText("会话额度");
   return { api, controller, ...rendered };
 }
 
@@ -136,7 +134,7 @@ describe("conversation-first workspace", () => {
     expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(screen.getByRole("button", { name: "关闭导航" }));
     expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "false");
-    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
   });
   it("does not hide a limited result's message behind the full report", async () => {
     const { api } = await openChat();
@@ -151,8 +149,10 @@ describe("conversation-first workspace", () => {
     const controller = new ResearchController(api);
     render(<App controller={controller} />);
     await waitFor(() => expect(controller.snapshot().health).not.toBeNull());
-    fireEvent.click(screen.getByRole("button", { name: "开始会话" }));
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("本机服务会话数已满");
+    await waitFor(() => expect(screen.getByLabelText("研究问题")).toHaveValue("分析平安银行"));
     expect(api.send).not.toHaveBeenCalled();
   });
 });

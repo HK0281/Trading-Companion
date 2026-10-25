@@ -75,7 +75,7 @@ export class ResearchController {
     this.update({ loading: true });
     try {
       const health = await this.api.health();
-      this.update({ health, consent: false, notice: "服务已连接。开始会话后再发送问题；此时尚未调用模型。" });
+      this.update({ health, consent: false, notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -85,26 +85,47 @@ export class ResearchController {
     this.running = true;
     this.update({ loading: true });
     try {
-      const credentials = await this.api.create();
-      if (credentials.provider !== this.state.health?.provider || credentials.data_mode !== this.state.health?.data_mode)
-        throw new ConnectionError();
-      this.credentials = credentials;
-      this.update({ session: { shortId: credentials.session_id.slice(0, 8), limit: credentials.limits.messages,
-        modelLimit: credentials.limits.model_calls, view: emptyView() }, entries: [],
-        notice: "会话已建立。凭据仅保留在当前页面内存；刷新后需要新建会话。" });
+      await this.createSession();
     } catch (error) { this.failure(error); }
     finally { this.running = false; this.update({ loading: false }); }
   }
 
+  private async createSession() {
+    const credentials = await this.api.create();
+    if (credentials.provider !== this.state.health?.provider || credentials.data_mode !== this.state.health?.data_mode)
+      throw new ConnectionError();
+    this.credentials = credentials;
+    this.update({ session: { shortId: credentials.session_id.slice(0, 8), limit: credentials.limits.messages,
+      modelLimit: credentials.limits.model_calls, view: emptyView() }, entries: [],
+      notice: "对话已建立。" });
+  }
+
   async send(question: string): Promise<boolean> {
     question = question.trim();
-    if (this.running || this.pending || !this.credentials || !this.allowed()
-      || !question || Array.from(question).length > 2000 || this.state.session?.view.state === "busy") return false;
-    const id = this.nextId();
-    this.pending = { id, question };
-    this.append({ id, question, history: false });
-    await this.attempt();
-    return true;
+    if (this.running || this.pending || !this.allowed() || this.state.phase !== "idle"
+      || !question || Array.from(question).length > 2000 || this.state.session?.view.state === "busy"
+      || this.state.session && this.state.session.view.messages_used >= this.state.session.limit) return false;
+    // Hold one synchronous gate across creation and sending, not one gate per HTTP call.
+    this.running = true;
+    this.update({ loading: true, notice: this.credentials ? "正在发送问题…" : "正在建立对话…" });
+    try {
+      if (!this.credentials) await this.createSession();
+      // Permission can be withdrawn while session creation is in flight.
+      if (!this.allowed()) {
+        this.update({ notice: "模型发送已暂停，问题尚未发送。再次发送时可重新确认。", noticeLevel: "error" });
+        return false;
+      }
+      const id = this.nextId();
+      this.pending = { id, question };
+      this.append({ id, question, history: false });
+      await this.attempt();
+      return true;
+    } catch (error) {
+      this.update({ notice: error instanceof ConnectionError
+        ? "未能确认对话创建成功，问题尚未发送。请检查连接，再点击发送重试。"
+        : `未能建立对话，问题尚未发送。${explanation(error)}`, noticeLevel: "error" });
+      return false;
+    } finally { this.running = false; this.update({ loading: false }); }
   }
 
   async retry() {
@@ -193,15 +214,22 @@ export class ResearchController {
     finally { this.running = false; this.update({ loading: false }); }
   }
 
-  async end() {
-    if (this.running || this.pending || !this.credentials) return;
+  async end(): Promise<boolean> {
+    if (this.running || this.pending) return false;
     this.running = true;
     this.update({ loading: true });
     try {
-      await this.api.end(this.credentials);
+      if (this.credentials) {
+        try { await this.api.end(this.credentials); }
+        catch (error) {
+          // An explicitly discarded, expired session needs no further server cleanup.
+          if (!(error instanceof ApiError) || ![401, 404].includes(error.status)) throw error;
+        }
+      }
       this.forget();
-      this.update({ entries: [], notice: "会话已结束，服务端已删除该会话；可重新开始。" });
-    } catch (error) { this.failure(error); }
+      this.update({ entries: [], notice: "已回到新对话。直接发送问题即可开始。" });
+      return true;
+    } catch (error) { this.failure(error); return false; }
     finally { this.running = false; this.update({ loading: false }); }
   }
 }

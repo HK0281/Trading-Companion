@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import App from "../src/App";
-import { ConnectionError, type MessageResponse } from "../src/api";
+import { ApiError, ConnectionError, type Health, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
 import { chartReply, credentials, deferred, health, marketContextReply, mockApi, reply } from "./fixtures";
 
@@ -13,10 +13,6 @@ async function workspace(paid = false) {
   await waitFor(() => expect(controller.snapshot().health).not.toBeNull());
   return { api, controller, ...rendered };
 }
-async function start() {
-  fireEvent.click(screen.getByRole("button", { name: /开始会话/ }));
-  await screen.findByLabelText("会话额度");
-}
 function send(question = "分析平安银行") {
   fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), { target: { value: question } });
   fireEvent.click(screen.getByRole("button", { name: /发送问题/ }));
@@ -26,7 +22,8 @@ describe("research workspace", () => {
   it("shows read-only synthetic boundaries without creating a session on load", async () => {
     const { api } = await workspace();
     expect(screen.getAllByText("人工行情 · 非真实").length).toBeGreaterThan(0);
-    expect(screen.getByRole("textbox", { name: "研究问题" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /开始会话/ })).not.toBeInTheDocument();
     expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
   });
   it("fills examples without automatically sending or creating sessions", async () => {
@@ -35,20 +32,21 @@ describe("research workspace", () => {
     expect(api.send).not.toHaveBeenCalled(); expect(api.create).not.toHaveBeenCalled();
   });
   it("renders application facts and evidence but does not offer clarification for a completed answer", async () => {
-    await workspace(); await start(); send();
+    const { api } = await workspace(); send();
     await screen.findByText("research_completed");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
     expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
     expect(screen.getByText("指标字段与证据")).toBeInTheDocument();
     expect(screen.queryByLabelText("候选股票")).not.toBeInTheDocument();
   });
   it("renders untrusted text literally instead of executing HTML", async () => {
-    const { api, container } = await workspace(); await start();
+    const { api, container } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => { const value = reply(id); value.result.answer = '<img src=x onerror="alert(1)">'; return value; });
     send(); await screen.findByText('<img src=x onerror="alert(1)">');
     expect(container.querySelector("img")).toBeNull();
   });
   it("integrates a request-bound chart without extra API calls", async () => {
-    const { api } = await workspace(); await start();
+    const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => chartReply(id));
     send(); await screen.findByText("research_completed");
     const summary = screen.getByText("历史 K 线与指标");
@@ -60,7 +58,7 @@ describe("research workspace", () => {
     expect(api.history).not.toHaveBeenCalled();
   });
   it.each(["source", "context", "data_authenticity"]) ("keeps confirmed text when optional chart %s is malformed", async (key) => {
-    const { api } = await workspace(); await start();
+    const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => {
       const value = chartReply(id); value.result.chart = { ...(value.result.chart as object), [key]: { toString: 0 } };
       return value;
@@ -73,7 +71,7 @@ describe("research workspace", () => {
     expect(api.send).toHaveBeenCalledOnce();
   });
   it("integrates request-bound market context without extra calls or changing the answer", async () => {
-    const { api } = await workspace(); await start();
+    const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => marketContextReply(id));
     send(); await screen.findByText("research_completed");
     fireEvent.click(screen.getByText("证券状态与交易日历", { selector: "summary" }));
@@ -84,7 +82,7 @@ describe("research workspace", () => {
     expect(api.send).toHaveBeenCalledOnce(); expect(api.history).not.toHaveBeenCalled();
   });
   it.each(["security", "request_id", "data_authenticity"])("isolates malformed optional market context %s", async (key) => {
-    const { api } = await workspace(); await start();
+    const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => {
       const value = marketContextReply(id);
       value.result.market_context = { ...(value.result.market_context as object), [key]: { toString: 0 } };
@@ -98,7 +96,7 @@ describe("research workspace", () => {
     expect(api.send).toHaveBeenCalledOnce();
   });
   it("marks saved market context as historical without a new research request", async () => {
-    const { api } = await workspace(); await start();
+    const { api, controller } = await workspace(); await act(async () => controller.start());
     api.history.mockImplementationOnce(async () => marketContextReply());
     fireEvent.click(screen.getByRole("button", { name: /查看上次结果/ }));
     await screen.findByText("已保存上下文 · 非新查询");
@@ -107,7 +105,7 @@ describe("research workspace", () => {
     expect(api.history).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
   });
   it("fills a verified candidate only; the user must explicitly submit it", async () => {
-    const { api } = await workspace(); await start();
+    const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => { const value = reply(id);
       value.result = { ...value.result, status: "needs_clarification", code: "instrument_needs_clarification", answer: null,
         message: "请选择股票", parameters: null, report: null }; return value; });
@@ -116,18 +114,27 @@ describe("research workspace", () => {
     expect(screen.getByRole("textbox", { name: "研究问题" })).toHaveValue("000001.SZ");
     expect(api.send).toHaveBeenCalledOnce();
   });
-  it("requires consent before a real provider session can start", async () => {
+  it("asks for consent beside the composer on first send, then creates and sends once", async () => {
     const { api } = await workspace(true);
-    expect(screen.getByRole("button", { name: /开始会话/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole("checkbox")); await start(); expect(api.create).toHaveBeenCalledOnce();
+    send();
+    expect(screen.getByRole("group", { name: "确认发送到 DeepSeek" })).toBeVisible();
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "研究问题" })).toHaveValue("分析平安银行");
+    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
+    await screen.findByText("research_completed");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("group", { name: "确认发送到 DeepSeek" })).not.toBeInTheDocument();
+    send("继续解释");
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(2));
+    expect(api.create).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("演示说明")).not.toBeInTheDocument();
   });
   it("offers retry and cancellation for an unconfirmed response without enabling new work", async () => {
-    const { api } = await workspace(); await start(); api.send.mockRejectedValueOnce(new ConnectionError());
+    const { api } = await workspace(); api.send.mockRejectedValueOnce(new ConnectionError());
     send(); await screen.findByRole("button", { name: "重试原请求" });
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "请求取消" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "清空研究条件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "新对话" })).toBeDisabled();
     api.send.mockImplementationOnce(async (_session, id) => ({ ...reply(id), replayed: true }));
     fireEvent.click(screen.getByRole("button", { name: "重试原请求" }));
     await screen.findByText("research_completed"); expect(api.send.mock.calls[1][1]).toBe(api.send.mock.calls[0][1]);
@@ -135,15 +142,16 @@ describe("research workspace", () => {
     expect(screen.getByText(/原请求模型 3 次/)).toHaveTextContent("本次未重做");
   });
   it("cancellation stays available while the original HTTP promise waits", async () => {
-    const { api } = await workspace(); await start(); const waiting = deferred<MessageResponse>(); api.send.mockReturnValueOnce(waiting.promise);
-    send(); fireEvent.click(screen.getByRole("button", { name: "请求取消" }));
+    const { api } = await workspace(); const waiting = deferred<MessageResponse>(); api.send.mockReturnValueOnce(waiting.promise);
+    send(); fireEvent.click(await screen.findByRole("button", { name: "请求取消" }));
     await waitFor(() => expect(api.cancel).toHaveBeenCalledOnce());
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeDisabled();
     await act(async () => { waiting.resolve(reply(api.send.mock.calls[0][1])); });
     await screen.findByText("research_completed");
   });
   it("requires confirmation for reset and retains quota counts", async () => {
-    const { api } = await workspace(); await start(); send(); await screen.findByText("research_completed");
+    const { api } = await workspace(); send(); await screen.findByText("research_completed");
+    fireEvent.click(screen.getByText("本机服务已连接", { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "清空研究条件" }));
     expect(api.reset).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认清空" }));
@@ -151,14 +159,120 @@ describe("research workspace", () => {
     expect(screen.getByText("3 / 60")).toBeInTheDocument();
   });
   it("keeps history explicitly labelled and separate from new research", async () => {
-    const { api } = await workspace(); await start();
+    const { api, controller } = await workspace(); await act(async () => controller.start());
     fireEvent.click(screen.getByRole("button", { name: /查看上次结果/ }));
     await screen.findByText("已保存的研究 · 非新分析"); expect(api.send).not.toHaveBeenCalled();
   });
   it("does not send Enter while using an IME, and supports Ctrl+Enter", async () => {
-    const { api } = await workspace(); await start(); const input = screen.getByRole("textbox", { name: "研究问题" });
+    const { api } = await workspace(); const input = screen.getByRole("textbox", { name: "研究问题" });
     fireEvent.change(input, { target: { value: "分析平安银行" } });
     fireEvent.keyDown(input, { key: "Enter", ctrlKey: true, isComposing: true }); expect(api.send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter", ctrlKey: true }); await screen.findByText("research_completed");
+  });
+  it("allows drafting while the initial health check is still pending", async () => {
+    const api = mockApi(), waiting = deferred<Health>(); api.health.mockReturnValueOnce(waiting.promise);
+    render(<App controller={new ResearchController(api)} />);
+    const input = screen.getByLabelText("研究问题");
+    expect(input).toBeEnabled(); fireEvent.change(input, { target: { value: "先写下问题" } });
+    expect(screen.getByRole("button", { name: "发送问题" })).toBeDisabled();
+    expect(screen.getByText("正在连接本机服务，你可以先输入问题。")).toBeVisible();
+    await act(async () => waiting.resolve(health));
+    expect(input).toHaveValue("先写下问题"); expect(screen.getByRole("button", { name: "发送问题" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    await screen.findByText("research_completed"); expect(api.send.mock.calls[0][2]).toBe("先写下问题");
+  });
+  it("shows reconnection beside the composer and keeps a draft after health failure", async () => {
+    const api = mockApi(); api.health.mockRejectedValueOnce(new ConnectionError());
+    render(<App controller={new ResearchController(api)} />);
+    await screen.findByText("本机服务未连接，你的草稿仍保留在输入框。");
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "连接后再发送" } });
+    fireEvent.click(screen.getByRole("button", { name: "重新连接" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送问题" })).toBeEnabled());
+    expect(screen.getByLabelText("研究问题")).toHaveValue("连接后再发送");
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+  });
+  it("displays creation progress and blocks rapid duplicate sends", async () => {
+    const { api } = await workspace(), creation = deferred<typeof credentials>();
+    api.create.mockReturnValueOnce(creation.promise); send();
+    expect(screen.getByText("正在建立对话并发送问题…")).toBeVisible();
+    expect(screen.getByLabelText("研究问题")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    fireEvent.keyDown(screen.getByLabelText("研究问题"), { key: "Enter" });
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    await act(async () => creation.resolve(credentials));
+    await screen.findByText("research_completed");
+    expect(api.send).toHaveBeenCalledOnce(); expect(screen.getByLabelText("研究问题")).toHaveValue("");
+  });
+  it("restores the draft on creation failure and resubmits only on a new user action", async () => {
+    const { api } = await workspace(); api.create.mockRejectedValueOnce(new ApiError(429, "session_capacity"));
+    send("  我的原问题  ");
+    await waitFor(() => expect(screen.getByLabelText("研究问题")).toHaveValue("  我的原问题  "));
+    expect(screen.getByRole("alert")).toHaveTextContent("问题尚未发送");
+    expect(api.send).not.toHaveBeenCalled(); expect(api.create).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    await screen.findByText("research_completed");
+    expect(api.create).toHaveBeenCalledTimes(2); expect(api.send.mock.calls[0][2]).toBe("我的原问题");
+  });
+  it("cancels paid-provider confirmation without losing the draft or creating a session", async () => {
+    const { api } = await workspace(true); send("待确认的问题");
+    fireEvent.click(screen.getByRole("button", { name: "暂不发送" }));
+    expect(screen.queryByRole("group", { name: "确认发送到 DeepSeek" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("研究问题")).toHaveValue("待确认的问题");
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+  });
+  it("dismisses stale sending consent when the draft is edited", async () => {
+    const { api } = await workspace(true); send("原问题");
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "修改后的问题" } });
+    expect(screen.queryByRole("button", { name: "允许并发送" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
+    await screen.findByText("research_completed");
+    expect(api.send.mock.calls[0][2]).toBe("修改后的问题");
+  });
+  it("clears a draft with New Chat without creating an empty backend session", async () => {
+    const { api } = await workspace();
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "尚未发送" } });
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    await waitFor(() => expect(screen.getByLabelText("研究问题")).toHaveValue(""));
+    expect(api.create).not.toHaveBeenCalled(); expect(api.end).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("研究问题")).toHaveFocus();
+  });
+  it("discards the old chat and creates a fresh one only on the next send", async () => {
+    const { api } = await workspace(); send(); await screen.findByText("research_completed");
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    await waitFor(() => expect(screen.queryByText("research_completed")).not.toBeInTheDocument());
+    expect(api.end).toHaveBeenCalledOnce(); expect(api.create).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("研究问题")).toBeEnabled();
+    send("新问题"); await screen.findByText("research_completed");
+    expect(api.create).toHaveBeenCalledTimes(2); expect(api.send).toHaveBeenCalledTimes(2);
+  });
+  it("does not discard the current messages or draft if New Chat cleanup fails", async () => {
+    const { api } = await workspace(); send(); await screen.findByText("research_completed");
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "下一条草稿" } });
+    api.end.mockRejectedValueOnce(new ConnectionError());
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    await screen.findByRole("alert");
+    expect(screen.getByText("research_completed")).toBeInTheDocument();
+    expect(screen.getByLabelText("研究问题")).toHaveValue("下一条草稿");
+    expect(api.create).toHaveBeenCalledOnce();
+  });
+  it("reconfirms a paid provider in a new chat instead of carrying permission silently", async () => {
+    const { api } = await workspace(true); send();
+    fireEvent.click(screen.getByRole("button", { name: "允许并发送" })); await screen.findByText("research_completed");
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    await waitFor(() => expect(screen.queryByText("research_completed")).not.toBeInTheDocument());
+    send("新问题"); expect(screen.getByRole("button", { name: "允许并发送" })).toBeVisible();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+  });
+  it("asks to resume permission for a retry without changing its original request", async () => {
+    const { api, controller } = await workspace(true); api.send.mockRejectedValueOnce(new ConnectionError());
+    send(); fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
+    await screen.findByRole("button", { name: "重试原请求" }); const original = api.send.mock.calls[0];
+    act(() => controller.setConsent(false));
+    fireEvent.click(screen.getByRole("button", { name: "重试原请求" }));
+    expect(api.send).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "允许并重试" }));
+    await screen.findByText("research_completed");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send.mock.calls[1]).toEqual(original);
   });
 });

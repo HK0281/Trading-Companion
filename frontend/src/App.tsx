@@ -80,6 +80,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const [question, setQuestion] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<"reset" | "end" | null>(null);
+  const [sendConfirmation, setSendConfirmation] = useState<"send" | "retry" | null>(null);
+  const draftRevision = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null), latest = useRef<HTMLElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
   const followBottom = useRef(true);
@@ -87,11 +89,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const locked = loading || phase !== "idle", paid = health?.provider === "deepseek";
   const consented = !paid || state.consent;
   const exhausted = !!session && session.view.messages_used >= session.limit;
-  const canSend = !!session && !locked && consented && !exhausted && session.view.state !== "busy";
+  const canSend = !!health && !locked && !exhausted && session?.view.state !== "busy";
   const characters = Array.from(question.trim()).length;
 
   useEffect(() => { void controller.load(); }, [controller]);
-  useEffect(() => { if (session) textarea.current?.focus(); }, [session?.shortId]);
+  useEffect(() => { if (!locked) textarea.current?.focus(); }, [locked, session?.shortId]);
   useEffect(() => {
     const container = scrollArea.current, message = latest.current;
     if (followBottom.current && container && message) {
@@ -107,20 +109,43 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     }
   }, [question]);
 
-  const choose = (value: string) => { setQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
+  const editQuestion = (value: string) => { draftRevision.current++; setSendConfirmation(null); setQuestion(value); };
+  const choose = (value: string) => { editQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
+  const sendQuestion = () => {
+    const original = question;
+    const revision = ++draftRevision.current;
+    followBottom.current = true;
+    setQuestion("");
+    setSendConfirmation(null);
+    void controller.send(original).then((accepted) => {
+      // A failed creation must not lose the draft or overwrite a newer edit.
+      if (!accepted && draftRevision.current === revision) setQuestion(original);
+    });
+  };
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend || !characters || characters > 2000) return;
-    const original = question;
-    followBottom.current = true;
-    setQuestion("");
-    void controller.send(original);
+    if (!consented) { setSendConfirmation("send"); return; }
+    sendQuestion();
+  };
+  const confirmSending = () => {
+    if (!sendConfirmation || loading || sendConfirmation === "send" && locked) return;
+    if (sendConfirmation === "send" && (!canSend || !characters || characters > 2000)) return;
+    controller.setConsent(true);
+    if (sendConfirmation === "send") sendQuestion();
+    else { setSendConfirmation(null); void controller.retry(); }
+  };
+  const newChat = async () => {
+    setNavigationOpen(false);
+    setConfirmation(null);
+    setSendConfirmation(null);
+    if (await controller.end()) { editQuestion(""); followBottom.current = true; textarea.current?.focus(); }
   };
   const confirmAction = () => {
     const action = confirmation;
     setConfirmation(null);
     if (action === "reset") void controller.reset();
-    else if (action === "end") { setQuestion(""); void controller.end(); }
+    else if (action === "end") void newChat();
   };
 
   return <div className={`workspace ${navigationOpen ? "navigation-open" : ""}`} id="workspace"
@@ -129,9 +154,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     <aside className="sidebar" id="navigation" aria-label="工作台导航">
       <a href="#workspace" className="brand" aria-label="Trading Companion 页首"><span className="brand-icon"><Icon name="chart" /></span>
         <span>Trading Companion<small>你的 A 股研究助手</small></span></a>
-      {!session ? <button type="button" className="primary start" disabled={!health || loading || !consented}
-        onClick={() => { setNavigationOpen(false); void controller.start(); }}><Icon name="plus" />开始会话</button>
-        : <button type="button" className="new-research" disabled={locked} onClick={() => setConfirmation("reset")}><Icon name="plus" />清空研究条件</button>}
+      <button type="button" className="new-research" disabled={locked} onClick={() => void newChat()}><Icon name="plus" />新对话</button>
       <div className="nav-item active"><Icon name="chat" /><span>研究对话</span><span className="nav-badge">A 股</span></div>
       <section className="conversation-index" aria-label="本次对话记录"><span className="sidebar-caption">本次对话</span>
         {!state.entries.length ? <p className="empty-index">你的研究会显示在这里</p> : <nav>{state.entries.map((entry, index) =>
@@ -151,16 +174,15 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             <dl><div><dt>模型</dt><dd>{health?.provider === "fake" ? "Fake · 固定脚本" : paid ? "DeepSeek" : "—"}</dd></div>
               <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div></dl>
             <p>来源由服务启动固定；失败不自动切换。不能通过对话切换。</p>
-            {!health && <button type="button" disabled={loading} onClick={() => void controller.load()}>重新连接</button>}
           </section>
+          {paid && <label className="consent"><input type="checkbox" checked={state.consent} onChange={(event) => controller.setConsent(event.target.checked)} />
+            <span>允许向 DeepSeek 发送问题与研究数据（可能计费）</span></label>}
           {session && <div className="session-actions"><p>会话 {session.shortId} · 创建后 30 分钟到期。刷新会丢失当前记录；重置不退额度。</p>
             <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查会话状态</button>
+            <button type="button" disabled={locked} onClick={() => setConfirmation("reset")}>清空研究条件</button>
             <button type="button" disabled={locked} onClick={() => setConfirmation("end")}>结束会话</button></div>}
           <details className="technical-status"><summary>连接与诊断</summary><p>{state.notice}</p><a href="/docs" target="_blank" rel="noreferrer">接口文档 ↗</a></details>
         </div></details>
-        {paid && <label className="consent"><input type="checkbox" checked={state.consent} onChange={(event) => controller.setConsent(event.target.checked)} />
-          <span>允许向 DeepSeek 发送问题与研究数据（可能计费）
-            {health?.data_mode !== "synthetic" && <small>股票与日期将用于查询{sourceLabel(health?.data_mode)}。</small>}</span></label>}
         {confirmation && <div className="confirm-panel" role="group" aria-label="确认会话操作">
           <p>{confirmation === "reset" ? "清空当前对话与研究条件？已使用额度不会返还。" : "结束会话并清空当前页面记录？"}</p>
           <button type="button" disabled={locked} onClick={confirmAction}>确认{confirmation === "reset" ? "清空" : "结束"}</button>
@@ -191,9 +213,6 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             {health?.provider === "fake" && <details className="demo-guide" aria-label="演示说明"><summary>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"} · 查看使用方式</summary>
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
-            {!session && <div className="start-hint"><p>{paid && !consented ? "请先在导航栏允许模型调用，再开始会话。" : "点击「开始会话」，开启你的研究。"}</p>
-              <button className="primary mobile-start" type="button" aria-label="开始研究会话" disabled={!health || loading}
-                onClick={() => { if (!consented) setNavigationOpen(true); else void controller.start(); }}>开始会话 ↗</button></div>}
           </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose}
             elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && index === state.entries.length - 1} />)}
         </section>
@@ -202,13 +221,25 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
       <div className="composer-dock"><div className="composer-container">
         {state.pendingId && <div className="request-controls" aria-label="当前请求控制">
           <span>{phase === "uncertain" ? "响应未确认" : "正在研究"}</span>
-          {phase === "uncertain" && <button type="button" disabled={loading || !consented} onClick={() => void controller.retry()}>重试原请求</button>}
+          {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => {
+            if (!consented) setSendConfirmation("retry"); else void controller.retry();
+          }}>重试原请求</button>}
           {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查原请求状态</button>}
           <button type="button" disabled={state.cancelPending} onClick={() => void controller.cancel()}>{state.cancelPending ? "正在请求取消…" : "请求取消"}</button>
         </div>}
         <div className="sr-only" role="status" aria-live="polite">{state.notice}</div>
         {state.noticeLevel === "error" || phase === "uncertain"
           ? <p className="connection-notice" role="alert">{state.notice}</p> : null}
+        {!health && <div className="composer-connection"><span>{loading ? "正在连接本机服务，你可以先输入问题。" : "本机服务未连接，你的草稿仍保留在输入框。"}</span>
+          {!loading && <button type="button" onClick={() => void controller.load()}>重新连接</button>}</div>}
+        {loading && !session && health && <p className="composer-progress" role="status">正在建立对话并发送问题…</p>}
+        {sendConfirmation && <section className="send-consent" role="group" aria-label="确认发送到 DeepSeek">
+          <div><strong>使用 DeepSeek 处理本次对话？</strong><p>问题与研究数据将发送到 DeepSeek，可能产生 API 费用。
+            {health?.data_mode !== "synthetic" && <>股票与日期将用于查询{sourceLabel(health?.data_mode)}。</>}</p></div>
+          <div className="send-consent-actions"><button type="button" className="primary" disabled={loading || sendConfirmation === "send" && locked} onClick={confirmSending}>
+            {sendConfirmation === "retry" ? "允许并重试" : "允许并发送"}</button>
+            <button type="button" onClick={() => { setSendConfirmation(null); textarea.current?.focus(); }}>暂不发送</button></div>
+        </section>}
         {session && !!state.entries.length && !locked && <div className="followup-chips">
           <button type="button" onClick={() => choose("这里的RSI为什么偏高")}>追问 RSI</button>
           <button type="button" onClick={() => choose("解释一下MACD里的DIF和DEA")}>DIF 与 DEA 是什么？</button>
@@ -216,9 +247,9 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         </div>}
         <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
-          <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={!session || locked}
-            placeholder={session ? "输入股票名称、日期，或继续追问…" : "开始会话后，在这里输入你的问题…"}
-            onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
+          <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={(loading && !!health) || phase !== "idle"}
+            placeholder="输入股票名称、日期，或直接问一个问题…"
+            onChange={(event) => editQuestion(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Escape") setNavigationOpen(false);
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) submit(event);
             }} />
@@ -228,7 +259,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               disabled={!canSend || !characters || characters > 2000}><Icon name="arrow" /></button></div>
         </form>
         <div className="composer-hint"><span>Enter 发送 · Shift + Enter 换行</span><span>会话仅保留在当前页面</span></div>
-        {exhausted && <p className="error-text">本会话问题额度已用完；仍可查看历史，结束后可新建会话。</p>}
+        {exhausted && <p className="error-text">本次对话的问题额度已用完；仍可查看历史，点击「新对话」后可继续。</p>}
       </div></div>
     </main>
   </div>;

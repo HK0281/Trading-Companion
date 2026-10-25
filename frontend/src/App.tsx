@@ -6,11 +6,12 @@ import { MarketContext } from "./MarketContext";
 import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
 import { parsePresentation, sourceLabel } from "./presentation";
 
-const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
-const samples = [
-  { label: "个股研究", question: INITIAL, description: "从价格、均线和动量开始", icon: "chart" },
+const samples = (development: boolean) => [
+  { label: "个股研究", question: development ? "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2"
+    : "分析平安银行最近的走势，关注趋势与动量", description: "从价格、均线和动量开始", icon: "chart" },
   { label: "理解指标", question: "解释一下MACD里的DIF和DEA", description: "弄懂指标背后的计算逻辑", icon: "book" },
-  { label: "调整条件", question: "把SMA3改成5日，其他不变", description: "沿用当前研究，修改指标参数", icon: "sliders" },
+  { label: "调整条件", question: development ? "把SMA3改成5日，其他不变" : "把RSI改成9日，其他不变",
+    description: "沿用当前研究，修改指标参数", icon: "sliders" },
 ];
 const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要补充",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
@@ -68,7 +69,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
 }
 
 export default function App({ controller: supplied }: { controller?: ResearchController }) {
-  const [controller] = useState(() => supplied ?? new ResearchController(createApi()));
+  const [controller] = useState(() => supplied ?? new ResearchController(createApi(), undefined, createApi(undefined, "development")));
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
   const [question, setQuestion] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -79,6 +80,9 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const followBottom = useRef(true);
   const { health, session, loading, phase } = state;
   const locked = loading || phase !== "idle", paid = health?.provider === "deepseek";
+  const development = state.mode !== "normal";
+  const canSwitchMode = state.developmentModeAvailable && !locked && !state.pendingId
+    && !state.cancelPending && session?.view.state !== "busy";
   const exhausted = !!session && session.view.messages_used >= session.limit;
   const canSend = !!health && !locked && !exhausted && session?.view.state !== "busy";
   const characters = Array.from(question.trim()).length;
@@ -101,6 +105,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   }, [question]);
 
   const editQuestion = (value: string) => { draftRevision.current++; setQuestion(value); };
+  const switchMode = async () => {
+    if (await controller.switchMode(development ? "normal" : "development")) {
+      editQuestion(""); setConfirmation(null); setNavigationOpen(false); followBottom.current = true;
+    }
+  };
   const choose = (value: string) => { editQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
   const sendQuestion = () => {
     const original = question;
@@ -174,9 +183,16 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
       <header className="topbar"><div className="topbar-title"><button className="mobile-menu" aria-label="展开导航" aria-expanded={navigationOpen}
         aria-controls="navigation" onClick={() => setNavigationOpen(!navigationOpen)}><Icon name="menu" /></button>
         <h1>研究对话</h1><span className="header-divider" /><span className="market-badge">A 股</span></div>
-        <div className="header-status"><span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}>
+        <div className="header-status"><span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}
+          title={health ? sourceLabel(health.data_mode) : "服务未连接"}>
           {health?.data_mode === "synthetic" ? "人工行情 · 非真实" : health ? sourceLabel(health.data_mode) : "连接中"}</span>
-          <span className="model-pill">{paid ? "DeepSeek" : health ? "演示模式" : "—"}</span></div></header>
+          <span className="model-pill">{development ? "测试 · 离线" : paid ? "DeepSeek" : health ? "固定脚本" : "—"}</span>
+          <button className="dev-mode-toggle" type="button" role="switch" aria-label="Dev Mode"
+            aria-checked={development} disabled={!canSwitchMode} onClick={() => void switchMode()}
+            title={state.mode === "standalone_demo" ? "当前服务仅提供离线测试，不能切回正常模式"
+              : !state.developmentModeAvailable ? "当前服务未启用独立测试模式" : "切换模式会清空当前对话和草稿"}>
+            <span>Dev Mode</span><span className="toggle-track" aria-hidden="true"><span /></span>
+          </button></div></header>
 
       <div className="conversation-scroll" ref={scrollArea} onScroll={() => {
         const element = scrollArea.current;
@@ -186,7 +202,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           {!state.entries.length ? <div className="empty-state"><div className="empty-mark" aria-hidden="true"><Icon name="chart" /></div>
             <span className="eyebrow">TRADING COMPANION</span><h2>把行情，聊清楚。</h2>
             <p>研究一只股票，读懂一组指标。<br />从你的问题开始。</p>
-            <div className="starter-grid">{samples.map((sample) => <button type="button" key={sample.label} className="starter-card"
+            <div className="starter-grid">{samples(development).map((sample) => <button type="button" key={sample.label} className="starter-card"
               disabled={locked} onClick={() => choose(sample.question)}><Icon name={sample.icon} /><strong>{sample.label}</strong>
               <span>{sample.description}</span><span className="starter-arrow" aria-hidden="true">↗</span></button>)}</div>
             {health?.provider === "fake" && <details className="demo-guide" aria-label="演示说明"><summary>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"} · 查看使用方式</summary>
@@ -205,14 +221,18 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           <button type="button" disabled={state.cancelPending} onClick={() => void controller.cancel()}>{state.cancelPending ? "正在请求取消…" : "请求取消"}</button>
         </div>}
         <div className="sr-only" role="status" aria-live="polite">{state.notice}</div>
+        {state.switching && <p className="mode-notice" role="status">正在切换模式，暂不发送研究请求…</p>}
+        {!state.switching && state.noticeLevel !== "error" && /^已切换至/.test(state.notice)
+          && <p className="mode-notice" role="status">{state.notice}</p>}
         {state.noticeLevel === "error" || phase === "uncertain"
           ? <p className="connection-notice" role="alert">{state.notice}</p> : null}
-        {!health && <div className="composer-connection"><span>{loading ? "正在连接本机服务，你可以先输入问题。" : "本机服务未连接，你的草稿仍保留在输入框。"}</span>
+        {!health && <div className="composer-connection"><span>{state.switching ? "正在检查目标模式的服务连接。"
+          : loading ? "正在连接本机服务，你可以先输入问题。" : "本机服务未连接，你的草稿仍保留在输入框。"}</span>
           {!loading && <button type="button" onClick={() => void controller.load()}>重新连接</button>}</div>}
-        {loading && !session && health && <p className="composer-progress" role="status">正在建立对话并发送问题…</p>}
+        {loading && !state.switching && !session && health && <p className="composer-progress" role="status">正在建立对话并发送问题…</p>}
         <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
-          <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={(loading && !!health) || phase !== "idle"}
+          <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={state.switching || (loading && !!health) || phase !== "idle"}
             placeholder="输入股票名称、日期，或直接问一个问题…"
             onChange={(event) => editQuestion(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Escape") setNavigationOpen(false);

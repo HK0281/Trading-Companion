@@ -307,25 +307,71 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(all(report["checks"].values()))
         self.assertNotIn("access_token", output.getvalue())
 
-    def test_no_arguments_only_show_help_without_importing_app_or_reading_keys(self):
+    def test_explicit_help_does_not_import_app_or_read_keys(self):
         with redirect_stdout(StringIO()) as output, patch("trading_companion.deepseek_model.DeepSeekConfig.from_env",
-            side_effect=AssertionError("No credentials")), patch("uvicorn.run", side_effect=AssertionError("No server")):
-            self.assertEqual(server_main([]), 0)
+            side_effect=AssertionError("No credentials")), patch("uvicorn.run", side_effect=AssertionError("No server")), \
+                self.assertRaises(SystemExit) as caught:
+            server_main(["--help"])
+        self.assertEqual(caught.exception.code, 0)
         self.assertIn("--demo", output.getvalue())
 
     def test_invalid_combinations_fail_before_server_or_credentials(self):
-        for args in (["--provider", "deepseek"], ["--data", "synthetic"], ["--demo", "--data", "synthetic"],
+        for args in (["--demo", "--data", "synthetic"], ["--demo", "--directory", PRIVATE],
+                     ["--demo", "--provider", "deepseek"], ["--port", "65536"],
                      ["--demo", "--port", "0"], ["--provider", "deepseek", "--data", "synthetic", "--directory", PRIVATE],
-                     ["--market-context", PRIVATE], ["--demo", "--market-context", PRIVATE]):
+                     ["--demo", "--market-context", PRIVATE]):
             with self.subTest(args=args), redirect_stderr(StringIO()), self.assertRaises(SystemExit) as caught:
                 server_main(args)
             self.assertEqual(caught.exception.code, 2)
 
+    def test_default_and_source_shortcuts_start_live_mode_with_a_separate_offline_service(self):
+        from trading_companion.deepseek_model import DeepSeekConfig
+        selections = (([], "tencent"), (["--provider", "deepseek"], "tencent"),
+                      (["--data", "synthetic"], "synthetic"), (["--data", "tencent"], "tencent"),
+                      (["--data", "akshare_eastmoney"], "akshare_eastmoney"))
+        for args, expected_source in selections:
+            with self.subTest(args=args), redirect_stdout(StringIO()), patch("uvicorn.run") as run, patch(
+                "trading_companion.api.create_app", return_value="isolated-test-app") as app, patch(
+                "trading_companion.api_service.find_spec", return_value=object()), patch(
+                "trading_companion.security_directory.load_security_directory",
+                return_value=Mock(assert_usable=Mock())), patch(
+                "trading_companion.deepseek_model.DeepSeekConfig.from_env",
+                return_value=DeepSeekConfig("fixture-model", "artificial-test-key")):
+                self.assertEqual(server_main(args), 0)
+            normal = app.call_args.kwargs["service"]
+            development = app.call_args.kwargs["development_service"]
+            self.assertEqual((normal.provider, normal.data_mode), ("deepseek", expected_source))
+            self.assertEqual((development.provider, development.data_mode), ("fake", "synthetic"))
+            self.assertIsNot(normal, development)
+            self.assertEqual(run.call_args.args, ("isolated-test-app",))
+            self.assertEqual(run.call_args.kwargs,
+                             {"host": "127.0.0.1", "port": 8765, "workers": 1, "access_log": False})
+            normal.close()
+            development.close()
+
+    def test_default_missing_configuration_fails_without_falling_back_to_demo(self):
+        from trading_companion.model import ModelConfigurationError
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as output, patch("uvicorn.run") as run, patch(
+            "trading_companion.security_directory.load_security_directory", return_value=Mock(assert_usable=Mock())), patch(
+            "trading_companion.deepseek_model.DeepSeekConfig.from_env", side_effect=ModelConfigurationError(PRIVATE)), patch(
+            "trading_companion.api.create_app") as app, patch("trading_companion.api.create_demo_service") as demo:
+            self.assertEqual(server_main([]), 2)
+        self.assertIn("configuration_error", output.getvalue())
+        self.assertNotIn(PRIVATE, output.getvalue())
+        app.assert_not_called()
+        demo.assert_not_called()
+        run.assert_not_called()
+
     def test_demo_binds_one_loopback_worker_and_disables_access_log(self):
         with redirect_stdout(StringIO()), patch("uvicorn.run") as run, patch(
+                "trading_companion.api.create_app", return_value="offline-test-app") as app, patch(
                 "trading_companion.deepseek_model.DeepSeekConfig.from_env", side_effect=AssertionError("No keys")):
             self.assertEqual(server_main(["--demo", "--port", "8123"]), 0)
         self.assertEqual(run.call_args.kwargs, {"host": "127.0.0.1", "port": 8123, "workers": 1, "access_log": False})
+        self.assertEqual(set(app.call_args.kwargs), {"service"})
+        self.assertEqual((app.call_args.kwargs["service"].provider, app.call_args.kwargs["service"].data_mode),
+                         ("fake", "synthetic"))
+        app.call_args.kwargs["service"].close()
 
     def test_live_invalid_configuration_is_sanitized_without_starting_server(self):
         from trading_companion.model import ModelConfigurationError
@@ -341,9 +387,13 @@ class LauncherTests(unittest.TestCase):
         from trading_companion.security_directory import SecurityDirectory
         for mode, custom in (("synthetic", False), ("synthetic", True), ("tencent", False), ("tencent", True)):
             services = []
-            def capture(*, service):
-                services.append(service)
-                return real_app(service=service)
+            def capture(*, service, development_service=None):
+                if development_service is not None:
+                    services.append(service)
+                    self.assertEqual((development_service.provider, development_service.data_mode), ("fake", "synthetic"))
+                    self.addCleanup(development_service.close)
+                    self.addCleanup(service.close)
+                return real_app(service=service, development_service=development_service)
             args = ["--provider", "deepseek", "--data", mode]
             if custom:
                 args += ["--market-context", PRIVATE]

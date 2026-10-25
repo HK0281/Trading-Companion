@@ -63,11 +63,21 @@ code, .number { font-family: "Cascadia Code", Consolas, monospace; font-variant-
 .main { min-width: 0; min-height: 0; display: grid; grid-template-rows: 70px minmax(0, 1fr) auto; }
 .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 0 34px; border-bottom: 1px solid var(--line); background: #ffffffb3; }
 .topbar-title, .header-status { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.topbar-title { flex-shrink: 0; }
+.header-status { flex: 1; justify-content: flex-end; }
 .topbar h1 { font-size: 14px; font-weight: 600; white-space: nowrap; }
 .header-divider { height: 15px; width: 1px; background: #dfe4df; }
 .market-badge { font-size: 11px; color: #7b8580; white-space: nowrap; }
 .source-pill, .model-pill { font-size: 10px; padding: 4px 9px; border: 1px solid #e5e9e3; border-radius: 6px; color: #79857c; white-space: nowrap; }
+.source-pill { min-width: 0; max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+.model-pill { flex-shrink: 0; }
 .model-pill { color: #3f6f56; background: #f0f5ef; border-color: #e1e9dc; }
+.dev-mode-toggle { display: inline-flex; align-items: center; flex-shrink: 0; gap: 8px; padding: 5px 8px; font-size: 10px; white-space: nowrap; }
+.dev-mode-toggle .toggle-track { width: 25px; height: 14px; padding: 2px; border-radius: 9px; background: #d9e0d5; }
+.dev-mode-toggle .toggle-track > span { display: block; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.dev-mode-toggle[aria-checked="true"] .toggle-track { background: #738b54; }
+.dev-mode-toggle[aria-checked="true"] .toggle-track > span { transform: translateX(11px); }
+.mode-notice { margin-bottom: 10px; color: #63816c; font-size: 11px; }
 .synthetic-label { color: #957443; }
 .source-pill.synthetic-label { background: #f8f4eb; border-color: #eee5d2; }
 .conversation-scroll { overflow-y: auto; min-height: 0; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #d5dcd4 transparent; }

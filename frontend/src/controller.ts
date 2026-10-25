@@ -11,6 +11,9 @@ export interface Entry {
 }
 
 export interface WorkspaceState {
+  mode: "normal" | "development" | "standalone_demo";
+  developmentModeAvailable: boolean;
+  switching: boolean;
   health: Health | null;
   session: { shortId: string; limit: number; modelLimit: number; view: SessionView } | null;
   phase: "idle" | "working" | "uncertain";
@@ -30,15 +33,26 @@ const terminalCodes = new Set(["session_message_limit", "session_not_found", "se
   "json_required", "request_too_large", "invalid_content_length", "origin_not_allowed"]);
 
 export class ResearchController {
+  private api: ResearchApi;
+  private readonly normalApi: ResearchApi;
+  private normalServiceEstablished = false;
+  private normalProvider: Health["provider"] | null = null;
   private credentials: SessionCredentials | null = null;
   private pending: { id: string; question: string } | null = null;
   private running = false;
   private listeners = new Set<() => void>();
-  private state: WorkspaceState = { health: null, session: null, phase: "idle", loading: false,
+  private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
+    health: null, session: null, phase: "idle", loading: false,
     cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
 
-  constructor(private readonly api: ResearchApi,
-    private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", "")) {}
+  constructor(api: ResearchApi,
+    private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
+    private readonly developmentApi: ResearchApi | null = null) {
+    if (api.mode === "development" || developmentApi !== null
+      && (developmentApi === api || developmentApi.mode !== "development")) throw new ConnectionError();
+    this.api = api;
+    this.normalApi = api;
+  }
 
   snapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -66,15 +80,68 @@ export class ResearchController {
   }
   private allowed() { return this.state.health !== null; }
 
+  private acceptHealth(health: Health) {
+    if (this.api === this.normalApi) {
+      const offline = health.provider === "fake" && health.data_mode === "synthetic";
+      if (this.normalServiceEstablished && offline || this.normalProvider === "deepseek" && health.provider !== "deepseek")
+        throw new ConnectionError();
+      const standalone = offline && health.development_mode_available !== true;
+      if (!standalone) { this.normalServiceEstablished = true; this.normalProvider = health.provider; }
+      this.update({ health, mode: standalone ? "standalone_demo" : "normal",
+        developmentModeAvailable: health.development_mode_available === true && this.developmentApi !== null });
+    } else {
+      if (health.provider !== "fake" || health.data_mode !== "synthetic") throw new ConnectionError();
+      // The development endpoint cannot revoke the capability advertised by the root endpoint.
+      this.update({ health, mode: "development" });
+    }
+  }
+
   async load() {
     if (this.running || this.credentials) return;
     this.running = true;
     this.update({ loading: true });
     try {
       const health = await this.api.health();
-      this.update({ health, notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
+      this.acceptHealth(health);
+      this.update({ notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
+  }
+
+  async switchMode(target: "normal" | "development"): Promise<boolean> {
+    if (this.running || this.pending || this.state.phase !== "idle" || this.state.cancelPending
+      || this.state.session?.view.state === "busy" || !this.state.developmentModeAvailable
+      || target === this.state.mode || this.state.mode === "standalone_demo"
+      || target !== "normal" && target !== "development") return false;
+    const targetApi = target === "development" ? this.developmentApi : this.normalApi;
+    if (!targetApi) return false;
+    this.running = true;
+    this.update({ loading: true, switching: true });
+    try {
+      if (this.credentials) {
+        try { await this.api.end(this.credentials); }
+        catch (error) {
+          if (!(error instanceof ApiError) || ![401, 404].includes(error.status)) throw error;
+        }
+      }
+      this.credentials = null;
+      this.pending = null;
+      this.api = targetApi;
+      this.update({ mode: target, health: null, session: null, pendingId: null, entries: [], phase: "idle",
+        notice: `正在切换至${target === "development" ? "测试" : "正常"}模式…` });
+      try {
+        this.acceptHealth(await targetApi.health());
+        this.update({ notice: `已切换至${target === "development" ? "测试" : "正常"}模式，旧对话和草稿已清空。发送问题后才会开始研究。` });
+      } catch (error) {
+        this.update({ health: null, notice: `已选择${target === "development" ? "测试" : "正常"}模式，但服务未连接。旧对话和草稿已清空；没有自动回退或发起研究。${explanation(error)}`,
+          noticeLevel: "error" });
+      }
+      return true;
+    } catch (error) {
+      // Unconfirmed cleanup preserves the old endpoint, credentials, messages and draft.
+      this.update({ notice: `未能清理原会话，尚未切换模式。${explanation(error)}`, noticeLevel: "error" });
+      return false;
+    } finally { this.running = false; this.update({ loading: false, switching: false }); }
   }
 
   async start() {

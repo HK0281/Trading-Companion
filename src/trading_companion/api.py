@@ -87,7 +87,11 @@ class _LocalBoundary:
 
         async def safe_send(message):
             if message["type"] == "http.response.start":
-                message = {**message, "headers": [*message.get("headers", []),
+                # Mounted development routes pass both boundaries; emit each fixed header once.
+                fixed_headers = {b"cache-control", b"x-content-type-options", b"referrer-policy"}
+                headers = [(key, value) for key, value in message.get("headers", [])
+                           if key.lower() not in fixed_headers]
+                message = {**message, "headers": [*headers,
                     (b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"),
                     (b"referrer-policy", b"no-referrer")]}
             await send(message)
@@ -137,16 +141,27 @@ def create_demo_service() -> ResearchApiService:
         reference_date=REFERENCE_DATE, market_context_loader=lambda _: load_development_market_context())
 
 
-def create_app(*, service: ResearchApiService | None = None) -> FastAPI:
-    """Default factory is artificial/offline; live configuration belongs to api_server."""
+def create_app(*, service: ResearchApiService | None = None,
+               development_service: ResearchApiService | None = None) -> FastAPI:
+    """The product launcher injects normal services; the test factory remains offline."""
     service = create_demo_service() if service is None else service
     if type(service) is not ResearchApiService:
         raise ValueError("Use a trusted application service")
+    if development_service is not None and (type(development_service) is not ResearchApiService
+            or development_service is service or development_service.provider != "fake"
+            or development_service.data_mode != "synthetic"):
+        raise ValueError("Use a separate fixture-only development service")
 
     @asynccontextmanager
     async def lifespan(app):
-        yield
-        service.close()
+        try:
+            yield
+        finally:
+            try:
+                service.close()
+            finally:
+                if development_service is not None:
+                    development_service.close()
 
     app = FastAPI(title="Trading Companion Local API", version="0.1.0", lifespan=lifespan,
         description="Local single-process research only. No trading. Demo is a fixed fake script, not an LLM.")
@@ -173,7 +188,8 @@ def create_app(*, service: ResearchApiService | None = None) -> FastAPI:
     @app.get("/health")
     def health():
         return {"status": "ok", "provider": service.provider, "data_mode": service.data_mode,
-                "scope": "local_single_process_not_production", "trading_enabled": False}
+                "scope": "local_single_process_not_production", "trading_enabled": False,
+                "development_mode_available": development_service is not None}
 
     @app.post("/v1/sessions", status_code=201)
     def create_session(body: EmptyRequest):
@@ -205,5 +221,8 @@ def create_app(*, service: ResearchApiService | None = None) -> FastAPI:
         service.delete(session_id, token)
         return Response(status_code=204)
 
+    if development_service is not None:
+        # Select a preconfigured, isolated service by path, never a browser-supplied provider or URL.
+        app.mount("/dev-api", create_app(service=development_service), name="development")
     add_web_routes(app)
     return app

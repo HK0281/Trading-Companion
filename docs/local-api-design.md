@@ -1,8 +1,8 @@
 # 本机 FastAPI 接口层
 
-日期：2026-10-22。状态：已实现本机单进程接口及离线验证，不是公网或多用户生产部署。
+初版：2026-10-22。Web 启动与模式更新：2026-10-25。已实现本机单进程接口及离线验证，不是公网或多用户生产部署。
 
-后续同日已增加[最小Web工作台](web-workspace-design.md)、[历史图表](chart-workspace-design.md)及[本地证券状态／交易日历背景](market-context-design.md)：构建后访问根路径 `/`，同源调用下列API，不需要Swagger手动复制令牌。路径不变，公共结果增加可选chart和market_context；下文906项为接口模块完成时记录，当前Python1054项、前端256项检查通过。
+后续增加[最小Web工作台](web-workspace-design.md)、[历史图表](chart-workspace-design.md)及[本地证券状态／交易日历背景](market-context-design.md)：构建后访问根路径 `/`，同源调用下列API，不需要Swagger手动复制令牌。正常API路径不变，公共结果增加可选chart和market_context；Dev Mode 在 `/dev-api` 前缀下提供隔离的固定离线服务。下文906项及旧版本1054项Python／256项前端为历史记录，不是新模式验收数字。
 
 ## 1. 这个模块做什么
 
@@ -18,9 +18,9 @@ HTTP请求 → FastAPI / Pydantic校验
 
 代码分工：
 
-- [api.py](../src/trading_companion/api.py)：HTTP输入/响应模型、路由、请求体限制、同源与Host保护、统一错误。
+- [api.py](../src/trading_companion/api.py)：HTTP输入/响应模型、正常/开发固定路由、请求体限制、同源与Host保护、统一错误。
 - [api_service.py](../src/trading_companion/api_service.py)：独立于FastAPI的服务层，拥有进程内会话和模型实例，协调配额及幂等记录。
-- [api_server.py](../src/trading_companion/api_server.py)：显式启动模式、服务端模型/数据配置，固定127.0.0.1及一个worker。
+- [api_server.py](../src/trading_companion/api_server.py)：正常默认及显式离线启动、服务端模型/数据配置，固定127.0.0.1及一个worker。
 - [api_demo.py](../src/trading_companion/api_demo.py)：TestClient进程内HTTP演示，不开监听端口、不请求真实模型或行情。
 
 FastAPI/Pydantic只在HTTP边界使用，内部仍复用dataclass。没有引入数据库、任务队列、SSE、WebSocket或新Agent框架。
@@ -37,18 +37,20 @@ $env:PYTHONPATH='src'
 
 演示检查创建、研究、重复重放、追问、历史、重置、旧编号失效、删除，共8项。4次Fake模型调用、1次人工CSV分析，不代表真实语言理解质量。
 
-启动可交互的本机HTTP服务：
+按[本地配置](local-environment.md)准备根目录 `.env` 与有效真实目录后，启动正常产品：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server --demo
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server
 ```
 
-无参数只显示帮助，不启动、不读密钥。运行后打开 <http://127.0.0.1:8000/docs> 查看Swagger接口；Ctrl+C停止服务。默认演示使用原 `ConversationDemoModel`，不是通用Fake语言模型：先研究固定问题，再问固定追问，可选原SMA替换脚本；重新创建会话才得到新的脚本实例。重置不重建模型或返还额度。
+无参数默认 DeepSeek + 腾讯不复权历史日线、端口8765，自动按原规则读取根目录 `.env`；`--provider` / `--data` / `--port` 可显式覆盖正常后端。启动仅检查本地配置、依赖和现有目录，不请求模型或行情、不自动刷新目录；缺配置明确失败，不切人工数据。运行后打开 <http://127.0.0.1:8765/docs> 查看Swagger接口；Ctrl+C停止服务。
+
+完全离线服务显式加 `--demo`，不读 `.env`、不能从网页启用正常模式。它使用原 `ConversationDemoModel`，不是通用Fake语言模型：先研究固定问题，再问固定追问，可选原SMA替换脚本；重新创建会话才得到新的脚本实例。重置不重建模型或返还额度。正常启动另外预配独立的同类 Dev Mode 服务，详见下一节。
 
 另开一个PowerShell终端，可实际调用：
 
 ```powershell
-$apiBase = 'http://127.0.0.1:8000'
+$apiBase = 'http://127.0.0.1:8765/dev-api'
 $apiSession = Invoke-RestMethod -Method Post -Uri "$apiBase/v1/sessions" -ContentType 'application/json' -Body '{}'
 $apiHeaders = @{ Authorization = "Bearer $($apiSession.access_token)" }
 $apiMessage = @{
@@ -59,15 +61,15 @@ $apiReply = Invoke-RestMethod -Method Post -Uri "$apiBase/v1/sessions/$($apiSess
 $apiReply.result.answer
 ```
 
-随后用新的 `request_id`发送“这里的RSI为什么偏高”；也可GET `.../result`查看历史。重复发送完全相同的 `$apiMessage`只重放响应，不再调用模型。Swagger里先POST `/v1/sessions`，将返回的 `access_token`粘贴到Authorize的Bearer输入框，再调用会话接口；不要分享该令牌。
+上例使用正常进程中的独立 Dev Mode API，不发送真实模型或行情请求。若以 `--demo` 启动，离线服务位于根路径，应把 `$apiBase` 改为 `http://127.0.0.1:8765`。不要把固定人工示例误发到正常路径来声称真实市场验收。随后用新的 `request_id`发送“这里的RSI为什么偏高”；也可GET `.../result`查看历史。重复发送完全相同的 `$apiMessage`只重放响应，不再调用模型。Swagger正常接口仍先POST `/v1/sessions`，将其 `access_token`粘贴到Authorize的Bearer输入框；正常路径可能触发计费请求，不要分享令牌。
 
-仅在自行确认愿意付费、且同一终端已配置模型时，显式启用：
+需要真实 DeepSeek 配人工数据的专项检查时，仍可显式启动：
 
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server --provider deepseek --data synthetic
 ```
 
-真实腾讯模式改为 `--data tencent`，需当前有效的本地目录，可用 `--directory`指定服务端路径。不会刷新目录、静默换源或让HTTP客户端提交模型密钥/路径。问题、确认参数与紧凑证据会发给显式选择的DeepSeek，可能计费；HTTP层没有新增模型提供方。
+该命令可能计费，并不等于离线 Dev Mode。真实腾讯模式现为默认，也可显式 `--data tencent`；需当前有效本地目录，可用 `--directory` 指定服务端路径。不会刷新目录、静默换源或让HTTP客户端提交模型密钥/路径。用户明确提交的研究问题、确认参数与紧凑证据会发给配置好的 DeepSeek，可能计费；启动及 health 检查不发送这些内容。终端 `agent_cli` 仍保留原显式模式规则，没有改变其默认行为。
 
 ## 3. 接口契约
 
@@ -81,6 +83,10 @@ $apiReply.result.answer
 | POST `.../{id}/cancel` | body仅 `request_id`，对准当前轮发取消信号 | 202 |
 | POST `.../{id}/reset`，body `{}` | 清研究状态，旧请求编号退役，额度不退 | 200 |
 | DELETE `.../{id}` | 删除空闲会话及其状态 | 204 |
+
+正常启动另提供 `/dev-api/health` 和 `/dev-api/v1/sessions...`，对应独立的 `fake + synthetic` 服务。它与正常服务不共享会话、令牌、模型实例、幂等记录或预算；令牌必须属于所访问服务。开发目录只有四条人工证券记录、平安银行五条人工日线，不能用于任意股票研究。根 health 可包含可选 `development_mode_available`，只是页面能力提示，不是鉴权机制。
+
+网页切换只在空闲且无响应不确定请求时进行：旧会话清理失败保留原内容；清理成功即选择目标并清空聊天/草稿，再核验目标 health，下一句明确发送才创建目标会话。目标失败会留在目标断连状态，不恢复已删除聊天、不自动回退或重发。每个后端的模型和行情仍由启动固定，客户端没有任意来源参数。`--demo` 只提供离线根服务，不能切回正常后端。完整状态约束见[模式设计](dev-mode-design.md)。
 
 除health、文档和创建会话外，必须有 `Authorization: Bearer <access_token>`。这是一份会话能力凭据，不是DeepSeek密钥，也不是用户账户登录。ID不是授权依据；另一会话令牌不能访问该会话。
 
@@ -117,7 +123,7 @@ HTTP 200表示服务处理了这条合法消息，`result.status/code`才表示�
 - 所有HTTP响应no-store；启动器关闭访问日志。服务不写聊天、报告或凭据文件，不将会话令牌作为模型请求配置。
 - 关闭服务时撤销空闲会话并向在途轮发取消；不能声称强制杀死供应商请求。
 
-会话隔离不等于生产用户鉴权。不能把此服务绑定0.0.0.0、启用多个worker或放进公网反向代理就称部署完成；还需用户身份/资源归属、TLS、账户配额、共享状态、真正任务生命周期、可观察性与上线验证。HTTP工厂默认是离线演示，不能据此误判真实提供方已经验收。
+会话隔离不等于生产用户鉴权。不能把此服务绑定0.0.0.0、启用多个worker或放进公网反向代理就称部署完成；还需用户身份/资源归属、TLS、账户配额、共享状态、真正任务生命周期、可观察性与上线验证。离线HTTP测试工厂与 `--demo` 不读取真实配置；Web启动器默认正常模式。两者不能混为一谈，正常默认也不意味着真实提供方已经通过连通或质量验收。
 
 ## 6. 验证与协作
 

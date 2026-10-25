@@ -1,9 +1,12 @@
 /** Browser contracts for the public API, never the Agent's debug export. */
+export type ApiMode = "normal" | "development";
+
 export interface Health {
   status: "ok";
   provider: "fake" | "deepseek";
   data_mode: "synthetic" | "tencent" | "akshare_eastmoney";
   trading_enabled: false;
+  development_mode_available?: boolean;
 }
 
 export interface SessionCredentials {
@@ -60,6 +63,7 @@ export interface MessageResponse {
 }
 
 export interface ResearchApi {
+  readonly mode?: ApiMode;
   health(): Promise<Health>;
   create(): Promise<SessionCredentials>;
   inspect(session: SessionCredentials): Promise<SessionView>;
@@ -129,14 +133,25 @@ const message = (value: unknown): value is MessageResponse => {
         && count(item.missing_bars) && (item.fact_id === null || text(item.fact_id))));
 };
 
-export function createApi(fetcher: typeof fetch = (...args) => fetch(...args)): ResearchApi {
+// Credentials minted by one endpoint must never be forwarded to the other endpoint.
+const credentialModes = new WeakMap<SessionCredentials, ApiMode>();
+
+export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), serviceMode: ApiMode = "normal"): ResearchApi {
+  if (serviceMode !== "normal" && serviceMode !== "development") throw new ConnectionError();
+  const prefix = serviceMode === "development" ? "/dev-api" : "";
   async function request<T>(path: string, check: (value: unknown) => value is T,
     options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean } = {}): Promise<T> {
+    if (options.session) {
+      const boundMode = credentialModes.get(options.session);
+      // Unmarked legacy callers remain root-only; development credentials must be minted here.
+      if (boundMode !== undefined && boundMode !== serviceMode
+        || serviceMode === "development" && boundMode !== "development") throw new ConnectionError();
+    }
     const abort = new AbortController();
     // Client timeout is not server-side cancellation; never retry automatically.
     const timer = setTimeout(() => abort.abort(), options.long ? 120_000 : 10_000);
     try {
-      const response = await fetcher(path, {
+      const response = await fetcher(prefix + path, {
         method: options.method ?? "GET", cache: "no-store", credentials: "omit", redirect: "error",
         referrerPolicy: "no-referrer", signal: abort.signal,
         headers: { ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -161,12 +176,22 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args)): 
   }
   const path = (session: SessionCredentials) => `/v1/sessions/${session.session_id}`;
   return {
+    mode: serviceMode,
     health: () => request("/health", (value): value is Health => mode(value) && record(value)
-      && value.status === "ok" && value.trading_enabled === false),
-    create: () => request("/v1/sessions", (value): value is SessionCredentials => mode(value)
-      && record(value) && identifier(value.session_id) && text(value.access_token)
-      && /^[A-Za-z0-9_-]{20,128}$/.test(value.access_token) && record(value.limits)
-      && count(value.limits.messages) && count(value.limits.model_calls), { method: "POST", body: {} }),
+      && value.status === "ok" && value.trading_enabled === false
+      && (!Object.prototype.hasOwnProperty.call(value, "development_mode_available")
+        || typeof value.development_mode_available === "boolean")
+      && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic")),
+    create: async () => {
+      const session = await request("/v1/sessions", (value): value is SessionCredentials => mode(value)
+        && record(value) && identifier(value.session_id) && text(value.access_token)
+        && /^[A-Za-z0-9_-]{20,128}$/.test(value.access_token) && record(value.limits)
+        && count(value.limits.messages) && count(value.limits.model_calls)
+        && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"),
+      { method: "POST", body: {} });
+      credentialModes.set(session, serviceMode);
+      return session;
+    },
     inspect: (session) => request(path(session), sessionView, { session }),
     send: (session, id, question) => request(path(session) + "/messages",
       (value): value is MessageResponse => message(value) && value.request_id === id,

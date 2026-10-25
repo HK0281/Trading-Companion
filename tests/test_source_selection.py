@@ -126,7 +126,12 @@ class SourceSelectionTests(unittest.TestCase):
         for launcher in (cli_main, server_main):
             with self.subTest(launcher=launcher.__module__), redirect_stdout(StringIO()) as output, patch(
                 "trading_companion.api_service.find_spec", side_effect=AssertionError("Help does not discover packages")):
-                self.assertEqual(launcher([]), 0)
+                if launcher is cli_main:
+                    self.assertEqual(launcher([]), 0)
+                else:
+                    with self.assertRaises(SystemExit) as caught:
+                        launcher(["--help"])
+                    self.assertEqual(caught.exception.code, 0)
             self.assertIn("akshare_eastmoney", output.getvalue())
             self.assertIn(".[data]", output.getvalue())
 
@@ -207,18 +212,21 @@ class SourceSelectionTests(unittest.TestCase):
         services = []
         with redirect_stdout(StringIO()) as output, patch("trading_companion.api_service.find_spec", return_value=object()), patch(
             "trading_companion.security_directory.load_security_directory", return_value=SimpleNamespace(assert_usable=Mock())), patch(
-            "trading_companion.api.create_app", side_effect=lambda *, service: services.append(service) or "test-app"), patch(
+            "trading_companion.api.create_app", side_effect=lambda *, service, development_service:
+                services.extend((service, development_service)) or "test-app"), patch(
             "trading_companion.deepseek_model.DeepSeekConfig.from_env",
             return_value=DeepSeekConfig("fixture-model", "artificial-test-key")), patch(
             "trading_companion.market_context.load_market_context", side_effect=AssertionError("No implicit snapshot")), patch("uvicorn.run") as run:
             self.assertEqual(server_main(["--provider", "deepseek", "--data", "akshare_eastmoney"]), 0)
-        self.assertEqual(len(services), 1)
+        self.assertEqual(len(services), 2)
         self.assertEqual(services[0].data_mode, "akshare_eastmoney")
         self.assertIsNone(services[0]._development_source)
         self.assertIsNone(services[0]._market_context_loader)
         self.assertEqual(run.call_args.kwargs["host"], "127.0.0.1")
         self.assertIn("失败不自动换源", output.getvalue())
-        services[0].close()
+        self.assertEqual((services[1].provider, services[1].data_mode), ("fake", "synthetic"))
+        for service in services:
+            service.close()
 
 
 if __name__ == "__main__":

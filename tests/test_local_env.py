@@ -196,7 +196,7 @@ class LocalEnvironmentTests(unittest.TestCase):
             lambda: model_cli.main(["Hello"]), lambda: tool_smoke.run_smoke_test(),
             lambda: agent_evaluation.run_evaluation(), lambda: mvp_evaluation.run_mvp_evaluation(case="single_sma"),
             lambda: agent_cli.main([]), lambda: agent_cli.main(["--demo"]),
-            lambda: api_server.main([]), lambda: api_server.main(["--demo"]),
+            lambda: api_server.main(["--demo"]),
         )
         with patch.object(local_env, "_read_local_values", side_effect=AssertionError("Offline must not read .env")), \
                 patch("uvicorn.run"), redirect_stdout(StringIO()), redirect_stderr(StringIO()):
@@ -204,6 +204,12 @@ class LocalEnvironmentTests(unittest.TestCase):
                 with self.subTest(entry=entries.index(entry)):
                     result = entry()
                     self.assertTrue(result == 0 or isinstance(result, dict) and result["status"] in ("ok", "passed"))
+
+        with patch.object(local_env, "_read_local_values", side_effect=AssertionError("Help must not read .env")), \
+                patch("uvicorn.run", side_effect=AssertionError("Help must not start a server")), \
+                redirect_stdout(StringIO()), self.assertRaises(SystemExit) as caught:
+            api_server.main(["--help"])
+        self.assertEqual(caught.exception.code, 0)
 
     def test_all_six_live_entries_pass_merged_values_to_validation_before_network(self):
         from trading_companion import agent_cli, agent_evaluation, api_server, model_cli, mvp_evaluation, tool_smoke
@@ -221,6 +227,18 @@ class LocalEnvironmentTests(unittest.TestCase):
                     DeepSeekConfig, "from_env", side_effect=ModelConfigurationError("Configuration probe")) as validate:
                 entry()
                 validate.assert_called_once_with({"DEEPSEEK_MODEL": ARTIFICIAL_MODEL, "DEEPSEEK_API_KEY": ARTIFICIAL_KEY})
+
+    def test_default_server_loads_merged_local_configuration_without_demo_fallback(self):
+        from trading_companion import api_server
+        self.write_file()
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()), patch(
+                "trading_companion.security_directory.load_security_directory",
+                return_value=Mock(assert_usable=Mock())), patch.object(
+                DeepSeekConfig, "from_env", side_effect=ModelConfigurationError("Configuration probe")) as validate, patch(
+                "uvicorn.run", side_effect=AssertionError("Invalid configuration must not start a server")), patch(
+                "trading_companion.api.create_demo_service", side_effect=AssertionError("No demo fallback")):
+            self.assertEqual(api_server.main([]), 2)
+        validate.assert_called_once_with({"DEEPSEEK_MODEL": ARTIFICIAL_MODEL, "DEEPSEEK_API_KEY": ARTIFICIAL_KEY})
 
     def test_invalid_local_directory_stops_before_reading_credentials(self):
         from trading_companion import agent_cli, api_server

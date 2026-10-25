@@ -37,6 +37,17 @@ MVP_REQUIRED_CHECKS = {
     "agent_status", "agent_code", "model_calls", "agent_model_count", "analysis_count", "report_status",
     "explanation_status", "no_failure_code", "synthesis_status", "response_count", "provider_mode", "no_raw_draft_display",
 }
+COMPANY_CASE_EXPECTATIONS = {
+    # Model calls, analyses, synthetic company collections, synthetic daily reads.
+    "pe_knowledge": (1, 0, 0, 0),
+    "company_fundamentals": (2, 0, 1, 0),
+    "two_stock_comparison": (2, 2, 2, 2),
+    "announcements_news": (2, 0, 1, 0),
+    "risk_scenario": (2, 1, 0, 1),
+}
+COMPANY_REQUIRED_CHECKS = {
+    "answer_accepted", "synthetic_evidence", "model_budget", "model_calls", "analysis_budget", "plan_ready",
+}
 
 
 class VerificationError(RuntimeError):
@@ -150,6 +161,62 @@ def check_mvp_evaluation(report):
             "MVP model/analysis counts or per-step evidence and explanation checks did not pass")
 
 
+def check_company_evaluation(report):
+    """Verify each company workflow and budget independently of its green summary."""
+    require(type(report) is dict, "Company evaluation report must be an object")
+    require(report.get("version") == "company-research-evaluation-v1"
+            and report.get("status") == "passed" and report.get("code") == "scenario_expectations_met"
+            and report.get("provider") == "fake" and report.get("live_provider_selected") is False
+            and report.get("fixture_data_authenticity") == "synthetic"
+            and all(report.get(field) is False for field in (
+                "real_market_data_requested", "news_network_requested", "directory_network_requested"))
+            and report.get("evaluation_scope") == (
+                "fixed_synthetic_product_workflows_and_output_contracts_not_language_or_investment_quality")
+            and report.get("language_quality") == "requires_manual_review"
+            and report.get("answer_display_policy") == "checked_application_display_only_not_raw_model_responses"
+            and report.get("reference_date") == "2026-09-26",
+            "Company evaluation must use offline synthetic inputs without claiming language or investment quality")
+    selected, cases, summary = report.get("selected_cases"), report.get("cases"), report.get("summary")
+    require(type(selected) is list and len(selected) == 5 and all(type(name) is str for name in selected)
+            and set(selected) == set(COMPANY_CASE_EXPECTATIONS)
+            and type(cases) is list and len(cases) == 5 and all(type(item) is dict for item in cases)
+            and all(type(item.get("case")) is str for item in cases)
+            and {item["case"] for item in cases} == set(COMPANY_CASE_EXPECTATIONS)
+            and type(summary) is dict,
+            "All five named company workflows must run once without omissions or duplicates")
+
+    def count_is(mapping, field, expected):
+        return type(mapping.get(field)) is int and mapping[field] == expected
+
+    require(all(count_is(summary, field, expected) for field, expected in (
+                ("selected", 5), ("executed", 5), ("passed", 5), ("failed", 0),
+                ("model_calls", 9), ("provider_calls_forwarded", 9), ("analyses", 3)))
+            and count_is(report, "required_model_call_budget", 9)
+            and type(report.get("model_call_budget")) is int and 9 <= report["model_call_budget"] <= 10,
+            "Company workflows require exactly nine model calls and three analyses within the fixed budget")
+    for item in cases:
+        calls, analyses, collections, reads = COMPANY_CASE_EXPECTATIONS[item["case"]]
+        checks = item.get("checks")
+        require(item.get("status") == "passed" and item.get("accepted") is True
+                and item.get("fallback") is False and item.get("answer_origin") == "model"
+                and type(item.get("answer")) is str and bool(item["answer"].strip())
+                and item.get("code") == ("general_knowledge_answered" if item["case"] == "pe_knowledge"
+                                          else "product_research_answered")
+                and item.get("answer_validation_scope") == (
+                    "format_and_scope_guards_not_prose_semantics" if item["case"] == "pe_knowledge" else
+                    "citation_membership_and_lexical_numbers_not_arbitrary_prose_semantics")
+                and type(checks) is dict and COMPANY_REQUIRED_CHECKS <= checks.keys()
+                and all(value is True for value in checks.values()),
+                "Every company workflow must accept its checked model answer with synthetic evidence and no fallback")
+        require(all(count_is(item, field, expected) for field, expected in (
+                    ("model_calls", calls), ("provider_calls_forwarded", calls), ("analyses", analyses),
+                    ("synthetic_company_collections", collections), ("synthetic_daily_reads", reads))),
+                "A company workflow has unexpected model, analysis or synthetic data access counts")
+    require(all(summary[field] == sum(item[field] for item in cases)
+                for field in ("model_calls", "provider_calls_forwarded", "analyses")),
+            "Company summary counts must match the independently verified workflow counts")
+
+
 def python_checks():
     with clean_environment(), offline_network():
         suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT / "tests"))
@@ -157,11 +224,14 @@ def python_checks():
         from trading_companion.agent_evaluation import run_evaluation
         from trading_companion.api_demo import main as api_demo
         from trading_companion.mvp_evaluation import run_mvp_evaluation
+        from scripts.evaluate_company_research import evaluate_company_research
 
         check_evaluation(run_evaluation(provider="fake", case="all"))
         check_mvp_evaluation(run_mvp_evaluation(case="all", repeat=3, model_call_limit=201))
+        check_company_evaluation(evaluate_company_research())
         require(api_demo() == 0, "In-process API walkthrough failed")
-    print(f"PASS: {count} Python tests, 4 Agent scenarios, 90 MVP repeats and API walkthrough; no skips", flush=True)
+    print(f"PASS: {count} Python tests, 4 Agent scenarios, 90 MVP repeats, "
+          "5 company workflows and API walkthrough; no skips", flush=True)
 
 
 def command(arguments, *, timeout=300):

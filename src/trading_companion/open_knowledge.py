@@ -124,7 +124,9 @@ def is_general_knowledge_question(question: str, *, directory: SecurityDirectory
 
     Pass the already available directory/stock mentions when possible. No freshness
     check or refresh is needed to reject a known identity from this educational route.
-    The no-directory route additionally requires a generic instructional prefix.
+    The no-directory result is only a routing candidate: an instructional prefix
+    cannot establish that a later clause contains no issuer name. HTTP routing
+    also attempts its local identity snapshot before selecting education.
     """
     text = _normalized_question(question)
     if text is None or not isinstance(mentions, (tuple, list)) or mentions:

@@ -1,5 +1,5 @@
 /** In-memory browser state machine: credentials and unresolved work never enter persistent storage. */
-import { ApiError, ConnectionError, type Health, type MessageResponse, type ResearchApi,
+import { ApiError, ConnectionError, availableLiveProviders, type Health, type LiveProvider, type MessageResponse, type ResearchApi,
   type SessionCredentials, type SessionView } from "./api";
 
 export interface Entry {
@@ -15,6 +15,7 @@ export interface WorkspaceState {
   developmentModeAvailable: boolean;
   switching: boolean;
   health: Health | null;
+  selectedProvider: LiveProvider | null;
   session: { shortId: string; limit: number; modelLimit: number; view: SessionView } | null;
   phase: "idle" | "working" | "uncertain";
   loading: boolean;
@@ -42,7 +43,7 @@ export class ResearchController {
   private running = false;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
-    health: null, session: null, phase: "idle", loading: false,
+    health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
     cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
 
   constructor(api: ResearchApi,
@@ -83,11 +84,17 @@ export class ResearchController {
   private acceptHealth(health: Health) {
     if (this.api === this.normalApi) {
       const offline = health.provider === "fake" && health.data_mode === "synthetic";
-      if (this.normalServiceEstablished && offline || this.normalProvider === "deepseek" && health.provider !== "deepseek")
+      if (this.normalServiceEstablished && offline || this.normalProvider !== null && this.normalProvider !== "fake" && health.provider === "fake")
         throw new ConnectionError();
       const standalone = offline && health.development_mode_available !== true;
       if (!standalone) { this.normalServiceEstablished = true; this.normalProvider = health.provider; }
+      const available = availableLiveProviders(health);
+      const current = this.state.selectedProvider;
+      const selectedProvider = current && available.includes(current) ? current
+        : health.provider !== "fake" && (health.available_providers === undefined || available.includes(health.provider))
+          ? health.provider : available[0] ?? null;
       this.update({ health, mode: standalone ? "standalone_demo" : "normal",
+        selectedProvider,
         developmentModeAvailable: health.development_mode_available === true && this.developmentApi !== null });
     } else {
       if (health.provider !== "fake" || health.data_mode !== "synthetic") throw new ConnectionError();
@@ -154,9 +161,36 @@ export class ResearchController {
     finally { this.running = false; this.update({ loading: false }); }
   }
 
+  async switchProvider(target: LiveProvider): Promise<boolean> {
+    if (this.running || this.pending || this.state.phase !== "idle" || this.state.cancelPending
+      || this.state.mode !== "normal" || this.state.session?.view.state === "busy"
+      || !availableLiveProviders(this.state.health).includes(target) || target === this.state.selectedProvider) return false;
+    this.running = true;
+    this.update({ loading: true, switching: true });
+    try {
+      if (this.credentials) {
+        try { await this.api.end(this.credentials); }
+        catch (error) {
+          if (!(error instanceof ApiError) || ![401, 404].includes(error.status)) throw error;
+        }
+      }
+      this.credentials = null;
+      this.pending = null;
+      this.update({ selectedProvider: target, session: null, pendingId: null, entries: [], phase: "idle",
+        notice: `已切换至${target === "deepseek" ? "DeepSeek" : "OpenAI"}，旧对话和草稿已清空。发送问题后才会开始研究。` });
+      return true;
+    } catch (error) {
+      // Keep the selected model and all conversation state until cleanup is confirmed.
+      this.update({ notice: `未能清理原会话，尚未切换模型。${explanation(error)}`, noticeLevel: "error" });
+      return false;
+    } finally { this.running = false; this.update({ loading: false, switching: false }); }
+  }
+
   private async createSession() {
-    const credentials = await this.api.create();
-    if (credentials.provider !== this.state.health?.provider || credentials.data_mode !== this.state.health?.data_mode)
+    const selected = this.state.mode === "normal" ? this.state.selectedProvider : null;
+    const credentials = selected && this.state.health?.available_providers !== undefined
+      ? await this.api.create(selected) : await this.api.create();
+    if (credentials.provider !== (selected ?? this.state.health?.provider) || credentials.data_mode !== this.state.health?.data_mode)
       throw new ConnectionError();
     this.credentials = credentials;
     this.update({ session: { shortId: credentials.session_id.slice(0, 8), limit: credentials.limits.messages,

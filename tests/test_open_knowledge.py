@@ -111,6 +111,18 @@ class KnowledgeRoutingTests(GuardedTests):
         with patch.object(type(self.directory), "assert_usable", side_effect=AssertionError("No directory freshness gate")):
             self.assertTrue(is_general_knowledge_question(QUESTION, directory=self.directory))
 
+    def test_issuer_after_a_financial_topic_or_in_a_later_clause_is_not_education(self):
+        questions = (
+            "ROE如何判断平安银行估值", "PE低的平安银行值得买吗", "什么是PE，平安银行能买吗",
+            "ROE如何判断中际旭创估值", "ROE如何判断000001.SZ估值", "什么是PE，000001能买吗",
+        )
+        stale = replace(self.directory, retrieved_at=self.directory.retrieved_at.replace(year=2020))
+        with patch.object(type(stale), "assert_usable", side_effect=AssertionError("No freshness gate for identity veto")):
+            for question in questions:
+                with self.subTest(question=question):
+                    self.assertFalse(is_general_knowledge_question(question, directory=stale))
+            self.assertTrue(is_general_knowledge_question(QUESTION, directory=stale))
+
     def test_invalid_inputs_and_ambiguous_mention_contracts_do_not_route(self):
         for question in (None, False, 12, {}, [], "", "  ", "x" * 2001, "PE是什么\x00", "PE是什么\u200b"):
             with self.subTest(question=question):

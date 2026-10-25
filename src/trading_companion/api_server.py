@@ -1,7 +1,6 @@
 """Normal local-server launcher with an explicitly selected offline development mode."""
 
 import argparse
-from dataclasses import replace
 from datetime import timedelta, timezone
 from pathlib import Path
 import sys
@@ -16,23 +15,24 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Single-worker loopback research API, not a public deployment.")
     entry = parser.add_mutually_exclusive_group()
     entry.add_argument("--demo", action="store_true", help="Fixed offline fake model and pinned synthetic data")
-    entry.add_argument("--provider", choices=("deepseek",), help="Model provider (default: deepseek; requests may be paid)")
+    entry.add_argument("--provider", choices=("deepseek", "openai"), help="Default model provider (default: deepseek)")
     parser.add_argument("--data", choices=DATA_MODES,
                         help="Normal source (default: tencent); AKShare requires python -m pip install -e '.[data]'")
     parser.add_argument("--directory", help="Existing local security snapshot; Tencent/AKShare modes only")
     parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
-    if args.demo and (args.data or args.directory or args.market_context):
+    if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db):
         parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
     if not args.demo:
         args.provider = args.provider or "deepseek"
         args.data = args.data or "tencent"
     if args.data == "synthetic" and args.directory:
         parser.error("Synthetic data does not accept a directory path")
-    service = development_service = None
+    service = development_service = snapshot_store = None
     try:
         ensure_data_mode_dependencies("synthetic" if args.demo else args.data)
         import uvicorn
@@ -45,8 +45,7 @@ def main(argv=None) -> int:
         if args.demo:
             service = create_demo_service()
         else:
-            from trading_companion.deepseek_model import DeepSeekConfig
-            from trading_companion.deepseek_tool_model import DeepSeekToolModel
+            from trading_companion.model_registry import configured_models
             from trading_companion.security_directory import load_security_directory
             from datetime import datetime
             if args.data == "synthetic":
@@ -55,15 +54,13 @@ def main(argv=None) -> int:
             else:
                 source = None
                 directory_path = Path(args.directory) if args.directory else ROOT / "data/security_directory_live.json"
-                def loader(now):
-                    directory = load_security_directory(directory_path)
-                    directory.assert_usable(now.astimezone(timezone(timedelta(hours=8))).date(), development=False)
-                    return directory
-                loader(datetime.now(timezone.utc))
-            from trading_companion.research_response import RESPONSE_OUTPUT_TOKENS
-            # Structured prose plus citations needs more space than the old relation-only JSON.
-            config = replace(DeepSeekConfig.from_env(load_model_environment()),
-                             max_output_tokens=RESPONSE_OUTPUT_TOKENS)
+                def loader(_):
+                    # Routing may use stale names as a veto, never as research authority.
+                    return load_security_directory(directory_path)
+                directory = loader(datetime.now(timezone.utc))
+                directory.assert_usable(datetime.now(timezone.utc).astimezone(
+                    timezone(timedelta(hours=8))).date(), development=False)
+            models = configured_models(default_provider=args.provider, loader=load_model_environment)
             if args.market_context:
                 context_path = Path(args.market_context)
                 context_loader = lambda _: load_market_context(context_path)
@@ -71,10 +68,18 @@ def main(argv=None) -> int:
                 context_loader = lambda _: load_development_market_context()
             else:
                 context_loader = None
-            service = ResearchApiService(model_factory=lambda: DeepSeekToolModel(config), directory_loader=loader,
-                provider="deepseek", data_mode=args.data, development_source=source,
+            from trading_companion.company_research import ResearchDataService
+            if args.snapshot_db:
+                from trading_companion.snapshot_store import ResearchSnapshotStore, SnapshotStoreError
+                try:
+                    snapshot_store = ResearchSnapshotStore(Path(args.snapshot_db))
+                except SnapshotStoreError:
+                    raise ModelConfigurationError("The selected local snapshot archive is unavailable") from None
+            service = ResearchApiService(model_factory=models[args.provider], model_factories=models, directory_loader=loader,
+                provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
-                market_context_loader=context_loader)
+                market_context_loader=context_loader,
+                product_data_service=ResearchDataService() if source is None else None, snapshot_store=snapshot_store)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service()
     except DataModeDependencyError:
@@ -86,12 +91,14 @@ def main(argv=None) -> int:
     except (ModelConfigurationError, DataSourceError, DataValidationError, InvalidRequestError):
         if service is not None:
             service.close()
+        if snapshot_store is not None:
+            snapshot_store.close()
         print("[configuration_error] 服务端模型配置、本地目录或夹具不可用；不要发送密钥。", file=sys.stderr)
         print("正常模式不会自动退回测试数据。请检查 .env 与证券目录；需要离线演示时显式使用 --demo。", file=sys.stderr)
         return 2
     print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
-          "正常服务已启用DeepSeek，发送问题后可能计费；问题、参数和指标证据会发送给该提供方。")
+          f"正常服务默认模型：{args.provider}；发送研究问题后调用所选提供方。")
     if not args.demo:
         label = {"synthetic": "人工行情 / 非真实", "tencent": "腾讯不复权历史日线",
                  "akshare_eastmoney": "AKShare / 东方财富不复权历史日线"}[args.data]
@@ -99,9 +106,16 @@ def main(argv=None) -> int:
         print("网页 Dev Mode 可切换到独立的离线测试会话；不会调用真实模型或行情，也不会更改正常服务来源。")
     print("证券状态与日历仅为本地快照背景；未知不猜测、不据此下单，不自动刷新，也不发送给模型。")
     print(f"研究界面：http://127.0.0.1:{args.port}/；API文档：/docs；访问日志关闭，请不要共享会话访问令牌。")
-    app = (create_app(service=service) if development_service is None
-           else create_app(service=service, development_service=development_service))
-    uvicorn.run(app, host="127.0.0.1", port=args.port, workers=1, access_log=False)
+    try:
+        app = (create_app(service=service) if development_service is None
+               else create_app(service=service, development_service=development_service))
+        uvicorn.run(app, host="127.0.0.1", port=args.port, workers=1, access_log=False)
+    finally:
+        service.close()
+        if development_service is not None:
+            development_service.close()
+        if snapshot_store is not None:
+            snapshot_store.close()
     return 0
 
 

@@ -1,0 +1,102 @@
+/** Optional company sources; untrusted source text is always rendered as text nodes. */
+import type { PublicTurn } from "./api";
+
+type Evidence = { id: string; instrument_id: string; kind: string; label: string; display: string;
+  source: string; date: string | null; url: string | null; content_kind: string; report_period: string | null;
+  temporal_scope: string };
+type CompanyAnswer = { paragraphs: string[]; evidence: Evidence[]; origin: string;
+  paragraph_evidence?: string[][];
+  securities: { name: string; instrument_id: string }[]; daily_cutoff: string };
+const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+const text = (value: unknown, max = 1600): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
+const optionalText = (value: unknown) => value === null || value === undefined || typeof value === "string" && value.length <= 2000;
+const hosts = ["finance.sina.com.cn", "news.sina.com.cn", "money.finance.sina.com.cn", "vip.stock.finance.sina.com.cn",
+  "finance.eastmoney.com", "data.eastmoney.com", "data.eastmoney.com.cn", "data.eastmoney.com", "www.cninfo.com.cn", "static.cninfo.com.cn",
+  "emweb.securities.eastmoney.com", "data.eastmoney.com", "notice.eastmoney.com", "pdf.dfcfw.com"];
+
+export function sourceUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2000) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password && !url.port
+      && hosts.includes(url.hostname) ? url.href : null;
+  } catch { return null; }
+}
+
+export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
+  if (!object(value) || value.version !== "product-research-answer-v1"
+      || !["model", "application"].includes(String(value.origin))
+      || !Array.isArray(value.paragraphs) || value.paragraphs.length < 1 || value.paragraphs.length > 6
+      || !value.paragraphs.every(item => text(item, 1800))
+      || !Array.isArray(value.evidence) || value.evidence.length > 240
+      || !Array.isArray(value.securities) || value.securities.length > 3
+      || !value.securities.every(item => object(item) && text(item.name, 80) && /^[0-9]{6}\.(SH|SZ|BJ)$/.test(String(item.instrument_id)))
+      || !text(value.daily_cutoff, 10) || !/^\d{4}-\d{2}-\d{2}$/.test(value.daily_cutoff)) return null;
+  const allowed = new Set(value.securities.map(item => item.instrument_id));
+  if (!value.evidence.every(item => object(item) && text(item.id, 200) && allowed.has(item.instrument_id)
+      && ["profile", "financial", "news", "announcements", "technical", "risk"].includes(String(item.kind))
+      && text(item.label, 100) && text(item.display, 2000) && text(item.source, 80)
+      && optionalText(item.date) && optionalText(item.url) && optionalText(item.report_period)
+      && text(item.content_kind, 40) && text(item.temporal_scope, 80))) return null;
+  const evidenceIds = new Set(value.evidence.map(item => item.id));
+  if (evidenceIds.size !== value.evidence.length) return null;
+  // Older and application fallback answers may omit paragraph mappings entirely.
+  if (Object.prototype.hasOwnProperty.call(value, "paragraph_evidence")) {
+    const mappings = value.paragraph_evidence;
+    if (!Array.isArray(mappings) || mappings.length !== 0 && mappings.length !== value.paragraphs.length
+      || !mappings.every(items => Array.isArray(items) && items.length <= evidenceIds.size
+        && items.every(id => text(id, 200) && evidenceIds.has(id)) && new Set(items).size === items.length)) return null;
+  }
+  return value as unknown as CompanyAnswer;
+}
+
+const kinds: Record<string, string> = { profile: "公司资料", financial: "财务报告", news: "新闻", announcements: "公司公告", technical: "日线指标", risk: "风险情景" };
+const sources: Record<string, string> = { eastmoney_company: "东方财富", eastmoney_financial: "东方财富", eastmoney_news: "东方财富",
+  eastmoney_announcements: "东方财富公告", cninfo_announcements: "巨潮资讯", sina_company_news: "新浪财经", sina_news: "新浪财经",
+  tencent: "腾讯行情", akshare_eastmoney: "东方财富行情", csv: "开发样例", application_comparison: "程序比较" };
+
+function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer; evidence: Evidence[]; previewLimit?: number }) {
+  const groups = new Map<string, Evidence[]>();
+  for (const item of evidence) {
+    const key = [item.instrument_id, item.kind, item.url ?? item.source, item.report_period ?? ""].join("|");
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  return <div className="company-source-list">{[...groups].map(([key, items]) => {
+      const first = items[0], url = sourceUrl(first.url);
+      const company = data.securities.find(item => item.instrument_id === first.instrument_id);
+      return <section className="company-source" key={key}>
+        <div className="company-source-heading"><strong>{company?.name} · {kinds[first.kind]}</strong>
+          <span>{sources[first.source] ?? first.source}</span></div>
+        {first.report_period && <p>报告期：{first.report_period}</p>}
+        {items.slice(0, previewLimit).map(item => <p key={item.id}>{item.kind === "financial" || item.kind === "technical" ? `${item.label}：` : ""}{item.display}</p>)}
+        <small>{first.content_kind === "title" ? "标题资料" : first.content_kind === "snippet" ? "摘要资料" : first.temporal_scope === "current_context" ? "当前公司背景" : ""}
+          {first.date ? ` · ${first.kind === "technical" || first.kind === "risk" ? "交易日" : "发布时间"} ${first.date}` : ""}
+          {url && <> · <a href={url} target="_blank" rel="noopener noreferrer">查看来源</a></>}</small>
+      </section>;
+    })}</div>;
+}
+
+export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
+  const evidence = new Map(data.evidence.map(item => [item.id, item]));
+  return <div className="conversation-response readable-text">
+    {data.paragraphs.map((paragraph, index) => {
+      const referenced = (data.paragraph_evidence?.[index] ?? []).map(id => evidence.get(id)!);
+      return <div className="company-paragraph" key={index}>
+        <p>{paragraph}</p>
+        {referenced.length > 0 && <details className="paragraph-evidence" aria-label={`第${index + 1}段依据`}>
+          <summary>依据 {referenced.length}</summary>
+          <SourceList data={data} evidence={referenced} previewLimit={referenced.length} />
+        </details>}
+      </div>;
+    })}
+  </div>;
+}
+
+export function CompanySources({ turn }: { turn: PublicTurn }) {
+  const data = parseCompanyAnswer(turn.company_research);
+  if (!data?.evidence.length) return null;
+  const groups = new Set(data.evidence.map(item => [item.instrument_id, item.kind, item.url ?? item.source, item.report_period ?? ""].join("|")));
+  return <details className="disclosure company-sources"><summary>研究依据 <span>{groups.size} 组资料</span></summary>
+    <SourceList data={data} evidence={data.evidence} />
+  </details>;
+}

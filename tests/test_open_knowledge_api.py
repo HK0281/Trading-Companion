@@ -1,7 +1,8 @@
 """Offline HTTP/service integration for general education and existing research memory."""
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import unittest
@@ -100,7 +101,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.assertEqual((turn["runtime"]["responses_received"], turn["runtime"]["observed_tokens"]), (1, 30))
         self.assertEqual(len(self.model.calls), 1)
         self.assertEqual(self.model.calls[0][1], ())
-        self.loader.assert_not_called()
+        self.loader.assert_called_once_with(NOW)
         self.context_loader.assert_not_called()
 
     def test_http_returns_a_plain_answer_through_the_existing_message_protocol(self):
@@ -112,7 +113,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.assertEqual(response.json()["result"]["answer"], TEXT)
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn(PRIVATE, response.text)
-        self.loader.assert_not_called()
+        self.loader.assert_called_once_with(NOW)
 
     def test_idempotent_replay_is_detached_and_does_not_call_the_model_twice(self):
         key = uuid4().hex
@@ -146,6 +147,52 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.assert_no_research_views(turn)
         self.assertEqual(self.model.calls, [])
 
+    def test_topic_first_named_investment_questions_use_real_company_orchestration(self):
+        from tests.test_product_agent import ProductModelFixture
+        from tests.test_product_research import CompanyDataFixture, NOW as COMPANY_NOW, directory
+
+        for question in ("ROE如何判断平安银行估值", "PE低的平安银行值得买吗", "什么是PE，平安银行能买吗"):
+            with self.subTest(question=question):
+                model, data = ProductModelFixture(), CompanyDataFixture()
+                loader = Mock(return_value=directory())
+                self.install(model_factory=lambda: model, directory_loader=loader,
+                    development_source=None, data_mode="tencent", product_data_service=data,
+                    reference_date=COMPANY_NOW.date(), wall_clock=lambda: COMPANY_NOW)
+                with TestClient(create_app(service=self.service), base_url="http://localhost") as client:
+                    response = client.post("/v1/sessions/" + self.sid + "/messages",
+                        headers={"Authorization": "Bearer " + self.token},
+                        json={"request_id": uuid4().hex, "question": question})
+                self.assertEqual(response.status_code, 200)
+                turn = response.json()["result"]
+                self.assertEqual(turn["stage"], "company_research")
+                self.assertIsNotNone(turn["company_research"])
+                self.assertEqual(turn["model_calls_attempted"], 2)
+                self.assertEqual(len(data.calls), 1)
+                self.assertEqual(model.calls[0][1][0].name, "interpret_product_research")
+                loader.assert_called_once_with(COMPANY_NOW)
+
+    def test_stale_snapshot_vetoes_named_education_but_does_not_block_pure_knowledge(self):
+        from tests.test_product_agent import ProductModelFixture
+        from tests.test_product_research import CompanyDataFixture, NOW as COMPANY_NOW, directory
+
+        stale = replace(directory(), retrieved_at=COMPANY_NOW - timedelta(days=8))
+        loader, model, data = Mock(return_value=stale), ProductModelFixture(), CompanyDataFixture()
+        self.install(model_factory=lambda: model, directory_loader=loader,
+            development_source=None, data_mode="tencent", product_data_service=data,
+            reference_date=COMPANY_NOW.date(), wall_clock=lambda: COMPANY_NOW)
+        turn = self.send("PE低的平安银行值得买吗")["result"]
+        self.assertEqual(turn["code"], "product_directory_unusable")
+        self.assertEqual(model.calls, [])
+        self.assertEqual(data.calls, [])
+
+        education = EducationAndResearchModel()
+        self.install(model_factory=lambda: education, directory_loader=Mock(return_value=stale),
+            wall_clock=lambda: COMPANY_NOW)
+        turn = self.send()["result"]
+        self.assertEqual((turn["code"], turn["stage"]), ("general_knowledge_answered", "knowledge"))
+        self.assertEqual(turn["answer"], TEXT)
+        self.assertEqual(len(education.calls), 1)
+
     def test_general_education_does_not_overwrite_saved_research_or_attach_its_chart(self):
         self.loader.side_effect = None
         self.loader.return_value = self.directory
@@ -177,7 +224,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.assertNotIn(PRIVATE, json.dumps(turn))
         self.assertEqual(len(self.model.calls), 1)
         self.assert_no_research_views(turn)
-        self.loader.assert_not_called()
+        self.loader.assert_called_once_with(NOW)
 
     def test_invalid_prose_is_not_exposed_through_api(self):
         self.model.knowledge_response = ToolModelResponse("complete", PRIVATE + "<script>bad</script>")

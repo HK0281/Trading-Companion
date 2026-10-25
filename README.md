@@ -38,16 +38,56 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 - [Explicit product source selection (Chinese)](docs/source-selection-design.md): synthetic/Tencent/AKShare startup configuration, optional dependency checks and no silent fallback.
 - [Local model configuration and startup (Chinese)](docs/local-environment.md): root `.env`, normal-mode defaults, local checks and explicit directory refresh.
 - [Normal mode and Dev Mode (Chinese)](docs/dev-mode-design.md): normal-by-default Web startup, a separate fixed offline backend and safe in-page switching without shared sessions.
+- [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
 
 ## Start the product
 
-After installing `.[api,model]`, building the frontend and setting `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` in the project-root `.env`, run:
+From the project root, install the backend extras and build the frontend (Python 3.11+, Node 22.12+ and the project's pnpm version are required):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[api,model]"
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend build
+```
+
+Set these values in the project-root `.env`, replacing the placeholders with credentials and model IDs available to your account:
+
+```dotenv
+DEEPSEEK_API_KEY=replace_with_your_key
+DEEPSEEK_MODEL=replace_with_your_model_id
+
+# Optional: only configure these when using the OpenAI API.
+OPENAI_API_KEY=replace_with_your_openai_key
+OPENAI_MODEL=replace_with_your_openai_model_id
+```
+
+The program reads the file at startup; no activation script or repeated terminal key assignment is needed. Existing terminal values take precedence, including empty values. Keep `.env` local. If the security directory is missing or expired, refresh it explicitly before starting:
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.security_directory_refresh --live
+```
+
+That command reads public exchange lists; it does not call a model. Start normal mode with:
 
 ```powershell
 .\.venv\Scripts\python.exe -m trading_companion.api_server
 ```
 
-Open <http://127.0.0.1:8765/>. No arguments now mean **DeepSeek + Tencent historical daily bars**, not the artificial demo. Startup checks local configuration, dependencies and the existing real security directory; it does not call a model, fetch market bars or refresh the directory. Missing/stale directories or invalid model configuration fail explicitly instead of silently switching to artificial data. The first submitted research question can call the model and market source.
+Open <http://127.0.0.1:8765/> and send a message to start a chat. No arguments mean **DeepSeek + Tencent historical daily bars**, with public company/financial/news/announcement sources available for broader research. Startup checks local configuration, dependencies and the existing real security directory; it does not call a model, fetch market bars or refresh the directory. Missing/stale directories or invalid default-model configuration fail explicitly instead of silently switching to artificial data. Submitted questions can call the selected model and applicable public data sources.
+
+When both model configurations are valid, the Web model selector offers DeepSeek and OpenAI. Selection starts a separate session; an existing session's provider is fixed. `GET /health` exposes `available_providers` as names only, and `POST /v1/sessions` can select a configured provider by name. Keys and endpoint configuration remain server-side, with no silent provider fallback. OpenAI uses the API, so the selected model must support the configured Chat Completions/tool interface. If only OpenAI is configured, choose it as the startup default:
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.api_server --provider openai
+```
+
+To opt into a local evidence archive:
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.api_server --snapshot-db ".\data\research_snapshots.sqlite3"
+```
+
+The SQLite archive stores company-research evidence and technical snapshots, with local observation and source retrieval times. It excludes original questions, chat and model answers. Saving problems do not discard the research reply. This is an evidence store, without a chat-restoration interface or a strict historical-version/backtesting system; omitting the flag creates no archive.
 
 The Web **Dev Mode** button switches an idle page to a separate, server-configured `fake + synthetic` service. It does not change normal-mode configuration or let a client choose arbitrary providers, data sources or paths. Once old-session cleanup succeeds, the page selects the target and clears its chat/draft before checking target health. If that check fails, it stays disconnected in the selected target; the discarded chat is not restored and no automatic fallback occurs. Cleanup failure preserves the old chat, and unresolved requests prevent switching. Reloading returns to normal mode. The fixed demo only has four directory entries and five artificial daily bars, not a full market.
 
@@ -58,18 +98,26 @@ For an entirely offline launch, use `--demo`; it never reads `.env` and cannot s
 In normal mode, a single-stock request does not need dates, a ticker or indicator parameters. For example:
 
 - `分析一下中际旭创`
-- `预测一下中际旭创下个月的走势`
-- After confirming a stock in the same session: `那下个月呢`
+- `结合财报和新闻，分析平安银行接下来一个月的走势`
+- `比较平安银行、浦发银行和招商银行的营收增长、利润增长和ROE`
+- `分析平安银行，给出基于ATR的止盈止损参考情景`
+- `PE和PB有什么区别，为什么不能只看PE选股？`
+- After a company-research answer: `为什么这么判断？` or `那新闻呢？`
 
 The Agent resolves names against the security directory and uses bounded historical-date/indicator defaults when omitted. A future horizon such as next week, next month or the next N days is an **outlook objective**, not a request for future market bars. It produces conditional scenarios and confirmation/invalidation criteria from available historical evidence, not guaranteed direction, invented future prices or calibrated forecast probabilities.
 
-An implicit same-stock outlook continuation requires unexpired, directory-rechecked conditions (15-minute lifetime). It starts a new research request using the checked historical window and fixed source; it does not relabel an old snapshot as freshly fetched market data or automatically move the historical cutoff. A missing, ambiguous or expired identity still needs clarification. The offline Dev Mode remains a fixed artificial example, not a real-market research substitute. See the [scope design](docs/natural-research-scope-design.md).
+An implicit same-stock continuation requires unexpired, directory-rechecked conditions (15-minute lifetime). Saved-result explanations can reuse existing evidence; a new domain performs new research while retaining the historical window, historical/current scope and future horizon unless explicitly changed. “Latest/refresh” or a new date window can replace those conditions. A missing, ambiguous or expired identity still needs clarification. The offline Dev Mode remains a fixed artificial example, not a real-market research substitute. See the [scope design](docs/natural-research-scope-design.md) and [company workflow](docs/company-research-design.md).
 
-Current tools cover one stock's historical daily bars and technical indicators. Multi-stock comparison, news/financial-statement research, stock screening and trade execution are not connected; a general request to “analyze” does not silently authorize or claim those capabilities.
+Broad research can combine company background, current vendor financial records, bounded news/announcement titles or excerpts, and historical technical evidence. Comparisons cover at most three explicitly named stocks and rank compatible financial metrics separately; this is not whole-market screening. ATR levels are calculated hypothetical references, not orders. Missing domains remain visible and do not erase available evidence. Full article/filing understanding, strict historical versions, Jev, whole-market discovery and strategy backtesting remain future work.
 
 ## Current status
 
-The bounded single-stock daily-research MVP code is implemented; live-model, real-market and incremental browser acceptance remain separate. See the [delivery checklist](docs/mvp-completion.md). Implemented capabilities include:
+The original bounded daily-research MVP and the 2026-10-25 company-research extensions have code and offline checks; live-model, real-market and browser acceptance remain separate. The [company design](docs/company-research-design.md) describes the current extension; the earlier [delivery checklist](docs/mvp-completion.md) records the daily-research milestone. Implemented capabilities include:
+
+- Company research planning, directory-grounded identities and bounded multi-domain collection, followed by model-written natural Chinese answers with source/number checks.
+- Separate same-period financial-metric comparisons for up to three named candidates, plus deterministic ATR reference scenarios.
+- Server-configured DeepSeek/OpenAI model factories and fixed-per-session provider choice, without cross-provider fallback.
+- An optional SQLite evidence archive with integrity checks, idempotent writes and observation/retrieval time queries; no stored chat or model answers.
 
 - Validated daily OHLCV records and local CSV loading.
 - A Tencent adapter and an optional AKShare/Eastmoney adapter for historical, unadjusted daily bars.
@@ -92,7 +140,7 @@ The bounded single-stock daily-research MVP code is implemented; live-model, rea
 - Optional per-conversation identity clarification: preserve validated dates and indicators while waiting for a stock selection, recheck the current directory and source configuration, and consume the pending request before execution.
 - An application-generated `safe_answer` report with checked request/evidence alignment, explicit missing values, and no model prose; existing model drafts remain debug-only and unchecked.
 - A separate web `conversation` response: the model receives the original question and tool results and writes a direct answer, conditional outlook and observation criteria. Relation claims and citations are checked; prose semantics and predictive accuracy are not. Synthetic or insufficient data produces a short application-owned explanation instead of an indicator dump.
-- A bounded research loop enabled by the Web/API and live terminal entry: the model can choose daily analysis, local indicator definitions, snapshot inspection and one supplementary calculation of up to three indicators on the same frozen bars. The original report/chart stays primary; supplementary claims have an independent evidence namespace. The backend retains checked tool records, while the main chat omits internal execution diagnostics. This is not news, fundamentals, realtime data or unrestricted browsing.
+- A bounded technical-research loop enabled by the Web/API and live terminal entry: the model can choose daily analysis, local indicator definitions, snapshot inspection and one supplementary calculation of up to three indicators on the same frozen bars. The original report/chart stays primary; supplementary claims have an independent evidence namespace. The broader company-research path adds domain collection separately; this technical loop does not grant realtime data or unrestricted browsing.
 - Structured indicator-relation claims checked against this request's evidence, exact operands and full-precision comparisons; default `display_answer` includes application-rendered relations only when all selected claims pass.
 - A fixed four-scenario contract-evaluation CLI reusing those flows: one offline case by default, explicit DeepSeek selection, pinned synthetic data only, independent call counting and no retries.
 - A thin terminal entry reusing the natural-input Agent and identity session: no arguments only show help, a fixed offline demo, explicit DeepSeek plus synthetic/Tencent selection, and safe answers without raw drafts.
@@ -111,7 +159,7 @@ The bounded single-stock daily-research MVP code is implemented; live-model, rea
 - Explicit `--data akshare_eastmoney` for Web/API and terminal launchers, alongside synthetic/Tencent modes. Each backend's source is fixed at startup; Web Dev Mode selects a separate fixed offline backend, not a source override within an existing session. Missing optional dependencies fail before model configuration, with no automatic fallback.
 - A 30-scenario MVP evaluation catalogue with up to three independent repeats, whole-run call allowance checks, checked explanation/synthesis expectations and fail-fast reports. CI executes 90 offline scenario instances, not paid model calls or investment benchmarks.
 
-This is an initial bounded research flow, with both an explicit-format entry and a model-first natural-input entry. Its optional session supports identity clarification, explicit stock/date/indicator updates, one checked result snapshot, bounded result follow-ups and local definitions, not arbitrary parameter rewriting or full chat history. Fact reports and narrowly checked indicator relations are available; arbitrary model-prose validation is not implemented. These paths and the contract-evaluation entry are tested offline, including mocked DeepSeek HTTP. The user supplied one passing live `deepseek-flash` report for the new contract's `complete` synthetic case: two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20). The other three live cases and repeated evaluation are pending; see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Real exchange-directory refresh and local lookup are separately verified, not an end-to-end live natural-language evaluation. General language-quality evaluation and a conversational product are not complete. Earlier developer feedback included a successful live text request on 2026-10-13 and one legacy synthetic tool round trip (two calls, one analysis, 4,500 reported tokens; recorded 2026-10-20). None of these one-off records proves real-market research quality or model stability. Long-term conversation memory, Jev, news, fundamentals, screening, DuckDB persistence, production multi-user deployment and historical strategy evaluation are not implemented.
+The original explicit and natural-input paths retain bounded identity clarification, explicit edits and result follow-ups. The company path adds its own checked plan and saved research, without claiming unrestricted conversation memory or arbitrary prose validation. Model transports are tested offline with mocked HTTP. Historical verification records remain separate: the user supplied one passing live `deepseek-flash` `complete` synthetic contract report with two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20); see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Earlier text/tool feedback and the independently checked directory refresh do not prove the expanded workflow's real-market quality. Repeated real-model evaluation, human review of answer relevance and browser acceptance are still required. Long-term chat memory, Jev, whole-market screening, DuckDB, production multi-user deployment and historical strategy evaluation are not implemented.
 
 The intended product scope includes main-board, STAR Market, ST, and newly listed stocks. Local background snapshots can now report dated board/listing/ST/full-day-suspension states, but no real master/calendar adapter or historical version store is implemented. Unknown is not normal; missing bars do not establish suspension. Board/listing-specific trading rules are not evaluated.
 
@@ -745,6 +793,12 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 - `model_cli.py`: explicit offline/live model-layer demonstration.
 - `tool_model.py` / `tool_model_demo.py`: tool-message contracts, scripted fake, and an offline fixed-result round trip.
 - `deepseek_tool_model.py`: DeepSeek function-tool message conversion and bounded response parsing; no tool execution.
+- `openai_tool_model.py` / `model_registry.py`: fixed-endpoint OpenAI adapter and explicitly configured model factories, preserving the shared tool protocol and server-only credentials.
+- `open_knowledge.py`: tool-free financial teaching questions, separate from company data requests.
+- `product_plan.py` / `product_agent.py` / `product_research.py` / `product_answer.py`: checked multi-domain plans, company evidence collection, saved research and natural answers with bounded citation/number validation.
+- `company_research_contracts.py` / `company_research.py` / `company_news_sina.py`: fixed-endpoint company, financial, news and announcement adapters with time/source/content checks.
+- `comparison_research.py` / `risk_research.py`: compatible financial-metric ranking and deterministic historical ATR scenarios.
+- `snapshot_store.py`: opt-in local SQLite evidence snapshots with integrity, observation time, idempotency and concurrency checks.
 - `tool_smoke.py`: fixed-task tool connectivity CLI; offline default, explicit DeepSeek opt-in, and bounded synthetic execution.
 - `research_tool.py` / `research_tool_demo.py`: controlled analysis execution, compact evidence results, and an offline synthetic calculation round trip.
 - `agent_input.py` / `agent.py` / `agent_demo.py`: conservative explicit-input parsing, shared bounded orchestration, optional identity/edit/follow-up session routing, checked structured relations, local knowledge and an offline demo; no full chat history.
@@ -772,4 +826,4 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 
 ## Next milestone
 
-The next milestone is live acceptance of the bounded MVP, not another expansion of its architecture. The code now includes multi-indicator synthesis, resumable window edits, relative dates/refresh, explicit startup source selection and a 30-scenario repeated evaluation entry. Run and review real-model cases only with explicit opt-in, separately exercise real historical data, and finish incremental browser checks where access is allowed. Current browser access was denied by policy and is not bypassed. The single earlier live `complete` pass is not a repeated quality baseline. News, fundamentals, screening, Jev, point-in-time persistence/replay, OpenAI-provider switching and public deployment remain later work; see the [delivery checklist](docs/mvp-completion.md).
+The next milestone is quality acceptance of the expanded conversation: review real-model answers, date inheritance, ambiguous follow-ups, multi-company evidence attribution, missing news and provider switching. Extend the fixed evaluation scenarios for the new domains, measure source latency and complete browser checks. The single earlier live `complete` pass is not a repeated quality baseline. Full article/filing retrieval, whole-market screening, Jev, strict historical versions and strategy replay, US equities and public deployment remain later work. See the [company design](docs/company-research-design.md) and earlier [MVP checklist](docs/mvp-completion.md).

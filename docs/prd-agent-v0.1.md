@@ -1,5 +1,24 @@
 # Trading Companion：产品 Agent PRD
 
+## 2026-10-25：公司研究范围修订与当前状态
+
+用户已要求向“理解问题 → 获取多领域资料 → 综合自然回答”的研究流程扩展。本表是当前实现范围；下文早期版本中的“本期不做”、调用额度和测试总数保留为对应阶段的历史记录。新闻、基本面、具名候选比较、风险情景和 OpenAI 不再统一归为尚未接入，但各自仍有明确边界。实现细节见[多维公司研究设计](company-research-design.md)。
+
+| 需求 | 当前实现与文件 | 仍有的边界 |
+| --- | --- | --- |
+| 一般交易知识 | `open_knowledge.py`、`indicator_knowledge.py` | 开放教学回答与本地指标定义；不是经过全文检索的知识库 |
+| 自然研究与澄清 | `product_plan.py`、`product_agent.py` | 原文提取、目录核名、日期/未来目标分开；最多三只明确股票，非无限聊天记忆 |
+| 公司、财务、新闻、公告与技术面 | `company_research_contracts.py`、`company_research.py`、`company_news_sina.py`、`product_research.py` | 各领域独立可用性；新闻/公告以标题或摘要为主，历史版本未验证 |
+| 围绕原问题回答 | `product_answer.py`、`frontend/src/ProductResearch.tsx` | 自然段主回复、折叠依据；引用/数字检查不等于任意语义或预测正确 |
+| 候选比较 | `comparison_research.py` | 同期、同单位的三项财务指标分别排序；不是全市场选股或综合投资分数 |
+| 风险参考水平 | `risk_research.py` | 同轮历史收盘价与 ATR 的假设做多情景；没有持仓、成交或策略执行 |
+| 可选本地证据归档 | `snapshot_store.py`、`api_server.py` 的 `--snapshot-db` | SQLite、摘要、观察/采集时间；不保存聊天或模型回答，不是严格 PIT 或策略回测 |
+| DeepSeek/OpenAI 选择 | `openai_tool_model.py`、`model_registry.py`、`local_env.py`、`api.py`、`api_service.py` | 服务端配置、会话内固定；未配置不显示，不自动改发另一家 |
+
+当前保留单个受控研究 Agent 与确定性工具，不要求训练股票模式，也没有接入 Jev、券商交易、全市场筛选、严格历史版本、收益/回撤回测、美股或生产多用户服务。真实模型重复评估、来源长期可用性与自然对话质量仍须独立验收；不将本轮代码或离线测试当作这些验收已经完成。
+
+以下为早期 PRD 与逐步实施记录。
+
 版本：v0.1 草案（多指标修订）  
 日期：2026-10-04（America/Los_Angeles）  
 状态：供确认和拆分开发任务；不是已完成功能说明  

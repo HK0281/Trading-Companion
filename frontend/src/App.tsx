@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from "react";
-import { createApi } from "./api";
+import { availableLiveProviders, createApi, type LiveProvider } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { MarketContext } from "./MarketContext";
+import { CompanySources } from "./ProductResearch";
 import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
 import { parsePresentation, sourceLabel } from "./presentation";
 
@@ -56,6 +57,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
         <div className="answer-attachments">
           <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} />
           <EvidenceTable turn={turn} />
+          <CompanySources turn={turn} />
           {turn.market_context != null && <details className="disclosure"><summary>证券状态与交易日历 <span>查看背景</span></summary>
             <MarketContext value={turn.market_context} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} /></details>}
           {(structured || turn.conversation != null) && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
@@ -63,7 +65,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
         </div>
       </>}
       {entry.error && <p className="error-text" role="alert">{entry.error}</p>}
-      {!turn && !entry.error && <div className="waiting" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>正在整理数据与指标…</div>}
+      {!turn && !entry.error && <div className="waiting" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>正在研究你的问题…</div>}
       </div>
     </div>
   </article>;
@@ -80,8 +82,14 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const scrollArea = useRef<HTMLDivElement>(null);
   const followBottom = useRef(true);
   const { health, session, loading, phase } = state;
-  const locked = loading || phase !== "idle", paid = health?.provider === "deepseek";
+  const locked = loading || phase !== "idle";
   const development = state.mode !== "normal";
+  const providers = availableLiveProviders(health);
+  const selectedProvider = state.selectedProvider ?? health?.provider;
+  const modelLabel = selectedProvider === "deepseek" ? "DeepSeek" : selectedProvider === "openai" ? "OpenAI"
+    : health ? "固定脚本" : "—";
+  const canSwitchProvider = !development && !locked && !state.pendingId
+    && !state.cancelPending && session?.view.state !== "busy";
   const canSwitchMode = state.developmentModeAvailable && !locked && !state.pendingId
     && !state.cancelPending && session?.view.state !== "busy";
   const exhausted = !!session && session.view.messages_used >= session.limit;
@@ -108,6 +116,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const editQuestion = (value: string) => { draftRevision.current++; setQuestion(value); };
   const switchMode = async () => {
     if (await controller.switchMode(development ? "normal" : "development")) {
+      editQuestion(""); setConfirmation(null); setNavigationOpen(false); followBottom.current = true;
+    }
+  };
+  const switchProvider = async (provider: LiveProvider) => {
+    if (await controller.switchProvider(provider)) {
       editQuestion(""); setConfirmation(null); setNavigationOpen(false); followBottom.current = true;
     }
   };
@@ -162,7 +175,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         <details className="settings"><summary><span className={`connection-dot ${health ? "connected" : ""}`} />
           {health ? "本机服务已连接" : loading ? "正在连接" : "服务未连接"}<span className="settings-chevron">⌄</span></summary>
           <div className="settings-content"><section aria-label="服务模式">
-            <dl><div><dt>模型</dt><dd>{health?.provider === "fake" ? "Fake · 固定脚本" : paid ? "DeepSeek" : "—"}</dd></div>
+            <dl><div><dt>模型</dt><dd>{development ? "Fake · 固定脚本" : modelLabel}</dd></div>
               <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div></dl>
             <p>来源由服务启动固定；失败不自动切换。不能通过对话切换。</p>
           </section>
@@ -187,7 +200,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         <div className="header-status"><span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}
           title={health ? sourceLabel(health.data_mode) : "服务未连接"}>
           {health?.data_mode === "synthetic" ? "人工行情 · 非真实" : health ? sourceLabel(health.data_mode) : "连接中"}</span>
-          <span className="model-pill">{development ? "测试 · 离线" : paid ? "DeepSeek" : health ? "固定脚本" : "—"}</span>
+          {!development && providers.length > 1 ? <select className="model-pill" aria-label="研究模型"
+            value={state.selectedProvider ?? health?.provider} disabled={!canSwitchProvider}
+            title="切换模型会开始新对话" onChange={(event) => void switchProvider(event.target.value as LiveProvider)}>
+            {providers.map((provider) => <option key={provider} value={provider}>{provider === "deepseek" ? "DeepSeek" : "OpenAI"}</option>)}
+          </select> : <span className="model-pill">{development ? "测试 · 离线" : modelLabel}</span>}
           <button className="dev-mode-toggle" type="button" role="switch" aria-label="Dev Mode"
             aria-checked={development} disabled={!canSwitchMode} onClick={() => void switchMode()}
             title={state.mode === "standalone_demo" ? "当前服务仅提供离线测试，不能切回正常模式"

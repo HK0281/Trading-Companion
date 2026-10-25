@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion import local_env
 from trading_companion.model import ModelConfigurationError
+from trading_companion.openai_tool_model import OpenAIConfig
 
 
 ARTIFICIAL_KEY = "synthetic-local-env-key-not-a-credential"
@@ -84,6 +85,48 @@ class LocalEnvironmentTests(unittest.TestCase):
         self.assertEqual(set(values), set(local_env.MODEL_VARIABLES))
         self.assertNotIn("HTTPS_PROXY", os.environ)
         self.assertNotIn("PYTHONPATH", os.environ)
+
+    def test_provider_selection_reads_only_its_own_documented_settings(self):
+        self.write_file(FILE_CONTENT + 'OPENAI_MODEL="synthetic-openai-model"\nOPENAI_API_KEY="synthetic-openai-key"\n'
+                        'OPENAI_BASE_URL=https://untrusted.invalid\nCUSTOM_SECRET=not-returned\n')
+        openai = local_env.load_model_environment(provider="openai")
+        self.assertEqual(openai, {"OPENAI_MODEL": "synthetic-openai-model", "OPENAI_API_KEY": "synthetic-openai-key"})
+        self.assertEqual(local_env.load_model_environment(),
+                         {"DEEPSEEK_MODEL": ARTIFICIAL_MODEL, "DEEPSEEK_API_KEY": ARTIFICIAL_KEY})
+        self.assertEqual(OpenAIConfig.from_env(openai).model, "synthetic-openai-model")
+        self.assertEqual(dict(os.environ), {})
+
+    def test_openai_environment_overrides_file_including_empty_values(self):
+        self.write_file("OPENAI_MODEL=file-model\nOPENAI_API_KEY=file-key\n")
+        os.environ["OPENAI_MODEL"] = "terminal-model"
+        self.assertEqual(local_env.load_model_environment(provider="openai"),
+                         {"OPENAI_MODEL": "terminal-model", "OPENAI_API_KEY": "file-key"})
+        os.environ["OPENAI_API_KEY"] = ""
+        with patch.object(local_env, "_read_local_values", side_effect=AssertionError("Complete env must not read file")):
+            values = local_env.load_model_environment(provider="openai")
+        self.assertEqual(values["OPENAI_API_KEY"], "")
+        with self.assertRaises(ModelConfigurationError):
+            OpenAIConfig.from_env(values)
+
+    def test_openai_does_not_interpolate_other_variables_or_load_a_custom_endpoint(self):
+        self.write_file('OPENAI_MODEL=test-model\nOPENAI_API_KEY=${OTHER_SECRET}\nOPENAI_BASE_URL=https://untrusted.invalid\n')
+        os.environ["OTHER_SECRET"] = ARTIFICIAL_KEY
+        values = local_env.load_model_environment(provider="openai")
+        self.assertEqual(values, {"OPENAI_MODEL": "test-model", "OPENAI_API_KEY": "${OTHER_SECRET}"})
+        self.assertNotIn("OPENAI_BASE_URL", os.environ)
+
+    def test_unknown_provider_is_rejected_before_file_or_environment_reads(self):
+        for provider in ("fake", "", "OPENAI", None, [], ARTIFICIAL_KEY):
+            with self.subTest(provider=provider), patch.object(local_env, "_read_local_values",
+                    side_effect=AssertionError("Unknown provider must not read file")), \
+                    self.assertRaises(ModelConfigurationError) as caught:
+                local_env.load_model_environment(provider=provider)
+            self.assertNotIn(ARTIFICIAL_KEY, str(caught.exception))
+
+    def test_openai_honors_existing_dotenv_opt_out(self):
+        with patch.dict(os.environ, {"PYTHON_DOTENV_DISABLED": "true"}), patch.object(
+                local_env, "_read_local_values", side_effect=AssertionError("No opted-out file read")):
+            self.assertEqual(local_env.load_model_environment(provider="openai"), {})
 
     def test_supports_quotes_comments_and_export(self):
         self.write_file(f'# Local test\nexport DEEPSEEK_MODEL="{ARTIFICIAL_MODEL}"\n'

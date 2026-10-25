@@ -23,9 +23,9 @@ class TurnLimits:
         if (type(self.timeout_seconds) not in (int, float) or not isfinite(self.timeout_seconds)
                 or not 0 < self.timeout_seconds <= 90):
             raise ModelConfigurationError("Turn duration must be positive and at most 90 seconds")
-        if self.profile not in ("legacy", "research_workflow"):
+        if self.profile not in ("legacy", "research_workflow", "company_research"):
             raise ModelConfigurationError("Choose a trusted turn-budget profile")
-        maxima = (6, 2) if self.profile == "research_workflow" else (3, 1)
+        maxima = {"legacy": (3, 1), "research_workflow": (6, 2), "company_research": (6, 3)}[self.profile]
         for value, maximum in zip((self.model_calls, self.analyses), maxima):
             if type(value) is not int or not 0 <= value <= maximum:
                 raise ModelConfigurationError("Turn call limits may tighten, not expand, product limits")
@@ -40,6 +40,11 @@ def workflow_turn_limits() -> TurnLimits:
 
 def workflow_turn_control() -> "TurnControl":
     return TurnControl(workflow_turn_limits())
+
+
+def company_turn_control() -> "TurnControl":
+    """One daily snapshot per explicitly bounded candidate, sharing the existing deadline."""
+    return TurnControl(TurnLimits(model_calls=6, analyses=3, profile="company_research"))
 
 
 class TurnStopped(Exception):

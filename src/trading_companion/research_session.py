@@ -88,6 +88,8 @@ class ResearchSession:
         self._confirmed: ConfirmedResearch | None = None
         self._last_result: SavedResearch | None = None
         self._result_current = False
+        self.product_pending = None
+        self.product_saved = None
         self._turn_lock = Lock()
         self._turn_parent = None
 
@@ -98,6 +100,7 @@ class ResearchSession:
         working._pending, working._confirmed, working._last_result = self._pending, self._confirmed, self._last_result
         working._pending_edit = self._pending_edit
         working._result_current = self._result_current
+        working.product_pending, working.product_saved = self.product_pending, self.product_saved
         working._turn_parent = self
         return working
 
@@ -106,6 +109,7 @@ class ResearchSession:
         self._pending, self._confirmed, self._last_result = working._pending, working._confirmed, working._last_result
         self._pending_edit = working._pending_edit
         self._result_current = working._result_current
+        self.product_pending, self.product_saved = working.product_pending, working.product_saved
 
     @property
     def pending(self) -> PendingResearch | None:
@@ -120,6 +124,8 @@ class ResearchSession:
         return self._confirmed
 
     def clear(self) -> None:
+        self.product_pending = None
+        self.product_saved = None
         self.clear_pending()
         self.clear_confirmed()
         self.clear_saved_result()
@@ -134,6 +140,8 @@ class ResearchSession:
         """Old facts remain explicitly viewable, but cannot answer an implicit new-result question."""
         self.clear_pending()
         self.clear_confirmed()
+        self.product_pending = None
+        self.product_saved = None
         self._result_current = False
         if self._turn_parent is not None:
             # Consumption is immediate, but newly produced state remains staged until finish().
@@ -183,6 +191,7 @@ class ResearchSession:
     def clear_pending(self) -> None:
         self._pending = None
         self._pending_edit = None
+        self.product_pending = None
 
     def clear_confirmed(self) -> None:
         self._confirmed = None

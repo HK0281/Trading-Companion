@@ -1,7 +1,7 @@
 """Loopback-only FastAPI adapter; request DTOs never configure models or data sources."""
 
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Path, Response
 from fastapi.exceptions import RequestValidationError
@@ -23,6 +23,10 @@ SessionPath = Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]
 
 class EmptyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class SessionRequest(EmptyRequest):
+    provider: Literal["deepseek", "openai"] | None = None
 
 
 class MessageRequest(EmptyRequest):
@@ -51,6 +55,7 @@ class PublicTurn(BaseModel):
     presentation: dict | None = None
     conversation: dict | None = None
     research_workflow: dict | None = None
+    company_research: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None
@@ -188,12 +193,13 @@ def create_app(*, service: ResearchApiService | None = None,
     @app.get("/health")
     def health():
         return {"status": "ok", "provider": service.provider, "data_mode": service.data_mode,
+                "available_providers": list(service.available_providers),
                 "scope": "local_single_process_not_production", "trading_enabled": False,
                 "development_mode_available": development_service is not None}
 
     @app.post("/v1/sessions", status_code=201)
-    def create_session(body: EmptyRequest):
-        return service.create_session()
+    def create_session(body: SessionRequest):
+        return service.create_session(provider=body.provider)
 
     @app.get("/v1/sessions/{session_id}")
     def inspect_session(session_id: SessionPath, token: token_type):

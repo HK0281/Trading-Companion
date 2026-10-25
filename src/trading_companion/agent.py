@@ -59,6 +59,9 @@ class AgentTurnResult:
     _explanation_execution: ToolExecution | None = field(default=None, repr=False)
     knowledge_answer: KnowledgeAnswer | None = field(default=None, repr=False)
     general_knowledge_answer: GeneralKnowledgeAnswer | None = field(default=None, repr=False)
+    product_answer: object | None = field(default=None, repr=False)
+    product_bundle: object | None = field(default=None, repr=False)
+    product_plan: object | None = field(default=None, repr=False)
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
     runtime: dict[str, object] | None = field(default=None, repr=False)
     user_question: str = field(default="", repr=False)
@@ -114,6 +117,8 @@ class AgentTurnResult:
     @property
     def display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
+        if self.product_answer is not None:
+            return self.product_answer.text
         if self.general_knowledge_answer is not None:
             return self.general_knowledge_answer.text
         if self.knowledge_answer is not None:
@@ -170,6 +175,7 @@ class AgentTurnResult:
             "session_event": self.session_event, "session_state": self.session_state,
             "knowledge_answer": self.knowledge_answer.to_dict() if self.knowledge_answer is not None else None,
             "general_knowledge_answer": self.general_knowledge_answer.to_dict() if self.general_knowledge_answer else None,
+            "company_research": self.product_bundle.to_dict() if self.product_bundle else None,
             "followup_answer": self.followup_answer.to_dict() if self.followup_answer is not None else None,
             "runtime": self.runtime,
             "research_workflow": self.workflow_trace,
@@ -209,6 +215,7 @@ def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
         trace = {**trace, "stop_reason": "cancelled" if cancelled else "budget_or_deadline"}
     outcome = replace(outcome, model_draft=None, followup_answer=None, knowledge_answer=None,
                       general_knowledge_answer=None,
+                      product_answer=None, product_bundle=None, product_plan=None,
                       research_result=None if cancelled else outcome.research_result, failure_code=code,
                       workflow_observations=() if cancelled else outcome.workflow_observations,
                       workflow_trace=trace)

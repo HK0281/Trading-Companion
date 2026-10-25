@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PublicTurn } from "./api";
 import { formatNumber, parseConversation, parsePresentation, unavailableLabel, unitLabel } from "./presentation";
+import { CompanyParagraphs, parseCompanyAnswer } from "./ProductResearch";
 
 export function ReadableText({ text }: { text: string }) {
   // Render as text nodes; provider or source content never becomes executable HTML.
@@ -15,6 +16,9 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
   const fields = (turn.report?.fields ?? []).filter((field) => !presentation?.indicator_ids?.length
     || presentation.indicator_ids.includes(field.indicator_id));
   const unavailable = fields.filter((field) => field.status !== "available");
+  const company = parseCompanyAnswer(turn.company_research);
+  if (company) return <CompanyParagraphs data={company} />;
+  if (turn.company_research != null) return <ReadableText text="本轮研究回答未能正常显示，请重新发送研究问题。" />;
   if (conversation) return <div className="conversation-response readable-text">
     {conversation.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
     {conversation.origin === "model" && <small className="response-origin">基于本轮历史日线的模型解读</small>}
@@ -51,6 +55,7 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
 }
 
 export function EvidenceTable({ turn }: { turn: PublicTurn }) {
+  if (turn.company_research != null) return null;
   const fields = turn.report?.fields ?? [];
   if (!fields.length) return null;
   return <details className="disclosure facts"><summary>指标字段与证据 <span>{fields.length} 个字段</span></summary>

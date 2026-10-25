@@ -1,5 +1,26 @@
 # Trading Companion：总体技术架构设计
 
+## 2026-10-25：当前业务扩展与文件映射
+
+当前正常模式已经增加公司研究链路，沿用模块化单体、原模型协议、日线计算和会话控制。以本表判断现有能力；后文截至2026-10-24的“长期目标/未实现”和旧额度保留为历史阶段记录。完整数据流与取舍见[多维公司研究设计](company-research-design.md)。
+
+| 架构职责 | 实际模块 | 当前行为 |
+| --- | --- | --- |
+| 入口与会话 | `api.py`、`api_service.py`、`research_session.py` | 一般知识、原技术循环和公司研究分流；共享幂等、取消与会话隔离 |
+| 研究计划 | `product_plan.py`、`product_agent.py` | 一次意图提取，程序核名/核日，必要澄清，最多三只明确候选 |
+| 领域资料 | `company_research_contracts.py`、`company_research.py`、`company_news_sina.py` | 公司背景、财务、新闻和公告分别校验与返回；固定端点，无静默换源 |
+| 技术证据整合 | `product_research.py`、`multi_analysis.py`、`research_synthesis.py` | 复用同轮日线、数值事实与程序关系，限制送入模型的上下文 |
+| 比较与风险计算 | `comparison_research.py`、`risk_research.py` | 同报告期财务指标排序、ATR假设情景；保留输入依赖与失败状态 |
+| 回答与展示 | `product_answer.py`、`frontend/src/ProductResearch.tsx` | 模型回答原问题，检查引用/数字/公司归属，主回复与资料分层 |
+| 模型适配与注册 | `deepseek_tool_model.py`、`openai_tool_model.py`、`model_registry.py`、`local_env.py` | DeepSeek/OpenAI服务端预配置，健康接口仅公布可用名称，会话内固定选择 |
+| 本地证据存储 | `snapshot_store.py` | 显式SQLite归档、内容摘要与时间边界查询；不保存原问题、聊天或模型回答 |
+
+借鉴 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 的领域拆分和结果综合，以及 [TradingAgents-CN](https://github.com/hsliuping/TradingAgents-CN/tree/v3.0) 的中文市场适配思路；自行实现数据契约，没有搬入整套角色、依赖或混合许可的应用代码。当前没有新增产品多 Agent 团队或 LangGraph 依赖。
+
+公司资料、候选比较和风险情景已有受限实现；全市场筛选、严格 PIT/历史修订、新闻公告全文理解、策略回测、Jev、美股及生产账户仍未完成。引用有效不证明任意自然语言语义；离线回归与真实回答质量验收分开。
+
+以下为总体目标与此前渐进实施记录。
+
 版本：v0.1
 
 2026-10-24研究循环增量：Web/API和真实终端从固定一次工具调用升级为受控的单股票研究循环。模型可逐步选择日线分析、指标知识、快照检查及同一份行情上的补充指标计算；执行器验证权限，主报告/图表保持不变，补充证据独立核对，研究过程折叠展示。每轮最多6次模型（含意图提取）/6次工具/2次计算，保留协作截止、取消、上下文边界及旧入口。见[有界研究工作流设计](bounded-research-workflow-design.md)。新闻、财报和交易权限不在本增量内。

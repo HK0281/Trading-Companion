@@ -1,13 +1,19 @@
 /** Browser contracts for the public API, never the Agent's debug export. */
 export type ApiMode = "normal" | "development";
+export type ModelProvider = "fake" | "deepseek" | "openai";
+export type LiveProvider = Exclude<ModelProvider, "fake">;
 
 export interface Health {
   status: "ok";
-  provider: "fake" | "deepseek";
+  provider: ModelProvider;
   data_mode: "synthetic" | "tencent" | "akshare_eastmoney";
   trading_enabled: false;
   development_mode_available?: boolean;
+  available_providers?: ModelProvider[];
 }
+
+export const availableLiveProviders = (health: Health | null): LiveProvider[] =>
+  health?.available_providers?.filter((provider): provider is LiveProvider => provider === "deepseek" || provider === "openai") ?? [];
 
 export interface SessionCredentials {
   session_id: string;
@@ -45,6 +51,7 @@ export interface PublicTurn {
   presentation?: unknown;
   conversation?: unknown;
   research_workflow?: unknown;
+  company_research?: unknown;
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;
@@ -65,7 +72,7 @@ export interface MessageResponse {
 export interface ResearchApi {
   readonly mode?: ApiMode;
   health(): Promise<Health>;
-  create(): Promise<SessionCredentials>;
+  create(provider?: LiveProvider): Promise<SessionCredentials>;
   inspect(session: SessionCredentials): Promise<SessionView>;
   send(session: SessionCredentials, id: string, question: string): Promise<MessageResponse>;
   history(session: SessionCredentials): Promise<MessageResponse>;
@@ -87,6 +94,7 @@ const errors: Record<string, string> = {
   request_id_retired: "请求编号已在重置时失效。",
   directory_unusable: "本地证券目录或演示夹具不可用，请在服务端检查。",
   model_configuration_error: "服务端模型配置不可用，请在服务端检查；不要在网页中输入密钥。",
+  provider_unavailable: "所选模型当前不可用，请重新连接并检查可用模型。",
   research_internal_error: "服务端处理失败，没有自动重试。",
   invalid_request: "请求格式不符合接口要求，没有自动重试。",
 };
@@ -110,7 +118,7 @@ const count = (value: unknown): value is number => typeof value === "number" && 
 const text = (value: unknown): value is string => typeof value === "string";
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(text);
 const mode = (value: unknown): value is Record<string, unknown> & Pick<Health, "provider" | "data_mode"> => record(value)
-  && typeof value.provider === "string" && ["fake", "deepseek"].includes(value.provider)
+  && typeof value.provider === "string" && ["fake", "deepseek", "openai"].includes(value.provider)
   && typeof value.data_mode === "string" && ["synthetic", "tencent", "akshare_eastmoney"].includes(value.data_mode);
 const sessionView = (value: unknown): value is SessionView => record(value) && text(value.state)
   && (value.active_request_id === null || identifier(value.active_request_id))
@@ -181,14 +189,24 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
       && value.status === "ok" && value.trading_enabled === false
       && (!Object.prototype.hasOwnProperty.call(value, "development_mode_available")
         || typeof value.development_mode_available === "boolean")
-      && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic")),
-    create: async () => {
+      && (!Object.prototype.hasOwnProperty.call(value, "available_providers")
+        || Array.isArray(value.available_providers) && value.available_providers.length <= 3
+        && value.available_providers.every((item) => typeof item === "string" && ["fake", "deepseek", "openai"].includes(item))
+        && new Set(value.available_providers).size === value.available_providers.length
+        && value.available_providers.includes(value.provider))
+      && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"
+        && (value.available_providers === undefined || Array.isArray(value.available_providers)
+          && value.available_providers.every((item) => item === "fake")))),
+    create: async (provider) => {
+      if (provider !== undefined && (serviceMode === "development" || provider !== "deepseek" && provider !== "openai"))
+        throw new ConnectionError();
       const session = await request("/v1/sessions", (value): value is SessionCredentials => mode(value)
         && record(value) && identifier(value.session_id) && text(value.access_token)
         && /^[A-Za-z0-9_-]{20,128}$/.test(value.access_token) && record(value.limits)
         && count(value.limits.messages) && count(value.limits.model_calls)
+        && (provider === undefined || value.provider === provider)
         && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"),
-      { method: "POST", body: {} });
+      { method: "POST", body: provider === undefined ? {} : { provider } });
       credentialModes.set(session, serviceMode);
       return session;
     },

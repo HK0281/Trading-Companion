@@ -25,7 +25,7 @@ from trading_companion.errors import DataSourceError, DataValidationError, Inval
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
-from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control
+from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
 
 
 DATA_MODES = ("synthetic", "tencent", "akshare_eastmoney")
@@ -99,6 +99,7 @@ class _Entry:
     token: str = field(repr=False)
     created: float
     model: _SessionModel = field(repr=False)
+    provider: str = "fake"
     session: ResearchSession = field(default_factory=ResearchSession, repr=False)
     records: dict[str, _Record] = field(default_factory=dict, repr=False)
     market_contexts: dict[str, dict] = field(default_factory=dict, repr=False)
@@ -109,6 +110,8 @@ class _Entry:
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
     """Explicit allowlist; never use the Agent's debug-oriented to_dict() here."""
+    if result.product_plan is not None or result.product_answer is not None:
+        return public_product_turn(result)
     report = result.safe_answer
     request = result.confirmed_request
     analysis = result.research_result
@@ -170,31 +173,76 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
     }
 
 
+def public_product_turn(result):
+    """Company answers expose sources and coverage, not prompts or execution diagnostics."""
+    plan, bundle, answer = result.product_plan, result.product_bundle, result.product_answer
+    chart, request, report = None, None, None
+    if bundle is not None and len(bundle.companies) == 1 and bundle.companies[0].technical is not None:
+        technical = bundle.companies[0].technical
+        try:
+            chart = build_chart_projection(technical, expected_request=technical.request)
+            request = technical.request
+            report = build_research_report(technical, expected_request=request)
+        except Exception:
+            pass
+    company = None
+    if answer is not None:
+        from trading_companion.comparison_research import build_candidate_comparison
+        company = {**answer.to_dict(), "securities": [s.to_dict() for s in plan.securities],
+            "coverage": [{"instrument_id": item.instrument_id, "name": item.name,
+                          "sections": [dict(section) for section in item.coverage]} for item in bundle.companies],
+            "daily_cutoff": plan.end_date.isoformat(), "explicit_historical": plan.explicit_historical,
+            "risk_scenarios": [item.risk.to_dict() for item in bundle.companies if item.risk is not None],
+            "comparison": build_candidate_comparison(bundle).to_dict() if len(bundle.companies) > 1 else None}
+    return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
+        "answer": result.display_answer, "conversation": None, "presentation": None,
+        "report": report.to_dict() if report is not None else None,
+        "parameters": {**request_arguments(request), "source": request.source} if request else None,
+        "chart": chart, "market_context": None, "company_research": company,
+        "candidates": [s.to_dict() for s in plan.candidates[:5]] if plan else [],
+        "applied_defaults": list(plan.applied_defaults) if plan else [],
+        "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
+        "runtime": deepcopy(result.runtime), "research_workflow": None,
+        "validation_scope": "citation_membership_and_numeric_surface_checks_not_full_prose_semantics"}
+
+
 class ResearchApiService:
     """Own isolated capability-token sessions, bounded work and idempotent message results."""
 
     def __init__(self, *, model_factory, directory_loader, provider="fake", data_mode="synthetic",
                  development_source=None, reference_date=None, limits=None, market_context_loader=None,
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
-                 workflow_enabled=True):
+                 workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None):
         self.limits = ApiLimits() if limits is None else limits
-        if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek")
+        if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
                 or market_context_loader is not None and not callable(market_context_loader)
                 or type(workflow_enabled) is not bool):
             raise ModelConfigurationError("Use trusted API application configuration")
+        factories = {provider: model_factory} if model_factories is None else dict(model_factories)
+        if (not factories or provider not in factories or factories[provider] is not model_factory
+                or any(name not in ("fake", "deepseek", "openai") or not callable(factory)
+                       for name, factory in factories.items())
+                or "fake" in factories and set(factories) != {"fake"}):
+            raise ModelConfigurationError("Use explicit server-side model factories without mixing demo and live models")
+        self._model_factories = factories
+        self.available_providers = tuple(factories)
         if (data_mode == "synthetic") != (development_source is not None):
             raise ModelConfigurationError("Synthetic mode requires explicit trusted development data")
         ensure_data_mode_dependencies(data_mode)
         self.provider, self.data_mode = provider, data_mode
         self._workflow_enabled = workflow_enabled
+        self._product_data_service = product_data_service
+        self._snapshot_store = snapshot_store
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
         self._market_context_loader = market_context_loader
         self._development_source, self._reference_date = development_source, reference_date
-        self._clock, self._wall_clock, self._control_factory = clock, wall_clock or (lambda: datetime.now(timezone.utc)), control_factory
+        self._clock, self._wall_clock = clock, wall_clock or (lambda: datetime.now(timezone.utc))
+        self._control_factory = (company_turn_control if product_data_service is not None
+                                 and control_factory is workflow_turn_control else control_factory)
         self._entries: dict[str, _Entry] = {}
         self._lock = Lock()
         self._active = 0
@@ -222,26 +270,30 @@ class ResearchApiService:
             raise ApiProblem(404, "session_not_found", "会话不存在、已失效或访问凭据不匹配。")
         return entry
 
-    def create_session(self):
+    def create_session(self, *, provider=None):
         with self._lock:
             self._prune()
             if self._closed:
                 raise ApiProblem(503, "service_closed", "服务正在关闭。")
+            selected = self.provider if provider is None else provider
+            if type(selected) is not str or selected not in self._model_factories:
+                raise ApiProblem(422, "provider_unavailable", "所选模型尚未配置，请选择当前可用模型。")
             if len(self._entries) >= self.limits.sessions:
                 raise ApiProblem(429, "session_capacity", "本机服务会话数已满，请删除不用的会话。")
             try:
-                model = self._model_factory()
+                model = self._model_factories[selected]()
             except Exception:
                 raise ApiProblem(503, "model_configuration_error", "服务端模型配置不可用，请在服务端检查。") from None
             session_id, token = uuid4().hex, token_urlsafe(32)
-            self._entries[session_id] = _Entry(token, self._clock(), _SessionModel(model, self.limits.model_calls))
+            self._entries[session_id] = _Entry(token, self._clock(), _SessionModel(model, self.limits.model_calls), selected)
             return {"session_id": session_id, "access_token": token, "token_type": "bearer",
                     "expires_in_seconds": self.limits.lifetime_seconds,
-                    "provider": self.provider, "data_mode": self.data_mode,
+                    "provider": selected, "data_mode": self.data_mode,
                     "limits": {"messages": self.limits.messages, "model_calls": self.limits.model_calls}}
 
     def _view(self, entry):
         return {"state": "busy" if entry.control is not None else entry.session.to_dict()["state"],
+                "provider": entry.provider,
                 "active_request_id": entry.active_id,
                 "messages_used": entry.messages_used, "model_calls_forwarded": entry.model.forwarded,
                 "research": None if entry.control is not None else entry.session.to_dict()}
@@ -336,20 +388,54 @@ class ResearchApiService:
         try:
             timestamp = self._wall_clock()
             directory = None
-            if (self._workflow_enabled and not history and parse_knowledge_question(question) is None
-                    and is_general_knowledge_question(question)):
-                result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
-            else:
+            education = (self._workflow_enabled and not history and parse_knowledge_question(question) is None
+                         and is_general_knowledge_question(question))
+            if education:
                 try:
                     directory = self._directory_loader(timestamp)
                 except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
-                    raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
-                result = run_natural_research_turn(question, model=entry.model, directory=directory,
-                    source=self._research_source,
-                    development_source=self._development_source, reference_date=self._reference_date,
-                    session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
+                    # A local identity hint may veto education; its availability or
+                    # freshness must never authorize or block a generic explanation.
+                    pass
+                education = is_general_knowledge_question(question, directory=directory)
+            if education:
+                result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
+            else:
+                if directory is None:
+                    try:
+                        directory = self._directory_loader(timestamp)
+                    except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+                        raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
+                from trading_companion.product_plan import wants_product_research, is_explicit_technical_request
+                from trading_companion.product_agent import is_product_followup
+                product = self._product_data_service is not None and (
+                    entry.session.product_pending is not None or wants_product_research(question)
+                    or bool(directory.mentioned_spans(question)) and not is_explicit_technical_request(question)
+                    or entry.session.product_saved is not None and is_product_followup(question)
+                    or history and entry.session.product_saved is not None)
+                if product:
+                    from trading_companion.product_agent import run_product_research_turn
+                    result = run_product_research_turn(question, model=entry.model, directory=directory,
+                        source=self._research_source, development_source=self._development_source,
+                        reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
+                        data_service=self._product_data_service)
+                else:
+                    result = run_natural_research_turn(question, model=entry.model, directory=directory,
+                        source=self._research_source,
+                        development_source=self._development_source, reference_date=self._reference_date,
+                        session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
             saved = self._saved_for_view(entry, result, directory, timestamp)
             projected = public_turn(result, saved=saved)
+            if (self._snapshot_store is not None and result.product_bundle is not None
+                    and result.product_bundle.evidence and result.session_event == "company_research"
+                    and result.runtime is not None and result.runtime.get("stop_code") is None
+                    and projected.get("company_research") is not None):
+                try:
+                    projected["company_research"]["snapshot_id"] = self._snapshot_store.save(result.product_bundle)
+                    projected["company_research"]["snapshot_status"] = "saved"
+                except Exception:
+                    # Optional archival failure never discards a completed research answer.
+                    projected["company_research"]["snapshot_status"] = "unavailable"
             projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
             reset_contexts = result.code == "session_reset"
             response = {"request_id": request_id, "replayed": False, "result": projected}

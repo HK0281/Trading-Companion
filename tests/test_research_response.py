@@ -293,13 +293,14 @@ class ResponseTests(unittest.TestCase):
         from contextlib import redirect_stdout
         from io import StringIO
         configured = DeepSeekConfig("fixture-model", "artificial-test-key")
+        def serve(app, **kwargs):
+            with TestClient(app, base_url="http://localhost") as client:
+                self.assertEqual(client.post("/v1/sessions", json={}).status_code, 201)
         with patch("trading_companion.api_server.load_model_environment", return_value={}), \
                 patch("trading_companion.deepseek_model.DeepSeekConfig.from_env", return_value=configured), \
-                patch("trading_companion.deepseek_tool_model.DeepSeekToolModel") as constructor, \
-                patch("uvicorn.run") as run, redirect_stdout(StringIO()):
+                patch("trading_companion.model_registry.DeepSeekToolModel") as constructor, \
+                patch("uvicorn.run", side_effect=serve), redirect_stdout(StringIO()):
             self.assertEqual(main(["--provider", "deepseek", "--data", "synthetic"]), 0)
-            with TestClient(run.call_args.args[0], base_url="http://localhost") as client:
-                self.assertEqual(client.post("/v1/sessions", json={}).status_code, 201)
         self.assertEqual(constructor.call_args.args[0].max_output_tokens, RESPONSE_OUTPUT_TOKENS)
         self.assertEqual(configured.max_output_tokens, 512)
 

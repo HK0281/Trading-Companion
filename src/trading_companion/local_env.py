@@ -17,6 +17,7 @@ def _source_env_file(module_path: Path) -> Path | None:
 
 LOCAL_ENV_FILE = _source_env_file(Path(__file__))
 MODEL_VARIABLES = ("DEEPSEEK_MODEL", "DEEPSEEK_API_KEY")
+_PROVIDER_VARIABLES = {"deepseek": MODEL_VARIABLES, "openai": ("OPENAI_MODEL", "OPENAI_API_KEY")}
 
 
 def _read_local_values() -> dict[str, str | None]:
@@ -38,11 +39,14 @@ def _read_local_values() -> dict[str, str | None]:
         raise ModelConfigurationError("Could not read the local .env; check its permissions and UTF-8 encoding") from None
 
 
-def load_model_environment() -> dict[str, str]:
+def load_model_environment(*, provider: str = "deepseek") -> dict[str, str]:
     """Merge only model settings, preserving existing environment values, even empty ones."""
-    environment = {name: os.environ[name] for name in MODEL_VARIABLES if name in os.environ}
+    if type(provider) is not str or provider not in _PROVIDER_VARIABLES:
+        raise ModelConfigurationError("Unsupported model provider")
+    variables = _PROVIDER_VARIABLES[provider]
+    environment = {name: os.environ[name] for name in variables if name in os.environ}
     disabled = os.environ.get("PYTHON_DOTENV_DISABLED", "").lower() in ("1", "true", "yes", "on")
-    if disabled or len(environment) == len(MODEL_VARIABLES):
+    if disabled or len(environment) == len(variables):
         return environment
     local = _read_local_values()
-    return {**{name: local[name] for name in MODEL_VARIABLES if isinstance(local.get(name), str)}, **environment}
+    return {**{name: local[name] for name in variables if isinstance(local.get(name), str)}, **environment}

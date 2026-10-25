@@ -599,7 +599,14 @@ class ProviderPathTests(GuardedTests):
         self.assertEqual((code, errors), (0, ""))
         self.assertEqual(self.post.call_count, 3)
         self.assertIn("completed/research_completed", output)
-        self.assertIn("收盘价：10.4", output)
+        self.assertIn("当前连接的是人工演示行情", output)
+        self.assertNotIn("收盘价：10.4", output)
+        self.assertIn("最多6次模型/6次工具/2次分析", output)
+        self.assertIn("最多转发15次模型调用、执行10次分析", output)
+        self.assertIn("整次启动的15次模型总额仍生效", output)
+        view = json.loads(self.post.call_args.kwargs["json"]["messages"][-1]["content"])
+        self.assertEqual(view["instrument_id"], "000001.SZ")
+        self.assertEqual(view["source"], "csv")
         self.assertNotIn(PRIVATE, output)
 
     def test_live_provider_exit_without_question_does_not_send_requests(self):
@@ -620,7 +627,9 @@ class ProviderPathTests(GuardedTests):
         self.assertEqual(build.call_args.args[0].source, "tencent")
         source.read_daily_bars.assert_called_once()
         self.assertIn("completed/research_completed", output)
-        self.assertIn("供应商提供的历史日线", output)
+        self.assertIn("行情：腾讯不复权历史日线", output)
+        self.assertIn("没有得到通过请求与证据检查的自然语言解读", output)
+        self.assertNotIn("收盘价：", output)
         self.assertNotIn("人工样例 / 非真实行情", output)
 
     def test_http_timeout_is_sanitized_and_not_retried(self):
@@ -636,7 +645,9 @@ class ProviderPathTests(GuardedTests):
         code, output, _ = self.live_cli([QUESTION, "/exit"])
         self.assertEqual((code, self.post.call_count), (0, 3))
         self.assertIn("limited/explanation_unavailable", output)
-        self.assertIn("收盘价：10.4", output)
+        self.assertIn("研究事实已保留", output)
+        self.assertIn("当前连接的是人工演示行情", output)
+        self.assertNotIn("收盘价：10.4", output)
 
 
 class MeterTests(unittest.TestCase):

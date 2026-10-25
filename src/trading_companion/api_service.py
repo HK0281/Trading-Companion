@@ -23,7 +23,7 @@ from trading_companion.errors import DataSourceError, DataValidationError, Inval
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
-from trading_companion.turn_control import TurnControl, TurnLimits
+from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control
 
 
 DATA_MODES = ("synthetic", "tencent", "akshare_eastmoney")
@@ -139,10 +139,21 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
     except Exception:
         # An optional UI view must not discard an accepted answer or leak exception details.
         presentation = None
+    conversation = result.conversation_answer
+    workflow = deepcopy(result.workflow_trace)
+    if workflow is not None and conversation is not None and conversation.get("origin") == "model":
+        validation = result.response_validation
+        if validation.status == "accepted":
+            workflow["supporting_evidence"] = [
+                {"request_id": claim.fact_id.split("|", 1)[0],
+                 "instrument_id": request.instrument_id, "trade_date": conversation["trade_date"],
+                 "fact_id": claim.fact_id, "text": claim.text}
+                for claim in validation.relations.claims if claim.evidence_id.startswith("supplement:")
+            ]
     return {
         "status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
-        "conversation": result.conversation_answer,
+        "conversation": conversation,
         "presentation": presentation,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
         "chart": chart,
@@ -151,6 +162,7 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
         "applied_defaults": list(understanding.applied_defaults) if understanding else [],
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
         "runtime": deepcopy(result.runtime),
+        "research_workflow": workflow,
         "validation_scope": "application_facts_and_checked_relations_not_arbitrary_model_prose",
     }
 
@@ -160,17 +172,20 @@ class ResearchApiService:
 
     def __init__(self, *, model_factory, directory_loader, provider="fake", data_mode="synthetic",
                  development_source=None, reference_date=None, limits=None, market_context_loader=None,
-                 clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=TurnControl):
+                 clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
+                 workflow_enabled=True):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek")
                 or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
-                or market_context_loader is not None and not callable(market_context_loader)):
+                or market_context_loader is not None and not callable(market_context_loader)
+                or type(workflow_enabled) is not bool):
             raise ModelConfigurationError("Use trusted API application configuration")
         if (data_mode == "synthetic") != (development_source is not None):
             raise ModelConfigurationError("Synthetic mode requires explicit trusted development data")
         ensure_data_mode_dependencies(data_mode)
         self.provider, self.data_mode = provider, data_mode
+        self._workflow_enabled = workflow_enabled
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
@@ -324,7 +339,7 @@ class ResearchApiService:
             result = run_natural_research_turn(question, model=entry.model, directory=directory,
                 source=self._research_source,
                 development_source=self._development_source, reference_date=self._reference_date,
-                session=entry.session, current_time=timestamp, control=control)
+                session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
             saved = self._saved_for_view(entry, result, directory, timestamp)
             projected = public_turn(result, saved=saved)
             projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)

@@ -17,16 +17,29 @@ class TurnLimits:
     model_calls: int = 3
     analyses: int = 1
     observed_tokens: int = 24000
+    profile: str = "legacy"
 
     def __post_init__(self):
         if (type(self.timeout_seconds) not in (int, float) or not isfinite(self.timeout_seconds)
                 or not 0 < self.timeout_seconds <= 90):
             raise ModelConfigurationError("Turn duration must be positive and at most 90 seconds")
-        for value, maximum in ((self.model_calls, 3), (self.analyses, 1)):
+        if self.profile not in ("legacy", "research_workflow"):
+            raise ModelConfigurationError("Choose a trusted turn-budget profile")
+        maxima = (6, 2) if self.profile == "research_workflow" else (3, 1)
+        for value, maximum in zip((self.model_calls, self.analyses), maxima):
             if type(value) is not int or not 0 <= value <= maximum:
                 raise ModelConfigurationError("Turn call limits may tighten, not expand, product limits")
         if type(self.observed_tokens) is not int or not 1 <= self.observed_tokens <= 24000:
             raise ModelConfigurationError("Observed-token threshold must be between 1 and 24000")
+
+
+def workflow_turn_limits() -> TurnLimits:
+    """Expand research opportunities, not time, token, account or trading permissions."""
+    return TurnLimits(model_calls=6, analyses=2, profile="research_workflow")
+
+
+def workflow_turn_control() -> "TurnControl":
+    return TurnControl(workflow_turn_limits())
 
 
 class TurnStopped(Exception):

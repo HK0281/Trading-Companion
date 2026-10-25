@@ -50,6 +50,7 @@ class PublicTurn(BaseModel):
     answer: str | None
     presentation: dict | None = None
     conversation: dict | None = None
+    research_workflow: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None

@@ -60,8 +60,12 @@ class ResponseModel:
                 "indicator_mentions": ["SMA3", "RSI2"] if self.short_indicators else [],
                 "clarification_reason": None}
             return ToolModelResponse("tool_calls", tool_calls=(ToolCall("intent", INTENT_TOOL_NAME, arguments),))
-        content = json.loads(messages[-1].content)
-        return ToolModelResponse("tool_calls", tool_calls=(ToolCall("research", TOOL_NAME, content["confirmed_request"]),))
+        marker = "\nconfirmed_request="
+        if marker in messages[0].content:
+            scope = json.JSONDecoder().raw_decode(messages[0].content.split(marker, 1)[1])[0]
+        else:
+            scope = json.loads(messages[-1].content)["confirmed_request"]
+        return ToolModelResponse("tool_calls", tool_calls=(ToolCall("research", TOOL_NAME, scope),))
 
 
 class ResponseTests(unittest.TestCase):

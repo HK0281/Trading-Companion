@@ -162,7 +162,7 @@ def build_conversation_answer(result):
             paragraphs = [f"已经取得{name}的历史行情，但本轮没有得到通过请求与证据检查的自然语言解读，"
                           "暂时不能给你有依据的方向判断。",
                           "数据和指标保留在下方附件中；本次没有把指标清单冒充分析，也没有自动重试模型。"]
-    return {
+    response = {
         "version": CONVERSATION_VERSION, "origin": origin,
         "request_id": request.request_id, "instrument_id": request.instrument_id,
         "trade_date": analysis.latest_trade_date.isoformat() if analysis.latest_trade_date else None,
@@ -171,3 +171,13 @@ def build_conversation_answer(result):
         "citations": [{"role": role, "fact_ids": list(facts)}
                       for role, _, facts in result.response_validation.paragraphs] if origin == "model" else [],
     }
+    if origin == "model" and result.workflow_observations:
+        response["evidence_snapshots"] = [
+            {"role": item.key, "request_id": item.execution.full_result.request.request_id,
+             "instrument_id": request.instrument_id, "trade_date": analysis.latest_trade_date.isoformat(),
+             "source": request.source, "start_date": request.start_date.isoformat(),
+             "as_of_date": request.as_of_date.isoformat()}
+            for item in result.workflow_observations if item.execution.status == "executed"
+            and item.execution.full_result is not None
+        ]
+    return response

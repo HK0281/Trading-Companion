@@ -41,6 +41,7 @@ export interface PublicTurn {
   answer: string | null;
   presentation?: unknown;
   conversation?: unknown;
+  research_workflow?: unknown;
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;

@@ -3,6 +3,7 @@ import { createApi } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { MarketContext } from "./MarketContext";
+import { ResearchWorkflow } from "./ResearchWorkflow";
 import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
 import { parseConversation, parsePresentation, sourceLabel } from "./presentation";
 
@@ -61,6 +62,7 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
           {(structured || turn.conversation != null) && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
             <ReadableText text={turn.answer ?? turn.message} /></details>}
           <details className="disclosure diagnostics"><summary>本轮详情 <span>参数与执行记录</span></summary>
+            <ResearchWorkflow turn={turn} />
             {conversation?.origin === "model" && <div className="response-citations">
               <p>模型引用的指标关系已核对；自然语言含义与未来方向判断并未由程序验证。</p>
               {conversation.citations.map((item) => <div key={item.role}><strong>{({ answer: "主要判断", outlook: "后续方向", watch_for: "观察条件" })[item.role]}</strong>

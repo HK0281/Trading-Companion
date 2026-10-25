@@ -53,6 +53,92 @@ describe("natural-language research response", () => {
     expect(parseConversation(turn)).toBeNull();
   });
 
+  it("accepts citations from primary and supplement snapshots only after scope checks", () => {
+    const turn = conversationalReply().result;
+    const value = parseConversation(turn)!;
+    const scope = { instrument_id: "000001.SZ", trade_date: "2026-09-25", source: "tencent",
+      start_date: turn.parameters!.start_date, as_of_date: turn.parameters!.as_of_date };
+    value.evidence_snapshots = [
+      { ...scope, role: "primary", request_id: "research-fixture" },
+      { ...scope, role: "supplement", request_id: "supplement-fixture" },
+    ];
+    value.citations[0].fact_ids.push("supplement-fixture|000001.SZ|2026-09-25|rsi(window=2)|zone");
+    expect(parseConversation(turn)?.citations[0].fact_ids).toHaveLength(2);
+    value.citations[0].fact_ids.push("not-listed|000001.SZ|2026-09-25|rsi(window=2)|zone");
+    expect(parseConversation(turn)).toBeNull();
+  });
+
+  it("keeps the legacy primary-only citation boundary when snapshots are absent", () => {
+    const turn = conversationalReply().result;
+    const value = parseConversation(turn)!;
+    value.citations[0].fact_ids = ["supplement-fixture|000001.SZ|2026-09-25|rsi(window=2)|zone"];
+    expect(parseConversation(turn)).toBeNull();
+  });
+
+  it.each([
+    { role: "unknown" }, { instrument_id: "600000.SH" }, { trade_date: "2026-09-24" },
+    { source: "akshare_eastmoney" }, { source: "csv" }, { start_date: "2026-09-01" },
+    { as_of_date: "2026-09-26" }, { request_id: "research-fixture" }, { request_id: "bad|prefix" },
+    { request_id: "has whitespace" }, { request_id: "x".repeat(101) }, { request_id: {} },
+  ])("rejects a supplement outside the confirmed snapshot scope %j", (override) => {
+    const turn = conversationalReply().result;
+    const value = parseConversation(turn)!;
+    const scope = { instrument_id: "000001.SZ", trade_date: "2026-09-25", source: "tencent",
+      start_date: turn.parameters!.start_date, as_of_date: turn.parameters!.as_of_date };
+    turn.conversation = { ...value, evidence_snapshots: [
+      { ...scope, role: "primary", request_id: "research-fixture" },
+      { ...scope, role: "supplement", request_id: "supplement-fixture", ...override },
+    ] };
+    expect(parseConversation(turn)).toBeNull();
+  });
+
+  it.each([undefined, null, [], "invalid", [{ role: "primary" }],
+    [{ role: "supplement", request_id: "supplement-fixture" }],
+  ])("rejects a present but incomplete snapshot allowlist %j", (evidence_snapshots) => {
+    const turn = conversationalReply().result;
+    turn.conversation = { ...parseConversation(turn)!, evidence_snapshots };
+    expect(parseConversation(turn)).toBeNull();
+  });
+
+  it("requires exactly one correctly bound primary and at most one supplement", () => {
+    const turn = conversationalReply().result;
+    const value = parseConversation(turn)!;
+    const primary = { role: "primary", request_id: "research-fixture", instrument_id: "000001.SZ",
+      trade_date: "2026-09-25", source: "tencent", start_date: turn.parameters!.start_date,
+      as_of_date: turn.parameters!.as_of_date };
+    for (const evidence_snapshots of [
+      [{ ...primary, request_id: "different-primary" }], [primary, primary],
+      [primary, { ...primary, role: "supplement", request_id: "supplement-one" },
+        { ...primary, role: "supplement", request_id: "supplement-two" }],
+    ]) {
+      turn.conversation = { ...value, evidence_snapshots };
+      expect(parseConversation(turn)).toBeNull();
+    }
+    turn.conversation = { ...value, evidence_snapshots: [primary] };
+    expect(parseConversation(turn)).not.toBeNull();
+  });
+
+  it("does not allow supplementary snapshot declarations on an application fallback", () => {
+    const turn = conversationalReply().result;
+    turn.conversation = { ...parseConversation(turn)!, origin: "application", grounding_scope: "application_data_readiness",
+      paragraphs: ["本轮数据不足。"], citations: [], evidence_snapshots: [] };
+    expect(parseConversation(turn)).toBeNull();
+  });
+
+  it("requires an explicit same-source scope for snapshot metadata without affecting legacy responses", () => {
+    const turn = conversationalReply().result;
+    const value = parseConversation(turn)!;
+    const snapshot = { role: "primary", request_id: "research-fixture", instrument_id: "000001.SZ",
+      trade_date: "2026-09-25", source: "tencent", start_date: turn.parameters!.start_date,
+      as_of_date: turn.parameters!.as_of_date };
+    turn.parameters!.source = undefined;
+    expect(parseConversation(turn)).not.toBeNull();
+    turn.conversation = { ...value, evidence_snapshots: [snapshot] };
+    expect(parseConversation(turn)).toBeNull();
+    turn.conversation = { ...value, evidence_snapshots: [{ ...snapshot, source: undefined }] };
+    expect(parseConversation(turn)).toBeNull();
+  });
+
   it("does not promote model prose for synthetic CSV or stopped/failed turns", () => {
     const turn = conversationalReply().result;
     for (const status of ["cancelled", "failed", "needs_clarification"]) {

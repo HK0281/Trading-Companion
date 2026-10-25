@@ -29,7 +29,9 @@ from trading_companion.research_report import ResearchReport, build_research_rep
 from trading_companion.research_synthesis import ResearchSynthesis, build_research_synthesis
 from trading_companion.security_directory import SecurityDirectory
 from trading_companion.tool_model import MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse
-from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn, checkpoint
+from trading_companion.turn_control import (
+    ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn, checkpoint, workflow_turn_limits,
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,8 @@ class AgentTurnResult:
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
     runtime: dict[str, object] | None = field(default=None, repr=False)
     user_question: str = field(default="", repr=False)
+    workflow_observations: tuple = field(default=(), repr=False)
+    workflow_trace: dict | None = field(default=None, repr=False)
 
     @property
     def safe_answer(self) -> ResearchReport | None:
@@ -69,6 +73,12 @@ class AgentTurnResult:
         if self.model_draft is None or self._explanation_execution is None:
             return ResponseValidation()
         execution = replace(self._explanation_execution, full_result=self.research_result)
+        if self.workflow_observations:
+            from trading_companion.workflow_response import validate_workflow_response
+            observations = tuple(replace(item, execution=execution) if item.key == "primary" else item
+                                 for item in self.workflow_observations)
+            return validate_workflow_response(self.model_draft, observations=observations,
+                                              expected_request=self.confirmed_request)
         return validate_research_response(self.model_draft, execution=execution,
                                          expected_request=self.confirmed_request)
 
@@ -154,6 +164,7 @@ class AgentTurnResult:
             "knowledge_answer": self.knowledge_answer.to_dict() if self.knowledge_answer is not None else None,
             "followup_answer": self.followup_answer.to_dict() if self.followup_answer is not None else None,
             "runtime": self.runtime,
+            "research_workflow": self.workflow_trace,
         }
 
 
@@ -185,15 +196,21 @@ def _check_configuration(source: str, development_source: CsvDailyBarSource | No
 def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
     cancelled = code == "turn_cancelled"
     # Only facts accepted before the stop survive; cancelled output is not displayed.
+    trace = outcome.workflow_trace
+    if trace is not None:
+        trace = {**trace, "stop_reason": "cancelled" if cancelled else "budget_or_deadline"}
     outcome = replace(outcome, model_draft=None, followup_answer=None, knowledge_answer=None,
-                      research_result=None if cancelled else outcome.research_result, failure_code=code)
+                      research_result=None if cancelled else outcome.research_result, failure_code=code,
+                      workflow_observations=() if cancelled else outcome.workflow_observations,
+                      workflow_trace=trace)
     return _finish(outcome, "cancelled" if cancelled else "limited" if _has_research(outcome) else "failed",
                    code, "本轮已取消；没有自动重试，也未保存本轮结果。" if cancelled else
                    "本轮已达到运行限制；停止后续调度，迟到内容已丢弃。仅保留停止前核验的事实，未保存为会话结果。")
 
 
 def _controlled(action, *, model, control, default_calls, input_mode, session=None):
-    runtime = TurnControl(TurnLimits(model_calls=default_calls)) if control is None else control
+    limits = workflow_turn_limits() if default_calls == 6 else TurnLimits(model_calls=default_calls)
+    runtime = TurnControl(limits) if control is None else control
     if type(runtime) is not TurnControl:
         raise ModelConfigurationError("Turn control must be supplied by trusted application code")
     if session is not None and not session._turn_lock.acquire(blocking=False):
@@ -226,9 +243,14 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
         if stop_code is not None:
             outcome = _stopped(outcome, stop_code)
         metadata = runtime.to_dict()
+        trace = outcome.workflow_trace
+        if trace is not None:
+            trace = {**trace, "model_calls_attempted": metadata["model_calls_attempted"],
+                     "analyses_used": metadata["analyses_used"]}
         return replace(outcome, runtime=metadata,
                        model_calls_attempted=metadata["model_calls_attempted"], analyses_used=metadata["analyses_used"],
                        session_state=session.to_dict() if session is not None else outcome.session_state,
+                       workflow_trace=trace,
                        session_event="turn_stopped" if session is not None and stop_code else outcome.session_event)
     finally:
         if session is not None:
@@ -258,19 +280,22 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
                               source: str = "tencent", development_source: CsvDailyBarSource | None = None,
                               reference_date: date | None = None, session: ResearchSession | None = None,
                               current_time: datetime | None = None,
-                              control: TurnControl | None = None) -> AgentTurnResult:
+                              control: TurnControl | None = None, workflow: bool = False) -> AgentTurnResult:
     """Route finite knowledge and optional identity/edit/result session flows."""
     _check_configuration(source, development_source)
+    if type(workflow) is not bool:
+        raise ModelConfigurationError("Workflow mode must be selected by trusted application code")
     if session is not None and type(session) is not ResearchSession:
         raise ModelConfigurationError("Use a trusted per-conversation research session")
     return _controlled(lambda checked_model, working: _run_natural(
         question, model=checked_model, directory=directory, source=source,
         development_source=development_source, reference_date=reference_date,
-        session=working, current_time=current_time),
-        model=model, control=control, default_calls=3, input_mode="natural", session=session)
+        session=working, current_time=current_time, workflow=workflow),
+        model=model, control=control, default_calls=6 if workflow else 3, input_mode="natural", session=session)
 
 
-def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time):
+def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time,
+                 workflow=False):
     if session is not None:
         if type(session) is not ResearchSession or type(directory) is not SecurityDirectory:
             raise ModelConfigurationError("Use a trusted per-conversation research session and directory")
@@ -281,7 +306,7 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         if type(reference) is not date:
             raise ModelConfigurationError("Session reference date must be a trusted date")
         return _run_session_turn(question, session=session, model=model, directory=directory, source=source,
-                                 development_source=development_source, reference=reference, now=now)
+                                 development_source=development_source, reference=reference, now=now, workflow=workflow)
     if type(question) is str and 0 < len(question) <= MAX_USER_CHARACTERS:
         knowledge = parse_knowledge_question(question)
         if knowledge is not None:
@@ -302,11 +327,13 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         source="csv" if development_source is not None else source,
         reference_date=reference_date, development=development_source is not None,
     )
-    return _run_prepared(prepared, model=model, development_source=development_source, question=question)
+    return _run_prepared(prepared, model=model, development_source=development_source, question=question,
+                         workflow=workflow)
 
 
 def _run_prepared(prepared: PreparedResearchInput, *, model: ToolCapableModel,
-                  development_source: CsvDailyBarSource | None, question: str = "") -> AgentTurnResult:
+                  development_source: CsvDailyBarSource | None, question: str = "",
+                  workflow: bool = False) -> AgentTurnResult:
     """Use the same proposal binding and executor for initial and resumed requests."""
     outcome = AgentTurnResult(
         input_mode="natural", understanding=prepared, stage=prepared.stage,
@@ -317,13 +344,16 @@ def _run_prepared(prepared: PreparedResearchInput, *, model: ToolCapableModel,
     )
     if prepared.status != "ready":
         return _finish(outcome, prepared.status, prepared.code, prepared.message)
+    if workflow:
+        from trading_companion.research_workflow import run_workflow
+        return run_workflow(prepared.request, model=model, development_source=development_source, outcome=outcome)
     return _run_request(prepared.request, model=model, development_source=development_source, outcome=outcome)
 
 
 def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCapableModel,
                       directory: SecurityDirectory, source: str,
                       development_source: CsvDailyBarSource | None, reference: date,
-                      now: datetime) -> AgentTurnResult:
+                      now: datetime, workflow: bool = False) -> AgentTurnResult:
     def attach(outcome: AgentTurnResult, event: str) -> AgentTurnResult:
         return replace(outcome, session_event=event, session_state=session.to_dict())
 
@@ -336,7 +366,8 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
         if prepared.status == "ready":
             # Consume the previous base before side effects, including failures and interruptions.
             session.begin_research()
-        outcome = _run_prepared(prepared, model=model, development_source=development_source, question=question)
+        outcome = _run_prepared(prepared, model=model, development_source=development_source, question=question,
+                                workflow=workflow)
         if prepared.status == "ready" and prepared.code in ("refresh_latest_ready", "relative_range_ready"):
             outcome = replace(outcome, message=prepared.message + " " + outcome.message)
         # A stopped turn cannot stage new result or clarification state for publication.

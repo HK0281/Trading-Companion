@@ -1,7 +1,7 @@
 """Explicitly enabled terminal research; never print unchecked model drafts."""
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
@@ -20,7 +20,7 @@ from trading_companion.research_report import indicator_label
 from trading_companion.research_session import ResearchSession
 from trading_companion.security_directory import SecurityDirectory, load_security_directory
 from trading_companion.tool_model import MAX_USER_CHARACTERS, ToolCapableModel
-from trading_companion.turn_control import TurnControl
+from trading_companion.turn_control import TurnControl, workflow_turn_control
 
 
 MAX_TURNS = 5
@@ -122,7 +122,8 @@ def _display_turn(result: AgentTurnResult, write: Callable[[str], None]) -> None
                                    for item in prepared.candidates[:5]))
             if len(prepared.candidates) > 5:
                 write("仅显示前5项，请用完整名称或代码明确股票，不支持按序号选择。")
-    answer = result.display_answer
+    conversation = result.conversation_answer if result.workflow_trace is not None else None
+    answer = "\n\n".join(conversation["paragraphs"]) if conversation is not None else result.display_answer
     if answer is not None:
         write(answer)
     write(f"本轮：模型尝试{result.model_calls_attempted}次，分析{result.analyses_used}次。")
@@ -135,8 +136,10 @@ def _display_turn(result: AgentTurnResult, write: Callable[[str], None]) -> None
 def run_conversation(*, model: ToolCapableModel, data: ConversationData, provider: str = "deepseek",
                      read_line: Callable[[str], str] | None = None,
                      write_line: Callable[[str], None] | None = None,
-                     clock: Callable[[], datetime] | None = None) -> int:
+                     clock: Callable[[], datetime] | None = None, workflow: bool = False) -> int:
     """Own one identity/edit session, not a transcript or general conversation memory."""
+    if type(workflow) is not bool:
+        raise ModelConfigurationError("Workflow selection must be a trusted boolean")
     read = input if read_line is None else read_line
     write = print if write_line is None else write_line
     now = (lambda: datetime.now(timezone.utc)) if clock is None else clock
@@ -160,9 +163,13 @@ def run_conversation(*, model: ToolCapableModel, data: ConversationData, provide
         label = "腾讯" if data.mode == "tencent" else "AKShare / 东方财富"
         write(f"行情：{label}不复权历史日线；目录仅从本地读取并在每条研究输入前重查，不自动刷新。")
         write("输入示例：分析平安银行最近一个月的走势，关注SMA3和RSI2。")
-    write(f"本次启动最多处理{MAX_TURNS}条非空问题，最多转发{MAX_TURNS * 3}次模型调用、执行{MAX_TURNS}次分析；"
+    write(f"本次启动最多处理{MAX_TURNS}条非空问题，最多转发{MAX_TURNS * 3}次模型调用、执行{MAX_TURNS * (2 if workflow else 1)}次分析；"
           "空行和本地命令不占问题次数。")
-    write("每轮共享90秒协作截止时间、最多3次模型/1次分析，以及24,000已观察token停止阈值；不是硬中断或费用上限。")
+    if workflow:
+        write("每轮共享90秒协作截止时间、最多6次模型/6次工具/2次分析，以及24,000已观察token停止阈值；不是硬中断或费用上限。")
+        write("整次启动的15次模型总额仍生效；先达到的上限会停止继续调用，不保证每条问题都能用满单轮额度。")
+    else:
+        write("每轮共享90秒协作截止时间、最多3次模型/1次分析，以及24,000已观察token停止阈值；不是硬中断或费用上限。")
     write("同步等待期间可按Ctrl+C退出；本终端没有后台/cancel命令，迟到响应不得保存为会话结果。")
     _help(write)
     try:
@@ -202,13 +209,13 @@ def run_conversation(*, model: ToolCapableModel, data: ConversationData, provide
                 exit_code = 1
                 break
             in_flight = True
-            active_control = TurnControl()
+            active_control = workflow_turn_control() if workflow else TurnControl()
             result = run_natural_research_turn(
                 question, model=meter, directory=directory, session=session,
                 source="tencent" if data.mode == "synthetic" else data.mode,
                 development_source=data.development_source, current_time=timestamp,
                 reference_date=REFERENCE_DATE if data.mode == "synthetic" else None,
-                control=active_control,
+                control=active_control, workflow=workflow,
             )
             in_flight = False
             active_control = None
@@ -267,7 +274,9 @@ def main(argv: list[str] | None = None) -> int:
                 return question
 
             return run_conversation(model=build_demo_model(), data=data, provider="fake", read_line=read_demo)
-        model = DeepSeekToolModel(DeepSeekConfig.from_env(load_model_environment()))
+        from trading_companion.research_response import RESPONSE_OUTPUT_TOKENS
+        config = replace(DeepSeekConfig.from_env(load_model_environment()), max_output_tokens=RESPONSE_OUTPUT_TOKENS)
+        model = DeepSeekToolModel(config)
     except DataModeDependencyError:
         print("[data_dependency_missing] AKShare可选依赖未安装；先运行 python -m pip install -e '.[data]'。未读取模型配置或查询行情，不自动切换来源。", file=sys.stderr)
         return 2
@@ -277,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     except (DataSourceError, DataValidationError, InvalidRequestError):
         print("[directory_unusable] 本地目录或人工夹具不可用；未读取模型配置或发起网络请求。", file=sys.stderr)
         return 1
-    return run_conversation(model=model, data=data)
+    return run_conversation(model=model, data=data, workflow=True)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,15 @@ export interface ConversationAnswer {
   grounding_scope: string;
   paragraphs: string[];
   citations: { role: "answer" | "outlook" | "watch_for"; fact_ids: string[] }[];
+  evidence_snapshots?: {
+    role: "primary" | "supplement";
+    request_id: string;
+    instrument_id: string;
+    trade_date: string;
+    source: string;
+    start_date: string;
+    as_of_date: string;
+  }[];
 }
 
 /** Citation binding is not a semantic proof of the model's prose. */
@@ -39,6 +48,22 @@ export function parseConversation(turn: PublicTurn): ConversationAnswer | null {
       || value.trade_date < turn.parameters.start_date || value.trade_date > turn.parameters.as_of_date))
     || turn.report.fields.some((field) => field.trade_date !== value.trade_date)) return null;
   if (value.origin === "model") {
+    const snapshotIds = new Set([value.request_id]);
+    if (Object.prototype.hasOwnProperty.call(value, "evidence_snapshots")) {
+      const snapshots = value.evidence_snapshots;
+      if (!Array.isArray(snapshots) || snapshots.length < 1 || snapshots.length > 2
+        || snapshots.filter((item) => record(item) && item.role === "primary").length !== 1
+        || !snapshots.every((item) => record(item)
+          && (item.role === "primary" || item.role === "supplement")
+          && typeof item.request_id === "string" && /^[A-Za-z0-9_.-]{1,100}$/.test(item.request_id)
+          && (item.role === "primary" ? item.request_id === value.request_id : item.request_id !== value.request_id)
+          && item.instrument_id === turn.parameters!.instrument_id && item.trade_date === value.trade_date
+          && typeof item.source === "string" && item.source === turn.parameters!.source
+          && ["tencent", "akshare_eastmoney"].includes(item.source)
+          && item.start_date === turn.parameters!.start_date && item.as_of_date === turn.parameters!.as_of_date)
+        || new Set(snapshots.map((item) => item.request_id)).size !== snapshots.length) return null;
+      for (const snapshot of snapshots) snapshotIds.add(snapshot.request_id);
+    }
     if (value.grounding_scope !== "request_and_relation_claims_checked_prose_semantics_not_verified"
       || !text(value.trade_date) || !["completed", "limited"].includes(turn.status) || turn.parameters.source === "csv"
       || value.paragraphs.length !== 3 || value.citations.length !== 3
@@ -46,9 +71,10 @@ export function parseConversation(turn: PublicTurn): ConversationAnswer | null {
         && item.role === ["answer", "outlook", "watch_for"][index]
         && Array.isArray(item.fact_ids) && item.fact_ids.length > 0 && item.fact_ids.length <= 8
         && item.fact_ids.every((id) => text(id)
-          && id.startsWith(`${value.request_id}|${value.instrument_id}|${value.trade_date}|`))
+          && [...snapshotIds].some((requestId) => id.startsWith(`${requestId}|${value.instrument_id}|${value.trade_date}|`)))
         && new Set(item.fact_ids).size === item.fact_ids.length)) return null;
-  } else if (value.grounding_scope !== "application_data_readiness" || value.citations.length) return null;
+  } else if (value.grounding_scope !== "application_data_readiness" || value.citations.length
+    || Object.prototype.hasOwnProperty.call(value, "evidence_snapshots")) return null;
   return value as unknown as ConversationAnswer;
 }
 

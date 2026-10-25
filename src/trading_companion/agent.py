@@ -24,6 +24,9 @@ from trading_companion.research_context import contextual_outlook_expression, ob
 from trading_companion.research_edit import indicator_selection, is_indicator_edit, is_window_edit
 from trading_companion.research_update import is_condition_update
 from trading_companion.indicator_knowledge import KnowledgeAnswer, parse_knowledge_question
+from trading_companion.open_knowledge import (
+    GeneralKnowledgeAnswer, answer_general_knowledge, is_general_knowledge_question,
+)
 from trading_companion.research_followup import FollowupAnswer, answer_saved_question, is_followup_question, is_result_view
 from trading_companion.research_session import ResearchSession, selection_match
 from trading_companion.research_report import ResearchReport, build_research_report
@@ -55,6 +58,7 @@ class AgentTurnResult:
     session_state: dict[str, object] | None = field(default=None, repr=False)
     _explanation_execution: ToolExecution | None = field(default=None, repr=False)
     knowledge_answer: KnowledgeAnswer | None = field(default=None, repr=False)
+    general_knowledge_answer: GeneralKnowledgeAnswer | None = field(default=None, repr=False)
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
     runtime: dict[str, object] | None = field(default=None, repr=False)
     user_question: str = field(default="", repr=False)
@@ -110,6 +114,8 @@ class AgentTurnResult:
     @property
     def display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
+        if self.general_knowledge_answer is not None:
+            return self.general_knowledge_answer.text
         if self.knowledge_answer is not None:
             return self.knowledge_answer.text
         if self.followup_answer is not None:
@@ -163,6 +169,7 @@ class AgentTurnResult:
             "understanding": self.understanding.to_dict() if self.understanding else None,
             "session_event": self.session_event, "session_state": self.session_state,
             "knowledge_answer": self.knowledge_answer.to_dict() if self.knowledge_answer is not None else None,
+            "general_knowledge_answer": self.general_knowledge_answer.to_dict() if self.general_knowledge_answer else None,
             "followup_answer": self.followup_answer.to_dict() if self.followup_answer is not None else None,
             "runtime": self.runtime,
             "research_workflow": self.workflow_trace,
@@ -201,6 +208,7 @@ def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
     if trace is not None:
         trace = {**trace, "stop_reason": "cancelled" if cancelled else "budget_or_deadline"}
     outcome = replace(outcome, model_draft=None, followup_answer=None, knowledge_answer=None,
+                      general_knowledge_answer=None,
                       research_result=None if cancelled else outcome.research_result, failure_code=code,
                       workflow_observations=() if cancelled else outcome.workflow_observations,
                       workflow_trace=trace)
@@ -295,6 +303,26 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
         model=model, control=control, default_calls=6 if workflow else 3, input_mode="natural", session=session)
 
 
+def _run_general_knowledge(question, *, model, directory=None) -> AgentTurnResult:
+    run = answer_general_knowledge(question, model=model, directory=directory)
+    answer = run.answer
+    return AgentTurnResult(status="completed" if answer.status == "accepted" else "failed",
+        code=answer.code, message="知识解释已完成，未查询行情。" if answer.status == "accepted" else answer.text,
+        stage="knowledge", input_mode="natural", general_knowledge_answer=answer,
+        model_calls_attempted=run.model_calls_attempted,
+        model_responses=(run.model_response,) if run.model_response is not None else (),
+        failure_code=run.failure_code, user_question=question)
+
+
+def run_general_knowledge_turn(question: str, *, model: ToolCapableModel, session: ResearchSession | None = None,
+                               control: TurnControl | None = None) -> AgentTurnResult:
+    """Knowledge needs no security-directory IO, but shares session budgets and cancellation."""
+    if session is not None and type(session) is not ResearchSession:
+        raise ModelConfigurationError("Use a trusted per-conversation research session")
+    return _controlled(lambda checked, _: _run_general_knowledge(question, model=checked),
+        model=model, control=control, default_calls=1, input_mode="natural", session=session)
+
+
 def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time,
                  workflow=False):
     if session is not None:
@@ -313,6 +341,8 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         if knowledge is not None:
             return AgentTurnResult(status="completed", code="indicator_knowledge_answered", stage="knowledge",
                                    input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge)
+        if workflow and is_general_knowledge_question(question, directory=directory):
+            return _run_general_knowledge(question, model=model, directory=directory)
         if contextual_outlook_expression(question) is not None:
             return AgentTurnResult(status="needs_clarification", code="no_confirmed_research", input_mode="natural",
                                    message="你希望展望哪只股票？请提供名称，例如“分析平安银行下个月的走势”。")
@@ -401,6 +431,8 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
     if knowledge is not None:
         return attach(AgentTurnResult(status="completed", code="indicator_knowledge_answered", stage="knowledge",
             input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge), "knowledge")
+    if workflow and is_general_knowledge_question(question, directory=directory):
+        return attach(_run_general_knowledge(question, model=model, directory=directory), "knowledge")
     outlook_expression = contextual_outlook_expression(question)
     if outlook_expression is not None and session.pending is None and session.pending_edit is None:
         prepared = session.prepare_outlook(outlook_expression, question=question, directory=directory,

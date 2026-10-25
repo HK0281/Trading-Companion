@@ -13,7 +13,9 @@ from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
-from trading_companion.agent import AgentTurnResult, run_natural_research_turn
+from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn, run_natural_research_turn
+from trading_companion.open_knowledge import is_general_knowledge_question
+from trading_companion.indicator_knowledge import parse_knowledge_question
 from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
@@ -163,7 +165,8 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
         "runtime": deepcopy(result.runtime),
         "research_workflow": workflow,
-        "validation_scope": "application_facts_and_checked_relations_not_arbitrary_model_prose",
+        "validation_scope": ("format_and_scope_guards_not_prose_semantics" if result.general_knowledge_answer
+                             else "application_facts_and_checked_relations_not_arbitrary_model_prose"),
     }
 
 
@@ -331,15 +334,20 @@ class ResearchApiService:
         problem, response, staged_context = None, None, None
         reset_contexts = False
         try:
-            try:
-                timestamp = self._wall_clock()
-                directory = self._directory_loader(timestamp)
-            except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
-                raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
-            result = run_natural_research_turn(question, model=entry.model, directory=directory,
-                source=self._research_source,
-                development_source=self._development_source, reference_date=self._reference_date,
-                session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
+            timestamp = self._wall_clock()
+            directory = None
+            if (self._workflow_enabled and not history and parse_knowledge_question(question) is None
+                    and is_general_knowledge_question(question)):
+                result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
+            else:
+                try:
+                    directory = self._directory_loader(timestamp)
+                except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+                    raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
+                result = run_natural_research_turn(question, model=entry.model, directory=directory,
+                    source=self._research_source,
+                    development_source=self._development_source, reference_date=self._reference_date,
+                    session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
             saved = self._saved_for_view(entry, result, directory, timestamp)
             projected = public_turn(result, saved=saved)
             projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)

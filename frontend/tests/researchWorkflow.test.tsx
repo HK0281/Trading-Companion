@@ -229,7 +229,7 @@ describe("bounded research workflow projection", () => {
     expect(screen.queryByText("private model reasoning")).not.toBeInTheDocument();
   });
 
-  it("keeps supplemental evidence collapsed while the natural answer stays visible", async () => {
+  it("does not mount supplemental execution details while the natural answer stays visible", async () => {
     const api = mockApi();
     api.send.mockImplementationOnce(async (_session, id) => supportingReply(id));
     render(<App controller={new ResearchController(api)} />);
@@ -237,13 +237,13 @@ describe("bounded research workflow projection", () => {
     fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
     expect(await screen.findByText("已结合本轮结果分析。")).toBeVisible();
-    expect(screen.getByText(supportingEvidence().text)).not.toBeVisible();
-    fireEvent.click(screen.getByText("本轮详情", { selector: "summary" }));
-    expect(screen.getByText(supportingEvidence().text)).toBeVisible();
+    expect(screen.queryByText(supportingEvidence().text)).not.toBeInTheDocument();
+    expect(screen.queryByText("本轮详情", { selector: "summary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已核对的补充指标关系", hidden: true })).not.toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
   });
 
-  it("keeps the answer visible and process records collapsed until details are opened", async () => {
+  it("keeps the answer visible without mounting internal process records", async () => {
     const api = mockApi();
     api.send.mockImplementationOnce(async (_session, id) => workflowReply(id));
     render(<App controller={new ResearchController(api)} />);
@@ -251,10 +251,9 @@ describe("bounded research workflow projection", () => {
     fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
     expect(await screen.findByText("本轮直接回答，工具过程无需占据正文。")).toBeVisible();
-    expect(screen.getByRole("region", { name: "研究过程", hidden: true })).not.toBeVisible();
-    fireEvent.click(screen.getByText("本轮详情", { selector: "summary" }));
-    expect(screen.getByRole("region", { name: "研究过程" })).toBeVisible();
-    expect(screen.getByText("补充指标分析")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "研究过程", hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("本轮详情", { selector: "summary" })).not.toBeInTheDocument();
+    expect(screen.queryByText("补充指标分析")).not.toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
   });
 
@@ -270,7 +269,7 @@ describe("bounded research workflow projection", () => {
     fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
     expect(await screen.findByText("本轮直接回答，工具过程无需占据正文。")).toBeVisible();
-    expect(screen.getByText(/研究过程记录暂不可用/)).not.toBeVisible();
+    expect(screen.queryByText(/研究过程记录暂不可用/)).not.toBeInTheDocument();
     expect(screen.queryByText(/private model draft/)).not.toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
   });

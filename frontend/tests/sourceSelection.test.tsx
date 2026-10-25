@@ -34,7 +34,7 @@ describe("startup-pinned source contracts", () => {
     api.health.mockResolvedValue({ ...health, provider: "deepseek", data_mode: "akshare_eastmoney" });
     api.create.mockResolvedValue({ ...credentials, provider: "deepseek", data_mode: "tencent" });
     const controller = new ResearchController(api);
-    await controller.load(); controller.setConsent(true); await controller.start();
+    await controller.load(); await controller.start();
     expect(controller.snapshot().session).toBeNull();
     expect(api.send).not.toHaveBeenCalled();
   });
@@ -51,17 +51,17 @@ async function workspace(data_mode: Health["data_mode"] = "akshare_eastmoney") {
 }
 
 describe("source-aware workspace", () => {
-  it("shows AKShare as the actual source and requires explicit model/data consent", async () => {
+  it("shows AKShare as the actual source and sends only after direct explicit submission", async () => {
     const { api } = await workspace();
     expect(screen.getAllByText("AKShare / 东方财富历史日线").length).toBeGreaterThan(0);
     expect(screen.getByText(/来源由服务启动固定；失败不自动切换/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
-    expect(screen.getByText(/股票与日期将用于查询AKShare \/ 东方财富历史日线/)).toBeVisible();
-    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
-    await screen.findByText("research_completed"); expect(api.create).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("group", { name: "确认发送到 DeepSeek" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await screen.findByText("人工样例 / 非真实行情。收盘价高于SMA(3)。"); expect(api.create).toHaveBeenCalledOnce();
     expect(api.send).toHaveBeenCalledOnce();
   });
   it("shows each confirmed research source independently from the server mode", async () => {
@@ -70,7 +70,6 @@ describe("source-aware workspace", () => {
       value.result.parameters = { ...value.result.parameters!, source: "akshare_eastmoney" }; return value; });
     fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), { target: { value: "分析平安银行" } });
     fireEvent.click(screen.getByRole("button", { name: /发送问题/ }));
-    fireEvent.click(screen.getByRole("button", { name: "允许并发送" }));
     expect(await screen.findByText("来源：AKShare / 东方财富历史日线")).toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
   });

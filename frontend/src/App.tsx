@@ -3,9 +3,8 @@ import { createApi } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { MarketContext } from "./MarketContext";
-import { ResearchWorkflow } from "./ResearchWorkflow";
 import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
-import { parseConversation, parsePresentation, sourceLabel } from "./presentation";
+import { parsePresentation, sourceLabel } from "./presentation";
 
 const INITIAL = "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2";
 const samples = [
@@ -32,7 +31,6 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
 function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement> }) {
   const response = entry.response, turn = response?.result;
   const structured = turn && parsePresentation(turn);
-  const conversation = turn && parseConversation(turn);
   return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
     <div className="answer">
@@ -44,7 +42,6 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
       <div className="answer-body">{turn && <>
         {turn.parameters && <div className="scope"><strong>{turn.parameters.instrument_id}</strong>
           <span>{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
-          {turn.applied_defaults.length > 0 && <span>已采用 {turn.applied_defaults.length} 项默认设置 · 见本轮详情</span>}
           {turn.parameters.source !== undefined && <span className={turn.parameters.source === "csv" ? "synthetic-label" : ""}>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
         {turn.status !== "completed" && structured && turn.conversation == null && <p className="data-note" role="note">{turn.message}</p>}
         <ResponseContent turn={turn} />
@@ -61,18 +58,6 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
             <MarketContext value={turn.market_context} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} /></details>}
           {(structured || turn.conversation != null) && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
             <ReadableText text={turn.answer ?? turn.message} /></details>}
-          <details className="disclosure diagnostics"><summary>本轮详情 <span>参数与执行记录</span></summary>
-            <ResearchWorkflow turn={turn} />
-            {conversation?.origin === "model" && <div className="response-citations">
-              <p>模型引用的指标关系已核对；自然语言含义与未来方向判断并未由程序验证。</p>
-              {conversation.citations.map((item) => <div key={item.role}><strong>{({ answer: "主要判断", outlook: "后续方向", watch_for: "观察条件" })[item.role]}</strong>
-                <ul>{item.fact_ids.map((id) => <li key={id}><code>{id}</code></li>)}</ul></div>)}
-            </div>}
-            {!!turn.applied_defaults.length && <div className="defaults"><strong>本轮默认口径</strong>
-              <ul>{turn.applied_defaults.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-            <div className="answer-meta"><code>{turn.code}</code><span>{response?.replayed ? "原请求" : "本轮"}模型 {turn.model_calls_attempted} 次 · 分析 {turn.analyses_used} 次
-              {response?.replayed && " · 本次未重做"}</span></div>
-          </details>
         </div>
       </>}
       {entry.error && <p className="error-text" role="alert">{entry.error}</p>}
@@ -88,14 +73,12 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const [question, setQuestion] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<"reset" | "end" | null>(null);
-  const [sendConfirmation, setSendConfirmation] = useState<"send" | "retry" | null>(null);
   const draftRevision = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null), latest = useRef<HTMLElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
   const followBottom = useRef(true);
   const { health, session, loading, phase } = state;
   const locked = loading || phase !== "idle", paid = health?.provider === "deepseek";
-  const consented = !paid || state.consent;
   const exhausted = !!session && session.view.messages_used >= session.limit;
   const canSend = !!health && !locked && !exhausted && session?.view.state !== "busy";
   const characters = Array.from(question.trim()).length;
@@ -117,14 +100,13 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     }
   }, [question]);
 
-  const editQuestion = (value: string) => { draftRevision.current++; setSendConfirmation(null); setQuestion(value); };
+  const editQuestion = (value: string) => { draftRevision.current++; setQuestion(value); };
   const choose = (value: string) => { editQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
   const sendQuestion = () => {
     const original = question;
     const revision = ++draftRevision.current;
     followBottom.current = true;
     setQuestion("");
-    setSendConfirmation(null);
     void controller.send(original).then((accepted) => {
       // A failed creation must not lose the draft or overwrite a newer edit.
       if (!accepted && draftRevision.current === revision) setQuestion(original);
@@ -133,20 +115,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend || !characters || characters > 2000) return;
-    if (!consented) { setSendConfirmation("send"); return; }
     sendQuestion();
-  };
-  const confirmSending = () => {
-    if (!sendConfirmation || loading || sendConfirmation === "send" && locked) return;
-    if (sendConfirmation === "send" && (!canSend || !characters || characters > 2000)) return;
-    controller.setConsent(true);
-    if (sendConfirmation === "send") sendQuestion();
-    else { setSendConfirmation(null); void controller.retry(); }
   };
   const newChat = async () => {
     setNavigationOpen(false);
     setConfirmation(null);
-    setSendConfirmation(null);
     if (await controller.end()) { editQuestion(""); followBottom.current = true; textarea.current?.focus(); }
   };
   const confirmAction = () => {
@@ -183,8 +156,6 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div></dl>
             <p>来源由服务启动固定；失败不自动切换。不能通过对话切换。</p>
           </section>
-          {paid && <label className="consent"><input type="checkbox" checked={state.consent} onChange={(event) => controller.setConsent(event.target.checked)} />
-            <span>允许向 DeepSeek 发送问题与研究数据（可能计费）</span></label>}
           {session && <div className="session-actions"><p>会话 {session.shortId} · 创建后 30 分钟到期。刷新会丢失当前记录；重置不退额度。</p>
             <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查会话状态</button>
             <button type="button" disabled={locked} onClick={() => setConfirmation("reset")}>清空研究条件</button>
@@ -229,9 +200,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
       <div className="composer-dock"><div className="composer-container">
         {state.pendingId && <div className="request-controls" aria-label="当前请求控制">
           <span>{phase === "uncertain" ? "响应未确认" : "正在研究"}</span>
-          {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => {
-            if (!consented) setSendConfirmation("retry"); else void controller.retry();
-          }}>重试原请求</button>}
+          {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => void controller.retry()}>重试原请求</button>}
           {phase === "uncertain" && <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查原请求状态</button>}
           <button type="button" disabled={state.cancelPending} onClick={() => void controller.cancel()}>{state.cancelPending ? "正在请求取消…" : "请求取消"}</button>
         </div>}
@@ -241,18 +210,6 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         {!health && <div className="composer-connection"><span>{loading ? "正在连接本机服务，你可以先输入问题。" : "本机服务未连接，你的草稿仍保留在输入框。"}</span>
           {!loading && <button type="button" onClick={() => void controller.load()}>重新连接</button>}</div>}
         {loading && !session && health && <p className="composer-progress" role="status">正在建立对话并发送问题…</p>}
-        {sendConfirmation && <section className="send-consent" role="group" aria-label="确认发送到 DeepSeek">
-          <div><strong>使用 DeepSeek 处理本次对话？</strong><p>问题与研究数据将发送到 DeepSeek，可能产生 API 费用。
-            {health?.data_mode !== "synthetic" && <>股票与日期将用于查询{sourceLabel(health?.data_mode)}。</>}</p></div>
-          <div className="send-consent-actions"><button type="button" className="primary" disabled={loading || sendConfirmation === "send" && locked} onClick={confirmSending}>
-            {sendConfirmation === "retry" ? "允许并重试" : "允许并发送"}</button>
-            <button type="button" onClick={() => { setSendConfirmation(null); textarea.current?.focus(); }}>暂不发送</button></div>
-        </section>}
-        {session && !!state.entries.length && !locked && <div className="followup-chips">
-          <button type="button" onClick={() => choose("这里的RSI为什么偏高")}>追问 RSI</button>
-          <button type="button" onClick={() => choose("解释一下MACD里的DIF和DEA")}>DIF 与 DEA 是什么？</button>
-          <button type="button" onClick={() => choose("把SMA3改成5日，其他不变")}>调整指标</button>
-        </div>}
         <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
           <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={(loading && !!health) || phase !== "idle"}

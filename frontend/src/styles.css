@@ -58,8 +58,6 @@ code, .number { font-family: "Cascadia Code", Consolas, monospace; font-variant-
 .technical-status { margin-top: 12px; font-size: 10px; }
 .technical-status summary { cursor: pointer; }
 .technical-status a { display: inline-block; margin-top: 8px; }
-.consent { display: flex; align-items: flex-start; gap: 7px; padding: 12px 0 0; color: #b2c1b7; font-size: 10px; line-height: 1.7; }
-.consent input { margin: 4px 0 0; accent-color: #91c4a6; }
 .confirm-panel { padding: 12px; border: 1px solid #867454; background: #38372d; border-radius: 8px; font-size: 12px; color: #ecdfc4; }
 .confirm-panel button { margin: 10px 5px 0 0; padding: 5px 9px; background: #f3ecdf; color: #4b473c; font-size: 11px; }
 .main { min-width: 0; min-height: 0; display: grid; grid-template-rows: 70px minmax(0, 1fr) auto; }
@@ -95,11 +93,6 @@ code, .number { font-family: "Cascadia Code", Consolas, monospace; font-variant-
 .composer-connection { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; color: #7b8580; font-size: 12px; }
 .composer-connection button { flex-shrink: 0; padding: 5px 9px; font-size: 11px; }
 .composer-progress { margin-bottom: 10px; color: #63816c; font-size: 12px; }
-.send-consent { display: grid; gap: 12px; margin-bottom: 12px; padding: 15px 17px; border: 1px solid #dbe6d7; border-radius: 12px; background: #f3f7f0; }
-.send-consent strong { font-size: 13px; font-weight: 600; }
-.send-consent p { margin-top: 4px; color: #75816f; font-size: 11px; line-height: 1.7; }
-.send-consent-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.send-consent-actions button { padding: 6px 11px; font-size: 12px; }
 .composer { border: 1px solid #dce4d8; border-radius: 16px; background: #fff; padding: 16px 17px 11px; box-shadow: 0 3px 20px #263f2d07; }
 .composer:focus-within { border-color: #91b39c; box-shadow: 0 0 0 3px #e9f0e6; }
 textarea { display: block; width: 100%; border: none; resize: none; min-height: 54px; max-height: 160px; color: #2e3b32; background: transparent; outline: none; line-height: 1.8; font-size: 14px; overflow-y: auto; }
@@ -114,8 +107,6 @@ textarea::placeholder { color: #a1aaa0; }
 .send-button:disabled { background: #e5ece1; border-color: #e5ece1; color: #9bab91; opacity: 1; }
 .send-button .icon { width: 19px; }
 .composer-hint { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; color: #9aa394; font-size: 10px; }
-.followup-chips { display: flex; gap: 7px; overflow-x: auto; margin: 0 0 11px; scrollbar-width: none; }
-.followup-chips button { padding: 5px 10px; font-size: 11px; background: transparent; white-space: nowrap; color: #7b8a72; }
 .exchange { margin: 2px 0 36px; overflow-wrap: anywhere; scroll-margin-top: 25px; }
 .question { max-width: 83%; width: fit-content; margin: 0 0 26px auto; background: #edf1e9; color: #3e4d3a; padding: 12px 18px; border-radius: 16px 16px 4px 16px; }
 .question p { font-size: 14px; white-space: pre-wrap; line-height: 1.8; }
@@ -164,14 +155,12 @@ textarea::placeholder { color: #a1aaa0; }
 .conversation-response { color: #364630; font-size: 15px; line-height: 2; }
 .conversation-response p:first-child { color: #293c25; font-weight: 500; }
 .response-origin { display: block; font-size: 10px; color: #88967d; margin-top: 18px; }
-.response-citations { padding: 8px 0; font-size: 11px; color: #88967d; overflow-wrap: anywhere; }
 .answer-attachments { margin-top: 23px; border-top: 1px solid var(--line); }
 .disclosure { border-bottom: 1px solid var(--line); }
 .disclosure > summary { cursor: pointer; padding: 12px 1px; font-size: 11px; color: #627a53; font-weight: 550; }
 .disclosure > summary span { font-size: 10px; color: #9ba78e; margin-left: 9px; font-weight: 400; }
 .disclosure .readable-text { padding: 10px 0 18px; font-size: 12px; color: #88967d; }
 .disclosure .market-context { margin-top: 3px; }
-.answer-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 8px 0 16px; color: #899c7a; font-size: 10px; }
 .research-workflow { padding: 8px 0 14px; color: #738367; font-size: 11px; }
 .research-workflow h4 { color: #576e4c; font-size: 12px; font-weight: 600; }
 .research-workflow ol { margin: 10px 0; padding-left: 20px; }
@@ -182,8 +171,6 @@ textarea::placeholder { color: #a1aaa0; }
 .workflow-evidence h5 { color: #617656; font-size: 11px; font-weight: 600; }
 .workflow-evidence ul { padding-left: 16px; margin: 7px 0 0; }
 .workflow-evidence code { display: block; font-size: 9px; color: #98a38e; overflow-wrap: anywhere; }
-.defaults { font-size: 11px; color: #879770; padding: 10px 0; }
-.defaults ul { margin: 7px 0; padding-left: 16px; }
 .data-note { color: #9c8251; background: #faf6eb; border-left: 2px solid #dbc48e; font-size: 12px; padding: 8px 12px; margin: 0 0 15px; border-radius: 3px; }
 .candidates { margin-top: 12px; font-size: 12px; color: #7f936d; }
 .candidate { margin: 10px 8px 0 0; font-size: 13px; }

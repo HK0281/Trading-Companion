@@ -17,7 +17,6 @@ export interface WorkspaceState {
   loading: boolean;
   cancelPending: boolean;
   pendingId: string | null;
-  consent: boolean;
   entries: Entry[];
   notice: string;
   noticeLevel: "info" | "error";
@@ -36,7 +35,7 @@ export class ResearchController {
   private running = false;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { health: null, session: null, phase: "idle", loading: false,
-    cancelPending: false, pendingId: null, consent: false, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
+    cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
 
   constructor(private readonly api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", "")) {}
@@ -56,7 +55,7 @@ export class ResearchController {
   private forget() {
     this.credentials = null;
     this.pending = null;
-    this.update({ session: null, pendingId: null, phase: "idle", consent: false });
+    this.update({ session: null, pendingId: null, phase: "idle" });
   }
   private failure(error: unknown) {
     if (error instanceof ApiError && [401, 404].includes(error.status)) this.forget();
@@ -65,9 +64,7 @@ export class ResearchController {
   private view(view: SessionView) {
     if (this.state.session) this.update({ session: { ...this.state.session, view } });
   }
-  private allowed() { return this.state.health !== null && (this.state.health.provider === "fake" || this.state.consent); }
-
-  setConsent(value: boolean) { this.update({ consent: value }); }
+  private allowed() { return this.state.health !== null; }
 
   async load() {
     if (this.running || this.credentials) return;
@@ -75,7 +72,7 @@ export class ResearchController {
     this.update({ loading: true });
     try {
       const health = await this.api.health();
-      this.update({ health, consent: false, notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
+      this.update({ health, notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -110,11 +107,6 @@ export class ResearchController {
     this.update({ loading: true, notice: this.credentials ? "正在发送问题…" : "正在建立对话…" });
     try {
       if (!this.credentials) await this.createSession();
-      // Permission can be withdrawn while session creation is in flight.
-      if (!this.allowed()) {
-        this.update({ notice: "模型发送已暂停，问题尚未发送。再次发送时可重新确认。", noticeLevel: "error" });
-        return false;
-      }
       const id = this.nextId();
       this.pending = { id, question };
       this.append({ id, question, history: false });

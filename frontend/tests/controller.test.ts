@@ -20,13 +20,14 @@ describe("research controller", () => {
     expect(JSON.stringify(controller.snapshot())).not.toContain(credentials.access_token);
     expect(controller.snapshot().session?.shortId).toBe(credentials.session_id.slice(0, 8));
   });
-  it("requires explicit consent for a real provider, including before later messages", async () => {
+  it("allows explicit real-provider messages directly without requesting separate permission", async () => {
     api.health.mockResolvedValue({ ...health, provider: "deepseek" });
     api.create.mockResolvedValue({ ...credentials, provider: "deepseek" });
-    await controller.load(); await controller.start(); expect(api.create).not.toHaveBeenCalled();
-    controller.setConsent(true); await controller.start(); controller.setConsent(false);
-    await controller.send("问题"); expect(api.send).not.toHaveBeenCalled();
-    controller.setConsent(true); await controller.send("问题"); expect(api.send).toHaveBeenCalledOnce();
+    await controller.load();
+    expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+    await controller.send("问题"); await controller.send("后续问题");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot()).not.toHaveProperty("consent");
   });
   it("refuses a mode changed between health check and creation", async () => {
     await controller.load(); api.create.mockResolvedValue({ ...credentials, provider: "deepseek" });
@@ -51,6 +52,22 @@ describe("research controller", () => {
     const first = controller.send("第一条");
     expect(await controller.send("第二条")).toBe(false); expect(api.send).toHaveBeenCalledOnce();
     waiting.resolve(reply(api.send.mock.calls[0][1])); await first;
+  });
+  it("serializes concurrent direct retries of a live-provider request using the original id", async () => {
+    api.health.mockResolvedValue({ ...health, provider: "deepseek" });
+    api.create.mockResolvedValue({ ...credentials, provider: "deepseek" });
+    await controller.load(); api.send.mockRejectedValueOnce(new ConnectionError());
+    await controller.send("原问题");
+    const original = api.send.mock.calls[0], waiting = deferred<MessageResponse>();
+    api.send.mockReturnValueOnce(waiting.promise);
+    const retry = controller.retry(); await controller.retry();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledTimes(2);
+    expect(api.send.mock.calls[1]).toEqual(original);
+    expect(await controller.send("不能并发的新问题")).toBe(false);
+    waiting.resolve({ ...reply(original[1]), replayed: true }); await retry;
+    expect(controller.snapshot().pendingId).toBeNull();
+    expect(controller.snapshot().entries).toHaveLength(1);
+    expect(controller.snapshot().entries[0].response?.replayed).toBe(true);
   });
   it("sends cancellation without releasing pending state or claiming the remote request has stopped", async () => {
     await ready(); const waiting = deferred<MessageResponse>(); api.send.mockReturnValueOnce(waiting.promise);
@@ -138,7 +155,7 @@ describe("research controller", () => {
   it("notifies subscribers and allows them to unsubscribe", async () => {
     let calls = 0; const unsubscribe = controller.subscribe(() => calls++);
     await controller.load(); expect(calls).toBeGreaterThan(0); unsubscribe();
-    const previous = calls; controller.setConsent(true); expect(calls).toBe(previous);
+    const previous = calls; await controller.start(); expect(calls).toBe(previous);
   });
   it("creates a session and submits the first message without an explicit start", async () => {
     await controller.load();
@@ -183,24 +200,28 @@ describe("research controller", () => {
     expect(await controller.send("问题")).toBe(false);
     expect(controller.snapshot().session).toBeNull(); expect(api.send).not.toHaveBeenCalled();
   });
-  it("requires live-provider permission before even lazy session creation", async () => {
+  it("never starts live-provider research merely by loading or creating an idle session", async () => {
     api.health.mockResolvedValue({ ...health, provider: "deepseek" });
     api.create.mockResolvedValue({ ...credentials, provider: "deepseek" });
-    await controller.load(); expect(await controller.send("问题")).toBe(false);
+    await controller.load();
     expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
-    controller.setConsent(true); await controller.send("问题");
+    await controller.start();
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    await controller.send("问题");
     expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
   });
-  it("rechecks permission after session creation before sending research", async () => {
+  it("waits for matching live-provider credentials before sending the first explicit message", async () => {
     api.health.mockResolvedValue({ ...health, provider: "deepseek" });
     const creation = deferred<typeof credentials>(); api.create.mockReturnValueOnce(creation.promise);
-    await controller.load(); controller.setConsent(true);
-    const first = controller.send("问题"); controller.setConsent(false);
+    await controller.load();
+    const first = controller.send("问题");
+    expect(api.create).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
+    expect(await controller.send("并发问题")).toBe(false);
     creation.resolve({ ...credentials, provider: "deepseek" });
-    expect(await first).toBe(false); expect(api.send).not.toHaveBeenCalled();
-    expect(controller.snapshot().session).not.toBeNull(); expect(controller.snapshot().entries).toEqual([]);
-    controller.setConsent(true); await controller.send("问题");
+    expect(await first).toBe(true);
+    expect(controller.snapshot().session).not.toBeNull(); expect(controller.snapshot().entries).toHaveLength(1);
     expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
+    expect(api.send.mock.calls[0][2]).toBe("问题");
   });
   it("rejects invalid input and an unavailable service before creating a session", async () => {
     expect(await controller.send("问题")).toBe(false);

@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "A research and decision-support assistant for A-share market analysis."
 readme = "README.md"
 requires-python = ">=3.11"
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+]
 dependencies = []
 
 [project.optional-dependencies]

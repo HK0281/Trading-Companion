@@ -4,6 +4,8 @@
 
 当前正常模式已经增加公司研究链路，沿用模块化单体、原模型协议、日线计算和会话控制。以本表判断现有能力；后文截至2026-10-24的“长期目标/未实现”和旧额度保留为历史阶段记录。完整数据流与取舍见[多维公司研究设计](company-research-design.md)。
 
+运行与验收仅面向 Windows。本机命令使用 PowerShell、`.venv\Scripts\python.exe` 和 `pnpm.cmd`；GitHub Actions使用单一 Windows 任务。下文带日期的测试数量只表示当时结果。
+
 | 架构职责 | 实际模块 | 当前行为 |
 | --- | --- | --- |
 | 入口与会话 | `api.py`、`api_service.py`、`research_session.py` | 一般知识、原技术循环和公司研究分流；共享幂等、取消与会话隔离 |
@@ -76,7 +78,7 @@
 
 交互增量：[本机Web工作台](web-workspace-design.md)已复用该API，提供React/TypeScript对话、事实与证据、澄清填入、会话操作、协作取消和未确认请求的原编号恢复。前端43项测试通过；新增11项路由检查，当时Python全量917项通过。构建资源与API同源提供，未放宽跨域或扩大研究权限；桌面/手机真实浏览器离线演示通过。
 
-最新工程增量：[统一离线验收与CI](ci-design.md)在Windows全新虚拟环境通过Python946项、前端43项、Agent 4/4及API 8/8；新增29项验收器测试，检查零跳过、实际构建的同源资源及干净wheel。GitHub Actions配置Windows/Ubuntu矩阵，不注入模型密钥或部署；远端状态按对应提交的运行记录，不以本机结果替代。
+2026-10-22工程验收记录：[统一离线验收与CI](ci-design.md)在Windows全新虚拟环境通过Python946项、前端43项、Agent 4/4及API 8/8；新增29项验收器测试，检查零跳过、实际构建的同源资源及干净wheel。当前GitHub Actions只运行Windows任务，不注入模型密钥或部署；远端状态按对应提交的运行记录，不以历史本机结果替代。
 
 | 模块 | 已有代码 | 实际能力与边界 |
 | --- | --- | --- |
@@ -102,13 +104,13 @@
 | 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无客户端密钥、用户账户或公网部署 |
 | 历史K线与指标 | [chart_projection.py](../src/trading_companion/chart_projection.py)、[ResearchChart.tsx](../frontend/src/ResearchChart.tsx)、[charts.ts](../frontend/src/charts.ts) | 同一次研究结果的有界投影与SVG，缺失断线、分单位轴、保存快照与失败隔离；不取新行情、不新增模型调用，不等于全历史证据认证 |
 | 证券状态／交易日历背景 | [market_context.py](../src/trading_companion/market_context.py)、[MarketContext.tsx](../frontend/src/MarketContext.tsx)、[背景设计](market-context-design.md) | 独立本地快照、有效期／发布时间、未知、自然日年龄、日历对照与来源冲突；原研究ID冻结，失败降级；不发送模型、不猜测、不执行规则，不证明PIT |
-| 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | 本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；Windows/Ubuntu矩阵，无模型密钥及部署 |
+| 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | Windows本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；单一Windows任务，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
 | 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
 | 跨指标综合 | [research_synthesis.py](../src/trading_companion/research_synthesis.py) | 最新/紧邻前一数值证据重查，四维度、相容/分歧/未知及条件观察；程序生成，不额外调用模型或行情，不投票或预测 |
 | MVP重复评估 | [mvp_evaluation.py](../src/trading_companion/mvp_evaluation.py)、[mvp_evaluation_cases.py](../src/trading_companion/mvp_evaluation_cases.py) | 30场景、最多3次独立重复；解释和综合均核对，调用额度读配置前检查，首错停止，真实效果须另行人工验收 |
-| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | Windows本地Python1172项、前端269项零跳过通过，Agent 4/4、MVP 90/90、API 8/8；远端矩阵看对应Actions，不等于真实模型质量验收 |
+| 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 2026-10-22 Windows本地记录为Python1172项、前端269项零跳过通过，Agent 4/4、MVP 90/90、API 8/8；当前远端Windows验收看对应Actions，不等于真实模型质量验收 |
 
 当前已有本机FastAPI、最小Web、历史K线/指标及独立本地证券状态／日历背景展示。真实主数据／日历适配器尚无；默认是明确人工夹具。也尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。
 
@@ -353,7 +355,7 @@ Jev 不替代数值计算、权限校验、历史时点过滤或引用检查。�
 
 当前[固定场景入口](agent-evaluation-design.md)仅实现4项契约检查：完整、部分不足、名称理解与歧义澄清。它复用原Agent，不新增另一条研究链路；最多8次模型调用、3次分析，首错后停止。状态、范围、计数、参考值及有限关系检查有独立预期，正确受限也能通过。真实模式仍使用固定人工数据，以隔离模型问题；主Agent未发真实模型请求，用户已回传一次 `complete` 通过的报告（2次模型/1次分析），其他场景待反馈。这不替代PRD中至少30场景各3次的后续实测，也未评估解释相关性或语言价值。
 
-GitHub Actions现已配置Windows/Ubuntu离线矩阵，本地与远端共用 `scripts/verify.py`，不配置付费模型调用。前端已锁定依赖，Python仍是版本范围；构建/ASGI/wheel检查不等于生产部署或全环境逐字节复现。详情见[CI设计](ci-design.md)。
+GitHub Actions使用单一Windows离线任务和PowerShell，本地与远端共用 `scripts/verify.py`，不配置付费模型调用。前端已锁定依赖，Python仍是版本范围；构建/ASGI/wheel检查不等于生产部署或全环境逐字节复现。详情见[CI设计](ci-design.md)。
 
 ## 12. 目标目录与渐进迁移
 
@@ -391,7 +393,7 @@ Trading Companion/
 | HTTP API | FastAPI/Pydantic外部校验，内部dataclass与Agent复用；单进程、会话凭据及幂等 | 本机版已有，生产部署后置 |
 | 数据存储 | Parquet 与 DuckDB 用于单人历史研究；多用户并发写入和账户需求出现后再评估 PostgreSQL | 长期目标 |
 | 前端 | React、TypeScript、Vite；原生SVG、同源静态资源，Vitest/React交互测试，不依赖境外CDN | 最小本机工作台及历史图表已有，实时/流式输出后置 |
-| 测试与 CI | 延续 unittest、Vitest与固定契约入口，GitHub Actions调用同一验收器 | 严格本地与Windows/Ubuntu工作流已有；Python未锁全部依赖，真实重复评估待做 |
+| 测试与 CI | 延续 unittest、Vitest与固定契约入口，Windows GitHub Actions调用同一验收器 | 严格Windows本地与远端工作流；Python未锁全部依赖，真实重复评估待做 |
 | Jev | 独立分类实验，有可复现收益再纳入 | 实验候选 |
 
 初期不引入微服务、Kubernetes、Redis、任务队列、向量数据库或产品多 Agent。出现明确瓶颈后再选组件；文档语义检索确有需求时再讨论 RAG，不把结构化行情数值当作向量检索问题。

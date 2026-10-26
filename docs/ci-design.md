@@ -1,6 +1,6 @@
 # 自动化验收与持续集成
 
-日期：2026-10-22。范围：离线工程契约、前端构建、同源资源及 wheel 内容，不是投资效果评估或生产部署。
+更新：2026-10-25。当前仅支持 Windows，使用 PowerShell 和单一 Windows Actions 任务。范围：离线工程契约、前端构建、同源资源及 wheel 内容，不是投资效果评估或生产部署。文中的2026-10-22和2026-10-24结果保留为对应日期的历史记录。
 
 ## 1. 为什么需要这一层
 
@@ -26,7 +26,7 @@ MVP评估门槛另独立固定30个场景名、三次重复身份、201次fake�
 
 ## 3. 本地运行
 
-在项目根目录，使用已有虚拟环境，不必激活或改变 PowerShell 执行策略：
+在 Windows 的项目根目录打开 PowerShell，使用已有虚拟环境，不必激活或改变执行策略：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[api,model,dev]"
@@ -42,7 +42,7 @@ pnpm.cmd --dir frontend install --frozen-lockfile
 .\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py bundle
 ```
 
-`bundle` 必须在 `web` 构建后运行。脚本自行设置源码导入路径，不要求另设 `PYTHONPATH`。Linux 使用自己的 `python` 和 `pnpm`，入口及参数相同。
+`bundle` 必须在 `web` 构建后运行。脚本自行设置源码导入路径，不要求另设 `PYTHONPATH`。本机直接使用 `.venv\Scripts\python.exe` 和 `pnpm.cmd`，避免依赖终端激活或执行 `.ps1` 包装脚本。
 
 `dev` 增加了 `openpyxl`，因为证券目录测试需要在内存中生成 Excel 样例；不需要安装整个 `data` extra。AKShare适配测试注入假模块，不访问该服务。实际使用真实数据源时仍按原文档安装相应依赖。
 
@@ -70,20 +70,22 @@ pnpm.cmd --dir frontend install --frozen-lockfile
 ## 6. GitHub Actions 边界
 
 - `push`、`pull_request` 和手动触发。
-- Ubuntu及Windows两个独立任务，Python 3.11、Node 24；pnpm版本读取前端 `packageManager`。
+- 单一 `windows-latest` 任务，使用 PowerShell、Python 3.11和Node 24；pnpm版本读取前端 `packageManager`。
 - 权限仅 `contents: read`，checkout不保留Git凭据；不使用 `pull_request_target` 或模型密钥。
-- 每个任务20分钟上限，同分支新运行取消旧运行；一个系统失败不会取消另一个系统的诊断。
+- 任务20分钟上限，同分支新运行取消旧运行；任一验收步骤失败，该任务停止。
 - 前端使用已提交的锁文件及 `--frozen-lockfile`，安装脚本继续只允许esbuild。
 
-Python仍使用 `pyproject.toml` 的版本范围和隔离构建工具；本模块没有新增Python哈希锁或固定完整传递依赖，所以这是**统一、可重复执行的检查流程**，不是逐字节可复现的依赖环境。Python目前只验收最低支持版本3.11，不代表所有更高版本均已测试。需要精确环境复现或扩大版本支持时，应单独补锁文件/矩阵并验证。
+Python仍使用 `pyproject.toml` 的版本范围和隔离构建工具；本模块没有新增Python哈希锁或固定完整传递依赖，所以这是**统一、可重复执行的检查流程**，不是逐字节可复现的依赖环境。Windows CI目前验收最低支持版本3.11，不代表所有更高Python版本均已测试。需要精确环境复现或扩大Python版本支持时，应单独补锁文件和版本验收。
 
 ## 7. 结果与排错
 
-本轮新增29项验收器测试：跳过、空测试、假成功报告、网络尝试、Windows内部socketpair、构建引用、wheel内容及干净打包输入。Windows本地验收记录：Python946项零跳过，前端43项零跳过；4/4 Agent契约及8/8 API检查通过，类型/构建、同源资产与wheel检查通过。远端任务结果以对应提交的 [Actions](https://github.com/HK0281/Trading-Companion/actions) 页面为准；本机通过不等于已证明Ubuntu通过。
+2026-10-25 Windows专用收口：本机 `scripts/verify.py all` 通过1791项Python测试、533项前端测试，以及TypeScript、Vite构建、ASGI资源、干净wheel与 `pip check`。这是当前提交前的本机离线工程验收记录；远端Windows Actions状态仍按对应提交查询，不代表真实模型或行情质量验收。
+
+2026-10-22首次验收新增29项验收器测试：跳过、空测试、假成功报告、网络尝试、Windows内部socketpair、构建引用、wheel内容及干净打包输入。当时Windows本地记录为Python946项零跳过，前端43项零跳过；4/4 Agent契约及8/8 API检查通过，类型/构建、同源资产与wheel检查通过。当前远端Windows任务结果以对应提交的 [Actions](https://github.com/HK0281/Trading-Companion/actions) 页面为准；历史本机结果不能代替新提交的远端验收。
 
 首次远端运行也发现原测试存在时间相关误报：用 `assertNotIn("999", 整段答案)` 检查假价格，但采集时间的微秒可能恰含这三位数字。现改为核对实际收盘价字段、快照指标值和错误价格表述，并固定含 `899928` 微秒的时间重现该条件；报告及快照测试都保留合法时间戳。未更改产品校验、跳过用例或降低CI标准。
 
-2026-10-24 的 Windows 运行另发现 `.env` 定位测试的路径误报：临时目录使用 `RUNNER~1` 短名称，而产品的 `Path.resolve()` 返回 `runneradmin` 长名称。测试现在将预期路径同样规范化，并补充含 `..` 的输入路径用例；产品的定位逻辑、密钥读取边界和双系统验收均保持不变。不能使用 `samefile()` 替代，因为定位时 `.env` 可以尚不存在。
+2026-10-24 的 Windows 运行另发现 `.env` 定位测试的路径误报：临时目录使用 `RUNNER~1` 短名称，而产品的 `Path.resolve()` 返回 `runneradmin` 长名称。测试将预期路径同样规范化，并补充含 `..` 的输入路径用例；产品的定位逻辑和密钥读取边界未因此改变。不能使用 `samefile()` 替代，因为定位时 `.env` 可以尚不存在。
 
 | 现象 | 先看哪里 |
 | --- | --- |

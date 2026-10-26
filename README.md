@@ -2,6 +2,8 @@
 
 Trading Companion is a research and decision-support assistant for China's A-share market. All trading decisions and operations remain with the user.
 
+Windows is the supported runtime and acceptance platform. Use PowerShell for the commands below; GitHub Actions runs one Windows job with the same acceptance entry point.
+
 ## Documentation
 
 - [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
@@ -42,12 +44,12 @@ Trading Companion is a research and decision-support assistant for China's A-sha
 
 ## Start the product
 
-From the project root, install the backend extras and build the frontend (Python 3.11+, Node 22.12+ and the project's pnpm version are required):
+In Windows PowerShell, install the backend extras and build the frontend from the project root (Python 3.11+, Node 22.12+ and the project's pnpm version are required):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[api,model]"
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend build
+pnpm.cmd --dir frontend install --frozen-lockfile
+pnpm.cmd --dir frontend build
 ```
 
 Set these values in the project-root `.env`, replacing the placeholders with credentials and model IDs available to your account:
@@ -151,7 +153,7 @@ The original bounded daily-research MVP and the 2026-10-25 company-research exte
 - Shared one-shot turn control across understanding, research and result publication: a 90-second cooperative deadline and 24,000 observed-token stopping threshold, thread-safe cancellation and rejection of late results. Web/API and live terminal research allow at most six model attempts (including intent), six tools and two calculations per turn; legacy low-level paths retain their narrower limits. The terminal also keeps its separate 15-model-call per-launch allowance. Neither deadlines nor token accounting are hard interruption or billing guarantees.
 - A single-process loopback FastAPI service reusing that Agent: per-session bearer capabilities, strict Pydantic input, bounded memory/work, idempotent messages, request-specific cooperative cancellation, reset/delete/history endpoints and allowlisted public output. The Web launcher defaults to DeepSeek/Tencent with a separate fixed offline Dev Mode service; it is not a public deployment or account system.
 - A minimal React/TypeScript research workspace served by that same FastAPI process: safe answers and evidence, explicit candidate selection, history, session controls, request cancellation and same-id recovery after a lost response. No client-side model credentials, persistent transcript, external CDN or additional server is needed.
-- A shared Python/frontend/build acceptance entry and Ubuntu/Windows GitHub Actions workflow, rejecting empty or skipped suites and checking actual compiled resources through ASGI and inside a cleanly built wheel; no model credentials or deployment.
+- A shared Python/frontend/build acceptance entry and Windows GitHub Actions workflow, rejecting empty or skipped suites and checking actual compiled resources through ASGI and inside a cleanly built wheel; no model credentials or deployment.
 - A bounded historical candlestick/volume/indicator view in the same workspace, projected from the current or explicitly checked saved analysis: native SVG, price overlays, separate indicator axes, date selection, missing-value gaps and explicit provenance. It makes no additional model/market calls; invalid charts do not discard confirmed text. Browser acceptance of this increment remains pending because local browser access was denied by policy.
 - Optional local security-state and exchange-calendar context beside that research: explicit effective/publication/retrieval times, unknown states, listing age in calendar days, and non-destructive bar/calendar conflicts. It is frozen by research ID for history, is not sent to models, and is explicitly not point-in-time proof or trading-rule evaluation. Demo properties/calendar are deliberately artificial, not facts about the named stocks. See the [context design](docs/market-context-design.md).
 - Deterministic four-dimension synthesis from rechecked numeric facts, independent of model prose: explicit unknowns, cross-reference alignment/conflict and conditional observations, without voting, forecasts or trade targets. Normal answers and historical overviews share this implementation; stopping suppresses synthesis.
@@ -209,7 +211,7 @@ pnpm.cmd --dir frontend install --frozen-lockfile
 .\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py all
 ```
 
-Use Python 3.11 and Node 24 for the CI baseline; pnpm is pinned in `frontend/package.json`. No environment activation, `PYTHONPATH`, model key or live data is required. Individual gates are `python`, `web` and `bundle` (build with `web` first). They fail on skipped/empty tests and propagate subprocess failures. The workflow runs on pushes and pull requests with read-only permissions, without deployment. Python dependency ranges are not a complete lock; dependency installation/build isolation can access package services. See the [CI design](docs/ci-design.md) for scope and limitations.
+Use Windows, Python 3.11 and Node 24 for the CI baseline; pnpm is pinned in `frontend/package.json`. No environment activation, `PYTHONPATH`, model key or live data is required. Individual gates are `python`, `web` and `bundle` (build with `web` first). They fail on skipped/empty tests and propagate subprocess failures. The workflow runs one `windows-latest` job in PowerShell on pushes and pull requests with read-only permissions, without deployment. Python dependency ranges are not a complete lock; dependency installation/build isolation can access package services. See the [CI design](docs/ci-design.md) for scope and limitations.
 
 ## Run with synthetic data
 
@@ -747,7 +749,9 @@ The workspace also shows optional **security state and exchange calendar** conte
 
 ## Tests
 
-Latest local acceptance (2026-10-24): 1,229 Python tests and 339 frontend tests, plus offline scenarios, TypeScript/build and ASGI/wheel checks. The new natural-language response protocol has fixture coverage, not a new real-DeepSeek quality evaluation. See the [response design](docs/natural-research-response-design.md).
+Windows local acceptance (2026-10-25): `scripts/verify.py all` passed 1,791 Python tests and 533 frontend tests, TypeScript checking, the Vite build, ASGI resource checks, clean wheel checks and `pip check`. This is offline engineering acceptance; the remote Windows Actions result remains separate.
+
+Historical Windows acceptance (2026-10-24): 1,229 Python tests and 339 frontend tests, plus offline scenarios, TypeScript/build and ASGI/wheel checks. The new natural-language response protocol has fixture coverage, not a new real-DeepSeek quality evaluation. These are dated results, not acceptance of later changes. See the [response design](docs/natural-research-response-design.md).
 
 Install `.[data]` first: adapter tests use the requests exception classes included with the data dependency. All tests stub the external provider; the suite does not require live market access.
 
@@ -758,7 +762,7 @@ $env:PYTHONPATH='src'
 
 Tests cover data validation, units, historical date filtering, SMA, SMA-seeded EMA, MACD/DEA, Wilder RSI/ATR, BOLL population variance, volume window alignment and zero baselines, initialization and causal prefixes, negative/zero values, independent Decimal references, source selection, structured output, insufficient/empty data, malformed CSV and provider responses, failed requests, and request validation. Multi-indicator tests additionally check one source read, partial availability, request limits, component metadata, full-precision relations, evidence dependencies, isolated calculation failures, and development-only CSV access.
 
-The complete Python offline suite has 1172 tests and the frontend has 269 passing tests (2026-10-22), including synthesis, resumable edits/refresh, source selection and evaluation checks. TypeScript checking, Vite build, actual ASGI asset responses and clean wheel asset inclusion also pass. Install `.[api,model,dev]` for the full suite. Ordinary unittest discovery allows missing optional HTTP modules to skip; use `scripts/verify.py` for strict zero-skip acceptance, including the original 4 Agent cases and 90 MVP scenario instances. These verify contracts, request/evidence binding, budgets, saved-state isolation and safe default display, not real-model or investment quality. GitHub Actions runs the same gates on Windows and Ubuntu; inspect the run for its actual remote result.
+Historical Windows acceptance (2026-10-22) recorded 1172 Python tests and 269 frontend tests, including synthesis, resumable edits/refresh, source selection and evaluation checks. TypeScript checking, Vite build, actual ASGI asset responses and clean wheel asset inclusion also passed in that run. Install `.[api,model,dev]` for the full suite. Ordinary unittest discovery allows missing optional HTTP modules to skip; use `scripts/verify.py` for strict zero-skip acceptance, including the original 4 Agent cases and 90 MVP scenario instances. These verify contracts, request/evidence binding, budgets, saved-state isolation and safe default display, not real-model or investment quality. The current GitHub Actions workflow runs the same gates on Windows; inspect the run for its actual remote result.
 
 Frontend cases cover lost responses, same-id recovery, gateway uncertainty, cancellation races, explicit paid-provider consent, escaped HTML, candidate confirmation, reset quotas, labelled history and Chinese IME input, plus chart/context binding and isolated failure. An earlier local browser walkthrough verified research, follow-up, knowledge, indicator replacement and history at desktop and mobile sizes with fake/synthetic data; chart and context browser increments remain unverified after the later policy denial. Component/build checks are not browser or live-model evaluations.
 

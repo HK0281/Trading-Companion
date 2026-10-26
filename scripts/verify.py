@@ -1,4 +1,4 @@
-"""Shared local/CI checks. Model and market checks use synthetic inputs only."""
+"""Shared Windows local/CI checks. Model and market checks use synthetic inputs only."""
 
 import argparse
 from contextlib import contextmanager
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "src/trading_companion/web_assets"
 SAFE_ENVIRONMENT = (
     "PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
-    "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL",
+    "USERPROFILE", "APPDATA", "LOCALAPPDATA",
     "VIRTUAL_ENV", "CI", "GITHUB_ACTIONS",
 )
 MVP_CASE_NAMES = (
@@ -252,7 +252,7 @@ def check_frontend_report(report):
 
 
 def _web_checks():
-    pnpm = shutil.which("pnpm.cmd" if os.name == "nt" else "pnpm")
+    pnpm = shutil.which("pnpm.cmd")
     require(pnpm is not None, "Install the packageManager version of pnpm from frontend/package.json first")
     with tempfile.TemporaryDirectory(prefix="trading-companion-vitest-") as temporary:
         report = Path(temporary) / "vitest.json"

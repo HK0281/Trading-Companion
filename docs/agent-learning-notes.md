@@ -18,6 +18,7 @@
 - 每步完成后简要回顾改动文件、关键代码理由和学习点。本文件继续保留简短概念及面试Q&A供自主复习，旧步骤的答题记录仅作历史记录。
 - 代码注释使用英文，教学解释使用中文；不为每个小步骤创建Git提交。
 - 2026-10-22最新要求：每完成一个模块，通过验证与提交检查后commit并push；不把个人文件、虚拟环境或凭据提交到仓库。
+- 2026-10-25平台要求：项目仅在Windows运行和验收，命令使用PowerShell；CI只保留Windows任务，历史测试数字仍按原日期解释。
 
 ## 当前进度
 
@@ -977,7 +978,7 @@ RAG、长期记忆、MCP、多agent和Jev等主题等项目有对应需求时再
 
 ## 本轮完成：自动化验收与CI
 
-2026-10-22新增 `scripts/verify.py`、GitHub Actions工作流及29项验收器测试；Windows本地Python946项、前端43项零跳过，4/4 Agent及8/8 API检查通过。实际编译资产经ASGI及干净wheel比对；`dev`补测试所需的openpyxl，不安装AKShare全套依赖。远端状态以Actions为准，不用本机结果代替Ubuntu验证。详见[CI设计](ci-design.md)。
+2026-10-22新增 `scripts/verify.py`、GitHub Actions工作流及29项验收器测试；当时Windows本地Python946项、前端43项零跳过，4/4 Agent及8/8 API检查通过。实际编译资产经ASGI及干净wheel比对；`dev`补测试所需的openpyxl，不安装AKShare全套依赖。2026-10-25起只维护Windows工作流，远端状态以对应提交的Actions为准，不用历史本机结果代替。详见[CI设计](ci-design.md)。
 
 ## 81｜CI自动执行检查，不自动定义什么叫正确
 

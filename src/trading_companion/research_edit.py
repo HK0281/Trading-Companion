@@ -18,6 +18,7 @@ _KINDS = {
     "EMA": ("ema",), "指数移动平均线": ("ema",), "RSI": ("rsi",),
     "ATR": ("atr",), "VOLUME": ("volume",), "量能": ("volume",), "成交量": ("volume",),
     "BOLL": ("boll",), "布林带": ("boll",), "布林线": ("boll",), "MACD": ("macd",),
+    "ADX": ("adx",), "OBV": ("obv",), "VWMA": ("vwma",),
 }
 _WINDOW_NAMES = {name: kinds[0] for name, kinds in _KINDS.items() if len(kinds) == 1
                  and kinds[0] not in ("macd", "boll")}
@@ -55,6 +56,8 @@ def indicator_candidates(request: MultiIndicatorRequest, text: str) -> tuple[Ind
 def indicator_selection_label(spec: IndicatorSpec) -> str:
     """An explicit instance users can copy into a short clarification reply."""
     values = spec.parameters
+    if spec.kind == "obv":
+        return "OBV"
     if spec.kind == "macd":
         return "MACD({fast},{slow},{signal})".format(**values)
     if spec.kind == "boll":

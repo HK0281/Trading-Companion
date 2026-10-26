@@ -28,12 +28,20 @@ DEFINITIONS = {
             "ATR反映价格波动的尺度，单位为元/股，不表示上涨或下跌方向，也不是止损价本身。"),
     "volume": ("量能 / VOLUME", "同时查看当日成交量、含当日窗口均量及严格此前N条记录的均量。"
                "相对量能=当日量÷严格此前窗口均量；此前均量为0时倍率未定义，不补成0或无穷大。"),
+    "adx": ("ADX / 平均趋向指数", "对真实波幅与正负方向移动采用Wilder平滑，再平滑方向差异。"
+            "ADX衡量趋势强度，+DI与-DI提供方向参考；25点仅为强度参考线，不是上涨概率。"),
+    "obv": ("OBV / 能量潮", "收盘上涨加当日成交量，下跌减成交量，持平不变。本项目首条记录设为零，"
+            "全程使用整数股数；绝对值取决于历史起点，不能当作真实资金流入金额。"),
+    "vwma": ("VWMA / 成交量加权移动平均", "窗口内收盘价按成交量加权求平均，成交量单位为股。"
+             "整个窗口成交量为零时未定义；价格在其上方仅说明相对位置，不能保证继续上涨。"),
 }
 ALIASES = {
     "SMA": "sma", "简单移动平均线": "sma", "均线": "sma",
     "EMA": "ema", "指数移动平均线": "ema", "MACD": "macd", "DIF": "dif", "DEA": "dea",
     "柱值": "histogram", "MACD柱值": "histogram", "MACD柱": "histogram", "RSI": "rsi", "BOLL": "boll",
     "布林带": "boll", "布林线": "boll", "ATR": "atr", "VOLUME": "volume", "量能": "volume", "成交量": "volume",
+    "ADX": "adx", "平均趋向指数": "adx", "OBV": "obv", "能量潮": "obv",
+    "VWMA": "vwma", "成交量加权移动平均": "vwma",
 }
 _NAMES = "|".join(re.escape(name) for name in sorted(ALIASES, key=len, reverse=True))
 TOPIC_PATTERN = re.compile(

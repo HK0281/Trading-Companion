@@ -15,6 +15,7 @@ FIELD_LABELS = {
     "middle": "中轨", "upper": "上轨", "lower": "下轨",
     "volume_shares": "当日成交量", "volume_ma": "含当日均量",
     "previous_volume_ma": "此前窗口均量", "relative_volume": "相对此前均量倍率",
+    "plus_di": "+DI", "minus_di": "-DI",
 }
 UNITS = {"CNY/share": "元/股", "shares": "股", "multiple": "倍", "index_points": "点"}
 UNAVAILABLE = {"insufficient_history": "历史记录不足", "undefined": "未定义（此前均量为零）",
@@ -90,6 +91,8 @@ def indicator_label(spec) -> str:
         return "MACD({fast},{slow},{signal})".format(**parameters)
     if spec.kind == "boll":
         return f"BOLL({parameters['window']},{_number(parameters['stddev_multiplier'])})"
+    if spec.kind == "obv":
+        return "OBV"
     name = "量能" if spec.kind == "volume" else spec.kind.upper()
     return f"{name}({parameters['window']})"
 
@@ -102,7 +105,9 @@ def render_report_fields(fields: tuple[ReportField, ...]) -> tuple[str, ...]:
             lines.append(f"{item.label}：{_number(item.value)} {UNITS[item.unit]}。")
         else:
             shortage = f"，还缺{item.missing_bars}条记录" if item.status == "insufficient_history" else ""
-            lines.append(f"{item.label}：{UNAVAILABLE[item.status]}{shortage}。")
+            reason = ("未定义（窗口成交量为零）" if item.status == "undefined"
+                      and item.indicator_id.startswith("vwma(") else UNAVAILABLE[item.status])
+            lines.append(f"{item.label}：{reason}{shortage}。")
     return tuple(lines)
 
 
@@ -115,6 +120,10 @@ def indicator_field_units(kind: str) -> dict[str, str]:
     if kind == "volume":
         return {"volume_shares": "shares", "volume_ma": "shares",
                 "previous_volume_ma": "shares", "relative_volume": "multiple"}
+    if kind == "adx":
+        return dict.fromkeys(("value", "plus_di", "minus_di"), "index_points")
+    if kind == "obv":
+        return {"value": "shares"}
     return {"value": "index_points" if kind == "rsi" else "CNY/share"}
 
 
@@ -169,10 +178,17 @@ def _checked_fields(result: MultiIndicatorResult, request: MultiIndicatorRequest
                      and item.missing_bars == max(0, item.required_bars - item.actual_bars))
             if item.status == "available":
                 _require(_finite(item.value) and item.missing_bars == 0)
+                if spec.kind == "adx":
+                    _require(0 <= item.value <= 100)
+                if spec.kind == "obv":
+                    _require(type(item.value) is int)
+                if spec.kind == "vwma":
+                    _require(item.value > 0)
                 check_fact(item.fact_id, spec.indicator_id, spec.parameters, name, item.value, unit)
             else:
                 _require(item.status in UNAVAILABLE and item.value is None and item.fact_id is None)
-                _require(item.status != "undefined" or spec.kind == "volume" and name == "relative_volume")
+                _require(item.status != "undefined" or (spec.kind == "volume" and name == "relative_volume")
+                         or spec.kind == "vwma" and name == "value" and item.reason == "zero_window_volume")
                 _require(item.status != "undefined" or item.missing_bars == 0)
                 _require(item.status != "insufficient_history" or item.missing_bars > 0)
             label = indicator_label(spec) + ("" if name == "value" else " " + FIELD_LABELS[name])

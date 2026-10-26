@@ -77,6 +77,10 @@ def _required_bars(spec: IndicatorSpec, field: str) -> int:
     parameters = spec.parameters
     if spec.kind == "macd":
         return parameters["slow"] + (0 if field == "dif" else parameters["signal"] - 1)
+    if spec.kind == "obv":
+        return 1
+    if spec.kind == "adx":
+        return 2 * parameters["window"] if field == "value" else parameters["window"] + 1
     if spec.kind == "volume":
         return (1 if field == "volume_shares" else parameters["window"]
                 + (field in ("previous_volume_ma", "relative_volume")))
@@ -139,13 +143,16 @@ def _series(result: MultiIndicatorResult, request: MultiIndicatorRequest) -> lis
                          and type(field.missing_bars) is int
                          and field.missing_bars == max(0, required - index - 1)
                          and type(field.status) is str and field.status in STATUSES
-                         and field.reason == REASONS[field.status])
+                         and field.reason == ("zero_window_volume" if spec.kind == "vwma"
+                             and field.status == "undefined" else REASONS[field.status]))
                 if field.status == "available":
                     _require(_number(field.value) and field.missing_bars == 0
                              and (field.fact_id is None
                                   or type(field.fact_id) is str and bool(field.fact_id)))
-                    if spec.kind == "rsi":
+                    if spec.kind in ("rsi", "adx"):
                         _require(0 <= field.value <= 100)
+                    if spec.kind == "obv":
+                        _require(type(field.value) is int)
                     if spec.kind in ("atr", "volume"):
                         _require(field.value >= 0)
                     if name == "volume_shares":
@@ -155,11 +162,15 @@ def _series(result: MultiIndicatorResult, request: MultiIndicatorRequest) -> lis
                     if field.status == "insufficient_history":
                         _require(field.missing_bars > 0)
                     elif field.status == "undefined":
-                        _require(spec.kind == "volume" and name == "relative_volume"
-                                 and field.missing_bars == 0)
-                        baseline = row.fields["previous_volume_ma"]
-                        _require(type(baseline) is FieldResult and baseline.status == "available"
-                                 and baseline.value == 0)
+                        _require(field.missing_bars == 0)
+                        if spec.kind == "vwma":
+                            _require(name == "value" and all(
+                                item.volume_shares == 0 for item in result.bars[index + 1 - required:index + 1]))
+                        else:
+                            _require(spec.kind == "volume" and name == "relative_volume")
+                            baseline = row.fields["previous_volume_ma"]
+                            _require(type(baseline) is FieldResult and baseline.status == "available"
+                                     and baseline.value == 0)
                 values[name].append(field.value)
                 statuses[name].append(field.status)
         for name, unit in definitions.items():

@@ -23,6 +23,7 @@ class SavedProductResearch:
 
 def is_product_followup(question):
     return type(question) is str and bool(re.search(
+        r"周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|趋势强度|趋势强不强|"
         r"那.*(?:面|呢|如何)|为什么.*(?:判断|结论|看|说)|为何.*(?:判断|结论)|"
         r"(?:它|这只|这家|这两只|这三只).*(?:涨|跌|走势|方向|业务|盈利|风险)|"
         r"(?:解释|说明|详细|展开).*(?:判断|结论|依据|分析)|(?:还有|哪些).*(?:依据|风险)|"
@@ -45,7 +46,8 @@ def _inherit_scope(plan, saved_plan, question):
     if plan.objective.horizon is None:
         updates["objective"] = saved_plan.objective if plan.objective.kind == "analysis" else replace(
             plan.objective, horizon=saved_plan.objective.horizon)
-    if not plan.indicators_explicit:
+    selected_profile = any(item.startswith("indicators:profile:") for item in plan.applied_defaults)
+    if not plan.indicators_explicit and (saved_plan.indicators_explicit or not selected_profile):
         updates.update(indicators=saved_plan.indicators, indicators_explicit=saved_plan.indicators_explicit)
         if plan.wants_risk and not any(spec.kind == "atr" for spec in saved_plan.indicators):
             updates["indicators"] += (IndicatorSpec("atr", window=14),)

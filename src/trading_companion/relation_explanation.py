@@ -168,10 +168,16 @@ def _definitions(result):
     for identifier, spec in specs.items():
         label = indicator_label(spec)
         current, prior = ref(identifier), ref(identifier, prior=True)
-        if spec.kind in ("sma", "ema"):
+        if spec.kind in ("sma", "ema", "vwma"):
             add(identifier, "price_position", (close, current), _compare, label)
             add(identifier, "mean_change", (current, prior), _change, label)
             add(identifier, "price_cross", (prior_close, prior, close, current), _cross, label)
+        elif spec.kind == "adx":
+            add(identifier, "strength_zone", (current,),
+                lambda value: "below_25" if value < 25 else "at_or_above_25", label)
+            add(identifier, "di_position", (ref(identifier, "plus_di"), ref(identifier, "minus_di")), _compare, label)
+        elif spec.kind == "obv":
+            add(identifier, "obv_change", (current, prior), _change, label)
         elif spec.kind == "macd":
             dif, dea = ref(identifier, "dif"), ref(identifier, "dea")
             add(identifier, "dif_dea_position", (dif, dea), _compare, label)
@@ -245,7 +251,7 @@ def _render(label, kind, relation, value):
         left, right = label
         return (f"{left}{position[value]}{right}。" if relation == "mean_position" else
                 f"相较紧邻前一条记录，{left}相对{right}{cross[value]}。")
-    if relation == "price_position" and kind in ("sma", "ema"):
+    if relation == "price_position" and kind in ("sma", "ema", "vwma"):
         return f"收盘价{position[value]}{label}。"
     if relation == "price_cross":
         return f"相较紧邻前一条记录，收盘价相对{label}{cross[value]}。"
@@ -271,6 +277,12 @@ def _render(label, kind, relation, value):
         return f"{label}上下轨{'重合' if value == 'coincident' else '不重合'}。"
     if relation == "atr_change":
         return f"{label}相较紧邻前一条记录{change[value]}；ATR只反映波动尺度，不表示价格方向。"
+    if relation == "strength_zone":
+        return f"{label}{'低于' if value == 'below_25' else '达到或高于'}25点趋势强度参考线；强度不表示涨跌方向。"
+    if relation == "di_position":
+        return f"{label}中，+DI{position[value]}-DI；方向参考与ADX强度分开核对。"
+    if relation == "obv_change":
+        return f"OBV相较紧邻前一条记录{change[value]}；以快照起点为零，不是货币资金流。"
     if relation == "relative_volume_position":
         return f"{label}中，相对此前窗口均量的倍率{position[value]}1。"
     if relation == "current_vs_prior_mean":

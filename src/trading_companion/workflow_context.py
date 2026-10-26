@@ -29,6 +29,9 @@ _KNOWLEDGE_SUMMARIES = {
     "boll": "Mean of N closes +/- multiplier*population stddev (ddof=0). Upper-band contact does not imply reversal; zero volatility can collapse bands.",
     "atr": "Wilder-smoothed true range uses daily high/low and prior close. CNY/share volatility scale, not direction or a stop-loss price.",
     "volume": "Today, inclusive N-record mean and strictly prior N-record mean. Relative volume=today/prior mean; zero baseline is undefined, not zero.",
+    "adx": "Wilder-smoothed DI and DX; ADX is strength, +DI/-DI provide direction references. 25 is a reference, never probability.",
+    "obv": "Zero-seeded signed cumulative share volume; up-close adds, down-close subtracts, flat leaves it unchanged. Not currency flow.",
+    "vwma": "N-record close weighted by share volume; all-zero volume window is undefined, never filled. Position is not prediction.",
 }
 
 

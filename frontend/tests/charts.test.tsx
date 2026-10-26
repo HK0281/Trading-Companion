@@ -29,6 +29,26 @@ function fixture(): ResearchChartData {
   };
 }
 
+function extendedFixture(): { data: ResearchChartData; scope: ChartParameters } {
+  const data = fixture();
+  const series = (kind: string, field: string, unit: ChartSeries["unit"], values: (number | null)[],
+    statuses: ChartSeries["statuses"], label: string): ChartSeries => {
+    const params: Record<string, number> = kind === "obv" ? {} : { window: 2 };
+    const id = kind === "obv" ? "obv()" : `${kind}(window=2)`;
+    const versions: Record<string, string> = { adx: "adx-wilder-double-smoothed-v1", obv: "obv-snapshot-zero-seed-v1", vwma: "vwma-close-volume-weighted-v1" };
+    return { id: `${id}:${field}`, indicator_id: id, kind, parameters: params, algorithm_version: versions[kind],
+      field, label, unit, start_effect_warning: kind !== "vwma", values, statuses };
+  };
+  data.series = [
+    series("adx", "value", "index_points", [null, null, null, 25], ["insufficient_history", "insufficient_history", "insufficient_history", "available"], "ADX(2) 趋势强度"),
+    series("adx", "plus_di", "index_points", [null, null, 20, 35], ["insufficient_history", "insufficient_history", "available", "available"], "ADX(2) 正向指标"),
+    series("adx", "minus_di", "index_points", [null, null, 30, 15], ["insufficient_history", "insufficient_history", "available", "available"], "ADX(2) 负向指标"),
+    series("obv", "value", "shares", [0, -50, -50, 100], ["available", "available", "available", "available"], "OBV 能量潮"),
+    series("vwma", "value", "CNY/share", [null, 10.666, 10, 13], ["insufficient_history", "available", "available", "available"], "VWMA(2) 成交量加权均线"),
+  ];
+  return { data, scope: { ...parameters, indicators: [{ kind: "adx", window: 2 }, { kind: "obv" }, { kind: "vwma", window: 2 }] } };
+}
+
 describe("request-bound chart parser", () => {
   it("accepts a complete aligned chart and its exact indicator scope", () => {
     expect(parseResearchChart(fixture(), parameters, request)).toEqual(fixture());
@@ -135,6 +155,32 @@ describe("request-bound chart parser", () => {
     expect(parseResearchChart(data, { ...parameters, indicators: undefined }, request)).not.toBeNull();
     data.series.pop(); expect(parseResearchChart(data, { ...parameters, indicators: undefined }, request)).toBeNull();
   });
+  it("accepts aligned ADX components, signed integer OBV and price-unit VWMA", () => {
+    const { data, scope } = extendedFixture();
+    expect(parseResearchChart(data, scope, request)).toEqual(data);
+  });
+  it("retains undefined VWMA points for a zero-volume window without filling the line", () => {
+    const { data, scope } = extendedFixture();
+    data.series[4].values[2] = null; data.series[4].statuses[2] = "undefined";
+    expect(parseResearchChart(data, scope, request)).not.toBeNull();
+  });
+  it.each([
+    (data: ResearchChartData) => { data.series[0].values[3] = 101; },
+    (data: ResearchChartData) => { data.series[1].values[3] = -1; },
+    (data: ResearchChartData) => { data.series[2].unit = "shares"; },
+    (data: ResearchChartData) => { data.series.splice(1, 1); },
+    (data: ResearchChartData) => { data.series[3].values[1] = -50.25; },
+    (data: ResearchChartData) => { data.series[3].values[1] = Number.MAX_SAFE_INTEGER + 1; },
+    (data: ResearchChartData) => { data.series[3].parameters = { window: 2 }; },
+    (data: ResearchChartData) => { data.series[3].indicator_id = "obv(window=2)"; data.series[3].id = "obv(window=2):value"; },
+    (data: ResearchChartData) => { data.series[3].indicator_id = "obv(,)"; data.series[3].id = "obv(,):value"; },
+    (data: ResearchChartData) => { data.series[3].values[2] = null; data.series[3].statuses[2] = "undefined"; },
+    (data: ResearchChartData) => { data.series[4].values[3] = 0; },
+    (data: ResearchChartData) => { data.series[4].algorithm_version = "sma-close-v1"; },
+  ])("rejects invalid extended indicator contracts case %#", (change) => {
+    const { data, scope } = extendedFixture(); change(data);
+    expect(parseResearchChart(data, scope, request)).toBeNull();
+  });
 });
 
 describe("chart geometry", () => {
@@ -202,6 +248,18 @@ describe("research chart component", () => {
     fireEvent.change(screen.getByLabelText("独立指标"), { target: { value: "" } });
     expect(container.querySelectorAll(".chart-line")).toHaveLength(0);
     expect(container.querySelector("[style]")).toBeNull();
+  });
+  it("keeps VWMA in price overlays and ADX/OBV in the separate indicator panel", () => {
+    const { data, scope } = extendedFixture();
+    render(<ResearchChart value={data} parameters={scope} reportRequestId={request} />); openChart();
+    expect(screen.getByRole("checkbox", { name: "vwma(window=2)" })).toBeVisible();
+    const field = screen.getByLabelText("独立指标");
+    expect(field).toHaveTextContent("ADX(2) 趋势强度（点）");
+    expect(field).toHaveTextContent("OBV 能量潮（股）");
+    expect(field).not.toHaveTextContent("VWMA");
+    fireEvent.change(field, { target: { value: "obv():value" } });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1" } });
+    expect(screen.getByText("-50 股")).toBeVisible();
   });
   it("uses only returned trading days and renders a flat single candle safely", () => {
     const data = fixture(); data.bars = [data.bars[2]]; data.series.forEach((series) => { series.values = [series.values[2]]; series.statuses = [series.statuses[2]]; });

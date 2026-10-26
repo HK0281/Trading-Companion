@@ -72,7 +72,7 @@ def parse_condition_update(question: str) -> ConditionUpdate:
                 raise _issue("condition_update_not_supported",
                     "这不是股票修改；来源由启动配置固定。日期请用明确修改句，刷新请单独说“刷新行情”，不是实时查询。")
             if kind == "instrument" and re.match(
-                    r"(?:SMA|EMA|RSI|ATR|MACD|BOLL|VOLUME|DIF|DEA)(?:$|[0-9(])|均线|布林带|量能",
+                    r"(?:SMA|EMA|RSI|ATR|MACD|BOLL|VOLUME|ADX|OBV|VWMA|DIF|DEA)(?:$|[0-9(])|均线|布林带|量能",
                     value, re.IGNORECASE):
                 raise _issue("condition_update_not_supported",
                     "这看起来是指标，不是股票名称；请明确原指标及替换值，例如“把RSI2改成14日”，没有查询。")

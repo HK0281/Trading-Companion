@@ -50,15 +50,21 @@ export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
   return value as unknown as CompanyAnswer;
 }
 
-const kinds: Record<string, string> = { profile: "公司资料", financial: "财务报告", news: "新闻", announcements: "公司公告", technical: "日线指标", risk: "风险情景" };
+const kinds: Record<string, string> = { profile: "公司资料", financial: "财务报告", news: "新闻", announcements: "公司公告", technical: "技术分析", risk: "风险情景" };
 const sources: Record<string, string> = { eastmoney_company: "东方财富", eastmoney_financial: "东方财富", eastmoney_news: "东方财富",
   eastmoney_announcements: "东方财富公告", cninfo_announcements: "巨潮资讯", sina_company_news: "新浪财经", sina_news: "新浪财经",
   tencent: "腾讯行情", akshare_eastmoney: "东方财富行情", csv: "开发样例", application_comparison: "程序比较" };
 
+const sourceGroupKey = (item: Evidence) => [item.instrument_id, item.kind, item.url ?? item.source,
+  item.report_period ?? "", item.temporal_scope, item.date ?? ""].join("|");
+const sourceDateLabel = (item: Evidence) => item.temporal_scope === "completed_week_derived" ? "周线截至"
+  : item.temporal_scope === "cross_timeframe_derived" ? "日周核对"
+  : item.kind === "technical" || item.kind === "risk" ? "交易日" : "发布时间";
+
 function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer; evidence: Evidence[]; previewLimit?: number }) {
   const groups = new Map<string, Evidence[]>();
   for (const item of evidence) {
-    const key = [item.instrument_id, item.kind, item.url ?? item.source, item.report_period ?? ""].join("|");
+    const key = sourceGroupKey(item);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   return <div className="company-source-list">{[...groups].map(([key, items]) => {
@@ -70,7 +76,7 @@ function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer;
         {first.report_period && <p>报告期：{first.report_period}</p>}
         {items.slice(0, previewLimit).map(item => <p key={item.id}>{item.kind === "financial" || item.kind === "technical" ? `${item.label}：` : ""}{item.display}</p>)}
         <small>{first.content_kind === "title" ? "标题资料" : first.content_kind === "snippet" ? "摘要资料" : first.temporal_scope === "current_context" ? "当前公司背景" : ""}
-          {first.date ? ` · ${first.kind === "technical" || first.kind === "risk" ? "交易日" : "发布时间"} ${first.date}` : ""}
+          {first.date ? ` · ${sourceDateLabel(first)} ${first.date}` : ""}
           {url && <> · <a href={url} target="_blank" rel="noopener noreferrer">查看来源</a></>}</small>
       </section>;
     })}</div>;
@@ -95,7 +101,7 @@ export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
 export function CompanySources({ turn }: { turn: PublicTurn }) {
   const data = parseCompanyAnswer(turn.company_research);
   if (!data?.evidence.length) return null;
-  const groups = new Set(data.evidence.map(item => [item.instrument_id, item.kind, item.url ?? item.source, item.report_period ?? ""].join("|")));
+  const groups = new Set(data.evidence.map(sourceGroupKey));
   return <details className="disclosure company-sources"><summary>研究依据 <span>{groups.size} 组资料</span></summary>
     <SourceList data={data} evidence={data.evidence} />
   </details>;

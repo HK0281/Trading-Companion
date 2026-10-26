@@ -5,7 +5,7 @@ import "./charts.css";
 const unitNames = { "CNY/share": "元/股", shares: "股", index_points: "点", multiple: "倍" };
 const statusNames = { available: "可用", insufficient_history: "历史不足", undefined: "未定义", calculation_error: "计算失败" };
 const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumSignificantDigits: 7 }).format(value);
-const priceKind = (series: ChartSeries) => ["sma", "ema", "boll"].includes(series.kind);
+const priceKind = (series: ChartSeries) => ["sma", "ema", "boll", "vwma"].includes(series.kind);
 const tone = (open: number, close: number) => close > open ? "chart-rise" : close < open ? "chart-fall" : "chart-flat";
 
 function SeriesLine({ values, x, y, className }: { values: readonly (number | null)[]; x: (index: number) => number; y: (value: number) => number; className: string }) {

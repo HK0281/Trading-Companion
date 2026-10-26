@@ -50,10 +50,10 @@ _ISO = r"([0-9]{4}-[0-9]{2}-[0-9]{2})"
 _COUNT = r"[0-9零一二两三四五六七八九十百]+"
 _INDICATOR_CUE = re.compile(
     r"[+＋－-]?(?:[0-9]+(?:\.[0-9]+)?|[零一二两三四五六七八九十百]+)\s*(?:日|天)\s*"
-    r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR)|"
-    r"(?<![A-Za-z])(?:MACD|BOLL|SMA|EMA|RSI|ATR|VOLUME)(?![A-Za-z])"
+    r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)|"
+    r"(?<![A-Za-z])(?:MACD|BOLL|SMA|EMA|RSI|ATR|ADX|VWMA|OBV|VOLUME)(?![A-Za-z])"
     r"(?:\s*(?:[（(][^）)]*(?:[）)]|$)|[+＋－-]?[0-9]+(?:\.[0-9]+)?))?|"
-    r"KDJ|OBV|指数移动平均线|简单移动平均线|布林带|布林线|均线|量能|成交量", re.IGNORECASE)
+    r"KDJ|指数移动平均线|简单移动平均线|布林带|布林线|均线|量能|成交量", re.IGNORECASE)
 _UNSUPPORTED_CAPABILITY = re.compile(
     r"下单|自动交易|代我交易|执行交易|帮我(?:买|卖)|替我(?:买|卖)|"
     r"新闻|财报|基本面|公告|估值|营收|市盈率|资产负债|现金流|"
@@ -252,13 +252,14 @@ def _indicator(phrase: str) -> tuple[IndicatorSpec, ...]:
     text = phrase.strip()
     aliases = {"MACD": "macd", "RSI": "rsi", "BOLL": "boll", "ATR": "atr",
                "EMA": "ema", "VOLUME": "volume", "布林带": "boll", "布林线": "boll",
-               "量能": "volume", "成交量": "volume", "指数移动平均线": "ema"}
+               "量能": "volume", "成交量": "volume", "指数移动平均线": "ema",
+               "ADX": "adx", "VWMA": "vwma", "OBV": "obv"}
     if text.upper() in aliases:
         return (IndicatorSpec(aliases[text.upper()]),)
     if text in ("均线", "简单移动平均线", "SMA", "sma"):
         return (IndicatorSpec("sma", window=20), IndicatorSpec("sma", window=60))
     match = re.fullmatch(r"(" + _COUNT + r")\s*(?:日|天)\s*"
-                         r"(指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR)", text, re.IGNORECASE)
+                         r"(指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)", text, re.IGNORECASE)
     if match:
         name = match[2].upper()
         kind = {"指数移动平均线": "ema", "简单移动平均线": "sma", "均线": "sma"}.get(name, name.lower())

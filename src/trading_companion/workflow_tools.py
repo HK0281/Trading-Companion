@@ -3,7 +3,6 @@
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import date
-import json
 from threading import RLock
 from uuid import uuid4
 
@@ -58,24 +57,28 @@ _PRIMARY_PARAMETERS = RESEARCH_TOOL_DEFINITION.parameters
 for _property in _PRIMARY_PARAMETERS["properties"].values():
     _property.pop("description", None)
 _WORKFLOW_RELATION_RULES = {
-    "price_position": "close vs MA or BOLL bands; equality/coincident bands explicit",
+    "price_position": "close vs MA/BOLL; equality/coincident bands explicit",
     "mean_change": "current vs prior mean",
-    "price_cross": "up:prior close<=MA,current close>MA; down:prior close>=MA,current close<MA",
+    "price_cross": "up:prior close<=MA,now>MA; down:prior>=MA,now<MA",
     "mean_position": "left vs right named mean",
-    "mean_cross": "up:prior left<=right,current left>right; down:prior left>=right,current left<right",
+    "mean_cross": "up:prior left<=right,now>; down:prior>=,now<",
     "dif_dea_position": "DIF vs DEA",
-    "dif_dea_cross": "up:prior DIF<=DEA,current DIF>DEA; down:prior DIF>=DEA,current DIF<DEA",
-    "histogram_change": "current vs prior 2*(DIF-DEA); not momentum strength alone",
-    "reference_zone": "RSI<30 below_30; >70 above_70; otherwise neutral (including 30/70)",
+    "dif_dea_cross": "up:prior DIF<=DEA,now>; down:prior>=,now<",
+    "histogram_change": "current vs prior 2*(DIF-DEA); not strength alone",
+    "reference_zone": "RSI<30 below_30; >70 above_70; else neutral, incl 30/70",
     "bands_state": "upper=lower coincident; else distinct",
     "atr_change": "current vs prior ATR; volatility, not direction",
-    "relative_volume_position": "today/strictly prior N-record mean vs 1",
-    "current_vs_prior_mean": "today vs strictly prior N-record share mean; zero baseline explicit",
+    "relative_volume_position": "today/strictly prior N mean vs 1",
+    "current_vs_prior_mean": "today vs prior N share mean; zero baseline explicit",
+    "strength_zone": "ADX<25 below_25; else at_or_above_25; strength only",
+    "di_position": "+DI vs -DI: above/below/equal",
+    "obv_change": "current vs prior OBV; zero seed, not currency flow",
 }
 WORKFLOW_PRIMARY_DEFINITION = ToolDefinition(
-    TOOL_NAME, "Read-only daily research. Full precision, adjacent records. research-rules-v1: "
-    + json.dumps(_WORKFLOW_RELATION_RULES, separators=(",", ":"))
-    + " research-seeds-v1: " + json.dumps(SEED_METHOD_CATALOG, separators=(",", ":")),
+    TOOL_NAME, "Read-only. Full precision, adjacent records. research-rules-v1:\n"
+    + "\n".join(f"{name}={rule}" for name, rule in _WORKFLOW_RELATION_RULES.items())
+    + "\nresearch-seeds-v1:\n"
+    + "\n".join(f"{code}={method}" for code, method in SEED_METHOD_CATALOG.items()),
     _PRIMARY_PARAMETERS,
 )
 WORKFLOW_TOOL_DEFINITIONS = (

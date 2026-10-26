@@ -117,7 +117,11 @@ def _finite(value) -> bool:
 def _required(spec, name):
     if spec.kind == "macd":
         return spec.parameters["slow"] + (0 if name == "dif" else spec.parameters["signal"] - 1)
+    if spec.kind == "obv":
+        return 1
     window = spec.parameters["window"]
+    if spec.kind == "adx":
+        return 2 * window if name == "value" else window + 1
     if spec.kind == "volume":
         return 1 if name == "volume_shares" else window + (name in ("previous_volume_ma", "relative_volume"))
     return window + (spec.kind in ("rsi", "atr"))
@@ -177,14 +181,17 @@ class _CheckedNumbers:
                  and type(field.actual_bars) is int and field.actual_bars == actual
                  and type(field.missing_bars) is int and field.missing_bars == max(0, required - actual)
                  and type(field.status) is str and field.status in _REASONS
-                 and field.reason == _REASONS[field.status])
+                 and field.reason == ("zero_window_volume" if spec.kind == "vwma"
+                     and field.status == "undefined" else _REASONS[field.status]))
         matching = [fact for fact in self.facts.values() if
                     (fact.indicator_id, fact.field, fact.trade_date) == (spec.indicator_id, name, row.trade_date)]
         if field.status != "available":
             _require(field.value is None and field.fact_id is None and not matching)
             _require(field.status != "insufficient_history" or field.missing_bars > 0)
-            _require(field.status != "undefined" or spec.kind == "volume"
-                     and name == "relative_volume" and field.missing_bars == 0)
+            _require(field.status != "undefined" or field.missing_bars == 0 and (
+                spec.kind == "volume" and name == "relative_volume"
+                or spec.kind == "vwma" and name == "value" and all(
+                    bar.volume_shares == 0 for bar in self.result.bars[actual-required:actual])))
             return None, SynthesisMissing(spec.indicator_id, spec.kind, name, field.status,
                                          row.trade_date.isoformat(), required, actual, field.missing_bars)
         _require(_finite(field.value) and field.missing_bars == 0 and len(matching) == 1)
@@ -195,10 +202,12 @@ class _CheckedNumbers:
                  and fact.request_id == self.request.request_id and fact.instrument_id == self.request.instrument_id
                  and fact.parameters == spec.parameters and fact.unit == field.unit
                  and type(fact.value) is type(field.value) and fact.value == field.value and not fact.dependencies)
-        if spec.kind in ("sma", "ema"):
+        if spec.kind in ("sma", "ema", "vwma"):
             _require(field.value > 0)
-        if spec.kind == "rsi":
+        if spec.kind in ("rsi", "adx"):
             _require(0 <= field.value <= 100)
+        if spec.kind == "obv":
+            _require(type(field.value) is int)
         if spec.kind in ("atr", "volume"):
             _require(field.value >= 0)
         if name == "volume_shares":
@@ -271,7 +280,7 @@ def _build_dimensions(numbers, request):
 
     for spec in specs:
         label = indicator_label(spec)
-        if spec.kind in ("sma", "ema"):
+        if spec.kind in ("sma", "ema", "vwma"):
             current, previous = get("trend", spec, "value"), get("trend", spec, "value", True)
             if current is not None:
                 state = _compare(close.value, current.value)
@@ -282,6 +291,24 @@ def _build_dimensions(numbers, request):
                 change = _change(current.value, previous.value)
                 word = {"increasing": "增加", "decreasing": "减少", "unchanged": "不变"}[change]
                 add("trend", spec, "mean_change", change, (current, previous), f"{label}相较紧邻前一条记录{word}，不外推后续方向。")
+        elif spec.kind == "adx":
+            strength = get("trend", spec, "value")
+            plus, minus = get("trend", spec, "plus_di"), get("trend", spec, "minus_di")
+            if strength is not None:
+                strong = strength.value >= 25
+                add("trend", spec, "strength_zone", "at_or_above_25" if strong else "below_25", (strength,),
+                    f"{label}{'达到' if strong else '低于'}25点趋势强度参考线；ADX强度本身不提供价格方向。")
+            if plus is not None and minus is not None:
+                state = _compare(plus.value, minus.value)
+                word = {"upper_reference": "高于", "lower_reference": "低于", "at_reference": "等于"}[state]
+                add("trend", spec, "di_position", state, (plus, minus), f"{label}的+DI{word}-DI；与趋势强度分开核对。")
+        elif spec.kind == "obv":
+            current, previous = get("volume", spec, "value"), get("volume", spec, "value", True)
+            if current is not None and previous is not None:
+                change = _change(current.value, previous.value)
+                word = {"increasing": "增加", "decreasing": "减少", "unchanged": "不变"}[change]
+                add("volume", spec, "obv_change", change, (current, previous),
+                    f"OBV相较紧邻前一条记录{word}；绝对值以本次快照起点为零，不表示真实资金流入额。")
         elif spec.kind == "macd":
             dif, dea = get("momentum", spec, "dif"), get("momentum", spec, "dea")
             current, previous = get("momentum", spec, "histogram"), get("momentum", spec, "histogram", True)
@@ -352,7 +379,7 @@ def _build_dimensions(numbers, request):
                 word = {"upper_reference": "高于", "lower_reference": "低于", "at_reference": "等于"}[state]
                 add("volume", spec, "relative_volume_position", state, (ratio, baseline, current),
                     f"{label}量比{word}1（相对严格此前窗口均量）；不能独立确认价格方向。")
-    if not families & {"sma", "ema"}:
+    if not families & {"sma", "ema", "vwma"}:
         missing["trend"].append(SynthesisMissing(None, "sma/ema", "value", "not_requested", None))
     for dimension, required_families in (("momentum", ("macd", "rsi")), ("volatility", ("boll", "atr")),
                                           ("volume", ("volume",))):

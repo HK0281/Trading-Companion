@@ -41,6 +41,7 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 - [Local model configuration and startup (Chinese)](docs/local-environment.md): root `.env`, normal-mode defaults, local checks and explicit directory refresh.
 - [Normal mode and Dev Mode (Chinese)](docs/dev-mode-design.md): normal-by-default Web startup, a separate fixed offline backend and safe in-page switching without shared sessions.
 - [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
+- [Technical analysis, signals and timeframes (Chinese)](docs/technical-analysis-design.md): ADX/OBV/VWMA conventions, complementary indicator profiles, confirmed-pivot candidates, completed weekly bars and traceable dependencies.
 
 ## Start the product
 
@@ -89,7 +90,7 @@ To opt into a local evidence archive:
 .\.venv\Scripts\python.exe -m trading_companion.api_server --snapshot-db ".\data\research_snapshots.sqlite3"
 ```
 
-The SQLite archive stores company-research evidence and technical snapshots, with local observation and source retrieval times. It excludes original questions, chat and model answers. Saving problems do not discard the research reply. This is an evidence store, without a chat-restoration interface or a strict historical-version/backtesting system; omitting the flag creates no archive.
+The SQLite archive stores company-research evidence, technical snapshots and derived technical observations with their raw dependencies, alongside local observation and source retrieval times. It excludes original questions, chat and model answers. Saving problems do not discard the research reply. This is an evidence store, without a chat-restoration interface or a strict historical-version/backtesting system; omitting the flag creates no archive.
 
 The Web **Dev Mode** button switches an idle page to a separate, server-configured `fake + synthetic` service. It does not change normal-mode configuration or let a client choose arbitrary providers, data sources or paths. Once old-session cleanup succeeds, the page selects the target and clears its chat/draft before checking target health. If that check fails, it stays disconnected in the selected target; the discarded chat is not restored and no automatic fallback occurs. Cleanup failure preserves the old chat, and unresolved requests prevent switching. Reloading returns to normal mode. The fixed demo only has four directory entries and five artificial daily bars, not a full market.
 
@@ -103,6 +104,9 @@ In normal mode, a single-stock request does not need dates, a ticker or indicato
 - `结合财报和新闻，分析平安银行接下来一个月的走势`
 - `比较平安银行、浦发银行和招商银行的营收增长、利润增长和ROE`
 - `分析平安银行，给出基于ATR的止盈止损参考情景`
+- `结合量价分析平安银行，看看放量是否配合上涨`
+- `分析平安银行是否出现背离，关注哪些支撑和压力区域？`
+- `比较平安银行的日线与已完成周线方向，有没有分歧？`
 - `PE和PB有什么区别，为什么不能只看PE选股？`
 - After a company-research answer: `为什么这么判断？` or `那新闻呢？`
 
@@ -114,12 +118,16 @@ Broad research can combine company background, current vendor financial records,
 
 ## Current status
 
-The original bounded daily-research MVP and the 2026-10-25 company-research extensions have code and offline checks; live-model, real-market and browser acceptance remain separate. The [company design](docs/company-research-design.md) describes the current extension; the earlier [delivery checklist](docs/mvp-completion.md) records the daily-research milestone. Implemented capabilities include:
+The original bounded daily-research MVP, the 2026-10-25 company-research extensions and the 2026-10-26 technical-analysis expansion have code; live-model, real-market and browser acceptance remain separate. The [company design](docs/company-research-design.md) and [technical design](docs/technical-analysis-design.md) describe the current extensions; the earlier [delivery checklist](docs/mvp-completion.md) records the daily-research milestone. Implemented capabilities include:
 
 - Company research planning, directory-grounded identities and bounded multi-domain collection, followed by model-written natural Chinese answers with source/number checks.
 - Separate same-period financial-metric comparisons for up to three named candidates, plus deterministic ATR reference scenarios.
 - Server-configured DeepSeek/OpenAI model factories and fixed-per-session provider choice, without cross-provider fallback.
 - An optional SQLite evidence archive with integrity checks, idempotent writes and observation/retrieval time queries; no stored chat or model answers.
+- ADX with Wilder smoothing, exact-integer snapshot-anchored OBV, and volume-weighted VWMA, with explicit warmup and zero-volume states; the original indicator formulas and eight default instances remain unchanged.
+- Application-owned complementary indicator profiles for momentum, volume/price, trend strength and structure/volatility questions when explicit indicator conditions are absent. Explicit parameters and exclusions take precedence; this is rule-based selection rather than a trained market-regime model.
+- Confirmed-pivot RSI/MACD divergence and clustered support/resistance candidates, plus completed-calendar-week OHLCV aggregation, same-parameter weekly indicators and bounded daily/weekly direction checks. Missing history remains missing; these observations are not validated reversal or return predictions.
+- Derived technical facts with raw-data dependencies, bounded evidence sent to the answer model, optional dependency archival and separate daily/weekly source dates in the interface.
 
 - Validated daily OHLCV records and local CSV loading.
 - A Tencent adapter and an optional AKShare/Eastmoney adapter for historical, unadjusted daily bars.
@@ -148,7 +156,7 @@ The original bounded daily-research MVP and the 2026-10-25 company-research exte
 - A thin terminal entry reusing the natural-input Agent and identity session: no arguments only show help, a fixed offline demo, explicit DeepSeek plus synthetic/Tencent selection, and safe answers without raw drafts.
 - Bounded indicator edits within the same session: replace one existing instance while retaining checked stock/date/source conditions, revalidate current authority, and run a fresh analysis without reusing old results. This uses a small explicit grammar, not arbitrary conversational rewriting.
 - One detached, checked successful-result snapshot per session, valid for 15 minutes: bounded follow-ups reuse saved fields and rechecked relations without fetching bars; explicit history viewing stays separate from a failed new query.
-- Application-maintained definitions for seven indicator families and MACD components, recognized through finite whole-question patterns without model or market calls; not a general knowledge or RAG system.
+- Application-maintained definitions for the original seven indicator families, ADX/OBV/VWMA and MACD components, recognized through finite whole-question patterns without model or market calls; not a general knowledge or RAG system.
 - Explicit single-dimension session updates: change a directory-verified stock, edit an ISO date range or one boundary, add one fully specified indicator, or remove one unambiguous existing instance. Other checked conditions are retained; every valid update is a fresh analysis, not an edit to old report text.
 - Shared one-shot turn control across understanding, research and result publication: a 90-second cooperative deadline and 24,000 observed-token stopping threshold, thread-safe cancellation and rejection of late results. Web/API and live terminal research allow at most six model attempts (including intent), six tools and two calculations per turn; legacy low-level paths retain their narrower limits. The terminal also keeps its separate 15-model-call per-launch allowance. Neither deadlines nor token accounting are hard interruption or billing guarantees.
 - A single-process loopback FastAPI service reusing that Agent: per-session bearer capabilities, strict Pydantic input, bounded memory/work, idempotent messages, request-specific cooperative cancellation, reset/delete/history endpoints and allowlisted public output. The Web launcher defaults to DeepSeek/Tencent with a separate fixed offline Dev Mode service; it is not a public deployment or account system.
@@ -162,6 +170,8 @@ The original bounded daily-research MVP and the 2026-10-25 company-research exte
 - A 30-scenario MVP evaluation catalogue with up to three independent repeats, whole-run call allowance checks, checked explanation/synthesis expectations and fail-fast reports. CI executes 90 offline scenario instances, not paid model calls or investment benchmarks.
 
 The original explicit and natural-input paths retain bounded identity clarification, explicit edits and result follow-ups. The company path adds its own checked plan and saved research, without claiming unrestricted conversation memory or arbitrary prose validation. Model transports are tested offline with mocked HTTP. Historical verification records remain separate: the user supplied one passing live `deepseek-flash` `complete` synthetic contract report with two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20); see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Earlier text/tool feedback and the independently checked directory refresh do not prove the expanded workflow's real-market quality. Repeated real-model evaluation, human review of answer relevance and browser acceptance are still required. Long-term chat memory, Jev, whole-market screening, DuckDB, production multi-user deployment and historical strategy evaluation are not implemented.
+
+Technical observations do not yet provide a complete candlestick/chart-pattern library, exchange-calendar proof of weekly completeness or validated forecast performance.
 
 The intended product scope includes main-board, STAR Market, ST, and newly listed stocks. Local background snapshots can now report dated board/listing/ST/full-day-suspension states, but no real master/calendar adapter or historical version store is implemented. Unknown is not normal; missing bars do not establish suspension. Board/listing-specific trading rules are not evaluated.
 

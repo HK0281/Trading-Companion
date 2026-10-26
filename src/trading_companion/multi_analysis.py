@@ -68,7 +68,7 @@ def _validate_records(bars, request):
 
 
 def _field(request, bars, index, indicator_id, name, value, required,
-           unit="CNY/share", status=None):
+           unit="CNY/share", status=None, reason=None):
     if status is None:
         if (value is None) != (index + 1 < required):
             raise ValueError("Indicator availability contradicts its record threshold")
@@ -88,7 +88,7 @@ def _field(request, bars, index, indicator_id, name, value, required,
                "calculation_error": "numeric_calculation_failed"}
     fact_id = (_fact_id(request, bars[index].trade_date, indicator_id, name)
                if status == "available" and index >= len(bars) - 2 else None)
-    return FieldResult(bars[index].trade_date, status, value, reasons[status], unit,
+    return FieldResult(bars[index].trade_date, status, value, reason or reasons[status], unit,
                        required, index + 1, max(0, required - index - 1), fact_id)
 
 
@@ -106,6 +106,12 @@ def _definitions(spec):
         return {"volume_shares": (1, "shares"), "volume_ma": (window, "shares"),
                 "previous_volume_ma": (window + 1, "shares"),
                 "relative_volume": (window + 1, "multiple")}
+    if spec.kind == "adx":
+        return {"value": (2 * window, "index_points"),
+                "plus_di": (window + 1, "index_points"),
+                "minus_di": (window + 1, "index_points")}
+    if spec.kind == "obv":
+        return {"value": (1, "shares")}
     return {"value": (window + (spec.kind in ("rsi", "atr")),
                       "index_points" if spec.kind == "rsi" else "CNY/share")}
 
@@ -125,6 +131,14 @@ def _components(spec, bars):
             ("histogram", signal, slow + signal - 1, "2_times_dif_minus_dea", True,
              (fast, slow, signal)),
         )
+    elif spec.kind == "adx":
+        definitions = (
+            ("value", window, 2 * window, "first_n_dx_mean_wilder", True, (window,)),
+            ("plus_di", window, window + 1, "wilder_positive_dm_divided_by_wilder_tr", True, (window,)),
+            ("minus_di", window, window + 1, "wilder_negative_dm_divided_by_wilder_tr", True, (window,)),
+        )
+    elif spec.kind == "obv":
+        definitions = (("value", 1, 1, "cumulative_signed_volume_first_record_zero", False, (1,)),)
     elif spec.kind in ("rsi", "atr", "ema"):
         seed = {"rsi": "first_n_changes_gain_loss_means_wilder",
                 "atr": "first_n_true_ranges_mean_wilder",
@@ -132,7 +146,8 @@ def _components(spec, bars):
         definitions = (("value", window, window + (spec.kind != "ema"), seed, True, (window,)),)
     else:
         seed = {"sma": "rolling_close_arithmetic_mean", "boll": "rolling_mean_population_stddev",
-                "volume": "current_inclusive_mean_and_strictly_prior_window"}[spec.kind]
+                "volume": "current_inclusive_mean_and_strictly_prior_window",
+                "vwma": "rolling_close_weighted_by_exact_share_volume"}[spec.kind]
         definitions = tuple((name, window or 1, required, seed, False, (window,))
                             for name, (required, _) in _definitions(spec).items())
         if spec.kind == "volume":
@@ -160,7 +175,8 @@ def _calculate(spec, bars, request):
     functions = {"sma": calculations.sma_close, "ema": calculations.ema_close,
                  "macd": calculations.macd_close, "rsi": calculations.rsi_close,
                  "boll": calculations.boll_close, "atr": calculations.atr,
-                 "volume": calculations.volume_activity}
+                 "volume": calculations.volume_activity, "adx": calculations.adx,
+                 "obv": calculations.obv, "vwma": calculations.vwma}
     definitions = _definitions(spec)
     failed = False
     try:
@@ -172,11 +188,16 @@ def _calculate(spec, bars, request):
         for index, value in enumerate(values):
             fields = {}
             for name, (required, unit) in definitions.items():
-                number = value if name == "value" else getattr(value, name)
+                number = (value if name == "value" and spec.kind not in ("adx", "vwma")
+                          else getattr(value, name))
                 status = (value.relative_volume_status
                           if spec.kind == "volume" and name == "relative_volume" else None)
+                if spec.kind == "vwma":
+                    status = value.status
                 fields[name] = _field(request, bars, index, spec.indicator_id, name,
-                                      number, required, unit, status)
+                                      number, required, unit, status,
+                                      "zero_window_volume" if status == "undefined" and spec.kind == "vwma"
+                                      else None)
             rows.append(IndicatorRow(bars[index].trade_date, fields))
     except (ValueError, OverflowError, ArithmeticError):
         # Only expected numeric failures are contained; unexpected exceptions must surface.
@@ -271,7 +292,7 @@ def _relations(request, bars, results, market):
         current = result.latest
         previous = result.series[-2].fields if len(result.series) >= 2 else {}
         identifier, kind = result.indicator_id, result.kind
-        if kind in ("sma", "ema"):
+        if kind in ("sma", "ema", "vwma"):
             field = current["value"]
             required = field.required_bars
             add(identifier, "price_position", (current_close, field), required, _compare,
@@ -306,6 +327,17 @@ def _relations(request, bars, results, market):
             add(identifier, "atr_change", (current["value"], previous.get("value")),
                 current["value"].required_bars + 1, _change,
                 "ATR numeric volatility-scale change only; no price-direction conclusion")
+        elif kind == "adx":
+            add(identifier, "strength_zone", (current["value"],),
+                current["value"].required_bars,
+                lambda value: "below_25" if value < 25 else "at_or_above_25",
+                "ADX compared with reference threshold 25; strength only, not direction or probability")
+            add(identifier, "di_position", (current["plus_di"], current["minus_di"]),
+                current["plus_di"].required_bars, _compare,
+                "positive DI compared with negative DI; separate from ADX strength")
+        elif kind == "obv":
+            add(identifier, "obv_change", (current["value"], previous.get("value")), 2, _change,
+                "current anchored OBV compared with immediately previous record; absolute level depends on snapshot start")
         elif kind == "volume":
             required = current["relative_volume"].required_bars
             add(identifier, "relative_volume_position", (current["relative_volume"],), required,

@@ -17,7 +17,7 @@ _QUESTION = re.compile(
     r"([0-9]{4}-[0-9]{2}-[0-9]{2})\s*[,，;；]?\s*指标\s*[:：]\s*(.+?)\s*[。！!]?\s*",
     re.IGNORECASE,
 )
-_WINDOW = re.compile(r"(SMA|EMA|RSI|ATR|VOLUME|量能|成交量)\s*(?:\(\s*([0-9]+)\s*\)|([0-9]+))",
+_WINDOW = re.compile(r"(SMA|EMA|RSI|ATR|ADX|VWMA|VOLUME|量能|成交量)\s*(?:\(\s*([0-9]+)\s*\)|([0-9]+))",
                      re.IGNORECASE)
 _NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
 
@@ -53,6 +53,8 @@ def _indicator_tokens(text: str) -> list[str]:
 
 
 def _indicator(text: str) -> IndicatorSpec:
+    if text.upper() in ("OBV", "OBV()"):
+        return IndicatorSpec("obv")
     match = _WINDOW.fullmatch(text)
     if match:
         name = match[1].lower()

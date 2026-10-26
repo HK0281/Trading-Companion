@@ -8,7 +8,8 @@ from trading_companion.agent_input import InputIssue
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.multi_contracts import DEFAULT_INDICATORS, IndicatorSpec, MultiIndicatorRequest, validate_research_conditions
-from trading_companion.research_intent import _dates, _INDICATOR_CUE, _indicator
+from trading_companion.technical_selection import select_complementary_indicators
+from trading_companion.research_intent import _dates, _INDICATOR_CUE as _DAILY_INDICATOR_CUE, _indicator as _daily_indicator
 from trading_companion.research_objective import (
     ResearchObjective, extract_outlook, mask_outlook_expressions,
 )
@@ -29,9 +30,20 @@ _ANNOUNCEMENTS = re.compile(r"公告|披露|公司事件")
 _RISK = re.compile(r"止盈|止损|目标价|目标价格|风险|收益风险")
 _PRICE_SCENARIO = re.compile(r"止盈|止损|目标价|目标价格|收益风险比|ATR.*风险情景", re.I)
 _COMPARE = re.compile(r"对比|比较|哪只更|哪个更|哪个好|哪只好|选出|筛选|挑选")
-_TECHNICAL = re.compile(r"技术面|技术指标|走势|趋势|均线|MACD|RSI|ATR|BOLL|K线", re.I)
+_WEEKLY_INDICATOR = r"[0-9零一二两三四五六七八九十百]+\s*周\s*(?:指数移动平均线|简单移动平均线|均线|SMA|EMA|RSI)"
+_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|技术面|技术指标|走势|趋势|均线|MACD|RSI|ATR|BOLL|ADX|OBV|VWMA|K线|周线|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力", re.I)
+_FEATURE_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|周线|周均线|周SMA|周EMA|周RSI|周MACD|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力|趋势强度|趋势强不强|震荡还是趋势|趋势还是震荡", re.I)
+_INDICATOR_CUE = re.compile(_WEEKLY_INDICATOR + "|" + _DAILY_INDICATOR_CUE.pattern, re.I)
+
+
+def _indicator(phrase):
+    # The company path computes both daily and weekly views of the same parameters.
+    # Do not teach the original daily-only parser that a week means a daily window.
+    if re.fullmatch(_WEEKLY_INDICATOR, phrase, re.I):
+        return _daily_indicator(phrase.replace("周", "日"))
+    return _daily_indicator(phrase)
 _GENERAL = re.compile(r"分析|研究|预测|展望|怎么看|怎么样|后市|看看|看一下|看下")
-_EXPLICIT_TECHNICAL = re.compile(r"只看技术|仅技术|纯技术|技术面|技术指标|日线|K线|均线|SMA|EMA|MACD|RSI|ATR|BOLL|VOLUME", re.I)
+_EXPLICIT_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|只看技术|仅技术|纯技术|技术面|技术指标|日线|K线|均线|SMA|EMA|MACD|RSI|ATR|BOLL|VOLUME|ADX|OBV|VWMA|周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力|趋势强度|趋势强不强|震荡还是趋势|趋势还是震荡", re.I)
 _EXECUTION = re.compile(r"下单|自动交易|自动买入|自动卖出|代我交易|执行交易|执行买入|执行卖出|"
                         r"(?:帮我|替我|为我|给我)(?:直接|自动|立即)?(?:买|卖)|"
                         r"(?:买入|卖出)\s*[0-9一二两三四五六七八九十百千]+\s*(?:股|手)|"
@@ -186,7 +198,7 @@ def wants_product_research(question: str) -> bool:
     original = question
     question, _ = _positive_scope(question)
     return (len(question) <= MAX_USER_CHARACTERS
-            and (_broadens_only(original, question) or any(pattern.search(question) for pattern in
+            and (_FEATURE_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
                      (_FINANCIAL, _PROFILE, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
                  or _GENERAL.search(question) is not None and _EXPLICIT_TECHNICAL.search(question) is None))
 
@@ -441,8 +453,9 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         remaining, _ = _mask_mentions(question, mentions)
         positive, excluded_indicators = _positive_scope(remaining)
         indicator_phrases = tuple(match.group() for match in _INDICATOR_CUE.finditer(positive))
+        selection = select_complementary_indicators(positive)
         indicators = (tuple(spec for phrase in indicator_phrases for spec in _indicator(phrase))
-                      if indicator_phrases else tuple(spec for spec in DEFAULT_INDICATORS
+                      if indicator_phrases else tuple(spec for spec in selection.indicators
                           if "indicator:" + spec.kind not in excluded_indicators))
         remaining, _ = _mask_mentions(positive, indicator_phrases)
         historical_expression = draft["date_expression"]
@@ -458,6 +471,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         objective = extract_outlook(remaining) or ResearchObjective()
         date_text = re.sub(vague_period, "", mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
+        if not indicator_phrases and selection.profile != "balanced":
+            defaults += ("indicators:profile:" + selection.profile,)
         needs_risk = _PRICE_SCENARIO.search(positive) is not None
         if (needs_risk and not any(spec.kind == "atr" for spec in indicators)
                 and "indicator:atr" not in excluded_indicators):

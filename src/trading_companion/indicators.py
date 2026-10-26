@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal, localcontext
 from math import isfinite
 from statistics import mean, pstdev
 from typing import Literal
@@ -119,6 +120,23 @@ class VolumePoint:
     previous_volume_ma: float | None
     relative_volume: float | None
     relative_volume_status: RelativeVolumeStatus
+
+
+@dataclass(frozen=True)
+class AdxValue:
+    """Wilder ADX and directional indices aligned with one input record."""
+
+    value: float | None
+    plus_di: float | None
+    minus_di: float | None
+
+
+@dataclass(frozen=True)
+class VwmaValue:
+    """Volume-weighted close; a complete zero-volume window is undefined."""
+
+    value: float | None
+    status: RelativeVolumeStatus
 
 
 def sma_close(bars: Sequence[DailyBar], window: int) -> list[float | None]:
@@ -480,3 +498,95 @@ def volume_activity_points(bars: Sequence[DailyBar], window: int = 20) -> list[V
                     value.relative_volume_status)
         for bar, value in zip(bars, volume_activity(bars, window))
     ]
+
+
+def adx(bars: Sequence[DailyBar], window: int = 14) -> list[AdxValue]:
+    """Return Wilder ADX, +DI and -DI using complete change windows.
+
+    The first record has no previous OHLC. DI requires n changes (n + 1
+    records); ADX seeds from n available DX values (2n records). A zero
+    true-range baseline yields zero directional indices and DX, so a
+    completely flat market has ADX zero rather than a fabricated direction.
+    """
+    _validate_window(window)
+    _validate_bars(bars)
+    if not bars:
+        return []
+    true_ranges, positive, negative = [], [], []
+    for previous, current in zip(bars, bars[1:]):
+        upward = current.high_price - previous.high_price
+        downward = previous.low_price - current.low_price
+        true_ranges.append(max(current.high_price - current.low_price,
+                               abs(current.high_price - previous.close_price),
+                               abs(current.low_price - previous.close_price)))
+        positive.append(upward if upward > 0 and upward > downward else 0.0)
+        negative.append(downward if downward > 0 and downward > upward else 0.0)
+    ranges = _wilder_values(true_ranges, window)
+    up_values = _wilder_values(positive, window)
+    down_values = _wilder_values(negative, window)
+    directional = []
+    dx_values = []
+    for true_range, up, down in zip(ranges, up_values, down_values):
+        if true_range is None:
+            directional.append((None, None))
+            continue
+        plus_di = 100 * (up / true_range) if true_range else 0.0
+        minus_di = 100 * (down / true_range) if true_range else 0.0
+        total = plus_di + minus_di
+        dx = 100 * (abs(plus_di - minus_di) / total) if total else 0.0
+        if not all(isfinite(value) for value in (plus_di, minus_di, dx)):
+            raise ValueError("ADX calculation must remain finite")
+        directional.append((plus_di, minus_di))
+        dx_values.append(dx)
+    smoothed_dx = _wilder_values(dx_values, window)
+    # The first valid DX is at source index n, after the first n changes.
+    adx_values = [None] * min(window, len(bars)) + smoothed_dx
+    di_values = [(None, None), *directional]
+    return [AdxValue(value, plus_di, minus_di)
+            for value, (plus_di, minus_di) in zip(adx_values, di_values)]
+
+
+def obv(bars: Sequence[DailyBar]) -> list[int]:
+    """Accumulate signed share counts from a zero first-record snapshot anchor."""
+    _validate_bars(bars)
+    values = []
+    current = 0
+    previous_close = None
+    for bar in bars:
+        if previous_close is not None:
+            if bar.close_price > previous_close:
+                current += bar.volume_shares
+            elif bar.close_price < previous_close:
+                current -= bar.volume_shares
+        values.append(current)
+        previous_close = bar.close_price
+    return values
+
+
+def vwma(bars: Sequence[DailyBar], window: int = 20) -> list[VwmaValue]:
+    """Return full-window volume-weighted closes without float volume conversion.
+
+    Decimal weighting avoids overflowing price-times-volume products and
+    preserves small weights whose large prices can still matter to the mean.
+    """
+    _validate_window(window)
+    _validate_bars(bars)
+    results = []
+    for index in range(len(bars)):
+        if index + 1 < window:
+            results.append(VwmaValue(None, "insufficient_history"))
+            continue
+        sample = bars[index + 1 - window:index + 1]
+        total = sum(bar.volume_shares for bar in sample)
+        if not total:
+            results.append(VwmaValue(None, "undefined"))
+            continue
+        with localcontext() as context:
+            context.prec = 40
+            weighted = sum((Decimal(str(bar.close_price)) * bar.volume_shares
+                            for bar in sample if bar.volume_shares), Decimal(0))
+            average = float(weighted / total)
+        if not isfinite(average):
+            raise ValueError("VWMA calculation must remain finite")
+        results.append(VwmaValue(average, "available"))
+    return results

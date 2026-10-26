@@ -62,6 +62,29 @@ describe("paragraph-level research evidence", () => {
     expect(screen.getByText("指标5：5亿元")).toBeVisible();
   });
 
+  it("keeps weekly and derived signal evidence behind the cited paragraph", () => {
+    const { turn, company } = fixture();
+    company.paragraphs = ["日线与周线方向有分歧，先观察价格能否获得量能支持。"];
+    company.paragraph_evidence = [["weekly", "support", "alignment"]];
+    company.evidence = [
+      { ...company.evidence[2], id: "weekly", label: "周线方向", display: "已完成周线偏弱。", date: "2026-09-18", temporal_scope: "completed_week_derived" },
+      { ...company.evidence[2], id: "support", label: "支撑候选", display: "历史局部低点聚集区。", temporal_scope: "historical_daily" },
+      { ...company.evidence[2], id: "alignment", label: "日周方向", display: "日线偏强，与已完成周线方向不同。", temporal_scope: "cross_timeframe_derived" },
+    ];
+    expect(parseCompanyAnswer(company)).not.toBeNull();
+    render(<ResponseContent turn={turn} />);
+    expect(screen.getByText(company.paragraphs[0])).toBeVisible();
+    expect(screen.getByText(/已完成周线偏弱/)).not.toBeVisible();
+    fireEvent.click(screen.getByText("依据 3"));
+    expect(screen.getAllByText("平安银行 · 技术分析")).toHaveLength(3);
+    expect(screen.getByText("周线方向：已完成周线偏弱。")).toBeVisible();
+    expect(screen.getByText("支撑候选：历史局部低点聚集区。")).toBeVisible();
+    expect(screen.getByText(/周线截至 2026-09-18/)).toBeVisible();
+    expect(screen.getByText(/日周核对 2026-09-25/)).toBeVisible();
+    expect(screen.getByText(/交易日 2026-09-25/)).toBeVisible();
+    expect(screen.queryByText("参数与执行记录")).not.toBeInTheDocument();
+  });
+
   it.each([undefined, []])("allows missing or empty mappings in older and fallback responses: %j", (mapping) => {
     const { turn, company } = fixture();
     if (mapping === undefined) delete (company as Partial<typeof company>).paragraph_evidence;

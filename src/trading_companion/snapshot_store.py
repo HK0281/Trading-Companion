@@ -130,6 +130,16 @@ def _public_data(bundle):
                 raise SnapshotStoreError("invalid_snapshot_bundle")
         payload = company.to_dict()
         payload["technical"] = technical.to_dict() if technical is not None else None
+        if company.technical_insights is not None:
+            from trading_companion.technical_insights import TechnicalInsights, build_technical_insights
+            insights = company.technical_insights
+            if (type(insights) is not TechnicalInsights or technical is None
+                    or insights.request_id != technical.request.request_id
+                    or insights.instrument_id != company.instrument_id):
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+            if insights != build_technical_insights(technical, expected_request=technical.request):
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+            payload["technical_insights"] = insights.to_dict()
         companies.append(payload)
     # ProductPlan.to_dict intentionally omits user_question, model_response and internal pending context.
     return {"version": VERSION, "plan": bundle.plan.to_dict(), "companies": companies,

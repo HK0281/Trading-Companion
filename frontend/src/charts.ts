@@ -23,11 +23,14 @@ const identifier = (value: unknown): value is string => typeof value === "string
 const algorithms: Record<string, string> = {
   sma: "sma-close-v1", ema: "ema-sma-seed-v1", macd: "macd-sma-seed-double-histogram-v1",
   rsi: "rsi-wilder-flat50-v1", boll: "boll-population-ddof0-v1", atr: "atr-wilder-prior-close-v1", volume: "volume-prior-records-ratio-v1",
+  adx: "adx-wilder-double-smoothed-v1", obv: "obv-snapshot-zero-seed-v1", vwma: "vwma-close-volume-weighted-v1",
 };
 const definitions: Record<string, Record<string, ChartUnit>> = {
   sma: { value: "CNY/share" }, ema: { value: "CNY/share" }, macd: { dif: "CNY/share", dea: "CNY/share", histogram: "CNY/share" },
   rsi: { value: "index_points" }, boll: { middle: "CNY/share", upper: "CNY/share", lower: "CNY/share" },
   atr: { value: "CNY/share" }, volume: { volume_shares: "shares", volume_ma: "shares", previous_volume_ma: "shares", relative_volume: "multiple" },
+  adx: { value: "index_points", plus_di: "index_points", minus_di: "index_points" },
+  obv: { value: "shares" }, vwma: { value: "CNY/share" },
 };
 
 /** Date.UTC alone silently normalizes impossible calendar dates. Compare every part. */
@@ -52,18 +55,19 @@ function specification(value: Record<string, unknown>): value is Record<string, 
   const kind = value.kind;
   if (typeof kind !== "string" || !Object.hasOwn(algorithms, kind) || value.algorithm_version !== algorithms[kind]
     || !object(value.parameters) || typeof value.indicator_id !== "string" || value.indicator_id.length > 180) return false;
-  const names = kind === "macd" ? ["fast", "slow", "signal"] : kind === "boll" ? ["window", "stddev_multiplier"] : ["window"];
+  const names = kind === "obv" ? [] : kind === "macd" ? ["fast", "slow", "signal"] : kind === "boll" ? ["window", "stddev_multiplier"] : ["window"];
   const params = value.parameters;
   if (Object.keys(params).length !== names.length || !names.every((name) => Object.hasOwn(params, name))) return false;
   if (!names.every((name) => {
     const item = params[name];
     if (name === "stddev_multiplier") return finite(item) && item > 0 && item <= 4;
-    return finite(item) && Number.isInteger(item) && item >= (["sma", "ema", "volume"].includes(kind) ? 1 : 2)
+    return finite(item) && Number.isInteger(item) && item >= (["sma", "ema", "volume", "vwma"].includes(kind) ? 1 : 2)
       && item <= (name === "signal" ? 60 : 120);
   }) || kind === "macd" && Number(params.fast) >= Number(params.slow)) return false;
   const prefix = `${kind}(`;
   if (!value.indicator_id.startsWith(prefix) || !value.indicator_id.endsWith(")")) return false;
-  const tokens = value.indicator_id.slice(prefix.length, -1).split(",");
+  const contents = value.indicator_id.slice(prefix.length, -1);
+  const tokens = contents ? contents.split(",") : [];
   if (tokens.length !== names.length || !tokens.every((token, index) => {
     const [name, text, extra] = token.split("=");
     return name === names[index] && extra === undefined && /^(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/.test(text ?? "")
@@ -115,9 +119,12 @@ export function parseResearchChart(value: unknown, parameters: ChartParameters |
       const number = series.values[index]; const state = series.statuses[index];
       if (!["available", "insufficient_history", "undefined", "calculation_error"].includes(state)
         || (state === "available" ? !finite(number) : number !== null)) return null;
-      if (number !== null && (series.kind === "rsi" && (number < 0 || number > 100)
+      if (number !== null && ((series.kind === "rsi" || series.kind === "adx") && (number < 0 || number > 100)
         || (series.kind === "atr" || series.kind === "volume") && number < 0
+        || series.kind === "vwma" && number <= 0
+        || series.kind === "obv" && !Number.isSafeInteger(number)
         || series.field === "volume_shares" && !Number.isInteger(number))) return null;
+      if (["adx", "obv"].includes(series.kind) && state === "undefined") return null;
     }
   }
   for (const series of value.series as ChartSeries[]) {

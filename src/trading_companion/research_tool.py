@@ -33,6 +33,9 @@ RELATION_RULE_CATALOG = {
     "atr_change": "Current ATR vs previous ATR; numeric volatility scale only, no price direction.",
     "relative_volume_position": "Current volume / strictly prior n-record mean compared with 1.",
     "current_vs_prior_mean": "Current share volume vs strictly prior n-record mean, including zero baseline.",
+    "strength_zone": "ADX below 25 or at/above 25; reference strength, not direction or a probability.",
+    "di_position": "+DI versus -DI: above/below/equal; direction reference distinct from strength.",
+    "obv_change": "Current OBV vs previous; snapshot starts at zero, never a currency fund-flow amount.",
 }
 SEED_METHOD_CATALOG = {f"c{index}": method for index, method in enumerate((
     "rolling_close_arithmetic_mean", "first_n_closes_sma", "fast_ema_minus_slow_ema",
@@ -41,6 +44,9 @@ SEED_METHOD_CATALOG = {f"c{index}": method for index, method in enumerate((
     "first_n_true_ranges_mean_wilder", "observed_share_count",
     "current_inclusive_window_mean", "strictly_prior_window_mean",
     "current_divided_by_prior_window_mean",
+    "first_n_dx_mean_wilder", "wilder_positive_dm_divided_by_wilder_tr",
+    "wilder_negative_dm_divided_by_wilder_tr", "cumulative_signed_volume_first_record_zero",
+    "rolling_close_weighted_by_exact_share_volume",
 ))}
 RESEARCH_TOOL_DEFINITION = ToolDefinition(TOOL_NAME,
     "Read-only daily research. No trading. research-rules-v1 uses full precision and adjacent records: "
@@ -52,7 +58,7 @@ RESEARCH_TOOL_DEFINITION = ToolDefinition(TOOL_NAME,
         "as_of_date": {"type": "string", "description": "Explicit completed daily-bar cutoff."},
         "source": {"type": "string", "enum": ["tencent", "akshare_eastmoney"]},
         "indicators": {"type": "array", "items": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["sma", "ema", "macd", "rsi", "boll", "atr", "volume"]},
+            "kind": {"type": "string", "enum": ["sma", "ema", "macd", "rsi", "boll", "atr", "volume", "adx", "obv", "vwma"]},
             "window": {"type": "integer"}, "fast": {"type": "integer"},
             "slow": {"type": "integer"}, "signal": {"type": "integer"},
             "stddev_multiplier": {"type": "number"},
@@ -168,6 +174,17 @@ def _project(result, *, development):
     local_facts = tuple((aliases[fact.fact_id], fact) for fact in result.facts)
     current = result.latest_trade_date
     previous = result.bars[-2].trade_date if len(result.bars) > 1 else None
+    kinds = {spec.kind for spec in result.request.indicators}
+    # Field-level exceptions are local to this result; the raw bar volume is always present.
+    units = {"default": "CNY/share", "volume_shares": "shares"}
+    if "rsi" in kinds:
+        units["rsi.value"] = "index_points"
+    if "volume" in kinds:
+        units.update(volume_ma="shares", previous_volume_ma="shares", relative_volume="multiple")
+    if "adx" in kinds:
+        units.update({f"adx.{field}": "index_points" for field in ("value", "plus_di", "minus_di")})
+    if "obv" in kinds:
+        units["obv.value"] = "shares"
     indicators = [[identifiers[spec.indicator_id], spec.kind, spec.parameters, ALGORITHM_VERSIONS[spec.kind]]
                   for spec in result.request.indicators]
     latest, components, states = [], [], {}
@@ -220,12 +237,11 @@ def _project(result, *, development):
         "calculation_start": result.bars[0].trade_date.isoformat() if result.bars else None,
         "bars_used": len(result.bars),
         "warnings": [_WARNINGS.get(warning, warning) for warning in result.warnings],
-        "alias_scope": "request_id-local; ToolExecution.fact_aliases resolves full IDs/dependencies",
-        "view_scope": "all requested latest fields/relations; current/previous evidence; full series local",
-        "rule_catalog": "research-rules-v1 in tool declaration; keyed by relation field",
-        "seed_catalog": "research-seeds-v1 in tool declaration",
-        "units": {"default": "CNY/share", "rsi.value": "index_points", "volume_shares": "shares",
-                  "volume_ma": "shares", "previous_volume_ma": "shares", "relative_volume": "multiple"},
+        "alias_scope": "request_id-local; fact_aliases resolve IDs/dependencies",
+        "view_scope": "all latest fields/relations; current/prior facts; full series local",
+        "rule_catalog": "research-rules-v1; relation.field",
+        "seed_catalog": "research-seeds-v1",
+        "units": units,
         "tables": {
             "indicators": {"columns": ["id", "kind", "parameters", "algorithm"], "rows": indicators},
             "states": {"columns": ["id", "status", "reason"],

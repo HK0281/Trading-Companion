@@ -19,12 +19,15 @@ PARAMETER_DEFAULTS = {
     "macd": {"fast": 12, "slow": 26, "signal": 9},
     "rsi": {"window": 14}, "boll": {"window": 20, "stddev_multiplier": 2.0},
     "atr": {"window": 14}, "volume": {"window": 20},
+    "adx": {"window": 14}, "obv": {}, "vwma": {"window": 20},
 }
 ALGORITHM_VERSIONS = {
     "sma": "sma-close-v1", "ema": "ema-sma-seed-v1",
     "macd": "macd-sma-seed-double-histogram-v1", "rsi": "rsi-wilder-flat50-v1",
     "boll": "boll-population-ddof0-v1", "atr": "atr-wilder-prior-close-v1",
     "volume": "volume-prior-records-ratio-v1",
+    "adx": "adx-wilder-double-smoothed-v1",
+    "obv": "obv-snapshot-zero-seed-v1", "vwma": "vwma-close-volume-weighted-v1",
 }
 
 
@@ -49,7 +52,7 @@ class IndicatorSpec:
                     raise InvalidRequestError("BOLL multiplier must be finite and in (0, 4]")
                 normalized[name] = float(value)
             else:
-                lower = 1 if kind in ("sma", "ema", "volume") else 2
+                lower = 1 if kind in ("sma", "ema", "volume", "vwma") else 2
                 upper = 60 if name == "signal" else 120
                 if isinstance(value, bool) or not isinstance(value, int) or not lower <= value <= upper:
                     raise InvalidRequestError("Indicator period is outside the product range")

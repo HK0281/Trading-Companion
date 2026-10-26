@@ -7,10 +7,11 @@ import json
 from trading_companion.company_research_contracts import ResearchDataBatch, ResearchDataRequest, SHANGHAI
 from trading_companion.multi_analysis import analyze_indicators
 from trading_companion.multi_contracts import DEFAULT_INDICATORS, MultiIndicatorRequest, MultiIndicatorResult
-from trading_companion.research_report import build_research_report, UNITS
+from trading_companion.research_report import build_research_report, FIELD_LABELS, UNITS
 from trading_companion.research_synthesis import build_research_synthesis
 from trading_companion.research_tool import _build_source
 from trading_companion.risk_research import build_risk_scenario
+from trading_companion.technical_insights import TechnicalInsights, build_technical_insights
 from trading_companion.turn_control import checkpoint, reserve_analysis
 
 
@@ -31,7 +32,7 @@ def evidence_display(value, unit):
     if type(value) in (int, float):
         if unit == "cny":
             return f"{format(value / 100_000_000, '.2f').rstrip('0').rstrip('.')}亿元" if abs(value) >= 100_000_000 else f"{_number(value)}元"
-        return _number(value) + {"percent": "%", **UNITS}.get(unit, unit)
+        return (str(value) if type(value) is int else _number(value)) + {"percent": "%", "count": "个", **UNITS}.get(unit, unit)
     return str(value)
 
 
@@ -100,6 +101,7 @@ class ProductCompany:
     coverage: tuple[dict, ...]
     technical: MultiIndicatorResult | None = None
     risk: object | None = None
+    technical_insights: TechnicalInsights | None = None
 
     def to_dict(self):
         return {"instrument_id": self.instrument_id, "name": self.name,
@@ -136,7 +138,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
     for security in plan.securities:
         checkpoint()
-        evidence, coverage, result, risk = [], [], None, None
+        evidence, coverage, result, risk, insights = [], [], None, None, None
         if kinds:
             # Current documents and completed daily bars have different cutoffs.
             document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI)
@@ -175,6 +177,9 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 "code": report.code, "message": result.message, "source": request.source,
                 "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None})
             if usable:
+                insights = build_technical_insights(result, expected_request=request)
+                if insights.status in ("complete", "limited"):
+                    evidence.extend(_insight_evidence(insights, result))
                 # Numeric fields and deterministic relations retain their original evidence dependencies.
                 for item in report.fields:
                     if item.status == "available" and item.fact_id:
@@ -213,7 +218,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=result.data_authenticity,
                         temporal_scope="historical_long_scenario", dependencies=risk.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
-        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk))
+        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:
         from trading_companion.comparison_research import build_candidate_comparison
@@ -240,6 +245,38 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     return bundle
 
 
+def _insight_evidence(insights, result):
+    """Publish only derived conclusions; their complete input graph stays in the archive."""
+    labels = {"divergence": "背离规则候选", "levels": "历史价格区域", "weekly": "周线观察", "alignment": "日周方向核对"}
+    scopes = {"daily": "daily_signal_derived", "weekly": "completed_week_derived", "cross_timeframe": "cross_timeframe_derived"}
+    facts = {item.fact_id: item for item in insights.facts}
+    output = []
+    for item in insights.observations:
+        numeric = type(item.value) in (int, float)
+        field_label = (FIELD_LABELS.get(item.field, "收盘价" if item.field == "close_price" else item.field)
+                       if item.timeframe == "weekly" and item.field not in ("value", "observation") else "")
+        label = labels[item.category] + (" · " + item.indicator_id if item.indicator_id != "technical_insights" else "")
+        if field_label:
+            label += " · " + field_label
+        identifier = (item.dependencies[0] if item.status == "available" else
+                      f"{result.request.request_id}|technical-missing|{item.key}")
+        if item.status == "available":
+            fact = facts[identifier]
+            if fact.value != item.value or fact.unit != item.unit:
+                raise ValueError("Derived technical evidence does not match its numeric fact")
+        display = item.text + ((" " + field_label + "：" if field_label else " ")
+                               + evidence_display(item.value, item.unit) if numeric else "")
+        output.append(ProductEvidence(identifier, item.instrument_id, "technical",
+            label,
+            display, result.source, item.trade_date.isoformat(), content_kind="fact" if numeric else "relation",
+            publication_precision="date", data_authenticity=result.data_authenticity,
+            temporal_scope=scopes[item.timeframe],
+            dependencies=facts[identifier].dependencies if item.status == "available" else (),
+            retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None,
+            raw_value=item.value, unit=item.unit if numeric else None))
+    return output
+
+
 def model_research_context(bundle, *, limit=14500):
     """Keep domain notes, not complete time series, in a bounded synthesis context."""
     records = []
@@ -248,6 +285,8 @@ def model_research_context(bundle, *, limit=14500):
             "dependencies", "url", "published_at", "retrieved_at", "raw_value")
                   and value is not None}
         record.update(id=f"E{index}", display=item.display[:480])
+        if item.temporal_scope == "daily_signal_derived" and type(item.raw_value) is str:
+            record["signal_state"] = item.raw_value
         records.append(record)
     payload = {"securities": [{"instrument_id": c.instrument_id, "name": c.name,
                                "coverage": [{key: item[key] for key in ("kind", "status", "code") if key in item}
@@ -259,9 +298,26 @@ def model_research_context(bundle, *, limit=14500):
     # Reserve opportunities across both companies and domains; scenario data must survive later trimming.
     selected = []
     domains = ("risk", "technical", "financial", "news", "announcements", "profile")
+
+    def priority(record):
+        scope = record.get("temporal_scope")
+        focus = next((item.rsplit(":", 1)[-1] for item in bundle.plan.applied_defaults
+                      if item.startswith("indicators:profile:")), "balanced")
+        label = record.get("label", "")
+        if (focus == "volume_price" and any(term in label for term in ("OBV", "VWMA", "量能"))
+                or focus == "trend_strength" and "ADX" in label):
+            return 0
+        if record.get("signal_state") in ("bullish_candidate", "bearish_candidate"):
+            return 0
+        if scope == "cross_timeframe_derived":
+            return 1
+        if scope == "daily_signal_derived" and record["content_kind"] == "fact":
+            return 2
+        return 3 if record["content_kind"] in ("relation", "scenario") else 4
+
     queues = {(company.instrument_id, kind): sorted(
         [r for r in records if r["instrument_id"] == company.instrument_id and r["kind"] == kind],
-        key=lambda r: 0 if r["content_kind"] in ("relation", "scenario") else 1)
+        key=priority)
         for company in bundle.companies for kind in domains}
     while any(queues.values()):
         for kind in domains:

@@ -39,7 +39,7 @@ GENERAL_KNOWLEDGE_INSTRUCTION = (
 )
 
 _TOPIC = re.compile(
-    r"(?<![A-Za-z])(?:P/?E|P/?B|EPS|ROE|ROA|PEG|DCF|SMA|EMA|MACD|RSI|ATR|BOLL|KDJ|OBV)(?![A-Za-z])|"
+    r"(?<![A-Za-z])(?:P/?E|P/?B|EPS|ROE|ROA|PEG|DCF|SMA|EMA|MACD|RSI|ATR|BOLL|KDJ|OBV|ADX|VWMA)(?![A-Za-z])|"
     r"T\s*\+\s*[01]|A\s*股|股票|证券|股市|市场|投资|交易|估值|市盈率|市净率|市销率|市现率|"
     r"每股收益|净资产|净利润|财报|财务|报表|资产负债|利润表|现金流|营业收入|营收|毛利|净利|"
     r"财务指标|基本面|公告|新闻|研报|前复权|后复权|复权|除权|除息|分红|股息|配股|增发|回购|股本|股价|市值|"

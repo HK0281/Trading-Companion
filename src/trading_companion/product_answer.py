@@ -24,8 +24,12 @@ MAX_RAW_CHARACTERS = 14000
 PRODUCT_ANSWER_INSTRUCTION = (
     'Answer the original A-share research question in clear natural Chinese. Start with the direct '
     'answer; then discuss the relevant business, financial, technical, event or risk evidence, '
-    'including contrary evidence and conditional scenarios where useful. Do not dump an indicator '
-    'inventory. Context may have incomplete domains: say what is missing without discarding the '
+    'including contrary evidence and conditional scenarios where useful. Do not dump an indicator inventory. '
+    'Technical signal records are bounded rule candidates, not proven reversals or validated breakouts. '
+    'Distinguish ADX strength from DI direction, OBV share accumulation from money flow, and daily '
+    'observations from completed-week observations. Explicitly discuss daily/weekly conflict when supplied. '
+    'Only use supplied support/resistance candidates; do not invent or treat them as executable targets. '
+    'Context may have incomplete domains: say what is missing without discarding the '
     'available domains. Explain what observations support a judgment and what would change it. '
     'Usually write 2-4 concise paragraphs of about 100-300 Chinese characters each. Select a few '
     'decisive facts instead of repeating every figure or headline. State concrete missing data '
@@ -218,8 +222,9 @@ def _allowed_numbers(records, names, horizon):
         if record.get("kind") == "technical" and record.get("content_kind") in ("fact", "relation"):
             for value in (record.get("label"), display):
                 if type(value) is str:
-                    for window in re.finditer(r"(?:SMA|EMA|RSI|ATR|BOLL|VOLUME|量能)\(([1-9][0-9]{0,3})(?:,|\))", value):
-                        allowed.update((window[1] + "日", window[1] + "个交易日"))
+                    for window in re.finditer(r"(?:SMA|EMA|RSI|ATR|ADX|VWMA|BOLL|VOLUME|量能)\(([1-9][0-9]{0,3})(?:,|\))", value):
+                        allowed.update((window[1] + "周",) if record.get("temporal_scope") == "completed_week_derived"
+                                       else (window[1] + "日", window[1] + "个交易日"))
         # A typed listing-date display can be written naturally as 年/月/日 as well.
         if type(display) is str and _DATE.fullmatch(display):
             try:
@@ -233,7 +238,8 @@ def _allowed_numbers(records, names, horizon):
                     year, month, day = match.groups()
                     allowed.update((year, year + "年", month + "月", str(int(month)) + "月",
                                     day + "日", str(int(day)) + "日", month + "-" + day))
-        if record.get("content_kind") == "relation":
+        if record.get("content_kind") == "relation" and record.get("temporal_scope") not in (
+                "daily_signal_derived", "completed_week_derived", "cross_timeframe_derived"):
             allowed.update(("前一交易日", "上一交易日"))
         if record.get("kind") == "risk" and record.get("content_kind") == "scenario":
             for match in re.finditer(r"(?:波幅倍数|ATR倍数|风险距离倍数|收益风险比|收益风险倍率)\s*([0-9]+(?:\.[0-9]+)?)",

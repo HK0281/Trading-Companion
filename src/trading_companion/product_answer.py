@@ -29,6 +29,13 @@ PRODUCT_ANSWER_INSTRUCTION = (
     'Distinguish ADX strength from DI direction, OBV share accumulation from money flow, and daily '
     'observations from completed-week observations. Explicitly discuss daily/weekly conflict when supplied. '
     'Only use supplied support/resistance candidates; do not invent or treat them as executable targets. '
+    'Historical replay is a fixed SMA normalized exposure comparison with next-open timing, not a broker '
+    'order-fill backtest or a forecast. Quote supplied replay costs and results only; never claim optimized '
+    'parameters, realistic fill feasibility, annualized returns, Sharpe ratios or out-of-sample performance. '
+    'For replay questions focus on the supplied replay interval, costs and benchmark; latest technical '
+    'observations are secondary. Cite the method record when naming the SMA period and cite each metric '
+    'again in every paragraph that repeats its number. Use the supplied leading/lagging magnitude record '
+    'for an unsigned comparison; do not strip a negative sign from a signed return or difference. '
     'Context may have incomplete domains: say what is missing without discarding the '
     'available domains. Explain what observations support a judgment and what would change it. '
     'Usually write 2-4 concise paragraphs of about 100-300 Chinese characters each. Select a few '
@@ -81,7 +88,7 @@ _HTML = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>|<!--|<!DOCTYPE", re.I)
 _LINK = re.compile(r"[a-z][a-z0-9+.-]{1,20}://|(?:https?|javascript|data|file|vbscript)\s*:|www\.|"
                    r"[A-Za-z0-9.-]+\.(?:com|cn|net|org|io|gov|edu)(?:/|\b)|\[[^\]]+\]\s*\([^)]*\)", re.I)
 _NUMERALS = r"零〇一二两三四五六七八九十百千万亿"
-_UNIT = r"亿元|万元|元/股|元|亿股|万股|股|%|倍|点|个?交易日|自然日|天|日|周|个?月|年|成"
+_UNIT = r"亿元|万元|元/股|元|亿股|万股|股|%|倍|个百分点|百分点|点|个?交易日|自然日|天|日|周|个?月|年|成"
 _NUMBERS = re.compile(
     r"(?:前一交易日|上一交易日|[0-9]{6}\.(?:SH|SZ|BJ)(?![A-Za-z0-9])|"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])|"
@@ -239,7 +246,7 @@ def _allowed_numbers(records, names, horizon):
                     allowed.update((year, year + "年", month + "月", str(int(month)) + "月",
                                     day + "日", str(int(day)) + "日", month + "-" + day))
         if record.get("content_kind") == "relation" and record.get("temporal_scope") not in (
-                "daily_signal_derived", "completed_week_derived", "cross_timeframe_derived"):
+                "daily_signal_derived", "completed_week_derived", "cross_timeframe_derived", "historical_exposure_replay"):
             allowed.update(("前一交易日", "上一交易日"))
         if record.get("kind") == "risk" and record.get("content_kind") == "scenario":
             for match in re.finditer(r"(?:波幅倍数|ATR倍数|风险距离倍数|收益风险比|收益风险倍率)\s*([0-9]+(?:\.[0-9]+)?)",

@@ -42,6 +42,7 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 - [Normal mode and Dev Mode (Chinese)](docs/dev-mode-design.md): normal-by-default Web startup, a separate fixed offline backend and safe in-page switching without shared sessions.
 - [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
 - [Technical analysis, signals and timeframes (Chinese)](docs/technical-analysis-design.md): ADX/OBV/VWMA conventions, complementary indicator profiles, confirmed-pivot candidates, completed weekly bars and traceable dependencies.
+- [Historical replay and archive inspection (Chinese)](docs/historical-replay-design.md): a fixed SMA next-open exposure comparison, same-period benchmark, cost/drawdown metrics and offline archive commands.
 
 ## Start the product
 
@@ -128,6 +129,7 @@ The original bounded daily-research MVP, the 2026-10-25 company-research extensi
 - Application-owned complementary indicator profiles for momentum, volume/price, trend strength and structure/volatility questions when explicit indicator conditions are absent. Explicit parameters and exclusions take precedence; this is rule-based selection rather than a trained market-regime model.
 - Confirmed-pivot RSI/MACD divergence and clustered support/resistance candidates, plus completed-calendar-week OHLCV aggregation, same-parameter weekly indicators and bounded daily/weekly direction checks. Missing history remains missing; these observations are not validated reversal or return predictions.
 - Derived technical facts with raw-data dependencies, bounded evidence sent to the answer model, optional dependency archival and separate daily/weekly source dates in the interface.
+- A fixed SMA historical exposure replay in company research, with next-open timing, explicit turnover cost, same-period buy-and-hold comparison and drawdown. Full paths can be archived and inspected offline; this does not model broker order fills or optimize a strategy.
 
 - Validated daily OHLCV records and local CSV loading.
 - A Tencent adapter and an optional AKShare/Eastmoney adapter for historical, unadjusted daily bars.

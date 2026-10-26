@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 import json
+import re
 
 from trading_companion.company_research_contracts import ResearchDataBatch, ResearchDataRequest, SHANGHAI
 from trading_companion.multi_analysis import analyze_indicators
@@ -102,6 +103,7 @@ class ProductCompany:
     technical: MultiIndicatorResult | None = None
     risk: object | None = None
     technical_insights: TechnicalInsights | None = None
+    historical_replay: object | None = None
 
     def to_dict(self):
         return {"instrument_id": self.instrument_id, "name": self.name,
@@ -138,7 +140,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
     for security in plan.securities:
         checkpoint()
-        evidence, coverage, result, risk, insights = [], [], None, None, None
+        evidence, coverage, result, risk, insights, replay = [], [], None, None, None, None
         if kinds:
             # Current documents and completed daily bars have different cutoffs.
             document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI)
@@ -180,6 +182,19 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 insights = build_technical_insights(result, expected_request=request)
                 if insights.status in ("complete", "limited"):
                     evidence.extend(_insight_evidence(insights, result))
+                if re.search(r"回测|历史回放|策略回放", plan.user_question):
+                    from trading_companion.historical_replay import replay_config_from_question, build_historical_replay
+                    try:
+                        replay_config = replay_config_from_question(plan.user_question, plan.indicators,
+                            indicators_explicit=plan.indicators_explicit)
+                        replay = build_historical_replay(result, expected_request=request, config=replay_config)
+                        evidence.extend(_replay_evidence(replay, result))
+                    except ValueError:
+                        evidence.append(ProductEvidence(f"{request.request_id}|replay:unsupported", security.instrument_id,
+                            "technical", "回放范围", "当前回放支持单个SMA的多头或现金敞口比较；成本需使用明确百分比或基点。本次条件未执行策略回放。",
+                            request.source, plan.end_date.isoformat(), content_kind="relation",
+                            data_authenticity=result.data_authenticity, temporal_scope="historical_exposure_replay",
+                            retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
                 # Numeric fields and deterministic relations retain their original evidence dependencies.
                 for item in report.fields:
                     if item.status == "available" and item.fact_id:
@@ -218,7 +233,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=result.data_authenticity,
                         temporal_scope="historical_long_scenario", dependencies=risk.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
-        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights))
+        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:
         from trading_companion.comparison_research import build_candidate_comparison
@@ -243,6 +258,42 @@ def collect_product_research(plan, *, data_service, now, development_source=None
         bundle = ProductResearchBundle(plan, tuple(replace(company, evidence=company.evidence + tuple(additions[company.instrument_id]))
                                                     for company in companies))
     return bundle
+
+
+def _replay_evidence(replay, result):
+    """Publish bounded replay summaries, keeping the full path outside model context."""
+    common = dict(instrument_id=result.request.instrument_id, kind="technical", source=result.source,
+                  date=result.latest_trade_date.isoformat(), data_authenticity=result.data_authenticity,
+                  temporal_scope="historical_exposure_replay",
+                  retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None)
+    prefix = result.request.request_id + "|replay:"
+    if replay.status != "available":
+        return [ProductEvidence(id=prefix + "availability", label="历史回放范围",
+            display="当前快照不足以形成预热之后的可比较历史回放区间。", content_kind="relation", **common)]
+    output = [ProductEvidence(id=prefix + "method", label=f"SMA({replay.config.window})历史回放方法",
+        display=f"回放区间{replay.start_date}至{replay.end_date}；前一条收盘价高于SMA({replay.config.window})时，"
+                "下一条开盘切为多头敞口，否则为空仓；与同区间持有比较，末日开盘结束。"
+                "只是标准化敞口收益回放，未建模实际成交、涨跌停、手数和公司行动，未选择最优参数。",
+        content_kind="relation", **common)]
+    metrics = (("total_return_percent", "历史回放净收益", "percent"),
+               ("benchmark_return_percent", "同期持有净收益", "percent"),
+               ("excess_return_percentage_points", "相对持有差值", "percentage_points"),
+               ("max_drawdown_percent", "历史回放最大回撤", "percent"),
+               ("benchmark_max_drawdown_percent", "同期持有最大回撤", "percent"),
+               ("turnover_count", "敞口切换次数（含末日平仓）", "count"))
+    for field, label, unit in metrics:
+        value = getattr(replay, field)
+        output.append(ProductEvidence(id=prefix + field, label=label,
+            display=evidence_display(value, unit) if unit != "percentage_points" else _number(value) + "个百分点",
+            raw_value=value, unit=unit, **common))
+    gap = replay.excess_return_percentage_points
+    output.append(ProductEvidence(id=prefix + "relative_gap_magnitude",
+        label="领先同期持有幅度" if gap >= 0 else "落后同期持有幅度",
+        display=_number(abs(gap)) + "个百分点", raw_value=abs(gap), unit="percentage_points", **common))
+    cost = replay.config.cost_bps / 100
+    output.append(ProductEvidence(id=prefix + "cost", label="假设单次敞口切换成本",
+        display=evidence_display(cost, "percent"), raw_value=cost, unit="percent", **common))
+    return output
 
 
 def _insight_evidence(insights, result):
@@ -301,6 +352,8 @@ def model_research_context(bundle, *, limit=14500):
 
     def priority(record):
         scope = record.get("temporal_scope")
+        if scope == "historical_exposure_replay":
+            return -1
         focus = next((item.rsplit(":", 1)[-1] for item in bundle.plan.applied_defaults
                       if item.startswith("indicators:profile:")), "balanced")
         label = record.get("label", "")

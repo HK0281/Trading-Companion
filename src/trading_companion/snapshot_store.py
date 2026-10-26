@@ -140,6 +140,13 @@ def _public_data(bundle):
             if insights != build_technical_insights(technical, expected_request=technical.request):
                 raise SnapshotStoreError("invalid_snapshot_bundle")
             payload["technical_insights"] = insights.to_dict()
+        if company.historical_replay is not None:
+            from trading_companion.historical_replay import HistoricalReplay, build_historical_replay
+            replay = company.historical_replay
+            if (type(replay) is not HistoricalReplay or technical is None
+                    or replay != build_historical_replay(technical, expected_request=technical.request, config=replay.config)):
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+            payload["historical_replay"] = replay.to_dict()
         companies.append(payload)
     # ProductPlan.to_dict intentionally omits user_question, model_response and internal pending context.
     return {"version": VERSION, "plan": bundle.plan.to_dict(), "companies": companies,

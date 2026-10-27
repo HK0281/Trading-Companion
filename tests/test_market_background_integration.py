@@ -143,6 +143,12 @@ class MarketBackgroundIntegrationTests(unittest.TestCase):
         self.assertIn(result.status, ("completed", "limited"))
         self.assertEqual(len(source.snapshot_calls), 1)
         self.assertEqual(len(transport.calls), 1)
+        company = result.product_bundle.companies[0]
+        missing = next(item for item in company.coverage if item["kind"] == "market_context")
+        self.assertEqual(missing["status"], "unavailable")
+        self.assertIn("不能替代", missing["message"])
+        self.assertTrue(any(item["kind"] == "market_context" and item["status"] == "unavailable"
+                            for item in self.model.contexts[0]["securities"][0]["coverage"]))
         self.assertEqual(result.product_answer.status, "accepted")
         self.assertIsNone(result.product_bundle.companies[0].market_background)
         self.assertTrue({"profile", "financial"} <= {item.kind for item in result.product_bundle.evidence})

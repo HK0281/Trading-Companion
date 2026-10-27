@@ -141,8 +141,9 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     factory = source_factory or _build_source
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
     background_snapshot = None
-    if (market_background_source is not None and not plan.explicit_historical
-            and ("profile" in kinds or re.search(r"ST|上市|板块|交易规则|涨跌幅限制", plan.user_question, re.I))):
+    background_requested = (market_background_source is not None and not plan.explicit_historical
+        and ("profile" in kinds or re.search(r"ST|上市|板块|交易规则|涨跌幅限制", plan.user_question, re.I)))
+    if background_requested:
         try:
             background_snapshot = market_background_source.read_snapshot(directory=directory,
                 instrument_ids=tuple(security.instrument_id for security in plan.securities))
@@ -160,6 +161,14 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 evidence.extend(background_evidence)
             except Exception:
                 background = None
+        if background_requested:
+            available = background is not None and background.get("board") not in (None, "unknown")
+            coverage.append({"kind": "market_context", "status": "available" if available else "unavailable",
+                "code": "exchange_current_context_available" if available else "exchange_current_context_unavailable",
+                "message": "当前交易所背景已取得；历史状态仍按字段说明。" if available else
+                           "当前交易所板块和上市背景未取得；行业资料不能替代交易所板块。",
+                "source": "sse_szse", "retrieved_at": background_snapshot.retrieved_at.isoformat()
+                    if background_snapshot is not None else None})
         if kinds:
             # Current documents and completed daily bars have different cutoffs.
             document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI)

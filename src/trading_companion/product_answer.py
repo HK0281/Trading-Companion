@@ -30,6 +30,9 @@ PRODUCT_ANSWER_INSTRUCTION = (
     'Never backfill historical ST status from current membership or infer not-ST from unknown/absence. '
     'market_rule_explanation records describe dated conditional rules, not verified tradability or the '
     'actual IPO trading-session ordinal of a security. Preserve those unknowns when answering rule questions. '
+    'Distinguish an exchange board (main/STAR/ChiNext) from an industry sector. Industry labels cannot '
+    'establish the exchange board. If market_context coverage is unavailable, say the exchange background '
+    'was not obtained rather than answering an exchange-board question with only an industry name. '
     'Distinguish ADX strength from DI direction, OBV share accumulation from money flow, and daily '
     'observations from completed-week observations. Explicitly discuss daily/weekly conflict when supplied. '
     'Only use supplied support/resistance candidates; do not invent or treat them as executable targets. '
@@ -121,9 +124,10 @@ _OUTPUT_INJECTION = re.compile(
     r"忽略(?:所有|之前|上述|系统|先前|原有|以上|上面)|绕过(?:限制|校验|权限)|"
     r"system\s*prompt|developer\s*message|\b(?:DROP\s+TABLE|DELETE\s+FROM|INSERT\s+INTO)\b", re.I)
 _COVERAGE_LABELS = {"新闻": "news", "公告": "announcements", "财务": "financial", "公司背景": "profile",
+                    "交易所背景": "market_context",
                     "公司": "profile", "技术面": "technical", "历史行情": "technical", "风险情景": "risk"}
 _COVERAGE_ONLY = re.compile(
-    r"^(?:本轮)?(?P<domain>新闻|公告|财务|公司背景|公司|技术面|历史行情|风险情景)(?:资料|数据)?"
+    r"^(?:本轮)?(?P<domain>交易所背景|新闻|公告|财务|公司背景|公司|技术面|历史行情|风险情景)(?:资料|数据)?"
     r"(?:暂时|暂)?(?:无法获取|不可用|缺失|不足|尚未取得|未取得)"
     r"(?:[，,；;。](?:暂不能|无法|不能)(?:评价|判断|分析)(?:最新消息的影响|公告的影响|该部分的影响|这一维度|这部分情况))?[。.]?$"
 )

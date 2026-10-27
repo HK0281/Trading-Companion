@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import json
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
 
 from trading_companion.daily_bar import DailyBar
 from trading_companion.errors import DataSourceError, DataValidationError
@@ -13,6 +14,7 @@ from trading_companion.research_report import build_research_report
 
 
 SNAPSHOT_VERSION = "market-context-snapshot-v1"
+LIVE_SNAPSHOT_VERSION = "market-context-snapshot-v2"
 VERSION = "research-market-context-v1"
 VALIDATION_SCOPE = "reported_business_date_context_not_point_in_time"
 MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024
@@ -83,6 +85,23 @@ class SecurityState:
     published_at: datetime | None
     source: str
     reference: str
+    observed_at: datetime | None = None
+    st_reference: str | None = None
+
+
+@dataclass(frozen=True)
+class MarketSourceRecord:
+    """Publication time and observation time are distinct provenance claims."""
+
+    reference: str
+    source: str
+    source_url: str
+    as_of_date: date
+    retrieved_at: datetime
+    published_at: datetime | None
+    publication_precision: str
+    field_scope: tuple[str, ...]
+    coverage: str
 
 
 @dataclass(frozen=True)
@@ -109,6 +128,7 @@ class MarketContextSnapshot:
     is_fixture: bool
     security_states: tuple[SecurityState, ...]
     calendars: tuple[ExchangeCalendar, ...]
+    source_records: tuple[MarketSourceRecord, ...] = ()
 
     def __post_init__(self) -> None:
         _validate_snapshot(self)
@@ -127,7 +147,34 @@ def _validate_snapshot(snapshot: MarketContextSnapshot) -> None:
     _require(type(snapshot) is MarketContextSnapshot and _identifier(snapshot.snapshot_id)
              and _aware(snapshot.retrieved_at) and type(snapshot.is_fixture) is bool
              and type(snapshot.security_states) is tuple and len(snapshot.security_states) <= MAX_STATES
-             and type(snapshot.calendars) is tuple and len(snapshot.calendars) <= 3)
+             and type(snapshot.calendars) is tuple and len(snapshot.calendars) <= 3
+             and type(snapshot.source_records) is tuple and len(snapshot.source_records) <= 10)
+    references = set()
+    _require(not snapshot.source_records or not snapshot.is_fixture)
+    for source in snapshot.source_records:
+        _require(type(source) is MarketSourceRecord and _identifier(source.reference)
+                 and source.reference not in references and type(source.source) is str and source.source in {"sse", "szse", "bse"}
+                 and type(source.source_url) is str and len(source.source_url) <= 500
+                 and all(character.isprintable() and not character.isspace() for character in source.source_url)
+                 and type(source.as_of_date) is date and _aware(source.retrieved_at)
+                 and source.retrieved_at <= snapshot.retrieved_at
+                 and 0 <= (source.retrieved_at.astimezone(SHANGHAI).date() - source.as_of_date).days <= 7
+                 and source.publication_precision in {"unknown", "second", "day"}
+                 and type(source.field_scope) is tuple and 1 <= len(source.field_scope) <= 8
+                 and all(type(field) is str and field in {"board", "listing_date", "st_status", "calendar", "suspension_status"}
+                         for field in source.field_scope)
+                 and len(set(source.field_scope)) == len(source.field_scope)
+                 and _identifier(source.coverage))
+        parts = urlsplit(source.source_url)
+        _require(parts.scheme == "https" and parts.hostname in {
+            "sse": {"www.sse.com.cn", "query.sse.com.cn"},
+            "szse": {"www.szse.cn", "docs.static.szse.cn"}, "bse": {"www.bse.cn"},
+        }[source.source] and parts.username is None and parts.password is None
+                 and parts.port is None and not parts.fragment)
+        _require((source.published_at is None) == (source.publication_precision == "unknown")
+                 and (source.published_at is None or _aware(source.published_at)
+                      and source.published_at <= source.retrieved_at))
+        references.add(source.reference)
     by_instrument = {}
     for item in snapshot.security_states:
         _require(type(item) is SecurityState and type(item.instrument_id) is str
@@ -144,6 +191,21 @@ def _validate_snapshot(snapshot: MarketContextSnapshot) -> None:
             "SZ": {"szse_main", "chinext", "unknown"}, "BJ": {"bse", "unknown"},
         }[exchange])
         _provenance(item, snapshot, exchange)
+        _require(item.observed_at is None or _aware(item.observed_at)
+                 and item.observed_at <= snapshot.retrieved_at
+                 and item.reference in references
+                 and item.effective_from == item.effective_to
+                 and item.published_at is None)
+        if item.observed_at is not None:
+            record = next(record for record in snapshot.source_records if record.reference == item.reference)
+            _require(record.source == item.source and record.retrieved_at == item.observed_at
+                     and item.effective_from == record.as_of_date)
+        _require(item.st_reference is None or item.observed_at is not None
+                 and item.st_reference in references)
+        if item.st_reference is not None:
+            record = next(record for record in snapshot.source_records if record.reference == item.st_reference)
+            _require(record.source == item.source and "st_status" in record.field_scope
+                     and record.retrieved_at == item.observed_at)
         by_instrument.setdefault(item.instrument_id, []).append(item)
     for records in by_instrument.values():
         ordered = sorted(records, key=lambda item: item.effective_from)
@@ -197,19 +259,23 @@ def parse_market_context_bytes(raw: bytes) -> MarketContextSnapshot:
     try:
         _require(type(raw) is bytes and len(raw) <= MAX_SNAPSHOT_BYTES)
         payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_object, parse_constant=_constant)
-        _fields(payload, {"version", "snapshot_id", "retrieved_at", "is_fixture", "security_states", "calendars"})
-        _require(payload["version"] == SNAPSHOT_VERSION
-                 and type(payload["security_states"]) is list and len(payload["security_states"]) <= MAX_STATES
+        _require(type(payload) is dict and payload.get("version") in {SNAPSHOT_VERSION, LIVE_SNAPSHOT_VERSION})
+        live = payload["version"] == LIVE_SNAPSHOT_VERSION
+        _fields(payload, {"version", "snapshot_id", "retrieved_at", "is_fixture", "security_states", "calendars"}
+                | ({"source_records"} if live else set()))
+        _require(type(payload["security_states"]) is list and len(payload["security_states"]) <= MAX_STATES
                  and type(payload["calendars"]) is list and len(payload["calendars"]) <= 3)
         states = []
         for item in payload["security_states"]:
             _fields(item, {"instrument_id", "effective_from", "effective_to", "board", "listing_date",
-                           "st_status", "suspension_status", "published_at", "source", "reference"})
+                           "st_status", "suspension_status", "published_at", "source", "reference"}
+                    | ({"observed_at", "st_reference"} if live else set()))
             states.append(SecurityState(
                 item["instrument_id"], _date(item["effective_from"]), _date(item["effective_to"]),
                 item["board"], None if item["listing_date"] is None else _date(item["listing_date"]),
                 item["st_status"], item["suspension_status"], _optional_datetime(item["published_at"]),
-                item["source"], item["reference"],
+                item["source"], item["reference"], _optional_datetime(item["observed_at"]) if live else None,
+                item["st_reference"] if live else None,
             ))
         calendars = []
         for item in payload["calendars"]:
@@ -223,8 +289,19 @@ def parse_market_context_bytes(raw: bytes) -> MarketContextSnapshot:
                 item["exchange"], _date(item["coverage_start"]), _date(item["coverage_end"]),
                 _optional_datetime(item["published_at"]), item["source"], item["reference"], tuple(days),
             ))
+        sources = []
+        if live:
+            _require(type(payload["source_records"]) is list and len(payload["source_records"]) <= 10)
+            for item in payload["source_records"]:
+                _fields(item, {"reference", "source", "source_url", "as_of_date", "retrieved_at",
+                               "published_at", "publication_precision", "field_scope", "coverage"})
+                _require(type(item["field_scope"]) is list)
+                sources.append(MarketSourceRecord(item["reference"], item["source"], item["source_url"],
+                    _date(item["as_of_date"]), _datetime(item["retrieved_at"]),
+                    _optional_datetime(item["published_at"]), item["publication_precision"],
+                    tuple(item["field_scope"]), item["coverage"]))
         return MarketContextSnapshot(payload["snapshot_id"], _datetime(payload["retrieved_at"]),
-                                     payload["is_fixture"], tuple(states), tuple(calendars))
+                                     payload["is_fixture"], tuple(states), tuple(calendars), tuple(sources))
     except (AttributeError, TypeError, ValueError, KeyError, OverflowError, RecursionError):
         raise DataValidationError("Invalid market context snapshot") from None
 
@@ -234,7 +311,8 @@ def _unavailable(code: str) -> dict[str, object]:
 
 
 def _public(item, cutoff: datetime) -> bool:
-    return item.published_at is not None and item.published_at <= cutoff
+    return (item.published_at is not None and item.published_at <= cutoff
+            or isinstance(item, SecurityState) and item.observed_at is not None and item.observed_at <= cutoff)
 
 
 def _security(snapshot: MarketContextSnapshot, request: MultiIndicatorRequest, cutoff: datetime):
@@ -252,8 +330,13 @@ def _security(snapshot: MarketContextSnapshot, request: MultiIndicatorRequest, c
     output.update(effective_from=item.effective_from.isoformat(), effective_to=item.effective_to.isoformat(),
                   published_at=item.published_at.isoformat() if item.published_at else None,
                   source=item.source, reference=item.reference)
+    if item.observed_at is not None:
+        output.update(observed_at=item.observed_at.isoformat(),
+                      status_scope="current_observation_only_not_historical_status",
+                      publication_precision="unknown", st_reference=item.st_reference)
     if not _public(item, cutoff):
-        output["reason"] = ("publication_time_unknown" if item.published_at is None
+        output["reason"] = ("observed_after_analysis_cutoff" if item.observed_at is not None and item.observed_at > cutoff
+                            else "publication_time_unknown" if item.published_at is None
                             else "published_after_analysis_cutoff")
         return output
     partial = (item.board == "unknown" or item.listing_date is None
@@ -363,8 +446,53 @@ def build_market_context(result: MultiIndicatorResult, *, expected_request: Mult
             "validation_scope": VALIDATION_SCOPE, "historical_availability": "not_established",
             "security": security, "calendar": calendar, "conflicts": conflicts, "warnings": warnings,
         }
+        if snapshot.source_records:
+            payload["source_records"] = market_source_records(snapshot)
+            warnings.append("current_observation_not_historical_state")
         if len(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")) > MAX_PUBLIC_BYTES:
             return _unavailable("context_payload_limit")
         return payload
     except (AttributeError, TypeError, ValueError, KeyError, IndexError, OverflowError, RecursionError):
         return _unavailable("context_integrity_mismatch")
+
+
+def market_source_records(snapshot: MarketContextSnapshot) -> list[dict[str, object]]:
+    """Return bounded public provenance without inventing a publication timestamp."""
+    _validate_snapshot(snapshot)
+    return [{"reference": item.reference, "source": item.source, "source_url": item.source_url,
+             "as_of_date": item.as_of_date.isoformat(), "retrieved_at": item.retrieved_at.isoformat(),
+             "published_at": item.published_at.isoformat() if item.published_at else None,
+             "publication_precision": item.publication_precision, "field_scope": list(item.field_scope),
+             "coverage": item.coverage} for item in snapshot.source_records]
+
+
+def current_security_background(snapshot: MarketContextSnapshot, *, instrument_id: str,
+                                analysis_date: date, reference_at: datetime) -> dict[str, object]:
+    """Expose a dated current observation separately from unavailable historical status."""
+    _validate_snapshot(snapshot)
+    _require(type(instrument_id) is str and _INSTRUMENT.fullmatch(instrument_id) is not None
+             and type(analysis_date) is date and _aware(reference_at))
+    if snapshot.is_fixture or snapshot.retrieved_at > reference_at:
+        return {"status": "unknown", "code": "current_background_unavailable"}
+    states = [item for item in snapshot.security_states if item.instrument_id == instrument_id
+              and item.observed_at is not None and item.observed_at <= reference_at]
+    if not states:
+        return {"status": "unknown", "code": "current_background_not_covered"}
+    state = max(states, key=lambda item: item.observed_at)
+    age = (reference_at.astimezone(SHANGHAI).date() - state.effective_from).days
+    if not 0 <= age <= 7:
+        return {"status": "unknown", "code": "current_background_stale"}
+    same_date = (state.effective_from <= analysis_date <= state.effective_to
+                 and state.observed_at.astimezone(SHANGHAI).date() == analysis_date)
+    return {"status": "limited", "instrument_id": instrument_id,
+        "analysis_date": analysis_date.isoformat(), "source_as_of_date": state.effective_from.isoformat(),
+        "observation_date": state.observed_at.astimezone(SHANGHAI).date().isoformat(),
+        "observed_at": state.observed_at.isoformat(), "published_at": None, "publication_precision": "unknown",
+        "board": state.board, "listing_date": state.listing_date.isoformat() if state.listing_date else None,
+        "observed_st_status": state.st_status, "analysis_date_st_status": state.st_status if same_date else "unknown",
+        "status_scope": "current_observation_only_not_historical_status",
+        "suspension_status": "unknown", "calendar_status": "not_fetched",
+        "source": state.source, "reference": state.reference, "st_reference": state.st_reference,
+        "source_records": [item for item in market_source_records(snapshot)
+                           if item["reference"] in {state.reference, state.st_reference}],
+        "historical_availability": "not_established", "tradability": "not_assessed"}

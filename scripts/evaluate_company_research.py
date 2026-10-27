@@ -144,7 +144,9 @@ class _FixedModel:
         if messages[0].content == GENERAL_KNOWLEDGE_INSTRUCTION:
             payload = {"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": [
                 "PE比较股价与每股收益，PB比较股价与每股净资产。它们从盈利和资产两个角度观察估值。",
-                "低估值本身不等于便宜，还要比较行业、盈利持续性和资产质量；这里解释的是概念。"]}
+                "低估值本身不等于便宜，还要比较行业、盈利持续性和资产质量；这里解释的是概念。"],
+                "citations": [{"paragraph": 0, "sources": ["K1", "K2"]},
+                              {"paragraph": 1, "sources": ["K1", "K2"]}]}
         else:
             context = json.loads(messages[2].content.split("\n", 1)[1])
             records = context["evidence"]

@@ -30,7 +30,8 @@ class SnapshotModelFixture(ProductModelFixture):
         if messages[0].content == GENERAL_KNOWLEDGE_INSTRUCTION:
             self.calls.append((tuple(messages), tuple(tools)))
             return ToolModelResponse("complete", json.dumps({"version": GENERAL_KNOWLEDGE_VERSION,
-                "paragraphs": ["财报可对照利润、资产负债与现金流，理解经营表现。"]}, ensure_ascii=False))
+                "paragraphs": ["财报可对照利润、资产负债与现金流，理解经营表现。"],
+                "citations": [{"paragraph": 0, "sources": ["K1"]}]}, ensure_ascii=False))
         return super().complete(messages, tools)
 
 

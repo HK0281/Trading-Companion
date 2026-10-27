@@ -36,6 +36,7 @@ class EducationAndResearchModel:
         self.delegate = ConversationDemoModel()
         self.knowledge_response = ToolModelResponse("complete", json.dumps({
             "version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": [TEXT],
+            "citations": [{"paragraph": 0, "sources": ["K1"]}],
         }, ensure_ascii=False), usage=TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30))
         self.error = self.callback = None
 

@@ -31,7 +31,8 @@ PARAGRAPHS = (
 
 
 def response(paragraphs=PARAGRAPHS, **changes):
-    payload = {"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": list(paragraphs)}
+    payload = {"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": list(paragraphs),
+               "citations": [{"paragraph": index, "sources": ["K1"]} for index in range(len(paragraphs))]}
     payload.update(changes)
     return ToolModelResponse("complete", json.dumps(payload, ensure_ascii=False))
 
@@ -146,17 +147,19 @@ class OpenKnowledgeAnswerTests(GuardedTests):
         self.assertEqual(len(model.calls), 1)
         messages, tools = model.calls[0]
         self.assertEqual(tools, ())
-        self.assertEqual([message.role for message in messages], ["system", "user"])
+        self.assertEqual([message.role for message in messages], ["system", "user", "assistant", "user"])
         self.assertEqual(messages[0].content, GENERAL_KNOWLEDGE_INSTRUCTION)
         self.assertEqual(messages[1].content, QUESTION)
         self.assertEqual(run.answer.paragraphs, PARAGRAPHS)
         self.assertEqual(run.answer.text, "\n\n".join(PARAGRAPHS))
         payload = run.answer.to_dict()
         self.assertEqual(payload["origin"], "model")
-        self.assertEqual(payload["citations"], [])
+        self.assertEqual(payload["citations"][0]["snippet_id"], "valuation_pe")
+        self.assertEqual(payload["citations"][0]["paragraph_indices"], [0, 1, 2])
+        self.assertFalse(payload["citations"][0]["live_verified"])
         self.assertFalse(payload["market_data_requested"])
         self.assertFalse(payload["trading_enabled"])
-        self.assertEqual(payload["validation_scope"], "format_and_scope_guards_not_prose_semantics")
+        self.assertEqual(payload["validation_scope"], "format_scope_and_citation_membership_not_prose_semantics")
         self.assertNotIn("question", payload)
 
     def test_question_is_untrusted_user_content_not_a_system_message(self):

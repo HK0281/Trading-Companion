@@ -6,6 +6,7 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 
 ## Documentation
 
+- [Project context and Agent collaboration handoff (Chinese)](docs/agent-handoff.md): user requirements, working preferences, current architecture and capabilities, verification boundaries, remaining work, and coordination rules for new collaborators.
 - [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
 - [Product agent PRD (Chinese)](docs/prd-agent-v0.1.md): first-agent scope, indicator conventions, and acceptance criteria.
 - [Agent learning notes (Chinese)](docs/agent-learning-notes.md): project concepts and concise interview Q&A.

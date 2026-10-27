@@ -125,9 +125,10 @@ flowchart TD
 
 `ResearchApiService.message()` 只有在启用工作流、不是历史请求，且不属于旧版指标定义问题（`parse_knowledge_question()` 返回 `None`）时，才先判断是否为一般知识问题；目录中的证券名称可以否决这一分类，目录不可用不应阻断纯知识解释。其余路径加载目录，然后依次选择：
 
-1. 数值选股请求 → `screening_agent.run_screening_turn()`。
-2. 满足公司研究、待澄清或续问条件且配置了公司数据服务 → `product_agent.run_product_research_turn()`。
-3. 剩余 → `agent.run_natural_research_turn()`，保留原技术 Agent 路径。
+1. 完整数值选股请求 → `screening_agent.run_screening_turn()`；“筛选名单中第一只”等属于名单引用。
+2. 没有待回答的身份/指标澄清、不是历史查看或指标知识问题时，名单引用 → `screening_followup.run_screening_followup_turn()`，在受控轮次内重查有效性和对象；无名单的明确序号直接说明缺口，不调用模型。
+3. 满足公司研究、待澄清或续问条件且配置了公司数据服务 → `product_agent.run_product_research_turn()`。
+4. 剩余 → `agent.run_natural_research_turn()`，保留原技术 Agent 路径。
 
 这不是把所有问题直接发给一个无限制 LLM。新增路由必须考虑知识误吞股票问题、筛选误判普通研究、旧上下文误继承等回归风险。
 
@@ -144,7 +145,7 @@ flowchart TD
 | 模块 | 当前已有 | 不应夸大的地方 |
 | --- | --- | --- |
 | 自然输入与身份 | 模型提取候选、目录核名、必要澄清、可见默认参数 | 不靠模型记忆补股票代码；并非任意自然语言均已验证 |
-| 会话续接 | 待选股票、条件修改、有限追问、保存结果、刷新；部分条件默认有效 15 分钟 | 不是无限聊天记忆；API 会话另有 30 分钟寿命；筛选名单后的任意指代尚不足 |
+| 会话续接 | 待选股票、条件修改、有限追问、保存结果、刷新；筛选名单15分钟内按序号/名称/代码选择最多三只研究 | 不是无限聊天记忆；API 会话另有 30 分钟寿命；多条名单的“它”不猜对象，筛选条件续改尚待B部分 |
 | 日线分析 | 腾讯、AKShare/东方财富或人工 CSV；请求与快照绑定 | 默认真实腾讯不复权历史日线，不是实时行情或严格 PIT |
 | 多指标 | SMA、EMA、MACD、RSI、BOLL、ATR、量能、ADX、OBV、VWMA | 有固定预热、初始化与零分母状态；不是全部技术指标 |
 | 互补指标选择 | 按问题选择动量、量价、趋势强度或结构波动组合 | 应用规则，不是训练出的市场状态模型；用户明确条件优先 |
@@ -167,7 +168,8 @@ flowchart TD
 - 聊天展示数量当前为 1–20；底层数值服务最大展示 50，不能把底层上限当成聊天支持范围。
 - 不支持 OR、复杂范围、行业/板块/ST 过滤、指定股票名单、静态/滚动 PE 等条件时，不能吞掉条件后继续执行。
 - “帮我选几个潜力股”可给出明确标注默认口径的成交额活跃候选，不能改称潜力评分或收益预测。
-- 筛选开始会处理旧研究上下文，取消/截止后不发布迟到候选。名单后的“它”尚不能自动绑定到某一只，请显式给名称。
+- 筛选开始会处理旧研究上下文，取消/截止后不发布迟到候选。成功名单保存15分钟，仅以已展示顺序提供最多三只的序号/名称/代码选择；多条名单里的“它”不默认第一只。研究后普通“它”指当前研究对象，显式“名单中第二只”可继续选原名单，知识解释不延长有效期。
+- 名单选择位于一般知识与完整筛选判断之后，原身份/指标澄清优先。过期、目录身份或来源/模式变化时不沿用旧序号；完整具名新问题仍可独立核名。A部分已有离线覆盖，条件续改与区间尚待B部分，真实多轮质量验收未做。
 
 ### 6.2 指标与时序的特别约定
 
@@ -193,7 +195,7 @@ flowchart TD
 | 行情与数值 | `daily_bar.py`、`data_source.py`、`tencent_adapter.py`、`akshare_adapter.py`、`indicators.py`、`multi_contracts.py`、`multi_analysis.py` | [多指标](multi-indicator-design.md) |
 | 观察与综合 | `technical_selection.py`、`technical_insights.py`、`research_synthesis.py` | [技术分析](technical-analysis-design.md) |
 | 比较、风险、回放 | `comparison_research.py`、`risk_research.py`、`historical_replay.py`、`replay_cli.py` | [回放](historical-replay-design.md) |
-| 筛选 | `screening.py`、`screening_source.py`、`screening_agent.py`、`screening_cli.py` | [筛选](screening-design.md) |
+| 筛选 | `screening.py`、`screening_source.py`、`screening_agent.py`、`screening_context.py`、`screening_followup.py`、`screening_cli.py` | [筛选](screening-design.md) |
 | 知识 | `knowledge_data.py`、`knowledge_retrieval.py`、`open_knowledge.py`；旧有限定义在 `indicator_knowledge.py` | [检索](knowledge-retrieval-design.md) |
 | 证券背景与规则 | `market_context.py`、`market_context_live.py`、`market_rules.py` | [背景](market-context-design.md)、[规则](market-rules-design.md) |
 | 归档 | `snapshot_store.py`、`replay_cli.py`；`scripts/research_snapshots.py` | [公司研究](company-research-design.md)、[回放](historical-replay-design.md) |
@@ -375,7 +377,7 @@ pnpm.cmd --dir frontend build
 | 建议顺序 | 工作 | 依赖与完成标准 |
 | --- | --- | --- |
 | 1 | 对已有流程做重复真实质量验收 | 重点普通中文、模糊续问、多公司证据、缺失来源、提供方切换；记录失败，不用单次成功代替稳定性 |
-| 2 | 筛选结果后的研究续接和条件扩展 | 明确名单对象、过期边界、单只/多只选择；保留用户原文绑定，不把复杂条件悄悄删掉 |
+| 2 | 筛选结果后的研究续接和条件扩展 | A部分已实现名单对象、过期边界、单只/多只选择并有离线覆盖；B部分条件续改、区间尚待交付；真实多轮验收仍未做 |
 | 3 | 更广筛选覆盖 | 独立核实目录、分页、缺项和完整性；没有证据前仍称样本，不声称全市场前 N |
 | 4 | 有界新闻/公告/财报全文获取与研究 | 固定可信来源、大小/时间/证券绑定、正文引用及失败隔离；先有全文证据再考虑事件筛选 |
 | 5 | 权威交易日历、历史 ST/停复牌与公司行动 | 需要可靠数据与版本来源，不能由日历天或模型记忆补齐 |

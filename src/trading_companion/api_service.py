@@ -429,9 +429,25 @@ class ResearchApiService:
                     or entry.session.product_saved is not None and is_product_followup(question)
                     or history and entry.session.product_saved is not None)
                 from trading_companion.screening_agent import is_screening_request, run_screening_turn
+                from trading_companion.screening_context import is_screening_followup
+                screening_research_source = "csv" if self._development_source is not None else self._research_source
                 if is_screening_request(question):
                     result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
-                        source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock)
+                        source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock,
+                        research_source=screening_research_source)
+                elif (not history and parse_knowledge_question(question) is None
+                      and entry.session.product_pending is None and entry.session.pending is None
+                      and entry.session.pending_edit is None
+                      and is_screening_followup(question, session=entry.session, directory=directory,
+                          now=self._wall_clock(), quote_source=self._screening_source,
+                          source=screening_research_source,
+                          development=self._development_source is not None)):
+                    from trading_companion.screening_followup import run_screening_followup_turn
+                    result = run_screening_followup_turn(question, model=entry.model, session=entry.session,
+                        directory=directory, quote_source=self._screening_source, source=self._research_source,
+                        now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
+                        data_service=self._product_data_service, market_background_source=self._market_background_source,
+                        clock=self._wall_clock, control=control, workflow=self._workflow_enabled)
                 elif product:
                     from trading_companion.product_agent import run_product_research_turn
                     result = run_product_research_turn(question, model=entry.model, directory=directory,

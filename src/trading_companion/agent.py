@@ -410,7 +410,10 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
         checkpoint()
         if prepared.status == "ready":
             # Consume the previous base before side effects, including failures and interruptions.
-            session.begin_research()
+            preserve_screening = (session.screening_saved is not None and session.confirmed is not None
+                                  and prepared.security == session.confirmed.security
+                                  and prepared.security in session.screening_saved.securities)
+            session.begin_research(preserve_screening=preserve_screening)
         outcome = _run_prepared(prepared, model=model, development_source=development_source, question=question,
                                 workflow=workflow)
         if prepared.status == "ready" and prepared.code in ("refresh_latest_ready", "relative_range_ready"):

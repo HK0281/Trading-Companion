@@ -152,8 +152,9 @@ export function ScreeningResults({ data, activityDefault = false }: { data: Scre
       按{FIELDS[data.request.sort_by][0]}{data.request.sort_direction === "desc" ? "从高到低" : "从低到高"}排列。</p>
     {data.source.data_authenticity === "synthetic" && <p className="data-note">人工样例 · 非真实行情</p>}
     {data.rows.length > 0 ? <div className="facts table-scroll"><table aria-label="筛选候选">
-      <thead><tr><th>候选 / 报价日</th>{columns.map(key => <th key={key}>{FIELDS[key][0]}<small>（{FIELDS[key][2]}）</small></th>)}</tr></thead>
+      <thead><tr><th scope="col">序号</th><th>候选 / 报价日</th>{columns.map(key => <th key={key}>{FIELDS[key][0]}<small>（{FIELDS[key][2]}）</small></th>)}</tr></thead>
       <tbody>{data.rows.map(row => <tr key={row.instrument_id}>
+        <td className="number">{row.sample_position}</td>
         <td><strong>{row.name}</strong><small>{row.instrument_id} · {STRATA[row.stratum]}</small><small>{row.quote_date}</small></td>
         {columns.map(key => <td className="number" key={key}>{row.values[key] === null ? "未知" : formatNumber(row.values[key])}</td>)}
       </tr>)}</tbody>

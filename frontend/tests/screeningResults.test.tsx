@@ -79,6 +79,21 @@ describe("screening sample presentation", () => {
     expect(fetcher).not.toHaveBeenCalled(); fetcher.mockRestore();
   });
 
+  it("shows each candidate number beside its identity in the confirmed sample order", () => {
+    const { turn } = fixture(); render(<ResponseContent turn={turn} />);
+    const table = within(screen.getByRole("table", { name: "筛选候选" }));
+    expect(table.getByRole("columnheader", { name: "序号" })).toBeVisible();
+    const rows = table.getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    const first = within(rows[0]).getAllByRole("cell"), second = within(rows[1]).getAllByRole("cell");
+    expect(first[0]).toHaveTextContent(/^1$/);
+    expect(first[1]).toHaveTextContent("浦发银行");
+    expect(first[1]).toHaveTextContent("600000.SH");
+    expect(second[0]).toHaveTextContent(/^2$/);
+    expect(second[1]).toHaveTextContent("示例公司");
+    expect(second[1]).toHaveTextContent("600001.SH");
+  });
+
   it("keeps detailed conditions and partial coverage collapsed", () => {
     const { turn } = fixture(); render(<ResponseContent turn={turn} />);
     expect(screen.getByText("最新价 > 10 元/股")).not.toBeVisible();
@@ -105,6 +120,10 @@ describe("screening sample presentation", () => {
     const { turn, value } = fixture(); value.source.data_authenticity = "synthetic"; value.source.directory.is_fixture = true;
     render(<ResponseContent turn={turn} />);
     expect(screen.getByText("人工样例 · 非真实行情")).toBeVisible();
+    expect(screen.getByText(/本次样本中有 2 只符合条件，展示 2 只候选/)).toBeVisible();
+    fireEvent.click(screen.getByText("筛选条件与覆盖"));
+    expect(screen.getByText("供应商声明 100")).toBeVisible();
+    expect(screen.getByText(/未采样和缺失数据不计为条件失败.*结果仅描述实际样本/)).toBeVisible();
   });
 
   it("can show an empty sample without turning it into a market-wide assertion", () => {

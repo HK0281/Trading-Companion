@@ -90,6 +90,7 @@ class ResearchSession:
         self._result_current = False
         self.product_pending = None
         self.product_saved = None
+        self.screening_saved = None
         self._turn_lock = Lock()
         self._turn_parent = None
 
@@ -101,6 +102,7 @@ class ResearchSession:
         working._pending_edit = self._pending_edit
         working._result_current = self._result_current
         working.product_pending, working.product_saved = self.product_pending, self.product_saved
+        working.screening_saved = self.screening_saved
         working._turn_parent = self
         return working
 
@@ -110,6 +112,7 @@ class ResearchSession:
         self._pending_edit = working._pending_edit
         self._result_current = working._result_current
         self.product_pending, self.product_saved = working.product_pending, working.product_saved
+        self.screening_saved = working.screening_saved
 
     @property
     def pending(self) -> PendingResearch | None:
@@ -126,6 +129,7 @@ class ResearchSession:
     def clear(self) -> None:
         self.product_pending = None
         self.product_saved = None
+        self.clear_screening()
         self.clear_pending()
         self.clear_confirmed()
         self.clear_saved_result()
@@ -136,8 +140,15 @@ class ResearchSession:
         self._last_result = None
         self._result_current = False
 
-    def begin_research(self) -> None:
+    def clear_screening(self) -> None:
+        self.screening_saved = None
+        if self._turn_parent is not None:
+            self._turn_parent.clear_screening()
+
+    def begin_research(self, *, preserve_screening: bool = False) -> None:
         """Old facts remain explicitly viewable, but cannot answer an implicit new-result question."""
+        if not preserve_screening:
+            self.clear_screening()
         self.clear_pending()
         self.clear_confirmed()
         self.product_pending = None
@@ -146,7 +157,7 @@ class ResearchSession:
         if self._turn_parent is not None:
             # Consumption is immediate, but newly produced state remains staged until finish().
             self._turn_parent.clear_pending()
-            self._turn_parent.begin_research()
+            self._turn_parent.begin_research(preserve_screening=preserve_screening)
 
     def remember_result(self, prepared: PreparedResearchInput, result: MultiIndicatorResult, *, now: datetime,
                         development_source: CsvDailyBarSource | None) -> bool:

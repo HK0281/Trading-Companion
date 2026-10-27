@@ -82,7 +82,8 @@ def saved_product(session, *, directory, now, source, development):
 
 
 def _execute(question, *, session, model, directory, now, reference_date, source,
-             development_source, data_service, source_factory, market_background_source, background_clock):
+             development_source, data_service, source_factory, market_background_source, background_clock,
+             selected_securities=(), original_question=None):
     from trading_companion.product_answer import synthesize_product_answer
     checkpoint()
     reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
@@ -131,14 +132,22 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         allow_context_research=bool(directory.mentioned_spans(effective_question)))
     plan = _inherit_scope(plan, continuation, question)
     responses = (plan.model_response,) if plan.model_response is not None else ()
+    if selected_securities:
+        if plan.status == "ready" and plan.securities != selected_securities:
+            return AgentTurnResult(status="needs_clarification", code="screening_selection_plan_mismatch",
+                stage="clarification", input_mode="natural", message="研究计划与选择的名单对象不一致，未查询研究数据。",
+                model_calls_attempted=plan.model_calls_attempted, model_responses=responses,
+                user_question=original_question)
+        if plan.status == "ready":
+            plan = replace(plan, user_question=original_question)
     if plan.status != "ready":
-        session.product_pending = plan.context
+        session.product_pending = None if selected_securities else plan.context
         return AgentTurnResult(status="needs_clarification" if plan.status in ("needs_clarification", "not_applicable")
             else "failed", code=plan.code, message=plan.message, stage="clarification", input_mode="natural",
             model_calls_attempted=plan.model_calls_attempted, model_responses=responses, product_plan=plan,
             session_event="company_clarification", user_question=question)
     # New research consumes the old base before any external reads, including failed or cancelled work.
-    session.begin_research()
+    session.begin_research(preserve_screening=bool(selected_securities) or continuation is not None)
     try:
         bundle = collect_product_research(plan, data_service=data_service, now=now,
             development_source=development_source, source_factory=source_factory,

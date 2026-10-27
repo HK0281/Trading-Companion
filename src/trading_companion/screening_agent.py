@@ -8,6 +8,7 @@ from trading_companion.agent import AgentTurnResult, _controlled
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.screening import FIELDS, ScreeningRequest, ScreeningService, render_screening_result
+from trading_companion.screening_context import SavedScreening
 from trading_companion.tool_model import ToolDefinition, ToolMessage
 from trading_companion.turn_control import checkpoint
 
@@ -31,6 +32,9 @@ SCREEN_TOOL = ToolDefinition("interpret_stock_screening", "Extract only explicit
 
 
 def is_screening_request(question):
+    if type(question) is str:
+        # A displayed-list reference is not a request to collect another quote sample.
+        question = re.sub(r"筛选(?:名单|结果)(?=中|里|的|第|前)", "", question)
     return type(question) is str and bool(re.search(
         r"筛选|选股|选出|挑选|(?:选|推荐|找).{0,8}(?:股票|个股|潜力股|候选股)|"
         r"(?:哪些|什么)(?:股票|个股).{0,8}值得关注|值得关注的(?:股票|个股)", question)) \
@@ -98,7 +102,7 @@ def _grounded_condition(item, question):
     return {key: item[key] for key in ("field", "operator", "value")}
 
 
-def _execute(question, *, session, model, directory, source, now, clock):
+def _execute(question, *, session, model, directory, source, now, clock, research_source):
     question = unicodedata.normalize("NFKC", question)
     base = dict(stage="screening", input_mode="natural", user_question=question)
     if (not 0 < len(question) <= 2000 or re.search(r"下单|自动买|自动卖|执行交易|https?://|忽略.*(?:规则|系统)", question)):
@@ -181,6 +185,8 @@ def _execute(question, *, session, model, directory, source, now, clock):
         text = render_screening_result(result)
         if defaulted:
             text = "未指定数值条件，本轮先按成交额列出活跃研究候选。\n\n" + text
+        session.screening_saved = SavedScreening.checked(result, directory=directory, quote_source=source,
+                                                        now=clock(), research_source=research_source)
         return AgentTurnResult(status="completed" if result.rows else "limited", code=result.code,
             message=text, screening_result=result, screening_defaulted=defaulted,
             model_calls_attempted=1, model_responses=(response,), **base)
@@ -193,7 +199,8 @@ def _execute(question, *, session, model, directory, source, now, clock):
             model_calls_attempted=1, **base)
 
 
-def run_screening_turn(question, *, session, model, directory, source, now, control=None, clock=None):
+def run_screening_turn(question, *, session, model, directory, source, now, control=None, clock=None,
+                       research_source="tencent"):
     return _controlled(lambda checked, working: _execute(question, session=working, model=checked, directory=directory,
-        source=source, now=now, clock=clock or (lambda: datetime.now(timezone.utc))),
+        source=source, now=now, clock=clock or (lambda: datetime.now(timezone.utc)), research_source=research_source),
         model=model, session=session, control=control, default_calls=1, input_mode="natural")

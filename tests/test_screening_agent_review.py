@@ -84,7 +84,10 @@ class ScreeningAgentReviewTests(unittest.TestCase):
         self.assert_rejected_before_quotes("筛选股票，按流通市值降序选5只", Model(sort_by="market_cap_cny"))
 
     def test_explicit_result_count_cannot_be_replaced_by_default_five(self):
-        for question in ("选出10只股票", "筛选成交额最高的前10名股票"):
+        result, source = self.run_turn("选出10只股票", Model())
+        self.assertEqual(source.calls, 1)
+        self.assertEqual(result.screening_result.request.limit, 10)
+        for question in ("筛选成交额最高的前10名股票", "筛选PE低于20并选出10只股票"):
             with self.subTest(question=question):
                 self.assert_rejected_before_quotes(question, Model())
 

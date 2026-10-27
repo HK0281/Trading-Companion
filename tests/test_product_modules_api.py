@@ -96,6 +96,16 @@ class ProductModulesApiTests(unittest.TestCase):
     def send(self, question, *, request_id=None):
         return self.service.message(self.sid, self.token, request_id or uuid4().hex, question)
 
+    def test_natural_potential_stock_request_reaches_activity_shortlist_with_visible_defaults(self):
+        self.model.screening = ScreeningModel()
+        reply = self.send("帮我选几个潜力股")["result"]
+        self.assertEqual(reply["stage"], "screening")
+        self.assertEqual(reply["status"], "completed")
+        self.assertIn("screening:activity_shortlist", reply["applied_defaults"])
+        self.assertEqual(len(self.quotes.calls), 1)
+        self.assertEqual(self.data.calls, [])
+        self.assertEqual(self.background.snapshot_calls, [])
+
     def assert_no_source_reads(self):
         self.assertEqual(self.quotes.calls, [])
         self.assertEqual(self.background.snapshot_calls, [])

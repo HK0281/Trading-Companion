@@ -31,8 +31,21 @@ SCREEN_TOOL = ToolDefinition("interpret_stock_screening", "Extract only explicit
 
 
 def is_screening_request(question):
-    return type(question) is str and bool(re.search(r"筛选|选股|选出|挑选|推荐.{0,8}(?:股票|个股)|找.{0,8}(?:股票|潜力股)", question)) \
+    return type(question) is str and bool(re.search(
+        r"筛选|选股|选出|挑选|(?:选|推荐|找).{0,8}(?:股票|个股|潜力股|候选股)|"
+        r"(?:哪些|什么)(?:股票|个股).{0,8}值得关注|值得关注的(?:股票|个股)", question)) \
         and not bool(re.search(r"如何|怎么|怎样|方法|原理|教程|是什么", question))
+
+
+def _plain_activity_limit(question):
+    """Only a complete, filter-free request can receive application-owned defaults."""
+    wording = question.strip().rstrip("。.!！?？").strip()
+    if re.fullmatch(r"(?:哪些|什么)(?:股票|个股)值得关注|值得关注的(?:股票|个股)", wording):
+        return 5
+    match = re.fullmatch(r"(?:(?:请|帮我|给我|麻烦|请你|能否|可以)\s*)*"
+        r"(?:(?:选(?:出)?|推荐|找|挑选|筛选)\s*(?:(?:几个|几只|一些|几支)|(?P<count>[0-9]{1,2})\s*(?:只|支|个))?"
+        r"\s*(?:股票|个股|潜力股|候选股)|选股)(?:吧|吗)?", wording)
+    return int(match["count"]) if match and match["count"] else 5 if match else None
 
 
 def _field_mentions(text):
@@ -121,6 +134,13 @@ def _execute(question, *, session, model, directory, source, now, clock):
         payload = response.tool_calls[0].arguments
         if type(payload) is not dict or payload.keys() != {"intent", "conditions", "sort_by", "sort_direction", "limit"}:
             raise ValueError("Invalid screening intent")
+        activity_limit = _plain_activity_limit(question)
+        if activity_limit is not None:
+            # A model clarification cannot revoke the documented application defaults.
+            payload = {"intent": "screen", "conditions": [], "sort_by": "amount_cny",
+                       "sort_direction": "desc", "limit": activity_limit}
+        if type(payload["limit"]) is not int or not 1 <= payload["limit"] <= 20:
+            raise ValueError("Screening result count exceeds the agent's bound")
         if payload["intent"] != "screen":
             return AgentTurnResult(status="needs_clarification", code="screening_needs_conditions",
                 message="请给出明确数值条件，例如：市盈率低于20、换手率大于2%，按成交额从高到低选5只。", model_calls_attempted=1, model_responses=(response,), **base)

@@ -75,11 +75,22 @@ class ScreeningAgentTests(unittest.TestCase):
     def test_limit_and_order_are_bound_to_question(self):
         for question, model in (("选股按成交额升序选5只", Model()),
                                 ("选股按成交额降序选10只", Model(limit=5)),
-                                ("帮我选股", Model(sort_by="pb"))):
+                                ("选股按成交额", Model(sort_by="pb"))):
             with self.subTest(question=question):
                 result, source, _ = self.run_turn(question, model)
                 self.assertEqual(result.code, "screening_intent_invalid")
                 self.assertEqual(source.calls, 0)
+
+    def test_plain_activity_defaults_do_not_depend_on_model_clarification_or_invented_thresholds(self):
+        for model in (Model(intent="clarify"), Model(({
+                "field": "pe_dynamic", "operator": "lt", "value": 10, "phrase": "PE低于10"},))):
+            with self.subTest(payload=model.payload):
+                result, source, _ = self.run_turn("帮我选几个潜力股", model)
+                self.assertEqual(result.status, "completed")
+                self.assertTrue(result.screening_defaulted)
+                self.assertEqual(source.calls, 1)
+                self.assertEqual(result.screening_result.request.conditions[0].field, "price")
+                self.assertEqual(result.screening_result.request.limit, 5)
 
     def test_unsupported_and_trade_conditions_do_not_call_a_model_or_fetch_data(self):
         for question in ("筛选ROE大于20的股票", "筛选非ST股票", "筛选后自动买入", "筛选去年涨幅最高股票"):
@@ -90,6 +101,9 @@ class ScreeningAgentTests(unittest.TestCase):
     def test_educational_screening_methods_do_not_route_to_quote_screen(self):
         self.assertFalse(is_screening_request("如何使用PE筛选股票？"))
         self.assertTrue(is_screening_request("请筛选PE低于20的股票"))
+        for question in ("帮我选几个潜力股", "推荐几只潜力股", "哪些股票值得关注", "找几只股票"):
+            with self.subTest(question=question):
+                self.assertTrue(is_screening_request(question))
 
     def test_partial_supported_conditions_do_not_drop_unsupported_clauses(self):
         for question in ("筛选PE低于20或PB小于1的股票", "筛选PE低于20且股价在10到20之间的股票",

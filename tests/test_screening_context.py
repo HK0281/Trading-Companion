@@ -44,6 +44,8 @@ class ScreeningContextTests(unittest.TestCase):
             ("名单中第二只", ("300001.SZ",)),
             ("分析安徽凤凰和特锐德的风险", ("920000.BJ", "300001.SZ")),
             ("研究300001和920000.BJ的公告", ("300001.SZ", "920000.BJ")),
+            ("把第一只和第二只比较一下", ("920000.BJ", "300001.SZ")),
+            ("按基本面分析第一只", ("920000.BJ",)),
         ):
             with self.subTest(text=text):
                 selection = self.select(text)
@@ -130,11 +132,13 @@ class ScreeningContextTests(unittest.TestCase):
         for saved in (None, self.saved):
             session.screening_saved = saved
             for question in ("分析浦发银行上市后第一个交易日以来的走势", "分析浦发银行第三个季度的基本面",
-                             "分析第一个交易日的规则", "分析第三个季度的财务特点"):
+                             "分析第一个交易日的规则", "分析第三个季度的财务特点",
+                             "按基本面分析第一个季度的财务特点", "把第一个交易日的规则解释一下"):
                 with self.subTest(saved=saved is not None, question=question):
                     self.assertFalse(is_screening_followup(question, session=session, directory=self.directory))
             for question in ("分析第一只的基本面", "比较前两只的营收增长", "第一个",
-                             "分析筛选结果中的第一只", "名单中第二只的新闻"):
+                             "分析筛选结果中的第一只", "名单中第二只的新闻",
+                             "把第一只和第二只比较一下", "按基本面分析第一只"):
                 with self.subTest(saved=saved is not None, question=question):
                     self.assertTrue(is_screening_followup(question, session=session, directory=self.directory))
 

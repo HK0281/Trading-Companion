@@ -430,8 +430,18 @@ class ResearchApiService:
                     or history and entry.session.product_saved is not None)
                 from trading_companion.screening_agent import is_screening_request, run_screening_turn
                 from trading_companion.screening_context import is_screening_followup
+                from trading_companion.screening_intent import is_screening_edit
                 screening_research_source = "csv" if self._development_source is not None else self._research_source
-                if is_screening_request(question):
+                if (not history and parse_knowledge_question(question) is None
+                        and entry.session.product_pending is None and entry.session.pending is None
+                        and entry.session.pending_edit is None
+                        and is_screening_edit(question, session=entry.session)):
+                    from trading_companion.screening_agent import run_screening_edit_turn
+                    result = run_screening_edit_turn(question, model=entry.model, session=entry.session,
+                        directory=directory, source=self._screening_source, now=timestamp, control=control,
+                        clock=self._wall_clock, research_source=screening_research_source,
+                        development=self._development_source is not None)
+                elif is_screening_request(question):
                     result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
                         source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock,
                         research_source=screening_research_source)

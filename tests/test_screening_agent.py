@@ -106,13 +106,20 @@ class ScreeningAgentTests(unittest.TestCase):
                 self.assertTrue(is_screening_request(question))
 
     def test_partial_supported_conditions_do_not_drop_unsupported_clauses(self):
-        for question in ("筛选PE低于20或PB小于1的股票", "筛选PE低于20且股价在10到20之间的股票",
+        for question in ("筛选PE低于20或PB小于1的股票",
                          "筛选科创板PE低于20的股票", "筛选银行行业PE低于20的股票",
                          "筛选滚动市盈率低于20的股票", "筛选PE低于20按成交额选三只"):
             with self.subTest(question=question):
                 result, source, model = self.run_turn(question)
                 self.assertEqual(result.code, "screening_condition_not_supported")
                 self.assertEqual((model.calls, source.calls), (0, 0))
+
+    def test_supported_interval_still_cannot_be_omitted_by_the_model(self):
+        # Previously the interval itself was unsupported. It is now supported,
+        # but the original dropped-condition counterexample must still fail.
+        result, source, model = self.run_turn("筛选PE低于20且股价在10到20之间的股票")
+        self.assertEqual(result.code, "screening_intent_invalid")
+        self.assertEqual((model.calls, source.calls), (1, 0))
 
     def test_explicit_stock_universe_cannot_be_replaced_with_market_sample(self):
         result, source, model = self.run_turn("从平安银行和中芯国际中筛选PE低于20的股票")

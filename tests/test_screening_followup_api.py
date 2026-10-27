@@ -57,7 +57,7 @@ class JourneyModel:
         return self.company.complete(messages, tools=tools)
 
 
-class ScreeningFollowupApiTests(unittest.TestCase):
+class ScreeningJourneyFixture:
     def setUp(self):
         sample = demo_screening_snapshot(clock=lambda: NOW)
         identities = tuple(replace(item, aliases=("平安",)) if item.instrument_id == "000001.SZ" else item
@@ -105,6 +105,8 @@ class ScreeningFollowupApiTests(unittest.TestCase):
                          ["920000.BJ", "300001.SZ", "688981.SH", "600010.SH", "000001.SZ"])
         return result
 
+
+class ScreeningFollowupApiTests(ScreeningJourneyFixture, unittest.TestCase):
     def test_no_list_ordinal_never_calls_model_or_research_sources(self):
         turn = self.send("分析第一只的基本面")["result"]
         self.assertEqual((turn["status"], turn["code"]), ("needs_clarification", "screening_list_unavailable"))

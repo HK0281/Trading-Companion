@@ -13,7 +13,8 @@ from trading_companion.security_directory import Security, SecurityDirectory
 LIFETIME = timedelta(minutes=15)
 _NUMBER = r"[0-9一二两三四五六七八九十]+"
 _ORDINAL = re.compile(r"第\s*(" + _NUMBER + r")\s*(?:只|个)?")
-_LEADING = re.compile(r"^(?:(?:请|帮我|麻烦|请你)\s*)*(?:(?:分析|研究|比较|看看|看一下|看|选择|就选|选)\s*)?")
+_LEADING = re.compile(r"^(?:(?:请|帮我|麻烦|请你)\s*)*(?:(?:分析|研究|比较|看看|看一下|看|选择|就选|选|把)\s*|"
+                      r"按\s*(?:基本面|技术面|估值|新闻|公告|市盈率|PE|PB)\s*(?:分析|研究|比较)\s*)?", re.I)
 _LIST = re.compile(r"(?:(?:刚才|刚刚|上次|本次|这次)的?)?(?:筛选(?:结果|名单)?|候选名单|名单)(?:中|里)?的?\s*")
 _REFERENCE = re.compile(_ORDINAL.pattern + r"|前\s*" + _NUMBER + r"\s*只")
 _LIST_REFERENCE = re.compile(r"筛选名单|候选名单|名单中|名单里|筛选结果(?:中|里)")
@@ -245,8 +246,8 @@ def select_screening(question, *, saved, directory, quote_source, source, develo
         error = "选择中有重复股票，请明确不同的名单对象。"
     if error or not securities:
         return ScreeningSelection("screening_selection_needs_clarification", error or "请明确名单对象。")
-    introduction = re.sub(r"(?:选择|就选|选)\s*$", "", text[:start])
+    introduction = re.sub(r"(?:选择|就选|选|把)\s*$", "", text[:start])
     effective = introduction + "、".join(item.instrument_id for item in securities) + tail
-    if not re.match(r"(?:请|帮我|麻烦|请你)*(?:分析|研究|比较|看看|看一下|看)", effective):
+    if not re.match(r"(?:请|帮我|麻烦|请你)*(?:分析|研究|比较|看看|看一下|看|按)", effective):
         effective = "分析" + effective
     return ScreeningSelection("screening_selection_ready", "已核对筛选名单中的研究对象。", tuple(securities), effective)

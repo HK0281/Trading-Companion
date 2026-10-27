@@ -12,14 +12,17 @@ const text = (value: unknown, max = 1600): value is string => typeof value === "
 const optionalText = (value: unknown) => value === null || value === undefined || typeof value === "string" && value.length <= 2000;
 const hosts = ["finance.sina.com.cn", "news.sina.com.cn", "money.finance.sina.com.cn", "vip.stock.finance.sina.com.cn",
   "finance.eastmoney.com", "data.eastmoney.com", "data.eastmoney.com.cn", "data.eastmoney.com", "www.cninfo.com.cn", "static.cninfo.com.cn",
-  "emweb.securities.eastmoney.com", "data.eastmoney.com", "notice.eastmoney.com", "pdf.dfcfw.com"];
+  "emweb.securities.eastmoney.com", "data.eastmoney.com", "notice.eastmoney.com", "pdf.dfcfw.com",
+  "www.sse.com.cn", "edu.sse.com.cn", "www.szse.cn", "investor.szse.cn", "www.sec.gov", "www.investor.gov",
+  "lautorite.qc.ca", "www.idx.id", "github.com"];
 
 export function sourceUrl(value: unknown): string | null {
-  if (typeof value !== "string" || value.length > 2000) return null;
+  if (typeof value !== "string" || value.length > 2000 || !value.startsWith("https://") || /[\s\\\u0000-\u001f]/.test(value)) return null;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && !url.username && !url.password && !url.port
-      && hosts.includes(url.hostname) ? url.href : null;
+      && hosts.includes(url.hostname)
+      && (url.hostname !== "github.com" || url.pathname.startsWith("/HK0281/Trading-Companion/")) ? url.href : null;
   } catch { return null; }
 }
 
@@ -53,12 +56,15 @@ export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
 const kinds: Record<string, string> = { profile: "公司资料", financial: "财务报告", news: "新闻", announcements: "公司公告", technical: "技术分析", risk: "风险情景" };
 const sources: Record<string, string> = { eastmoney_company: "东方财富", eastmoney_financial: "东方财富", eastmoney_news: "东方财富",
   eastmoney_announcements: "东方财富公告", cninfo_announcements: "巨潮资讯", sina_company_news: "新浪财经", sina_news: "新浪财经",
-  tencent: "腾讯行情", akshare_eastmoney: "东方财富行情", csv: "开发样例", application_comparison: "程序比较" };
+  tencent: "腾讯行情", akshare_eastmoney: "东方财富行情", csv: "开发样例", application_comparison: "程序比较",
+  sse: "上海证券交易所", szse: "深圳证券交易所", sse_szse: "沪深交易所", application_market_rules: "版本化交易规则" };
 
 const sourceGroupKey = (item: Evidence) => [item.instrument_id, item.kind, item.url ?? item.source,
   item.report_period ?? "", item.temporal_scope, item.date ?? ""].join("|");
 const sourceDateLabel = (item: Evidence) => item.temporal_scope === "completed_week_derived" ? "周线截至"
   : item.temporal_scope === "cross_timeframe_derived" ? "日周核对"
+  : item.temporal_scope === "current_context" ? "观测日"
+  : item.temporal_scope === "market_rule_explanation" ? "规则发布日"
   : item.kind === "technical" || item.kind === "risk" ? "交易日" : "发布时间";
 
 function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer; evidence: Evidence[]; previewLimit?: number }) {

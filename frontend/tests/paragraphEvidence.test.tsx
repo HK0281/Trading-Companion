@@ -110,6 +110,24 @@ describe("paragraph-level research evidence", () => {
     expect(parseCompanyAnswer(company)).toBeNull();
   });
 
+  it("separates current observation dates from dated rule publication", () => {
+    const { turn, company } = fixture();
+    company.paragraphs = ["当前背景与适用规则应分别核对。"];
+    company.paragraph_evidence = [["observed", "rule"]];
+    company.evidence = [
+      { ...company.evidence[0], id: "observed", kind: "profile", label: "上市信息", display: "交易所目录中的当前背景。",
+        source: "sse", date: "2026-10-26", report_period: null, temporal_scope: "current_context", url: "https://www.sse.com.cn/test" },
+      { ...company.evidence[0], id: "rule", kind: "technical", label: "规则", display: "当前版本化规则说明。",
+        source: "application_market_rules", date: "2026-04-24", report_period: null,
+        temporal_scope: "market_rule_explanation", url: "https://www.sse.com.cn/lawandrules/test" },
+    ];
+    render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("依据 2"));
+    expect(screen.getByText(/观测日 2026-10-26/)).toBeVisible();
+    expect(screen.getByText(/规则发布日 2026-04-24/)).toBeVisible();
+    expect(screen.getByText("版本化交易规则")).toBeVisible();
+    expect(screen.queryByText(/发布时间 2026-10-26/)).not.toBeInTheDocument();
+  });
+
   it.each(["javascript:alert(1)", "https://data.eastmoney.com.evil.test/source", "http://data.eastmoney.com/source", "https://unknown.example/source"])(
     "renders cited text without linking an untrusted URL: %s", (url) => {
       const { turn, company } = fixture(); company.evidence[0].url = url; company.evidence[1].url = url;

@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { PublicTurn } from "./api";
 import { formatNumber, parseConversation, parsePresentation, unavailableLabel, unitLabel } from "./presentation";
 import { CompanyParagraphs, parseCompanyAnswer } from "./ProductResearch";
+import { KnowledgeSources } from "./KnowledgeSources";
+import { parseScreeningResult, ScreeningResults } from "./ScreeningResults";
 
 export function ReadableText({ text }: { text: string }) {
   // Render as text nodes; provider or source content never becomes executable HTML.
@@ -17,6 +19,15 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
     || presentation.indicator_ids.includes(field.indicator_id));
   const unavailable = fields.filter((field) => field.status !== "available");
   const company = parseCompanyAnswer(turn.company_research);
+  if (turn.screening != null) {
+    const screening = parseScreeningResult(turn.screening);
+    return screening ? <ScreeningResults data={screening} activityDefault={turn.applied_defaults.includes("screening:activity_shortlist")} />
+      : <ReadableText text={turn.answer ?? turn.message} />;
+  }
+  if (turn.knowledge != null) return <>
+    <ReadableText text={turn.answer ?? turn.message} />
+    <KnowledgeSources value={turn.knowledge} answer={turn.answer} />
+  </>;
   if (company) return <CompanyParagraphs data={company} />;
   if (turn.company_research != null) return <ReadableText text="本轮研究回答未能正常显示，请重新发送研究问题。" />;
   if (conversation) return <div className="conversation-response readable-text">

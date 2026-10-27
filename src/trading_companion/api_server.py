@@ -22,6 +22,8 @@ def main(argv=None) -> int:
     parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
+    parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
+                        help="Explicit bounded quote-screening source; no failure fallback (default: tencent)")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
@@ -69,6 +71,11 @@ def main(argv=None) -> int:
             else:
                 context_loader = None
             from trading_companion.company_research import ResearchDataService
+            from trading_companion.market_context_live import ExchangeMarketContextSource
+            from trading_companion.screening_source import TencentQuoteSnapshotSource, EastmoneyQuoteSnapshotSource
+            screening_source = (TencentQuoteSnapshotSource() if args.screening_data == "tencent"
+                                else EastmoneyQuoteSnapshotSource()) if source is None else None
+            background_source = ExchangeMarketContextSource() if source is None and not args.market_context else None
             if args.snapshot_db:
                 from trading_companion.snapshot_store import ResearchSnapshotStore, SnapshotStoreError
                 try:
@@ -79,7 +86,8 @@ def main(argv=None) -> int:
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
                 market_context_loader=context_loader,
-                product_data_service=ResearchDataService() if source is None else None, snapshot_store=snapshot_store)
+                product_data_service=ResearchDataService() if source is None else None, snapshot_store=snapshot_store,
+                screening_source=screening_source, market_background_source=background_source)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service()
     except DataModeDependencyError:
@@ -104,7 +112,7 @@ def main(argv=None) -> int:
                  "akshare_eastmoney": "AKShare / 东方财富不复权历史日线"}[args.data]
         print(f"行情来源：{label}；由本次启动固定，失败不自动换源，对话输入不能切换。")
         print("网页 Dev Mode 可切换到独立的离线测试会话；不会调用真实模型或行情，也不会更改正常服务来源。")
-    print("证券状态与日历仅为本地快照背景；未知不猜测、不据此下单，不自动刷新，也不发送给模型。")
+    print("公司研究可读取交易所当前板块与上市背景，交易规则按生效日期解释；历史状态、停牌和交易日历缺失保持未知。")
     print(f"研究界面：http://127.0.0.1:{args.port}/；API文档：/docs；访问日志关闭，请不要共享会话访问令牌。")
     try:
         app = (create_app(service=service) if development_service is None

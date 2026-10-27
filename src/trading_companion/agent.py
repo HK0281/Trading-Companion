@@ -62,6 +62,8 @@ class AgentTurnResult:
     product_answer: object | None = field(default=None, repr=False)
     product_bundle: object | None = field(default=None, repr=False)
     product_plan: object | None = field(default=None, repr=False)
+    screening_result: object | None = field(default=None, repr=False)
+    screening_defaulted: bool = False
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
     runtime: dict[str, object] | None = field(default=None, repr=False)
     user_question: str = field(default="", repr=False)
@@ -117,6 +119,8 @@ class AgentTurnResult:
     @property
     def display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
+        if self.screening_result is not None:
+            return self.message
         if self.product_answer is not None:
             return self.product_answer.text
         if self.general_knowledge_answer is not None:
@@ -214,7 +218,7 @@ def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
     if trace is not None:
         trace = {**trace, "stop_reason": "cancelled" if cancelled else "budget_or_deadline"}
     outcome = replace(outcome, model_draft=None, followup_answer=None, knowledge_answer=None,
-                      general_knowledge_answer=None,
+                      general_knowledge_answer=None, screening_result=None,
                       product_answer=None, product_bundle=None, product_plan=None,
                       research_result=None if cancelled else outcome.research_result, failure_code=code,
                       workflow_observations=() if cancelled else outcome.workflow_observations,

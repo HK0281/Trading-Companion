@@ -104,6 +104,7 @@ class ProductCompany:
     risk: object | None = None
     technical_insights: TechnicalInsights | None = None
     historical_replay: object | None = None
+    market_background: dict | None = None
 
     def to_dict(self):
         return {"instrument_id": self.instrument_id, "name": self.name,
@@ -131,16 +132,34 @@ class ProductResearchBundle:
                 "trading_enabled": False, "snapshot_policy": "publication_filtered_vendor_snapshots_not_versioned_pit"}
 
 
-def collect_product_research(plan, *, data_service, now, development_source=None, source_factory=None):
+def collect_product_research(plan, *, data_service, now, development_source=None, source_factory=None,
+                             market_background_source=None, directory=None, background_clock=None):
     """No model chooses endpoints or calculations; a plan grants bounded read access only."""
     if plan.status != "ready" or not plan.securities or len(plan.securities) > 3:
         raise ValueError("A checked company research plan is required")
     companies = []
     factory = source_factory or _build_source
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
+    background_snapshot = None
+    if (market_background_source is not None and not plan.explicit_historical
+            and ("profile" in kinds or re.search(r"ST|上市|板块|交易规则|涨跌幅限制", plan.user_question, re.I))):
+        try:
+            background_snapshot = market_background_source.read_snapshot(directory=directory,
+                instrument_ids=tuple(security.instrument_id for security in plan.securities))
+        except Exception:
+            # Optional exchange background cannot discard other available research domains.
+            pass
+        checkpoint()
     for security in plan.securities:
         checkpoint()
-        evidence, coverage, result, risk, insights, replay = [], [], None, None, None, None
+        evidence, coverage, result, risk, insights, replay, background = [], [], None, None, None, None, None
+        if background_snapshot is not None:
+            try:
+                background, background_evidence = _market_background_evidence(background_snapshot, security, plan,
+                    background_clock() if background_clock is not None else now)
+                evidence.extend(background_evidence)
+            except Exception:
+                background = None
         if kinds:
             # Current documents and completed daily bars have different cutoffs.
             document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI)
@@ -233,7 +252,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=result.data_authenticity,
                         temporal_scope="historical_long_scenario", dependencies=risk.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
-        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay))
+        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:
         from trading_companion.comparison_research import build_candidate_comparison
@@ -258,6 +277,49 @@ def collect_product_research(plan, *, data_service, now, development_source=None
         bundle = ProductResearchBundle(plan, tuple(replace(company, evidence=company.evidence + tuple(additions[company.instrument_id]))
                                                     for company in companies))
     return bundle
+
+
+def _market_background_evidence(snapshot, security, plan, now):
+    from trading_companion.market_context import current_security_background
+    from trading_companion.market_rules import explain_market_rules
+    background = current_security_background(snapshot, instrument_id=security.instrument_id,
+        analysis_date=plan.end_date, reference_at=now)
+    if background.get("board") is None or background.get("board") == "unknown":
+        return background, []
+    listing = background.get("listing_date")
+    from datetime import date
+    rules = explain_market_rules(board=background["board"], st_status=background.get("analysis_date_st_status", "unknown"),
+        as_of_date=plan.end_date, listing_date=date.fromisoformat(listing) if listing else None)
+    background = {**background, "rules": rules}
+    source = background.get("source", "exchange_metadata")
+    observed = background.get("observed_at")
+    day = background.get("observation_date")
+    common = dict(instrument_id=security.instrument_id, kind="profile", source=source, date=day,
+                  publication_precision="unknown", temporal_scope="current_context", retrieved_at=observed)
+    references = background.get("source_records", [])
+    url = next((record.get("source_url") for record in references if type(record) is dict and record.get("source_url")), None)
+    boards = {"sse_main": "沪市主板", "szse_main": "深市主板", "star": "科创板", "chinext": "创业板", "bse": "北交所"}
+    prefix = "exchange:" + snapshot.snapshot_id + "|" + security.instrument_id
+    items = [ProductEvidence(id=prefix + "|board", label="交易所当前板块",
+        display=boards.get(background["board"], "未知"), url=url, **common)]
+    if listing:
+        items.append(ProductEvidence(id=prefix + "|listing", label="交易所上市日期", display=listing, raw_value=listing, url=url, **common))
+    observed_st = background.get("observed_st_status", "unknown")
+    st_label = {"st": "ST", "star_st": "*ST", "not_st": "非ST", "unknown": "未核实"}.get(observed_st, "未核实")
+    items.append(ProductEvidence(id=prefix + "|st", label="当前风险警示观测",
+        display=f"本次当前状态：{st_label}；分析截止日状态："
+                + ("未核实，不能用当前观测回填历史。" if background.get("analysis_date_st_status") == "unknown" else st_label + "。"),
+        content_kind="relation", url=url, **common))
+    if rules["sources"]:
+        rule_source = rules["sources"][0]
+        items.append(ProductEvidence(id=prefix + "|rules", instrument_id=security.instrument_id, kind="profile",
+            label="有版本的普通A股交易规则", display=f"规则版本{rules['rule_version']}；生效起日{rules['policy_effective_from']}"
+                + (f"，结束日{rules['policy_effective_to']}。" if rules["policy_effective_to"] else "。")
+                + " ".join(rules["explanations"])
+                + "这是条件规则说明，不是该证券当日可交易性判定。", source="application_market_rules",
+            date=rule_source["published_date"], url=rule_source["url"], content_kind="relation",
+            publication_precision="date", temporal_scope="market_rule_explanation", retrieved_at=observed))
+    return background, items
 
 
 def _replay_evidence(replay, result):

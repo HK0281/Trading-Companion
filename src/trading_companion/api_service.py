@@ -110,6 +110,14 @@ class _Entry:
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
     """Explicit allowlist; never use the Agent's debug-oriented to_dict() here."""
+    if result.stage == "screening":
+        return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
+            "answer": result.display_answer or result.message, "report": None, "parameters": None,
+            "chart": None, "market_context": None, "candidates": [],
+            "applied_defaults": ["screening:activity_shortlist"] if result.screening_result is not None and result.screening_defaulted else [],
+            "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
+            "runtime": deepcopy(result.runtime), "validation_scope": "grounded_numeric_conditions_within_bounded_quote_sample",
+            "screening": result.screening_result.to_dict() if result.screening_result else None}
     if result.product_plan is not None or result.product_answer is not None:
         return public_product_turn(result)
     report = result.safe_answer
@@ -159,6 +167,7 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
         "status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "report": report.to_dict() if report is not None else None,
         "conversation": conversation,
+        "knowledge": result.general_knowledge_answer.to_dict() if result.general_knowledge_answer is not None else None,
         "presentation": presentation,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
         "chart": chart,
@@ -168,7 +177,7 @@ def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) 
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
         "runtime": deepcopy(result.runtime),
         "research_workflow": workflow,
-        "validation_scope": ("format_and_scope_guards_not_prose_semantics" if result.general_knowledge_answer
+        "validation_scope": ("format_scope_and_citation_membership_not_prose_semantics" if result.general_knowledge_answer
                              else "application_facts_and_checked_relations_not_arbitrary_model_prose"),
     }
 
@@ -194,6 +203,8 @@ def public_product_turn(result):
             "daily_cutoff": plan.end_date.isoformat(), "explicit_historical": plan.explicit_historical,
             "risk_scenarios": [item.risk.to_dict() for item in bundle.companies if item.risk is not None],
             "comparison": build_candidate_comparison(bundle).to_dict() if len(bundle.companies) > 1 else None}
+        company["market_backgrounds"] = [{"instrument_id": item.instrument_id, **item.market_background}
+            for item in bundle.companies if item.market_background is not None]
     return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "conversation": None, "presentation": None,
         "report": report.to_dict() if report is not None else None,
@@ -212,7 +223,8 @@ class ResearchApiService:
     def __init__(self, *, model_factory, directory_loader, provider="fake", data_mode="synthetic",
                  development_source=None, reference_date=None, limits=None, market_context_loader=None,
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
-                 workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None):
+                 workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
+                 screening_source=None, market_background_source=None):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
@@ -235,6 +247,9 @@ class ResearchApiService:
         self._workflow_enabled = workflow_enabled
         self._product_data_service = product_data_service
         self._snapshot_store = snapshot_store
+        # A development service cannot gain network access through injected add-ons.
+        self._screening_source = screening_source if data_mode != "synthetic" else None
+        self._market_background_source = market_background_source if data_mode != "synthetic" else None
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
@@ -413,12 +428,17 @@ class ResearchApiService:
                     or bool(directory.mentioned_spans(question)) and not is_explicit_technical_request(question)
                     or entry.session.product_saved is not None and is_product_followup(question)
                     or history and entry.session.product_saved is not None)
-                if product:
+                from trading_companion.screening_agent import is_screening_request, run_screening_turn
+                if is_screening_request(question):
+                    result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
+                        source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock)
+                elif product:
                     from trading_companion.product_agent import run_product_research_turn
                     result = run_product_research_turn(question, model=entry.model, directory=directory,
                         source=self._research_source, development_source=self._development_source,
                         reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
-                        data_service=self._product_data_service)
+                        data_service=self._product_data_service, market_background_source=self._market_background_source,
+                        background_clock=self._wall_clock)
                 else:
                     result = run_natural_research_turn(question, model=entry.model, directory=directory,
                         source=self._research_source,

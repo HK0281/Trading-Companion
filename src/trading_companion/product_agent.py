@@ -82,7 +82,7 @@ def saved_product(session, *, directory, now, source, development):
 
 
 def _execute(question, *, session, model, directory, now, reference_date, source,
-             development_source, data_service, source_factory):
+             development_source, data_service, source_factory, market_background_source, background_clock):
     from trading_companion.product_answer import synthesize_product_answer
     checkpoint()
     reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
@@ -141,7 +141,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     session.begin_research()
     try:
         bundle = collect_product_research(plan, data_service=data_service, now=now,
-            development_source=development_source, source_factory=source_factory)
+            development_source=development_source, source_factory=source_factory,
+            market_background_source=market_background_source, directory=directory, background_clock=background_clock)
     except (DataSourceError, DataValidationError, InvalidRequestError, ValueError, OSError):
         return AgentTurnResult(status="failed", code="company_evidence_invalid", stage="company_research",
             input_mode="natural", message="本轮资料未通过来源或时间校验，请稍后重试。", product_plan=plan,
@@ -165,10 +166,12 @@ def _execute(question, *, session, model, directory, now, reference_date, source
 
 
 def run_product_research_turn(question, *, session, model, directory, now, source, data_service,
-                              reference_date=None, development_source=None, control=None, source_factory=None):
+                              reference_date=None, development_source=None, control=None, source_factory=None,
+                              market_background_source=None, background_clock=None):
     if data_service is None:
         raise ModelConfigurationError("Company research requires an explicit trusted data service")
     return _controlled(lambda controlled, working: _execute(question, session=working, model=controlled,
         directory=directory, now=now, reference_date=reference_date, source=source,
-        development_source=development_source, data_service=data_service, source_factory=source_factory),
+        development_source=development_source, data_service=data_service, source_factory=source_factory,
+        market_background_source=market_background_source, background_clock=background_clock),
         model=model, session=session, control=control or company_turn_control(), default_calls=6, input_mode="natural")

@@ -56,6 +56,8 @@ class PublicTurn(BaseModel):
     conversation: dict | None = None
     research_workflow: dict | None = None
     company_research: dict | None = None
+    knowledge: dict | None = None
+    screening: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None

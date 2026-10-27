@@ -25,6 +25,7 @@ _SOURCE_NAMES = {"腾讯": "tencent", "东方财富": "akshare_eastmoney", "东�
                  "akshare": "akshare_eastmoney"}
 _FINANCIAL = re.compile(r"基本面|财报|财务|盈利|营收|收入|利润|现金流|资产负债|估值|市盈率|市净率|年报|季报|半年报|业绩|分红|(?<![A-Za-z])(?:ROE|EPS|PE|PB)(?![A-Za-z])", re.I)
 _PROFILE = re.compile(r"公司|主营|业务|行业|企业|股本|上市日期")
+_MARKET_BACKGROUND = re.compile(r"(?<![A-Za-z])\*?ST(?![A-Za-z])|板块|上市时间|交易规则|涨跌(?:幅)?(?:限制|停)|风险警示", re.I)
 _NEWS = re.compile(r"新闻|资讯|消息|舆情")
 _ANNOUNCEMENTS = re.compile(r"公告|披露|公司事件")
 _RISK = re.compile(r"止盈|止损|目标价|目标价格|风险|收益风险")
@@ -209,7 +210,7 @@ def wants_product_research(question: str) -> bool:
     question, _ = _positive_scope(question)
     return (len(question) <= MAX_USER_CHARACTERS
             and (_FEATURE_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
-                     (_FINANCIAL, _PROFILE, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
+                     (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
                  or _GENERAL.search(question) is not None and _EXPLICIT_TECHNICAL.search(question) is None))
 
 
@@ -231,10 +232,11 @@ def _required_kinds(question: str) -> tuple[str, ...]:
     if (_broadens_only(original, question)
             or (_GENERAL.search(question) or _RISK.search(question)) and not _EXPLICIT_TECHNICAL.search(question)
             and not any(pattern.search(question) for pattern in
-                        (_FINANCIAL, _PROFILE, _NEWS, _ANNOUNCEMENTS, _PRICE_SCENARIO, _COMPARE))):
+                        (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _PRICE_SCENARIO, _COMPARE))):
         return tuple(kind for kind in RESEARCH_KINDS if kind not in excluded)
     kinds = set()
-    if _PROFILE.search(question) or _FINANCIAL.search(question) or _comparison_requested(question):
+    if (_PROFILE.search(question) or _MARKET_BACKGROUND.search(question)
+            or _FINANCIAL.search(question) or _comparison_requested(question)):
         kinds.add("profile")
     if _FINANCIAL.search(question) or _PROFILE.search(question) or _comparison_requested(question):
         kinds.add("financial")

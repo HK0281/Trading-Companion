@@ -70,6 +70,14 @@ class ProductPlanTests(unittest.TestCase):
         self.assertEqual(plan.kinds, ("profile", "financial", "news", "announcements", "technical"))
         self.assertEqual(plan.objective.kind, "outlook")
 
+    def test_named_market_rule_question_requests_profile_without_financial_fanout(self):
+        for question in ("平安银行是ST吗", "平安银行的涨跌幅限制", "分析平安银行交易规则"):
+            with self.subTest(question=question):
+                self.assertTrue(wants_product_research(question))
+                plan, _ = self.prepare(question, _arguments(kinds=["profile"]))
+                self.assertEqual(plan.status, "ready")
+                self.assertEqual(plan.kinds, ("profile",))
+
     def test_one_structured_interpretation_precedes_grounded_ready_plan(self):
         plan, model = self.prepare()
         self.assertEqual((plan.status, plan.code), ("ready", "product_plan_ready"))

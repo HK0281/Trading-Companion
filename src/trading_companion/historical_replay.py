@@ -30,8 +30,10 @@ class ReplayConfig:
 def replay_config_from_question(question, indicators, *, indicators_explicit=False):
     """Honor one explicit SMA and a bounded numeric cost instead of optimizing them."""
     smas = [spec for spec in indicators if spec.kind == "sma"]
-    if indicators_explicit and len(smas) != 1:
+    if indicators_explicit and (len(smas) != 1 or len(indicators) != 1):
         raise ValueError("Replay needs exactly one explicit SMA")
+    if re.search(r"做空|空头|双向|杠杆|融资|融券|金叉|死叉|交叉|止盈|止损|周线|周均线|周SMA|日内|分钟|低于均线|均线下方", question, re.I):
+        raise ValueError("Custom strategy rules are not part of the fixed SMA long-or-cash replay")
     window = smas[0].parameters["window"] if indicators_explicit else 20
     cost = 5.0
     if re.search(r"手续费|交易成本|费率|成本", question):
@@ -147,9 +149,12 @@ def replay_bars(bars, *, request_id, instrument_id, config=None, source="csv",
         turnovers += int(changed)
         active += exposure
         interval = following.open_price / current.open_price - 1.0
-        equity *= (1.0 - fee) * (1.0 + exposure * interval)
+        equity *= 1.0 - fee
+        equities.append(equity)
+        equity *= 1.0 + exposure * interval
         if not steps:
             benchmark *= 1.0 - rate
+            benchmarks.append(benchmark)
         benchmark *= 1.0 + interval
         if not all(isfinite(value) and value > 0 for value in (equity, benchmark)):
             raise ValueError("Replay equity must remain finite and positive")

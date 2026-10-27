@@ -37,6 +37,11 @@ class HistoricalReplayTests(unittest.TestCase):
         self.assertEqual(config, ReplayConfig(7, 10))
         with self.assertRaises(ValueError):
             replay_config_from_question("回测平安银行，成本越低越好", specs)
+        with self.assertRaises(ValueError):
+            replay_config_from_question("回测SMA7和RSI14", (*specs, IndicatorSpec("rsi")), indicators_explicit=True)
+        for question in ("回测SMA7做空", "回测SMA7加止损", "回测周线SMA7"):
+            with self.subTest(question=question), self.assertRaises(ValueError):
+                replay_config_from_question(question, specs, indicators_explicit=True)
 
     def test_config_rejects_invalid_values(self):
         for window in (True, 1, 121, 2.5, "20"):
@@ -99,6 +104,8 @@ class HistoricalReplayTests(unittest.TestCase):
         self.assertAlmostEqual(result.benchmark_return_percent, expected)
         self.assertEqual(result.final_liquidation_cost, 0.01)
         self.assertEqual(result.steps[0].turnover_cost, 0.01)
+        self.assertAlmostEqual(result.max_drawdown_percent, 1)
+        self.assertAlmostEqual(result.benchmark_max_drawdown_percent, 1)
 
     def test_equal_price_to_sma_is_cash(self):
         result = replay(bars([10, 10, 10, 10]))

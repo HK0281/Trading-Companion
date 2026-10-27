@@ -84,6 +84,14 @@ That command reads public exchange lists; it does not call a model. Start normal
 
 Open <http://127.0.0.1:8765/> and send a message to start a chat. No arguments mean **DeepSeek + Tencent historical daily bars**, with public company/financial/news/announcement sources available for broader research. Startup checks local configuration, dependencies and the existing real security directory; it does not call a model, fetch market bars or refresh the directory. Missing/stale directories or invalid default-model configuration fail explicitly instead of silently switching to artificial data. Submitted questions can call the selected model and applicable public data sources.
 
+To explicitly expand numeric screening beyond the standard sample (currently 50 IDs per covered board, usually 200 across the SSE/SZSE directory), start with:
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.api_server --screening-data tencent --screening-coverage expanded --port 8765
+```
+
+Expanded Tencent sampling sorts each board's entire trusted directory by code, then selects positions `floor(i * board size / q)` for `i = 0..q-1`, where `q = min(200, board size)`. It deterministically fills all available slots, taking every ID when a board has fewer than 200. The hard limit is 1000 sampled IDs and 20 requests (normally at most 15 with 80-ID batches), with the existing 25-second collection deadline. This increases requests, latency and exposure to rate limits. Real expanded-mode speed and source stability have **not** been verified online. It remains a bounded sample, with no claim of whole-market rankings or statistically representative coverage. The default profile stays unchanged. Explicit `--screening-data eastmoney --screening-coverage expanded` reads up to two vendor pages per board instead of interval sampling; failures never switch providers. Dev Mode stays isolated. See the [screening design](docs/screening-design.md) for coverage gaps and CLI options.
+
 When both model configurations are valid, the Web model selector offers DeepSeek and OpenAI. Selection starts a separate session; an existing session's provider is fixed. `GET /health` exposes `available_providers` as names only, and `POST /v1/sessions` can select a configured provider by name. Keys and endpoint configuration remain server-side, with no silent provider fallback. OpenAI uses the API, so the selected model must support the configured Chat Completions/tool interface. If only OpenAI is configured, choose it as the startup default:
 
 ```powershell

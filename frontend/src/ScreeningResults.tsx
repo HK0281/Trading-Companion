@@ -15,13 +15,19 @@ type Condition = { field: Field; operator: Operator; value: number };
 type Row = { instrument_id: string; name: string; quoted_at: string; quote_date: string; stratum: string;
   values: Record<Field, number | null>; sample_position: number; sort_value: number };
 type Stratum = { stratum: string; total_basis: string; vendor_total: number | null; directory_records: number | null;
-  scanned_records: number; identity_verified_records: number; unverified_records: number; missing_quote_records: number };
+  scanned_records: number; identity_verified_records: number; unverified_records: number; missing_quote_records: number;
+  pages_read: number; vendor_listing_exhausted: boolean | null; directory_stratum_exhausted: boolean | null };
+type DirectoryAudit = { selection_method: string; directory_records: number; directory_observed_records: number;
+  directory_unobserved_records: number; request_count: number; strata: {
+    stratum: string; directory_records: number; directory_observed_records: number; directory_unobserved_records: number;
+    directory_selected_records: number | null; directory_not_selected_records: number | null;
+    vendor_not_scanned_records: number | null; selection_limit: number | null }[] };
 type ScreeningView = { status: "completed" | "empty" | "unavailable"; rows: Row[];
   request: { conditions: Condition[]; sort_by: Field; sort_direction: "asc" | "desc"; limit: number };
   conditions: (Condition & { passed: number; failed: number; unknown: number })[];
   coverage: { scanned_records: number; identity_verified_records: number; condition_matched_records: number;
     age_eligible_records: number; stale_records_not_evaluated: number; missing_quote_records: number;
-    unverified_records: number; matched_missing_sort_records: number; strata: Stratum[] };
+    unverified_records: number; matched_missing_sort_records: number; strata: Stratum[]; directory_audit?: DirectoryAudit };
   source: { source: string; retrieved_at: string; data_authenticity: string } };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, max = 160): value is string => typeof value === "string" && value.trim().length > 0
@@ -49,13 +55,50 @@ function validStratum(value: unknown): value is Stratum {
     || !count(value.scanned_records, 1000) || !count(value.identity_verified_records, 1000)
     || !count(value.missing_quote_records, 1000) || !count(value.unverified_records, 1000)
     || value.identity_verified_records + value.unverified_records + value.missing_quote_records !== value.scanned_records
-    || !count(value.pages_read, 2)) return false;
+    || !count(value.pages_read, value.total_basis === "vendor_declared" ? 2 : 4)) return false;
   if (value.total_basis === "vendor_declared") return count(value.vendor_total) && value.directory_records === null
     && value.vendor_total >= value.scanned_records && value.vendor_listing_exhausted === (value.vendor_total === value.scanned_records)
     && value.directory_stratum_exhausted === null;
   return value.total_basis === "configured_directory" && count(value.directory_records) && value.vendor_total === null
     && value.directory_records >= value.scanned_records && value.directory_stratum_exhausted === (value.directory_records === value.scanned_records)
     && value.vendor_listing_exhausted === null;
+}
+
+function validDirectoryAudit(value: unknown, strata: Stratum[], source: Record<string, unknown>): value is DirectoryAudit {
+  if (!object(value) || value.version !== "screening-directory-audit-v1"
+    || !["synthetic_fixture", "directory_code_prefix", "directory_code_uniform_interval", "vendor_page_order"].includes(value.selection_method as string)
+    || !count(value.directory_records) || !count(value.directory_observed_records, 1000)
+    || !count(value.directory_unobserved_records)
+    || value.directory_observed_records + value.directory_unobserved_records !== value.directory_records
+    || !count(value.request_count, 20) || value.request_count !== strata.reduce((sum, item) => sum + item.pages_read, 0)
+    || !object(source.directory) || source.directory.records !== value.directory_records
+    || !Array.isArray(value.strata) || value.strata.length !== 5) return false;
+  const expectedMethod = source.data_authenticity === "synthetic" ? "synthetic_fixture"
+    : source.sampling_policy === "configured_directory_fixed_market_strata_code_ascending" ? "directory_code_prefix"
+    : source.sampling_policy === "configured_directory_code_uniform_interval" ? "directory_code_uniform_interval"
+    : source.sampling_policy === "fixed_market_strata_code_ascending_bounded_pages" ? "vendor_page_order" : null;
+  if (value.selection_method !== expectedMethod || (expectedMethod === "directory_code_prefix" || expectedMethod === "directory_code_uniform_interval")
+    && strata.some(item => item.total_basis !== "configured_directory")
+    || expectedMethod === "vendor_page_order" && strata.some(item => item.total_basis !== "vendor_declared")) return false;
+  const seen = new Set<string>();
+  let total = 0, observed = 0;
+  for (const row of value.strata) {
+    if (!object(row) || typeof row.stratum !== "string" || !Object.hasOwn(STRATA, row.stratum) || seen.has(row.stratum)
+      || !count(row.directory_records) || !count(row.directory_observed_records, 1000) || !count(row.directory_unobserved_records)
+      || row.directory_observed_records + row.directory_unobserved_records !== row.directory_records) return false;
+    const base = strata.find(item => item.stratum === row.stratum);
+    const selected = base?.total_basis === "configured_directory" ? base.scanned_records : null;
+    if (row.directory_observed_records !== (base?.identity_verified_records ?? 0)
+      || base?.total_basis === "configured_directory" && row.directory_records !== base.directory_records
+      || row.directory_selected_records !== selected
+      || row.directory_not_selected_records !== (selected === null ? null : row.directory_records - selected)
+      || row.vendor_not_scanned_records !== (base?.total_basis === "vendor_declared" ? base.vendor_total! - base.scanned_records : null)) return false;
+    if (expectedMethod === "directory_code_uniform_interval" && base) {
+      if (!count(row.selection_limit, 200) || row.selection_limit < 1 || selected !== Math.min(row.directory_records, row.selection_limit)) return false;
+    } else if (row.selection_limit !== null) return false;
+    total += row.directory_records; observed += row.directory_observed_records; seen.add(row.stratum);
+  }
+  return total === value.directory_records && observed === value.directory_observed_records;
 }
 
 export function parseScreeningResult(value: unknown): ScreeningView | null {
@@ -95,6 +138,8 @@ export function parseScreeningResult(value: unknown): ScreeningView | null {
   for (const key of ["scanned_records", "identity_verified_records", "unverified_records", "missing_quote_records"] as const) {
     if (coverage.strata.reduce((sum, item) => sum + item[key], 0) !== coverage[key]) return null;
   }
+  if (coverage.strata.reduce((sum, item) => sum + item.pages_read, 0) > 20
+    || Object.hasOwn(coverage, "directory_audit") && !validDirectoryAudit(coverage.directory_audit, coverage.strata, source)) return null;
   const expectedStatus = value.rows.length ? "completed" : coverage.age_eligible_records ? "empty" : "unavailable";
   if (value.status !== expectedStatus) return null;
   const summaries = value.conditions;
@@ -143,6 +188,8 @@ export function parseScreeningResult(value: unknown): ScreeningView | null {
 
 const sourceNames: Record<string, string> = { eastmoney_stratified_quote_list_v1: "东方财富报价",
   tencent_directory_stratified_batch_quotes_v1: "腾讯报价", synthetic_quote_fixture_not_live_market: "人工样例" };
+const samplingNames: Record<string, string> = { directory_code_prefix: "按代码顺序取前列",
+  directory_code_uniform_interval: "按代码均匀间隔抽取", vendor_page_order: "按供应商分页顺序", synthetic_fixture: "固定人工样例" };
 
 export function ScreeningResults({ data, activityDefault = false }: { data: ScreeningView; activityDefault?: boolean }) {
   const columns = [...new Set<Field>(["price", "change_percent", ...data.request.conditions.map(item => item.field), data.request.sort_by, "pe_dynamic", "pb"])];
@@ -169,10 +216,25 @@ export function ScreeningResults({ data, activityDefault = false }: { data: Scre
         </tr>)}</tbody></table></div>
       <p className="workflow-note">扫描 {data.coverage.scanned_records} 条；未核对 {data.coverage.unverified_records} 条；缺失报价 {data.coverage.missing_quote_records} 只；
         报价超期 {data.coverage.stale_records_not_evaluated} 只；符合条件但缺排序值 {data.coverage.matched_missing_sort_records} 只。</p>
-      <div className="table-scroll"><table aria-label="采样覆盖"><thead><tr><th>范围</th><th>参考名单</th><th>扫描</th><th>身份已核对</th></tr></thead>
+      <div className="table-scroll"><table aria-label="采样覆盖"><thead><tr><th>范围</th><th>参考名单</th><th>扫描</th><th>身份已核对</th><th>读取范围</th></tr></thead>
         <tbody>{data.coverage.strata.map(item => <tr key={item.stratum}><td>{STRATA[item.stratum]}</td>
           <td>{item.total_basis === "configured_directory" ? `目录 ${item.directory_records}` : `供应商声明 ${item.vendor_total}`}</td>
-          <td>{item.scanned_records}</td><td>{item.identity_verified_records}</td></tr>)}</tbody></table></div>
+          <td>{item.scanned_records}</td><td>{item.identity_verified_records}</td>
+          <td>{item.total_basis === "configured_directory" ? item.directory_records === 0 ? "目录未覆盖"
+            : item.directory_stratum_exhausted ? "配置目录已扫描完" : "配置目录仅扫描部分"
+            : item.vendor_listing_exhausted ? "供应商列表已读完" : "供应商列表仅读取部分"}</td></tr>)}</tbody></table></div>
+      {data.coverage.directory_audit && <>
+        <div className="table-scroll"><table aria-label="目录覆盖核对"><thead><tr><th>范围</th><th>可信目录</th><th>采样方法</th><th>尚未观察</th></tr></thead>
+          <tbody>{data.coverage.directory_audit.strata.map(item => <tr key={item.stratum}>
+            <td>{STRATA[item.stratum]}</td><td>{item.directory_records === 0 ? "目录未覆盖，不能判断该市场没有股票" : `${item.directory_records} 只`}</td>
+            <td>{samplingNames[data.coverage.directory_audit!.selection_method]}
+              {item.directory_selected_records !== null && ` ${item.directory_selected_records}/${item.directory_records}`}
+              {item.directory_not_selected_records !== null && <small>目录中未选中 {item.directory_not_selected_records} 只</small>}
+              {item.vendor_not_scanned_records !== null && <small>供应商列表未读取 {item.vendor_not_scanned_records} 条</small>}</td>
+            <td>{item.directory_unobserved_records} 只</td></tr>)}</tbody></table></div>
+        <p className="workflow-note">“尚未观察”包含未采样或未返回可核对报价的目录证券，不全部等于缺报价。
+          目录扫描完或供应商列表读完均不代表已证明全市场完整；字段缺失与报价时效另行统计。</p>
+      </>}
       <p className="workflow-note">未采样和缺失数据不计为条件失败。ST、科创板及新股未按类别排除；报价未核实风险与上市状态。结果仅描述实际样本。</p>
     </details>
   </div>;

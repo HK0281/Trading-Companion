@@ -28,6 +28,11 @@ STRATA = {
 }
 OPERATORS = {"lt": "<", "lte": "≤", "eq": "=", "gte": "≥", "gt": ">"}
 MAX_SAMPLE_RECORDS = 1000
+SAMPLING_METHODS = {
+    "fixed_market_strata_code_ascending_bounded_pages": "vendor_page_order",
+    "configured_directory_fixed_market_strata_code_ascending": "directory_code_prefix",
+    "configured_directory_code_uniform_interval": "directory_code_uniform_interval",
+}
 
 
 def _aware(value):
@@ -97,13 +102,17 @@ class ScreeningStratumCoverage:
     pages_read: int
     missing_quote_records: int = 0
     total_basis: str = "vendor_declared"
+    selection_limit: int | None = None
 
     def __post_init__(self):
         if (type(self.stratum) is not str or self.stratum not in STRATA or any(type(value) is not int or value < 0 for value in (
                 self.vendor_total, self.scanned_records, self.verified_records, self.pages_read, self.missing_quote_records))
                 or not self.verified_records + self.missing_quote_records <= self.scanned_records <= self.vendor_total <= 10000
                 or type(self.total_basis) is not str or self.total_basis not in ("vendor_declared", "configured_directory")
-                or self.scanned_records > MAX_SAMPLE_RECORDS or self.pages_read > 2):
+                or self.scanned_records > MAX_SAMPLE_RECORDS
+                or self.pages_read > (2 if self.total_basis == "vendor_declared" else 4)
+                or self.selection_limit is not None and (
+                    type(self.selection_limit) is not int or not 1 <= self.selection_limit <= 200)):
             raise DataValidationError("Invalid quote sampling coverage")
 
     def to_dict(self):
@@ -133,13 +142,14 @@ class ScreeningSnapshot:
                 or any(type(quote) is not ScreeningQuote for quote in self.quotes)
                 or not _text(self.source) or not _aware(self.retrieved_at)
                 or type(self.directory) is not SecurityDirectory or type(self.is_fixture) is not bool
-                or self.directory.is_fixture != self.is_fixture or self.sampling_policy not in (
-                    "fixed_market_strata_code_ascending_bounded_pages", "configured_directory_fixed_market_strata_code_ascending")):
+                or self.directory.is_fixture != self.is_fixture
+                or type(self.sampling_policy) is not str or self.sampling_policy not in SAMPLING_METHODS):
             raise DataValidationError("Invalid quote snapshot or mixed fixture identity")
         if (type(self.strata) is not tuple or not 1 <= len(self.strata) <= len(STRATA)
                 or any(type(item) is not ScreeningStratumCoverage for item in self.strata)
                 or len({item.stratum for item in self.strata}) != len(self.strata)
                 or sum(item.scanned_records for item in self.strata) > MAX_SAMPLE_RECORDS
+                or sum(item.pages_read for item in self.strata) > 20
                 or sum(item.verified_records for item in self.strata) != len(self.quotes)):
             raise DataValidationError("Quote snapshot coverage does not match its records")
         trusted = {item.instrument_id: item for item in self.directory.securities}
@@ -152,6 +162,16 @@ class ScreeningSnapshot:
                     or quote.quoted_at > self.retrieved_at):
                 raise DataValidationError("Quote identity or timestamp is not bound to its snapshot")
         for item in self.strata:
+            directory_count = sum(market_stratum(security.instrument_id) == item.stratum for security in self.directory.securities)
+            if item.total_basis == "configured_directory" and item.vendor_total != directory_count:
+                raise DataValidationError("Quote coverage does not match the independent directory count")
+            interval = self.sampling_policy == "configured_directory_code_uniform_interval"
+            if interval:
+                if (item.total_basis != "configured_directory" or item.selection_limit is None
+                        or item.scanned_records != min(directory_count, item.selection_limit)):
+                    raise DataValidationError("Invalid uniform-interval sample coverage")
+            elif item.selection_limit is not None:
+                raise DataValidationError("Unexpected interval sampling limit")
             if sum(market_stratum(quote.instrument_id) == item.stratum for quote in self.quotes) != item.verified_records:
                 raise DataValidationError("Quote identities do not match stratum coverage")
         if any(market_stratum(quote.instrument_id) not in {item.stratum for item in self.strata} for quote in self.quotes):
@@ -165,6 +185,28 @@ class ScreeningSnapshot:
                 "sampling_policy": self.sampling_policy,
                 "strata": [item.to_dict() for item in self.strata],
                 "independent_full_market_completeness_proven": False}
+
+    def directory_audit(self):
+        """Reconcile directory IDs with verified quotes, independently of vendor totals."""
+        coverage = {item.stratum: item for item in self.strata}
+        rows = []
+        for stratum in STRATA:
+            total = sum(market_stratum(item.instrument_id) == stratum for item in self.directory.securities)
+            observed = sum(market_stratum(quote.instrument_id) == stratum for quote in self.quotes)
+            item = coverage.get(stratum)
+            selected = item.scanned_records if item and item.total_basis == "configured_directory" else None
+            rows.append({"stratum": stratum, "directory_records": total,
+                "directory_observed_records": observed, "directory_unobserved_records": total - observed,
+                "directory_selected_records": selected,
+                "directory_not_selected_records": total - selected if selected is not None else None,
+                "vendor_not_scanned_records": item.vendor_total - item.scanned_records
+                    if item and item.total_basis == "vendor_declared" else None,
+                "selection_limit": item.selection_limit if item else None})
+        return {"version": "screening-directory-audit-v1",
+            "selection_method": "synthetic_fixture" if self.is_fixture else SAMPLING_METHODS[self.sampling_policy],
+            "directory_records": len(self.directory.securities), "directory_observed_records": len(self.quotes),
+            "directory_unobserved_records": len(self.directory.securities) - len(self.quotes),
+            "request_count": sum(item.pages_read for item in self.strata), "strata": rows}
 
 
 @dataclass(frozen=True)
@@ -323,6 +365,7 @@ class ScreeningService:
             "returned_records": len(rows), "result_truncated": len(rows) < len(matched),
             "field_coverage_within_verified_sample": field_coverage,
             "not_sampled_records_are_not_condition_failures": True,
+            "directory_audit": snapshot.directory_audit(),
             "strata": [item.to_dict() for item in snapshot.strata]}
         status = "completed" if rows else "empty" if eligible else "unavailable"
         code = "sample_conditions_evaluated" if eligible else "no_age_eligible_verified_quotes"
@@ -354,6 +397,13 @@ def render_screening_result(result: ScreeningResult) -> str:
     lines.append(f"条件：{conditions}；按{FIELDS[request.sort_by][0]}{'从高到低' if request.sort_direction == 'desc' else '从低到高'}排列。")
     lines.append(f"本次扫描{coverage['scanned_records']}条，身份已核对{coverage['identity_verified_records']}条；"
                  f"符合条件{coverage['condition_matched_records']}条，展示{coverage['returned_records']}条。")
+    audit = coverage["directory_audit"]
+    method = {"directory_code_prefix": "按板块代码顺序取前列", "directory_code_uniform_interval": "按板块代码均匀间隔抽样",
+              "vendor_page_order": "按供应商分页顺序", "synthetic_fixture": "固定人工样例"}[audit["selection_method"]]
+    lines.append(f"采样方式：{method}；可信目录共{audit['directory_records']}只，其中{audit['directory_unobserved_records']}只尚未观察到可核对报价，包含未采样部分。")
+    absent = [STRATA[item["stratum"]] for item in audit["strata"] if item["directory_records"] == 0]
+    if absent:
+        lines.append(f"目录未覆盖：{'、'.join(absent)}；不能据此判断该市场没有股票。")
     shown_fields = tuple(dict.fromkeys((*[item.field for item in request.conditions], request.sort_by)))
     for row in result.rows:
         values = "，".join(f"{FIELDS[field][0]} {_display_number(field, row['values'][field])}" for field in shown_fields)

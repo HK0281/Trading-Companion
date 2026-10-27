@@ -24,6 +24,8 @@ def main(argv=None) -> int:
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
                         help="Explicit bounded quote-screening source; no failure fallback (default: tencent)")
+    parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
+                        help="Expanded quote sample: up to 1000 records, more requests, same deadline")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
@@ -34,6 +36,8 @@ def main(argv=None) -> int:
         args.data = args.data or "tencent"
     if args.data == "synthetic" and args.directory:
         parser.error("Synthetic data does not accept a directory path")
+    if (args.demo or args.data == "synthetic") and args.screening_coverage != "standard":
+        parser.error("Synthetic mode uses fixed fixtures, not expanded live sampling")
     service = development_service = snapshot_store = None
     try:
         ensure_data_mode_dependencies("synthetic" if args.demo else args.data)
@@ -72,9 +76,8 @@ def main(argv=None) -> int:
                 context_loader = None
             from trading_companion.company_research import ResearchDataService
             from trading_companion.market_context_live import ExchangeMarketContextSource
-            from trading_companion.screening_source import TencentQuoteSnapshotSource, EastmoneyQuoteSnapshotSource
-            screening_source = (TencentQuoteSnapshotSource() if args.screening_data == "tencent"
-                                else EastmoneyQuoteSnapshotSource()) if source is None else None
+            from trading_companion.screening_source import configured_quote_source
+            screening_source = configured_quote_source(args.screening_data, args.screening_coverage) if source is None else None
             background_source = ExchangeMarketContextSource() if source is None and not args.market_context else None
             if args.snapshot_db:
                 from trading_companion.snapshot_store import ResearchSnapshotStore, SnapshotStoreError

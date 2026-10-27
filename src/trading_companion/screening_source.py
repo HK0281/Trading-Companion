@@ -1,4 +1,4 @@
-"""Bounded, stratified Eastmoney quote-list reads with no single-stock fan-out."""
+"""Bounded quote sampling from trusted directory IDs or fixed vendor list pages."""
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -247,17 +247,21 @@ class TencentQuoteSnapshotSource:
     """Explicit provider alternative, using only bounded IDs from the trusted directory."""
 
     def __init__(self, *, session=None, clock=None, timeout_seconds=6.0, deadline_seconds=25.0,
-                 per_stratum=50, batch_size=80):
+                 per_stratum=None, batch_size=80, coverage="standard"):
+        if per_stratum is None:
+            per_stratum = 200 if coverage == "expanded" else 50
         if (type(timeout_seconds) not in (int, float) or not isfinite(timeout_seconds)
                 or not 0 < timeout_seconds <= 10 or type(deadline_seconds) not in (int, float)
                 or not isfinite(deadline_seconds) or not 0 < deadline_seconds <= 30
-                or type(per_stratum) is not int or not 1 <= per_stratum <= 100
+                or type(coverage) is not str or coverage not in ("standard", "expanded")
+                or type(per_stratum) is not int or not 1 <= per_stratum <= (100 if coverage == "standard" else 200)
                 or type(batch_size) is not int or not 50 <= batch_size <= 80
                 or clock is not None and not callable(clock)):
             raise InvalidRequestError("Tencent screening needs bounded trusted sampling and batch configuration")
         self._session, self._clock = session, clock or (lambda: datetime.now(timezone.utc))
         self._timeout, self._deadline = timeout_seconds, deadline_seconds
         self._per_stratum, self._batch_size = per_stratum, batch_size
+        self._coverage = coverage
 
     def _now(self):
         value = self._clock()
@@ -367,7 +371,12 @@ class TencentQuoteSnapshotSource:
         for stratum in MARKET_FILTERS:
             universe = sorted((item for item in directory.securities if market_stratum(item.instrument_id) == stratum),
                               key=lambda item: item.instrument_id)
-            selected, found, requests_made = universe[:self._per_stratum], 0, 0
+            if self._coverage == "expanded":
+                selected_count = min(self._per_stratum, len(universe))
+                selected = [universe[index * len(universe) // selected_count] for index in range(selected_count)]
+            else:
+                selected = universe[:self._per_stratum]
+            found, requests_made = 0, 0
             for offset in range(0, len(selected), self._batch_size):
                 batch = selected[offset:offset + self._batch_size]
                 expected = {item.instrument_id[-2:].lower() + item.instrument_id[:6]: item for item in batch}
@@ -380,9 +389,27 @@ class TencentQuoteSnapshotSource:
                 if monotonic() >= deadline:
                     raise DataSourceError("Quote collection deadline exceeded")
             coverage.append(ScreeningStratumCoverage(stratum, len(universe), len(selected), found, requests_made,
-                missing_quote_records=len(selected) - found, total_basis="configured_directory"))
+                missing_quote_records=len(selected) - found, total_basis="configured_directory",
+                selection_limit=self._per_stratum if self._coverage == "expanded" else None))
         retrieved = self._now()
         if retrieved < started:
             raise InvalidRequestError("Quote retrieval clock moved backwards")
         return ScreeningSnapshot(tuple(quotes), TENCENT_SOURCE, retrieved, directory, tuple(coverage),
-                                 sampling_policy="configured_directory_fixed_market_strata_code_ascending")
+                                 sampling_policy=("configured_directory_code_uniform_interval" if self._coverage == "expanded"
+                                     else "configured_directory_fixed_market_strata_code_ascending"))
+
+
+def configured_quote_source(provider, coverage="standard", *, per_stratum=None, pages_per_stratum=None):
+    """Trusted launcher/CLI options only; chat cannot alter these resource bounds."""
+    if (type(provider) is not str or provider not in ("tencent", "eastmoney")
+            or type(coverage) is not str or coverage not in ("standard", "expanded")):
+        raise InvalidRequestError("Choose a supported quote source and coverage profile")
+    if provider == "tencent":
+        if pages_per_stratum is not None or coverage == "expanded" and per_stratum is not None:
+            raise InvalidRequestError("Expanded coverage and provider-specific sample overrides cannot be combined")
+        return TencentQuoteSnapshotSource(coverage=coverage,
+            per_stratum=(200 if coverage == "expanded" else 50 if per_stratum is None else per_stratum))
+    if per_stratum is not None or coverage == "expanded" and pages_per_stratum is not None:
+        raise InvalidRequestError("Expanded coverage and provider-specific sample overrides cannot be combined")
+    return EastmoneyQuoteSnapshotSource(pages_per_stratum=(2 if coverage == "expanded"
+        else 1 if pages_per_stratum is None else pages_per_stratum))

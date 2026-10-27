@@ -45,6 +45,14 @@ $env:PYTHONPATH='src'
 
 无参数默认 DeepSeek + 腾讯不复权历史日线、端口8765，自动按原规则读取根目录 `.env`；`--provider` / `--data` / `--port` 可显式覆盖正常后端。启动仅检查本地配置、依赖和现有目录，不请求模型或行情、不自动刷新目录；缺配置明确失败，不切人工数据。运行后打开 <http://127.0.0.1:8765/docs> 查看Swagger接口；Ctrl+C停止服务。
 
+扩大筛选样本须显式从PowerShell启动，不由模型、网页参数或聊天文本修改可信采集规模：
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.api_server --screening-data tencent --screening-coverage expanded --port 8765
+```
+
+默认`standard`仍为腾讯各类代码前50只；`expanded`在各类完整目录上取`q=min(200,总数)`个均匀位置，下标为`floor(i × 总数/q)`，每类抽满名额，小目录取全部，总量最多1000、请求最多20次。东财显式选择`--screening-data eastmoney`时扩大档使用每类两页的供应商分页顺序，不能称为间隔抽样。扩大档会增加延迟和限流风险，仍保持默认25秒/最多30秒采集截止、不自动换源；扩大档的真实速度与来源稳定性尚未联网验证。`--demo`/`--data synthetic`拒绝扩大档，正常启动的独立Dev Mode也不会继承在线样本配置。公共结果保持原版本，`coverage.directory_audit`新增目录对账；旧结果没有该对象时仍可显示，畸形审计对象回退原文字。详见[筛选设计](screening-design.md)。
+
 完全离线服务显式加 `--demo`，不读 `.env`、不能从网页启用正常模式。它使用原 `ConversationDemoModel`，不是通用Fake语言模型：先研究固定问题，再问固定追问，可选原SMA替换脚本；重新创建会话才得到新的脚本实例。重置不重建模型或返还额度。正常启动另外预配独立的同类 Dev Mode 服务，详见下一节。
 
 另开一个PowerShell终端，可实际调用：

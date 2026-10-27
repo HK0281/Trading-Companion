@@ -9,7 +9,7 @@ from trading_companion.screening import (
     FIELDS, OPERATORS, ScreeningCondition, ScreeningRequest, ScreeningService,
     demo_screening_snapshot, render_screening_result,
 )
-from trading_companion.screening_source import EastmoneyQuoteSnapshotSource, TencentQuoteSnapshotSource
+from trading_companion.screening_source import configured_quote_source
 from trading_companion.security_directory import load_security_directory
 
 
@@ -21,14 +21,16 @@ def main(argv=None):
     parser.add_argument("--directory", help="Trusted fresh nonfixture security directory for live mode")
     parser.add_argument("--source", choices=("tencent", "eastmoney"), default="tencent",
                         help="Explicit provider choice; failures never switch providers")
-    parser.add_argument("--per-stratum", type=int, default=50, help="Tencent: at most 100 directory IDs per stratum")
+    parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
+                        help="Expanded: up to 1000 sampled records; more requests, same deadline")
+    parser.add_argument("--per-stratum", type=int, help="Tencent standard profile only: at most 100 IDs per stratum")
     parser.add_argument("--condition", nargs=3, action="append", metavar=("FIELD", "OP", "NUMBER"),
                         help=f"Repeat AND conditions. Fields: {', '.join(FIELDS)}. Operators: {', '.join(OPERATORS)}")
     parser.add_argument("--sort-by", default="amount_cny", choices=FIELDS)
     parser.add_argument("--direction", default="desc", choices=("asc", "desc"))
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--max-quote-age-days", type=int, default=7)
-    parser.add_argument("--pages-per-stratum", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--pages-per-stratum", type=int, choices=(1, 2), help="Eastmoney standard profile only")
     parser.add_argument("--json", action="store_true", dest="json_output", help="Output the structured result")
     args = parser.parse_args(argv)
     if not args.demo and not args.live:
@@ -36,6 +38,8 @@ def main(argv=None):
         return 0
     if args.demo and args.directory:
         parser.error("--demo cannot use a live security directory")
+    if args.demo and (args.screening_coverage != "standard" or args.per_stratum is not None or args.pages_per_stratum is not None):
+        parser.error("--demo uses fixed synthetic records, not live sample configuration")
     if args.live and (not args.directory or not args.condition):
         parser.error("--live requires --directory and at least one explicit --condition")
     try:
@@ -53,8 +57,8 @@ def main(argv=None):
         if args.demo:
             snapshot = demo_screening_snapshot()
         else:
-            collector = (TencentQuoteSnapshotSource(per_stratum=args.per_stratum) if args.source == "tencent" else
-                         EastmoneyQuoteSnapshotSource(pages_per_stratum=args.pages_per_stratum))
+            collector = configured_quote_source(args.source, args.screening_coverage,
+                per_stratum=args.per_stratum, pages_per_stratum=args.pages_per_stratum)
             snapshot = collector.read_snapshot(load_security_directory(args.directory))
         result = ScreeningService().screen(snapshot, request)
     except (DataSourceError, DataValidationError, InvalidRequestError) as error:

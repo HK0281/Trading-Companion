@@ -37,6 +37,34 @@ function fixture() {
   return { turn, value };
 }
 
+function auditedFixture(expanded = false) {
+  const base = fixture();
+  const total = expanded ? 400 : 5;
+  const directory_audit = { version: "screening-directory-audit-v1",
+    selection_method: expanded ? "directory_code_uniform_interval" : "vendor_page_order",
+    directory_records: total, directory_observed_records: 3, directory_unobserved_records: total - 3,
+    request_count: expanded ? 3 : 1,
+    strata: ["sse_main", "szse_main", "star", "chinext", "bse"].map((stratum, index) => ({
+      stratum, directory_records: index ? 0 : total, directory_observed_records: index ? 0 : 3,
+      directory_unobserved_records: index ? 0 : total - 3,
+      directory_selected_records: (expanded && !index ? 4 : null) as number | null,
+      directory_not_selected_records: (expanded && !index ? total - 4 : null) as number | null,
+      vendor_not_scanned_records: (!expanded && !index ? 96 : null) as number | null,
+      selection_limit: (expanded && !index ? 4 : null) as number | null,
+    })) };
+  const coverage = Object.assign(base.value.coverage, { directory_audit });
+  const source = Object.assign(base.value.source, {
+    directory: { is_fixture: false, records: total },
+    sampling_policy: expanded ? "configured_directory_code_uniform_interval" : "fixed_market_strata_code_ascending_bounded_pages",
+  });
+  if (expanded) {
+    Object.assign(coverage, { unverified_records: 0, missing_quote_records: 1 });
+    Object.assign(coverage.strata[0], { total_basis: "configured_directory", directory_records: total, vendor_total: null,
+      pages_read: 3, unverified_records: 0, missing_quote_records: 1, directory_stratum_exhausted: false, vendor_listing_exhausted: null });
+  }
+  return { ...base, audit: directory_audit, source };
+}
+
 describe("screening sample presentation", () => {
   it("explains the activity shortlist before the table when the backend applied its default", () => {
     const { turn } = fixture(); turn.applied_defaults = ["screening:activity_shortlist"];
@@ -168,6 +196,54 @@ describe("screening sample presentation", () => {
     (value: ReturnType<typeof fixture>["value"]) => { value.rows[1].sample_position = 1; },
   ])("rejects inconsistent quote, condition, ranking or coverage metadata", (mutate) => {
     const { value } = fixture(); mutate(value); expect(parseScreeningResult(value)).toBeNull();
+  });
+
+  it("shows interval sampling, unselected identities and directory gaps with three batches", () => {
+    const { turn, value } = auditedFixture(true);
+    expect(parseScreeningResult(value)).not.toBeNull();
+    render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("筛选条件与覆盖"));
+    expect(screen.getByText(/按代码均匀间隔抽取 4\/400/)).toBeVisible();
+    expect(screen.getByText("目录中未选中 396 只")).toBeVisible();
+    expect(screen.getAllByText("目录未覆盖，不能判断该市场没有股票")).toHaveLength(4);
+    expect(screen.getByText(/“尚未观察”包含未采样或未返回可核对报价/)).toBeVisible();
+    expect(screen.getByText("配置目录仅扫描部分")).toBeVisible();
+  });
+
+  it("labels vendor pagination separately from independent directory reconciliation", () => {
+    const { turn, value } = auditedFixture();
+    expect(parseScreeningResult(value)).not.toBeNull();
+    render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("筛选条件与覆盖"));
+    expect(screen.getAllByText("按供应商分页顺序")).toHaveLength(5);
+    expect(screen.getByText("供应商列表未读取 96 条")).toBeVisible();
+    expect(screen.getByText("供应商列表仅读取部分")).toBeVisible();
+    expect(screen.queryByText(/按代码均匀间隔/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.directory_records++; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[0].directory_observed_records++; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[0].directory_not_selected_records = 0; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[0].selection_limit = 0; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[0].selection_limit = 5; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[0].selection_limit = 201; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata.pop(); },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.strata[1].stratum = "sse_main"; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.request_count = 21; },
+    (value: ReturnType<typeof auditedFixture>) => { value.audit.selection_method = "vendor_page_order"; },
+    (value: ReturnType<typeof auditedFixture>) => { value.source.directory.records = 1; },
+  ])("falls back to confirmed text when the optional coverage audit contradicts base counts", mutate => {
+    const sample = auditedFixture(true); mutate(sample);
+    expect(parseScreeningResult(sample.value)).toBeNull();
+    render(<ResponseContent turn={sample.turn} />);
+    expect(screen.getByText(sample.turn.answer!)).toBeVisible();
+    expect(screen.queryByRole("table", { name: "筛选候选" })).not.toBeInTheDocument();
+  });
+
+  it("rejects more than two vendor pages and more than four directory batches", () => {
+    const vendor = fixture().value; vendor.coverage.strata[0].pages_read = 3;
+    expect(parseScreeningResult(vendor)).toBeNull();
+    const directory = auditedFixture(true).value; directory.coverage.strata[0].pages_read = 5;
+    expect(parseScreeningResult(directory)).toBeNull();
   });
 
   it("rejects a unit mismatch without displaying misleading table values", () => {

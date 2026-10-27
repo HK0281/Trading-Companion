@@ -43,6 +43,10 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 - [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
 - [Technical analysis, signals and timeframes (Chinese)](docs/technical-analysis-design.md): ADX/OBV/VWMA conventions, complementary indicator profiles, confirmed-pivot candidates, completed weekly bars and traceable dependencies.
 - [Historical replay and archive inspection (Chinese)](docs/historical-replay-design.md): a fixed SMA next-open exposure comparison, same-period benchmark, cost/drawdown metrics and offline archive commands.
+- [Numeric candidate screening (Chinese)](docs/screening-design.md): explicit numeric filters, bounded Tencent/Eastmoney snapshots and sample coverage.
+- [Retrieved knowledge answers (Chinese)](docs/knowledge-retrieval-design.md): local versioned notes, lexical retrieval and checked paragraph citations.
+- [Current exchange context and dated rules (Chinese)](docs/market-rules-design.md): listing metadata, official references, effective dates and unknown historical states.
+- [Current module status and examples (Chinese)](docs/module-progress-2026-10-26.md): completed basic modules, chat examples, data flow and remaining work.
 
 ## Start the product
 
@@ -842,4 +846,6 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 
 ## Next milestone
 
-The next milestone is quality acceptance of the expanded conversation: review real-model answers, date inheritance, ambiguous follow-ups, multi-company evidence attribution, missing news and provider switching. Extend the fixed evaluation scenarios for the new domains, measure source latency and complete browser checks. The single earlier live `complete` pass is not a repeated quality baseline. Full article/filing retrieval, whole-market screening, Jev, strict historical versions and strategy replay, US equities and public deployment remain later work. See the [company design](docs/company-research-design.md) and earlier [MVP checklist](docs/mvp-completion.md).
+The expanded product now also has numeric screening within bounded quote samples, retrieved educational explanations, current exchange listing context, dated rule explanations and a fixed next-open SMA exposure replay. These share the existing conversation service, identity checks and execution controls. See [current examples and boundaries](docs/module-progress-2026-10-26.md).
+
+The next milestone is quality acceptance of these workflows: repeated real-model reviews, ambiguous follow-ups, multi-company evidence attribution, missing sources and provider switching. Full article/filing retrieval, proven whole-market completeness, Jev, strict historical versions, order-fill strategy simulation, US equities and public deployment remain later work. See the [company design](docs/company-research-design.md) and earlier [MVP checklist](docs/mvp-completion.md).

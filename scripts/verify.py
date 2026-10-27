@@ -1,7 +1,7 @@
 """Shared Windows local/CI checks. Model and market checks use synthetic inputs only."""
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from html.parser import HTMLParser
 import json
 import os
@@ -118,6 +118,59 @@ def run_strict_suite(suite, *, stream=None):
     return result.testsRun
 
 
+def run_strict_pytest(paths=None, *, stream=None):
+    """Run pytest functions once, rejecting omitted cases and every nonpassing phase."""
+    import pytest
+
+    class FunctionGate:
+        def __init__(self):
+            self.discovered = []
+            self.planned = []
+            self.reports = {}
+            self.collection_problems = False
+
+        @pytest.hookimpl(tryfirst=True)
+        def pytest_pycollect_makeitem(self, collector, name, obj):
+            # unittest discovery already executes these classes, including their subtests.
+            if isinstance(obj, type) and issubclass(obj, unittest.TestCase):
+                return []
+
+        def pytest_itemcollected(self, item):
+            self.discovered.append(item.nodeid)
+
+        def pytest_collectreport(self, report):
+            if report.failed or report.skipped:
+                self.collection_problems = True
+
+        def pytest_collection_finish(self, session):
+            self.planned = [item.nodeid for item in session.items]
+
+        def pytest_runtest_logreport(self, report):
+            phases = self.reports.setdefault(report.nodeid, {})
+            phases.setdefault(report.when, []).append((report.outcome, hasattr(report, "wasxfail")))
+
+    gate = FunctionGate()
+    selected_paths = tuple(paths) if paths is not None else (ROOT / "tests",)
+    require(bool(selected_paths), "No pytest test paths selected")
+    arguments = ["-q", "--color=no", "-p", "no:cacheprovider", "--import-mode=importlib",
+                 "--rootdir", str(ROOT), *[str(path) for path in selected_paths]]
+    output = sys.stdout if stream is None else stream
+    # Do not load machine-specific plugins or inherit flags that can deselect/skip work.
+    with patch.dict(os.environ, {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_PLUGINS": "", "PYTEST_ADDOPTS": ""}), \
+            patch.object(sys, "path", [str(ROOT / "tests"), *sys.path]), \
+            redirect_stdout(output), redirect_stderr(output):
+        exit_code = pytest.main(arguments, plugins=[gate])
+    require(bool(gate.planned), "No pytest function tests discovered")
+    require(not gate.collection_problems and exit_code == pytest.ExitCode.OK
+            and set(gate.planned) == set(gate.discovered)
+            and len(gate.planned) == len(gate.discovered) == len(set(gate.planned))
+            and set(gate.reports) == set(gate.planned)
+            and all(phases == {"setup": [("passed", False)], "call": [("passed", False)],
+                               "teardown": [("passed", False)]} for phases in gate.reports.values()),
+            "Pytest functions failed collection, skipped, xfailed, were omitted, or did not pass every test phase")
+    return len(gate.planned)
+
+
 def check_evaluation(report):
     """Pin acceptance expectations independently of the evaluator's exit status."""
     summary = report["summary"]
@@ -203,7 +256,7 @@ def check_company_evaluation(report):
                 and item.get("code") == ("general_knowledge_answered" if item["case"] == "pe_knowledge"
                                           else "product_research_answered")
                 and item.get("answer_validation_scope") == (
-                    "format_and_scope_guards_not_prose_semantics" if item["case"] == "pe_knowledge" else
+                    "format_scope_and_citation_membership_not_prose_semantics" if item["case"] == "pe_knowledge" else
                     "citation_membership_and_lexical_numbers_not_arbitrary_prose_semantics")
                 and type(checks) is dict and COMPANY_REQUIRED_CHECKS <= checks.keys()
                 and all(value is True for value in checks.values()),
@@ -221,6 +274,7 @@ def python_checks():
     with clean_environment(), offline_network():
         suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT / "tests"))
         count = run_strict_suite(suite)
+        function_count = run_strict_pytest()
         from trading_companion.agent_evaluation import run_evaluation
         from trading_companion.api_demo import main as api_demo
         from trading_companion.mvp_evaluation import run_mvp_evaluation
@@ -230,8 +284,8 @@ def python_checks():
         check_mvp_evaluation(run_mvp_evaluation(case="all", repeat=3, model_call_limit=201))
         check_company_evaluation(evaluate_company_research())
         require(api_demo() == 0, "In-process API walkthrough failed")
-    print(f"PASS: {count} Python tests, 4 Agent scenarios, 90 MVP repeats, "
-          "5 company workflows and API walkthrough; no skips", flush=True)
+    print(f"PASS: {count} unittest tests and {function_count} pytest function cases, "
+          "4 Agent scenarios, 90 MVP repeats, 5 company workflows and API walkthrough; no skips or xfails", flush=True)
 
 
 def command(arguments, *, timeout=300):

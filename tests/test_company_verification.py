@@ -30,6 +30,14 @@ class CompanyEvaluationGateTests(unittest.TestCase):
         })
         self.assertEqual((report["summary"]["model_calls"], report["summary"]["analyses"]), (9, 3))
 
+    def test_knowledge_case_requires_current_citation_validation_contract(self):
+        report = self.report()
+        knowledge = next(item for item in report["cases"] if item["case"] == "pe_knowledge")
+        self.assertEqual(knowledge["answer_validation_scope"], "format_scope_and_citation_membership_not_prose_semantics")
+        knowledge["answer_validation_scope"] = "format_and_scope_guards_not_prose_semantics"
+        with self.assertRaises(verify.VerificationError):
+            verify.check_company_evaluation(report)
+
     def test_live_mode_network_or_non_synthetic_marker_is_rejected(self):
         for field, value in (
             ("provider", "deepseek"), ("live_provider_selected", True), ("live_provider_selected", 0),
@@ -165,6 +173,7 @@ class CompanyEvaluationGateTests(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(unittest.defaultTestLoader, "discover", return_value=unittest.TestSuite()))
             stack.enter_context(patch.object(verify, "run_strict_suite", return_value=3))
+            stack.enter_context(patch.object(verify, "run_strict_pytest", return_value=4))
             stack.enter_context(patch("trading_companion.agent_evaluation.run_evaluation", return_value={}))
             stack.enter_context(patch("trading_companion.mvp_evaluation.run_mvp_evaluation", return_value={}))
             stack.enter_context(patch.object(verify, "check_evaluation"))

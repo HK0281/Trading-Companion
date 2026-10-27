@@ -15,12 +15,14 @@
 
 | 入口 | 验收内容 | 必须失败的例子 |
 | --- | --- | --- |
-| `python` | 所有 unittest；明确 fake 的4场景 Agent 契约与30场景×3 MVP评估；8项进程内 API 演示 | 空测试集、缺依赖导致 skip、expected failure、场景未执行或重复遗漏 |
+| `python` | unittest类与pytest函数各运行一次；明确fake的4场景Agent、30场景×3 MVP、5项公司研究流程和API演示 | 空测试集、收集错误、skip/xfail/xpass、测试阶段失败、遗漏或重复场景 |
 | `web` | 解析 Vitest JSON，要求所有断言通过；TypeScript检查；Vite生产构建 | skipped/todo、缺失断言结果、测试失败、类型错误 |
 | `bundle` | 构建 HTML 的本地引用；实际 ASGI 响应字节、MIME和安全头；wheel资产集合和字节 | 构建缺失、资源404、旧哈希文件混入、wheel漏资源或包含前端源码/环境文件 |
 | `all`（默认） | 按上述顺序运行，任一步失败即停止；最后 `pip check` | 前一步失败却继续宣布整体成功 |
 
 单独运行入口同样会执行 `pip check`。成功退出0；验收失败、子进程失败或超时退出非0，不自动安装、重试、换源或修复问题。测试数量随项目增长，不硬编码为当前数量；要求发现的测试全部运行且零跳过。
+
+2026-10-26：发现原`unittest.discover`不会收集顶层pytest函数。新增`run_strict_pytest`，在同一清洁环境/离线保护内运行，排除已运行的TestCase类、关闭机器插件与继承选项，核对全部发现项与执行计划一致，并要求每个setup/call/teardown阶段通过，拒绝skip、xfail、xpass和空跑。不得只增加测试文件而不确认它进入CI。
 
 MVP评估门槛另独立固定30个场景名、三次重复身份、201次fake模型方法调用与72次人工分析，并检查每一步的解读/综合/显示断言，拒绝空checks、缺断言或用绿summary掩盖失败。该门槛只允许人工/fake模式且质量仍待人工复核，不启动真实模型或行情；详见[MVP说明](mvp-completion.md)。
 

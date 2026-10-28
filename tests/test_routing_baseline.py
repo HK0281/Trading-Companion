@@ -15,10 +15,14 @@ from tests.routing_baseline_support import (
     expand_observations, fingerprint, observe_scenario, observer_digest, project_observation,
     project_observations, read_baseline, validate_expectations,
 )
+from tests.routing_targets_support import (
+    BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
+    field_deltas, observe_target_scenario, validate_contracts,
+)
 
 
 class RoutingBaselineTests(unittest.TestCase):
-    def test_real_message_entry_matches_frozen_legacy_observations(self):
+    def test_frozen_legacy_fact_integrity_and_provenance(self):
         corpus = read_baseline()
         self.assertEqual(corpus["metadata"]["schema_version"], 2)
         self.assertEqual(corpus["metadata"]["observer_version"], OBSERVER_VERSION)
@@ -31,6 +35,8 @@ class RoutingBaselineTests(unittest.TestCase):
         self.assertEqual(origin["sha256"], "baf85086f1ad3727891744d04d38b4a61501a6b3c924bc2d5887e20207b04243")
         self.assertEqual(origin["capture_observer_sha256"], corpus["metadata"]["observer_sha256"])
         self.assertLess(BASELINE.stat().st_size, 300_000)
+        self.assertEqual(baseline_digest(BASELINE.read_bytes()),
+                         "d751c6a46db4e09a8eebb14f0c07b93f5d9cb6a12024b97dfaff3ced229eee6b")
         self.assertEqual(corpus["metadata"]["code_revision"], "09cd36682d4cd3f9dbcb66251ac5ec3dfe0aa6e3")
         identifiers = [scenario["id"] for scenario in corpus["scenarios"]]
         self.assertEqual(len(identifiers), len(set(identifiers)))
@@ -38,7 +44,59 @@ class RoutingBaselineTests(unittest.TestCase):
         for scenario in corpus["scenarios"]:
             with self.subTest(scenario=scenario["id"]):
                 validate_expectations(scenario, scenario["observed"])
-                compare_observations(scenario, observe_scenario(scenario))
+
+    def test_real_entry_matches_independent_v2_targets_and_every_v1_delta(self):
+        original, target = read_baseline(), read_baseline(TARGET)
+        self.assertEqual(target["metadata"]["base_revision"], BASE_REVISION)
+        self.assertEqual(target["metadata"]["source_kind"], "uncommitted_worktree_candidate")
+        self.assertEqual(target["metadata"]["v1_hash_format"], BASELINE_HASH_FORMAT)
+        self.assertEqual(target["metadata"]["v1_hash_format"], "sha256_utf8_normalized_lf")
+        self.assertEqual(target["metadata"]["v1_sha256"], baseline_digest(BASELINE.read_bytes()))
+        self.assertEqual(target["metadata"]["source_sha256_lf"]["tests/routing_baseline_support.py"],
+                         observer_digest(Path(__file__).with_name("routing_baseline_support.py").read_bytes()))
+        self.assertEqual(target["metadata"]["source_sha256_lf"]["tests/routing_targets_support.py"],
+                         observer_digest(Path(__file__).with_name("routing_targets_support.py").read_bytes()))
+        self.assertEqual(len(original["scenarios"]), len(target["scenarios"]))
+        differences = set()
+        for old, new in zip(original["scenarios"], target["scenarios"], strict=True):
+            with self.subTest(scenario=old["id"]):
+                self.assertEqual(old["id"], new["id"])
+                self.assertEqual(old.get("config", {}), new.get("config", {}))
+                old_inputs = [{key: value for key, value in step.items()
+                    if key not in ("expected_route", "expected_code")} for step in old["steps"]]
+                self.assertEqual(old_inputs, new["steps"])
+                self.assertEqual(new["contracts"], contracts_for(old))
+                observed, decisions = observe_target_scenario(new)
+                validate_contracts(new, observed, decisions)
+                self.assertEqual(len(new["deltas"]), len(new["steps"]))
+                frozen_old, frozen_new = expand_observations(old["observed"]), expand_observations(new["observed"])
+                expected_current = []
+                for step, (before, after, delta) in enumerate(zip(frozen_old, frozen_new, new["deltas"], strict=True), 1):
+                    fields = field_deltas(before, after)
+                    self.assertEqual(delta["fields"], fields)
+                    reason = CHANGES.get((new["id"], step))
+                    self.assertEqual(delta["behavior"], reason)
+                    self.assertEqual(bool(fields), bool(reason))
+                    if fields:
+                        differences.add((new["id"], step))
+                    expected_current.append(after if fields else before)
+                compare_observations({"id": new["id"], "observed": expected_current}, observed)
+        self.assertEqual(differences, set(CHANGES))
+
+    def test_v2_contracts_detect_mutated_indicator_knowledge_technical_owner_and_workflow_gate(self):
+        from trading_companion import request_routing as routing
+        corpus = read_baseline(TARGET)
+        for scenario_id, missing_intent in (
+                ("technical-pending", routing.IntentKind.TECHNICAL_CLARIFICATION),
+                ("company-pending-owns-replies", routing.IntentKind.INDICATOR_KNOWLEDGE),
+                ("workflow-off", routing.IntentKind.KNOWLEDGE_DISABLED)):
+            with self.subTest(scenario=scenario_id):
+                scenario = next(item for item in corpus["scenarios"] if item["id"] == scenario_id)
+                mutant = tuple(spec for spec in routing.ROUTE_SPECS if spec.intent != missing_intent)
+                with patch.object(routing, "ROUTE_SPECS", mutant):
+                    observed, decisions = observe_target_scenario(scenario)
+                with self.assertRaisesRegex(AssertionError, "independent target contract differs"):
+                    validate_contracts(scenario, observed, decisions)
 
     def test_uuid_normalization_preserves_references_and_semantic_differences(self):
         identifier = "ab" * 16
@@ -59,6 +117,14 @@ class RoutingBaselineTests(unittest.TestCase):
     def test_observer_digest_ignores_checkout_line_endings_but_preserves_code_changes(self):
         self.assertEqual(observer_digest(b"first\nsecond\n"), observer_digest(b"first\r\nsecond\r\n"))
         self.assertNotEqual(observer_digest(b"first\nsecond\n"), observer_digest(b"first\nchanged\n"))
+
+    def test_baseline_digest_ignores_crlf_checkout_but_detects_content_changes(self):
+        content = BASELINE.read_bytes().replace(b"\r\n", b"\n")
+        checked_out = content.replace(b"\n", b"\r\n")
+        self.assertNotEqual(content, checked_out)
+        self.assertEqual(baseline_digest(content), baseline_digest(checked_out))
+        self.assertEqual(baseline_digest(checked_out), read_baseline(TARGET)["metadata"]["v1_sha256"])
+        self.assertNotEqual(baseline_digest(content), baseline_digest(content.replace(b'"scenarios"', b'"changed"', 1)))
 
     def sample_observation(self):
         state = {"technical": {"state": "idle"}, "messages_used": 0, "product_saved": {

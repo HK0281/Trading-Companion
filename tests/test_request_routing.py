@@ -1,4 +1,4 @@
-"""Legacy precedence and phase boundaries, independently of the frozen API corpus."""
+"""Target precedence, mutually exclusive facts and read-only routing boundaries."""
 
 from dataclasses import FrozenInstanceError, replace
 from datetime import timedelta
@@ -32,134 +32,133 @@ class RequestRoutingTests(unittest.TestCase):
             self.context.directory.securities[:2], self.quotes)
         return replace(self.context, session=replace(self.context.session, screening_saved=saved))
 
-    def test_knowledge_is_a_separate_optional_directory_phase(self):
+    def pending(self, field, **changes):
+        return replace(self.context, session=replace(self.context.session, **{field: True}), **changes)
+
+    def test_optional_knowledge_phase_keeps_workflow_history_and_identity_boundaries(self):
         self.assertTrue(routing.probe_general_knowledge("怎么用PE/PB看估值", workflow=True, history=False))
+        for workflow, history, question in ((False, False, "怎么用PE/PB看估值"),
+                (True, True, "怎么用PE/PB看估值"), (True, False, "RSI是什么")):
+            self.assertFalse(routing.probe_general_knowledge(question, workflow=workflow, history=history))
         self.assertIsNone(routing.resolve_general_knowledge("怎么用PE/PB看估值", candidate=False, directory=None))
         decision = routing.resolve_general_knowledge("怎么用PE/PB看估值", candidate=True, directory=None)
-        self.assertEqual(decision.kind, routing.RouteKind.GENERAL_KNOWLEDGE)
-        self.assertEqual(decision.rule_id, "legacy.general_knowledge")
-
-    def test_disabled_workflow_history_and_fixed_definitions_do_not_probe_a_hint(self):
-        for workflow, history, question in ((False, False, "怎么用PE/PB看估值"),
-            (True, True, "怎么用PE/PB看估值"), (True, False, "RSI是什么")):
-            with self.subTest(question=question, workflow=workflow, history=history):
-                with patch.object(routing, "is_general_knowledge_question", side_effect=AssertionError("Probe must short circuit")):
-                    self.assertFalse(routing.probe_general_knowledge(question, workflow=workflow, history=history))
-
-    def test_stale_hint_can_veto_knowledge_without_authorizing_research(self):
+        self.assertEqual((decision.kind, decision.intent, decision.rule_id),
+            (routing.RouteKind.GENERAL_KNOWLEDGE, routing.IntentKind.GENERAL_KNOWLEDGE, "knowledge.general"))
         stale = replace(self.context.directory, retrieved_at=NOW - timedelta(days=8))
         with patch.object(type(stale), "assert_usable", side_effect=AssertionError("Hint is not authorization")):
             self.assertIsNone(routing.resolve_general_knowledge("PE低的平安银行值得买吗", candidate=True, directory=stale))
-            self.assertEqual(routing.resolve_general_knowledge("怎么用PE/PB看估值", candidate=True,
-                directory=stale).kind, routing.RouteKind.GENERAL_KNOWLEDGE)
 
-    def test_six_static_paths_have_fixed_unambiguous_priorities_and_reason_codes(self):
-        self.assertEqual(tuple(spec.kind for spec in routing.ROUTE_SPECS), tuple(routing.RouteKind))
-        self.assertEqual([spec.priority for spec in routing.ROUTE_SPECS], [10, 20, 30, 40, 50, 60])
-        for question, kind in (("把PE改为低于15", routing.RouteKind.SCREENING_EDIT),
-            ("帮我选5只股票", routing.RouteKind.SCREENING),
-            ("分析第一只的基本面", routing.RouteKind.SCREENING_FOLLOWUP),
-            ("分析平安银行的基本面", routing.RouteKind.COMPANY_RESEARCH),
-            ("平安银行只看SMA3", routing.RouteKind.TECHNICAL_RESEARCH)):
-            with self.subTest(question=question):
-                decision = self.route(question)
-                self.assertEqual(decision.kind, kind)
-                self.assertEqual(decision.rule_id, "legacy." + kind.value)
-
-    def test_duplicate_priorities_paths_or_reason_codes_are_configuration_errors(self):
+    def test_unique_intents_priorities_and_reasons_can_share_an_executor(self):
+        self.assertEqual(tuple(spec.intent for spec in routing.ROUTE_SPECS), tuple(routing.IntentKind))
+        self.assertEqual([spec.priority for spec in routing.ROUTE_SPECS], [0, 1, 5, 10, 11, 12, 20, 30, 31, 32, 40, 50, 60, 70])
+        self.assertGreater(sum(spec.kind == routing.RouteKind.TECHNICAL_RESEARCH for spec in routing.ROUTE_SPECS), 1)
         first, second = routing.ROUTE_SPECS[:2]
-        for changed in (replace(second, priority=first.priority), replace(second, kind=first.kind),
+        for changed in (replace(second, priority=first.priority), replace(second, intent=first.intent),
                         replace(second, rule_id=first.rule_id)):
-            with self.subTest(changed=changed):
-                with self.assertRaises(ValueError):
-                    routing._ordered_specs((first, changed))
+            with self.assertRaises(ValueError):
+                routing._ordered_specs((first, changed))
 
-    def test_company_candidate_is_computed_before_the_winning_edit_and_stops_later_matching(self):
-        events = []
-        with patch.object(routing, "wants_product_research", side_effect=lambda q: events.append("company") or True), \
-             patch.object(routing, "is_screening_edit", side_effect=lambda q, **k: events.append("edit") or True), \
-             patch.object(routing, "is_screening_request", side_effect=AssertionError("First winning route stops matching")):
-            clock = Mock(side_effect=AssertionError("Edit must not read the followup clock"))
-            self.assertEqual(self.route("把PE改为低于15", clock=clock).kind, routing.RouteKind.SCREENING_EDIT)
-        self.assertEqual(events, ["company", "edit"])
-        clock.assert_not_called()
+    def test_sentence_context_matrix_and_exclusive_owner(self):
+        rows = (
+            ("把PE改为低于15", "screening_edit"), ("按市净率升序选3只", "screening_edit"),
+            ("再加换手率大于2%", "screening_edit"), ("筛选条件把PE改为低于15", "screening_edit"),
+            ("帮我选5只股票", "screening"), ("筛选PE在10到20之间的股票", "screening"),
+            ("分析第一只的基本面", "screening_followup"),
+            ("分析筛选名单中的第一只的基本面", "screening_followup"),
+            ("把第一只和第二只比较一下", "screening_followup"),
+            ("第一只只看新闻，不要技术指标", "screening_followup"),
+            ("第一只不是只看新闻，还要基本面", "screening_followup"),
+            ("按市盈率分析浦发银行的估值", "company_research"),
+            ("把浦发银行和平安银行的市盈率比较一下", "company_research"),
+            ("分析浦发银行上市后第一个交易日以来的走势", "company_research"),
+            ("分析浦发银行第三个季度的基本面", "company_research"),
+            ("PE和PB有什么区别", "general_knowledge"), ("MACD是什么", "indicator_knowledge"),
+            ("解释浦发银行的PE", "company_research"),
+            ("市盈率怎么看，帮我分析浦发银行", "company_research"),
+            ("分析平安银行", "company_research"), ("平安银行只看SMA3", "technical_research"),
+            ("平安银行周线", "company_research"), ("分析平安银行是否出现背离", "company_research"),
+            ("平安银行历史回放", "company_research"), ("再加RSI2", "technical_research"),
+        )
+        for question, intent in rows:
+            for field, owner in ((None, None), ("product_pending", "company_clarification"),
+                    ("pending", "technical_clarification"), ("pending_edit", "indicator_clarification")):
+                context = self.context if field is None else self.pending(field)
+                expected = intent if owner is None or intent in ("screening", "general_knowledge", "indicator_knowledge") else owner
+                with self.subTest(question=question, pending=field):
+                    self.assertEqual(self.route(question, context=context).intent.value, expected)
+                    value = routing._MatchInput(question, context=context)
+                    candidates = {spec.intent.value for spec in routing.ROUTE_SPECS
+                        if spec.intent in (routing.IntentKind.SCREENING, routing.IntentKind.SCREENING_EDIT,
+                            routing.IntentKind.COMPANY_CLARIFICATION, routing.IntentKind.TECHNICAL_CLARIFICATION,
+                            routing.IntentKind.INDICATOR_CLARIFICATION) and spec.matches(value)}
+                    self.assertFalse({"screening", "screening_edit"} <= candidates)
+                    self.assertLessEqual(len(candidates & {"company_clarification", "technical_clarification", "indicator_clarification"}), 1)
 
-    def test_company_pending_short_circuits_other_company_hints(self):
-        context = replace(self.context, session=replace(self.context.session, product_pending=True))
-        with patch.object(routing, "wants_product_research", side_effect=AssertionError("Pending already selected company")), \
-             patch.object(routing, "is_product_followup", side_effect=AssertionError("No extra hint evaluation")):
-            self.assertEqual(self.route("第一个", context=context).kind, routing.RouteKind.COMPANY_RESEARCH)
-
-    def test_pending_states_block_edits_and_list_selection_without_consuming_them(self):
-        for field in ("pending", "pending_edit", "product_pending"):
-            context = replace(self.context, session=replace(self.context.session, **{field: True}))
-            for question in ("把PE改为低于15", "分析第一只的基本面"):
+    def test_commands_and_history_keep_existing_executor_ownership(self):
+        for field in (None, "product_pending", "pending", "pending_edit"):
+            context = self.context if field is None else self.pending(field)
+            for question, intent in (("取消", "command"), ("新对话", "command"), ("查看上次结果", "history")):
                 with self.subTest(field=field, question=question):
-                    clock = Mock(side_effect=AssertionError("Pending must not reach list clock"))
-                    decision = self.route(question, context=context, clock=clock)
-                    self.assertNotIn(decision.kind, (routing.RouteKind.SCREENING_EDIT, routing.RouteKind.SCREENING_FOLLOWUP))
-                    self.assertTrue(getattr(context.session, field))
-                    clock.assert_not_called()
+                    decision = self.route(question, context=context)
+                    self.assertEqual(decision.intent.value, intent)
+                    self.assertEqual(decision.kind.value, "company_research" if field == "product_pending" else "technical_research")
+        saved = replace(self.context, session=replace(self.context.session, product_saved=True))
+        self.assertEqual(self.route("查看上次结果", context=saved).kind, routing.RouteKind.COMPANY_RESEARCH)
+        self.assertEqual(self.route("查看上一次结果", context=saved).kind, routing.RouteKind.TECHNICAL_RESEARCH)
+        self.assertNotEqual(self.route("取消之后分析平安银行").intent, routing.IntentKind.COMMAND)
 
-    def test_new_screening_keeps_its_legacy_override_even_during_history_or_pending(self):
-        context = replace(self.context, history=True, session=replace(self.context.session, product_pending=True))
-        clock = Mock(side_effect=AssertionError("New screening must not read followup clock"))
-        self.assertEqual(self.route("帮我选5只股票", context=context, clock=clock).kind, routing.RouteKind.SCREENING)
-        clock.assert_not_called()
+    def test_pending_conflict_precedes_knowledge_but_allows_recovery_and_history(self):
+        for fields in (("pending", "product_pending"), ("pending_edit", "product_pending"), ("pending", "pending_edit")):
+            context = replace(self.context, session=replace(self.context.session, **{field: True for field in fields}))
+            self.assertFalse(routing.probe_general_knowledge("怎么用PE/PB看估值", workflow=True, history=False, session=context.session))
+            for question in ("MACD是什么", "怎么用PE/PB看估值", "帮我选5只股票", "平安银行"):
+                self.assertEqual(self.route(question, context=context).intent, routing.IntentKind.STATE_CONFLICT)
+            self.assertEqual(self.route("取消", context=context).kind, routing.RouteKind.TECHNICAL_RESEARCH)
+            self.assertEqual(self.route("查看上次结果", context=context).intent, routing.IntentKind.HISTORY)
 
-    def test_fixed_definitions_keep_the_existing_company_pending_inconsistency(self):
-        self.assertEqual(self.route("MACD是什么").kind, routing.RouteKind.TECHNICAL_RESEARCH)
-        context = replace(self.context, session=replace(self.context.session, product_pending=True))
-        self.assertEqual(self.route("MACD是什么", context=context).kind, routing.RouteKind.COMPANY_RESEARCH)
+    def test_disabled_knowledge_is_local_without_company_hint_evaluation(self):
+        with patch.object(routing, "wants_product_research", side_effect=AssertionError("No company interpretation")):
+            context = replace(self.context, workflow=False)
+            self.assertEqual(self.route("怎么用PE/PB看估值", context=context).intent, routing.IntentKind.KNOWLEDGE_DISABLED)
+            self.assertEqual(self.route("RSI是什么", context=context).intent, routing.IntentKind.INDICATOR_KNOWLEDGE)
 
-    def test_named_member_uses_the_late_clock_and_does_not_invalidate_the_snapshot(self):
+    def test_named_member_uses_late_clock_and_explicit_expired_ordinal_reaches_executor(self):
         context = self.shortlist()
         for delta, expected in ((899, routing.RouteKind.SCREENING_FOLLOWUP), (900, routing.RouteKind.COMPANY_RESEARCH)):
-            with self.subTest(seconds=delta):
-                clock = Mock(return_value=NOW + timedelta(seconds=delta))
-                self.assertEqual(self.route("分析平安银行的基本面", context=context, clock=clock).kind, expected)
-                clock.assert_called_once_with()
-                self.assertIsNotNone(context.session.screening_saved)
-                self.assertEqual(context.session.screening_saved.saved_at, NOW)
-        self.quotes.assert_not_called()
+            clock = Mock(return_value=NOW + timedelta(seconds=delta))
+            self.assertEqual(self.route("分析平安银行的基本面", context=context, clock=clock).kind, expected)
+            clock.assert_called_once_with()
+            self.assertEqual(context.session.screening_saved.saved_at, NOW)
+        self.assertEqual(self.route("分析名单中第一只", context=context,
+            clock=lambda: NOW + timedelta(minutes=15)).kind, routing.RouteKind.SCREENING_FOLLOWUP)
         self.assertEqual(self.quotes.mock_calls, [])
 
-    def test_explicit_expired_ordinal_still_reaches_the_executor_for_rejection(self):
-        context = self.shortlist()
-        decision = self.route("分析名单中第一只", context=context, clock=lambda: NOW + timedelta(minutes=15))
-        self.assertEqual(decision.kind, routing.RouteKind.SCREENING_FOLLOWUP)
-        self.assertIsNotNone(context.session.screening_saved)
+    def test_early_owner_does_not_evaluate_company_or_read_list_clock(self):
+        with patch.object(routing, "wants_product_research", side_effect=AssertionError("Owner already selected")):
+            clock = Mock(side_effect=AssertionError("No list clock for pending reply"))
+            self.assertEqual(self.route("平安银行", context=self.pending("pending"), clock=clock).intent,
+                             routing.IntentKind.TECHNICAL_CLARIFICATION)
+            clock.assert_not_called()
 
-    def test_state_projection_is_detached_from_mutable_session_and_has_no_mutators(self):
+    def test_state_projection_is_detached_and_has_no_mutators(self):
         self.session.product_pending = object()
         self.session._pending = object()
         self.session._pending_edit = object()
-        self.session.product_saved = object()
-        self.session._confirmed = object()
         self.session.screening_saved = self.shortlist().session.screening_saved
         view = routing.RoutingSessionView.capture(self.session)
-        self.assertIs(view.product_pending, True)
-        self.assertIs(view.pending, True)
-        self.assertIs(view.pending_edit, True)
-        self.assertIs(view.product_saved, True)
-        self.assertIs(view.confirmed, True)
-        self.assertIs(view.screening_saved, self.session.screening_saved)
         self.session.clear()
-        self.assertIs(view.product_pending, True)
-        self.assertIsNotNone(view.screening_saved)
+        self.assertEqual(view.pending_count, 3)
         for name in ("clear", "begin_research", "_publish_turn"):
             self.assertFalse(hasattr(view, name))
         with self.assertRaises(FrozenInstanceError):
             view.pending = None
         with self.assertRaises(FrozenInstanceError):
-            self.context.history = True
-        with self.assertRaises(FrozenInstanceError):
             self.route("RSI是什么").rule_id = "changed"
 
-    def test_company_disabled_keeps_technical_fallback_without_evaluating_company_hints(self):
-        with patch.object(routing, "wants_product_research", side_effect=AssertionError("Company service is disabled")):
-            context = replace(self.context, company_enabled=False)
-            self.assertEqual(self.route("分析平安银行的基本面", context=context).kind, routing.RouteKind.TECHNICAL_RESEARCH)
+    def test_company_disabled_keeps_technical_fallback(self):
+        with patch.object(routing, "wants_product_research", side_effect=AssertionError("Company disabled")):
+            self.assertEqual(self.route("分析平安银行的基本面", context=replace(self.context, company_enabled=False)).kind,
+                             routing.RouteKind.TECHNICAL_RESEARCH)
 
 
 if __name__ == "__main__":

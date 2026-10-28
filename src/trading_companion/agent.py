@@ -334,6 +334,21 @@ def run_general_knowledge_turn(question: str, *, model: ToolCapableModel, sessio
         model=model, control=control, default_calls=1, input_mode="natural", session=session)
 
 
+def run_routing_reply_turn(code: str, *, model: ToolCapableModel, session: ResearchSession,
+                           control: TurnControl | None = None) -> AgentTurnResult:
+    """Fixed local replies share cancellation/locking, and never consume pending state."""
+    messages = {
+        "general_knowledge_disabled": "当前未开启一般知识问答功能；未调用模型或查询研究资料。固定指标定义仍可直接询问，例如“RSI是什么”。",
+        "routing_state_conflict": "当前会话同时存在多个待澄清问题，请回复“取消”清除待澄清，或用“新对话”重新开始；未调用模型或查询资料。",
+    }
+    if code not in messages or type(session) is not ResearchSession:
+        raise ModelConfigurationError("Use an application-owned local reply code and research session")
+    return _controlled(lambda checked, working: AgentTurnResult(
+        status="needs_clarification", code=code, message=messages[code], stage="clarification",
+        input_mode="natural", session_event="routing_reply"),
+        model=model, control=control, default_calls=0, input_mode="natural", session=session)
+
+
 def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time,
                  workflow=False):
     if session is not None:

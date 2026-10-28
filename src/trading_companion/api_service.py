@@ -13,7 +13,7 @@ from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
-from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn, run_natural_research_turn
+from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn, run_natural_research_turn, run_routing_reply_turn
 from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
@@ -25,7 +25,7 @@ from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
 from trading_companion.request_routing import (
-    RouteKind, RoutingContext, RoutingSessionView, probe_general_knowledge,
+    IntentKind, RouteKind, RoutingContext, RoutingSessionView, probe_general_knowledge,
     resolve_general_knowledge, route_research_request,
 )
 
@@ -405,7 +405,9 @@ class ResearchApiService:
         try:
             timestamp = self._wall_clock()
             directory = None
-            education_candidate = probe_general_knowledge(question, workflow=self._workflow_enabled, history=history)
+            routing_session = RoutingSessionView.capture(entry.session)
+            education_candidate = probe_general_knowledge(question, workflow=self._workflow_enabled, history=history,
+                                                          session=routing_session)
             if education_candidate:
                 try:
                     directory = self._directory_loader(timestamp)
@@ -424,11 +426,17 @@ class ResearchApiService:
                         raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
                 screening_research_source = "csv" if self._development_source is not None else self._research_source
                 decision = route_research_request(question, context=RoutingContext(
-                    session=RoutingSessionView.capture(entry.session), directory=directory, history=history,
+                    session=routing_session, directory=directory, history=history, workflow=self._workflow_enabled,
                     company_enabled=self._product_data_service is not None, quote_source=self._screening_source,
                     research_source=screening_research_source, development=self._development_source is not None),
                     clock=self._wall_clock)
-                if decision.kind == RouteKind.SCREENING_EDIT:
+                if decision.kind == RouteKind.LOCAL_REPLY:
+                    code = ("routing_state_conflict" if decision.intent == IntentKind.STATE_CONFLICT
+                            else "general_knowledge_disabled")
+                    result = run_routing_reply_turn(code, model=entry.model, session=entry.session, control=control)
+                elif decision.kind == RouteKind.GENERAL_KNOWLEDGE:
+                    result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
+                elif decision.kind == RouteKind.SCREENING_EDIT:
                     from trading_companion.screening_agent import run_screening_edit_turn
                     result = run_screening_edit_turn(question, model=entry.model, session=entry.session,
                         directory=directory, source=self._screening_source, now=timestamp, control=control,

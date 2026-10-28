@@ -1,5 +1,5 @@
 {
-  "schema_version": "research-api-corpus-v1",
+  "schema_version": "research-api-corpus-v2",
   "version": "research-api-v1",
   "annotation_policy": "静态逐项标注，依据既有设计和明确需求，禁止由路由观测生成或自动更新；由Claude逐场景审核。",
   "data_authenticity": "fixed_synthetic",
@@ -59,7 +59,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "K02",
@@ -119,7 +125,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "K03",
@@ -280,7 +292,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "K04",
@@ -347,7 +365,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "S01",
@@ -414,7 +438,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "S02",
@@ -481,7 +511,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "S03",
@@ -547,7 +583,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "S04",
@@ -614,7 +656,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "S05",
@@ -682,7 +730,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "M01",
@@ -750,7 +804,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "M02",
@@ -821,7 +881,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "M03",
@@ -908,7 +974,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "F01",
@@ -979,7 +1051,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "F02",
@@ -1043,7 +1121,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "F03",
@@ -1115,7 +1199,14 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "空结果依赖固定报价的PE均为4.20；真实样本可能满足PE<1。"
+      }
     },
     {
       "id": "F04",
@@ -1172,7 +1263,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "E01",
@@ -1286,7 +1383,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "E02",
@@ -1393,7 +1496,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "E03",
@@ -1501,7 +1610,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "E04",
@@ -1559,7 +1674,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "L01",
@@ -1677,7 +1798,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "名单第一项的证券身份预期绑定固定报价排序，真实名单可能不同。"
+      }
     },
     {
       "id": "L02",
@@ -1798,7 +1926,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "名单前两项身份绑定固定排序，不能把真实报价的顺序当成固定身份。"
+      }
     },
     {
       "id": "L03",
@@ -1855,7 +1990,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "L04",
@@ -1964,7 +2105,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "C01",
@@ -2078,7 +2225,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "C02",
@@ -2201,7 +2354,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "C03",
@@ -2373,7 +2532,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "C04",
@@ -2535,7 +2700,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "第三步研究固定名单首项，真实名单首项不保证是平安银行。"
+      }
     },
     {
       "id": "C05",
@@ -2693,7 +2865,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "C06",
@@ -2851,7 +3029,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "D01",
@@ -2911,7 +3095,7 @@
                 "code": [
                   "company_research_partial"
                 ],
-              "reason": "人工财务响应为空集合，但新闻仍可用；允许部分研究，并须保留财务empty及未取得可用记录的结果码，不能编造财务值（company-research-design.md：领域缺项）。"
+                "reason": "人工财务响应为空集合，但新闻仍可用；允许部分研究，并须保留财务empty及未取得可用记录的结果码，不能编造财务值（company-research-design.md：领域缺项）。"
               }
             ],
             "offline_expected": {
@@ -2927,7 +3111,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "财务缺项由固定传输故意返回空集合，真实资料不保证同样缺项。"
+      }
     },
     {
       "id": "D02",
@@ -3000,7 +3191,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "固定来源只有5条日线，真实日线数量不是该缺历史前提。"
+      }
     },
     {
       "id": "D03",
@@ -3076,7 +3274,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "新闻HTTP503为人工注入故障，不代表真实来源状态。"
+      }
     },
     {
       "id": "O01",
@@ -3137,7 +3342,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "O02",
@@ -3198,7 +3409,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "O03",
@@ -3263,7 +3480,13 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "P01",
@@ -3350,7 +3573,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "依赖事件闸门与人工推进截止，不允许把注入超时当真实来源超时。"
+      }
     },
     {
       "id": "P02",
@@ -3422,7 +3652,14 @@
             "quality": {}
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model"
+      ],
+      "mode_exclusions": {
+        "live": "全缺由人工截止造成，真实来源不应被强制制造全缺。"
+      }
     },
     {
       "id": "P03",
@@ -3493,7 +3730,13 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline",
+        "live-model",
+        "live"
+      ],
+      "mode_exclusions": {}
     },
     {
       "id": "R01",
@@ -3616,7 +3859,14 @@
             }
           }
         }
-      ]
+      ],
+      "modes": [
+        "offline"
+      ],
+      "mode_exclusions": {
+        "live": "依赖假模型按顺序产生错误引用与坏草稿；真实模型不消费该脚本。",
+        "live-model": "依赖假模型按顺序产生错误引用与坏草稿；真实模型不消费该脚本。"
+      }
     }
   ]
 }

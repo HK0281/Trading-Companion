@@ -299,7 +299,8 @@ class WorkflowBoundaryTests(unittest.TestCase):
         corpus, _ = evaluation.load_corpus()
         for kind in ("duplicate_id", "empty_steps", "unknown_profile", "unknown_phase", "conflicting_codes",
                      "unaccepted_offline", "arbitrary_url", "missing_quality", "unknown_quality", "invalid_quality",
-                     "invalid_origin", "invalid_answer_status", "invalid_answer_contains", *evaluation.QUALITY_KEYS):
+                     "invalid_origin", "invalid_answer_status", "invalid_answer_contains", "unknown_mode",
+                     "missing_exclusion_reason", "missing_offline", *evaluation.QUALITY_KEYS):
             candidate = deepcopy(corpus)
             case = candidate["cases"][0]
             step = case["steps"][0]
@@ -329,6 +330,13 @@ class WorkflowBoundaryTests(unittest.TestCase):
                 step["expectation"]["quality"]["answer_status_if_answered"] = "guessed"
             elif kind == "invalid_answer_contains":
                 step["expectation"]["quality"]["answer_contains"] = "text"
+            elif kind == "unknown_mode":
+                case["modes"].append("pretend-live")
+            elif kind == "missing_exclusion_reason":
+                case["modes"].remove("live")
+            elif kind == "missing_offline":
+                case["modes"].remove("offline")
+                case["mode_exclusions"]["offline"] = "Not allowed to remove offline coverage"
             else:
                 step["expectation"]["required"][kind] = ["text"] if kind == "answer_contains" else "model"
             path = Path(self.temporary.name) / "corpus.json"
@@ -357,12 +365,11 @@ class WorkflowBoundaryTests(unittest.TestCase):
             self.assertEqual(len(batches), 3)
             self.assertEqual(sources.http.maximum, 3)
 
-    def test_cli_only_accepts_offline_and_reports_checked_json(self):
+    def test_cli_defaults_offline_and_requires_explicit_real_configuration(self):
         output = StringIO()
         with redirect_stdout(output):
             code = command.main(["--case", "K01"])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(output.getvalue())["mode"], "offline")
-        with self.assertRaises(SystemExit) as error, redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-            command.main(["--mode", "live-model"])
-        self.assertEqual(error.exception.code, 2)
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(command.main(["--mode", "live-model"]), 2)

@@ -71,11 +71,12 @@ Local offline evidence for this revision, dated 2026-10-28. Tests verify program
 
 | Fact | Reproduction / evidence |
 | --- | --- |
-| Offline Python tests | **2,213 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
+| Offline Python tests | **2,283 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
 | Frontend tests, type checking and build | **633 Vitest tests across 20 files**, TypeScript `--noEmit` and Vite production build pass; the bundle gate confirms served and wheel assets. Vitest, tsc and Vite were invoked directly with Node because pnpm was unavailable; `verify.py web` requires pnpm. [Acceptance gates](docs/ci-design.md) |
 | Characterization baseline: 35 scenarios / 105 turns (routing v1/v2) | [Frozen observations and reviewed behavior changes](docs/request-routing-design.md) |
 | Windows CI configured | [One Windows Actions job](.github/workflows/ci.yml) runs the same Python, web and bundle gates; remote run status is separate from local results. |
 | Offline fixed-delay collection timing | 15 Tencent batches, artificial 100 ms/request, 5 runs per mode: median **1,643 ms serial → 555 ms with 3 slots**; results, coverage, requests and bytes match. Structural, not live. [Method and boundaries](docs/collection-concurrency-design.md) |
+| Offline workflow contracts (corpus v1, 40 scenarios / 59 steps) | **59/59 steps passed** at workers 1 and 3; hard/range/quality failures all 0. Uses artificial data and scripted models, with JSON/Markdown reports and a human-review queue. [Evaluation boundaries](docs/workflow-evaluation-design.md) |
 | Real-model answer quality and live-source performance | **Pending.** Offline results do not establish investment quality or live latency/coverage. |
 
 Reproduce the fixed-delay comparison locally, with generated responses and network access blocked:
@@ -84,11 +85,15 @@ Reproduce the fixed-delay comparison locally, with generated responses and netwo
 .\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage expanded --batch-size 80 --repeat 5 --delay-ms 100
 ```
 
-The [workflow evaluation corpus and offline runner](docs/workflow-evaluation-design.md) exercise the actual chat entry with fixed model scripts and artificial data. This checks workflow contracts; real-model quality remains pending:
+The [workflow evaluation corpus and runner](docs/workflow-evaluation-design.md) exercise the actual chat entry. Offline is the default; use reports for metrics, tag groups and a reproducible human-review queue. Real modes are implemented and tested with simulated transports only; real-model quality remains pending:
 
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 1 --report-dir .agentbus/tmp/eval-workers1
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 3 --report-dir .agentbus/tmp/eval-workers3
 ```
+
+Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) is empty; unknown prices or usage remain unknown, and no live evaluation was run for this delivery.
 
 ## Scope & limits
 

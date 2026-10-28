@@ -57,6 +57,18 @@ class EvaluationAccountingTests(unittest.TestCase):
         meter = EvaluationModelMeter(Provider(), 1)
         meter.complete((), tools=())
         self.assertEqual(meter.usage, [None])
+        self.assertEqual(meter.ledger[0]["usage"], dict.fromkeys(("prompt_tokens", "completion_tokens", "total_tokens")))
+
+    def test_ledger_contains_only_bounded_identity_and_usage_not_prose(self):
+        class Provider:
+            def complete(self, messages, *, tools):
+                return ToolModelResponse("complete", "private-ledger-prose", provider="deepseek", requested_model="model-id",
+                                         model="model-id", usage=TokenUsage(3, 2, 5), is_mock=False)
+        meter = EvaluationModelMeter(Provider(), 1)
+        meter.complete((), tools=())
+        self.assertEqual(meter.ledger, [{"provider": "deepseek", "requested_model": "model-id", "model": "model-id",
+                                        "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}}])
+        self.assertNotIn("private-ledger-prose", str(meter.ledger))
 
     def test_invalid_allowance_is_rejected(self):
         for allowance in (0, -1, True, 1.0, None):

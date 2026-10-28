@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import uuid4
@@ -24,7 +25,7 @@ from trading_companion.workflow_evaluation_fixtures import (
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "data/evaluation/research-api-v1.json"
-VERSION = "research-workflow-evaluation-v1"
+VERSION = "research-workflow-evaluation-v2"
 OUTCOME_KEYS = frozenset(("route", "intent", "status", "category", "code"))
 REQUIRED_KEYS = frozenset(("forbid_codes", "require_codes", "securities_if_answered", "no_collection", "no_model",
                            "coverage", "forbid_categories", "screening_rows"))
@@ -64,19 +65,24 @@ def load_corpus(path=CORPUS):
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique,
                       parse_constant=lambda value: _require(False))
     _require(type(data) is dict and data.keys() == {"schema_version", "version", "annotation_policy", "data_authenticity", "cases"}
-             and data["schema_version"] == "research-api-corpus-v1" and data["version"] == "research-api-v1"
+             and data["schema_version"] == "research-api-corpus-v2" and data["version"] == "research-api-v1"
              and data["data_authenticity"] == "fixed_synthetic" and type(data["annotation_policy"]) is str
              and type(data["cases"]) is list and 30 <= len(data["cases"]) <= 50)
     seen = set()
     choices = {"route": ROUTES, "intent": INTENTS, "status": STATUSES, "category": CATEGORIES, "code": _SAFE_EVENT_CODES}
     for case in data["cases"]:
-        _require(type(case) is dict and case.keys() == {"id", "group", "description", "tags", "data_profile", "steps"}
+        _require(type(case) is dict and case.keys() == {"id", "group", "description", "tags", "data_profile", "steps",
+                                                      "modes", "mode_exclusions"}
                  and type(case["id"]) is str and re.fullmatch(r"[A-Z][0-9]{2}", case["id"]) is not None
                  and case["id"] not in seen and case["data_profile"] in DATA_PROFILES
                  and type(case["group"]) is str and 0 < len(case["group"]) <= 80
                  and type(case["description"]) is str and 0 < len(case["description"]) <= 300
                  and type(case["steps"]) is list and 1 <= len(case["steps"]) <= 10)
         seen.add(case["id"])
+        _strings(case["modes"], maximum=3, allowed={"offline", "live-model", "live"})
+        _require("offline" in case["modes"] and type(case["mode_exclusions"]) is dict
+                 and case["mode_exclusions"].keys() == {"offline", "live-model", "live"} - set(case["modes"])
+                 and all(type(reason) is str and 0 < len(reason) <= 500 for reason in case["mode_exclusions"].values()))
         _strings(case["tags"])
         _require(bool(case["tags"]) and ("multi_turn" in case["tags"]) == (len(case["steps"]) > 1)
                  and (case["data_profile"] == "normal" or "fault_injected" in case["tags"]))
@@ -160,7 +166,7 @@ def _codes(value):
     return []
 
 
-def _observe(result, trace):
+def _observe(result, trace, *, fixed=True):
     company, parameters = result.get("company_research") or {}, result.get("parameters") or {}
     conversation, knowledge = result.get("conversation") or {}, result.get("knowledge") or {}
     securities = [item["instrument_id"] for item in company.get("securities", [])]
@@ -179,8 +185,8 @@ def _observe(result, trace):
             "validation_scope": result.get("validation_scope"),
             "codes": sorted(set(_codes(result) + [event["code"] for event in trace["event_records"]] if trace else _codes(result))),
             "screening_rows": len(result["screening"]["rows"]) if result.get("screening") else None,
-            "company_research": _fixed_authenticity(company) if company else None,
-            "report": _fixed_authenticity(result.get("report")), "conversation": conversation or None,
+            "company_research": (_fixed_authenticity(company) if fixed else company) if company else None,
+            "report": _fixed_authenticity(result.get("report")) if fixed else result.get("report"), "conversation": conversation or None,
             "knowledge": knowledge or None}
 
 
@@ -204,7 +210,7 @@ def grade_step(step, observed, *, calls, collections):
     if required.get("no_model"):
         checks["no_model"] = calls == 0
     if required.get("no_collection"):
-        checks["no_collection"] = collections == 0
+        checks["no_collection"] = None if collections is None else collections == 0
     if "securities_if_answered" in required and observed["category"] == "completed":
         checks["securities"] = observed["securities"] == required["securities_if_answered"]
     if observed["category"] == "completed":
@@ -219,10 +225,11 @@ def grade_step(step, observed, *, calls, collections):
         quality_checks["display"] = all(text in (observed["answer"] or "") for text in quality["answer_contains"])
     if "screening_rows" in required:
         checks["screening_rows"] = observed["screening_rows"] == required["screening_rows"]
-    hard = [name for name, passed in checks.items() if not passed]
+    hard = [name for name, passed in checks.items() if passed is False]
     acceptable = any(_matches(observed, value) for value in expectation["acceptable"])
     exact = all(observed.get(key) == value for key, value in expectation["offline_expected"].items())
     return {"required_checks": checks, "hard_requirement_violations": hard,
+            "unverified_requirements": [name for name, passed in checks.items() if passed is None],
             "quality_checks": quality_checks,
             "quality_requirement_failures": [name for name, passed in quality_checks.items() if not passed],
             "acceptable_outcome": acceptable, "outside_acceptable": not acceptable,
@@ -263,7 +270,10 @@ def _unrun(case, repeat, index, step, code):
             "outside_acceptable": None, "offline_expected_matched": None}
 
 
-def _run(selected, repeat, workers, meter, model, trace_root):
+def _run(selected, repeat, workers, meter, model, trace_root, plan):
+    from trading_companion.workflow_evaluation_runtime import live_sources, collection_attempts
+    mode = plan["mode"]
+    fixed = mode != "live"
     results, case_reports, all_rows = [], [], []
     diagnostics = {}
     for iteration in range(1, repeat + 1):
@@ -273,20 +283,24 @@ def _run(selected, repeat, workers, meter, model, trace_root):
             seen, case_results = set(), []
             sources = None
             try:
-                with FixedSources(case["data_profile"], workers) as sources:
+                context = FixedSources(case["data_profile"], workers) if fixed else live_sources(plan)
+                with context as sources:
                     service = ResearchApiService(model_factory=lambda: meter, directory_loader=lambda now: sources.directory,
-                        provider="fake", data_mode="tencent", reference_date=REFERENCE_DATE,
+                        provider=plan["provider"], data_mode="tencent" if fixed else plan["data_source"],
+                        reference_date=REFERENCE_DATE if fixed else None,
                         product_data_service=sources.company, screening_source=sources.quotes,
-                        wall_clock=lambda: NOW, trace_sink=JsonlTraceSink(directory), trace_mode="development")
+                        wall_clock=(lambda: NOW) if fixed else None, trace_sink=JsonlTraceSink(directory),
+                        trace_mode="development" if fixed else "normal")
                     try:
                         credentials = service.create_session()
                         for index, step in enumerate(case["steps"], 1):
                             if meter.forwarded >= meter.limit:
                                 case_results.append(_unrun(case, iteration, index, step, "evaluation_budget_exhausted"))
                                 continue
-                            model.start_step(step["fixture_script"])
+                            if mode == "offline":
+                                model.start_step(step["fixture_script"])
                             before_calls, before_forwarded = meter.attempts, meter.forwarded
-                            before_reads = sources.http.calls + sources.daily_reads
+                            before_reads = sources.http.calls + sources.daily_reads if fixed else 0
                             framework = []
                             try:
                                 result = service.message(credentials["session_id"], credentials["access_token"], uuid4().hex,
@@ -307,28 +321,34 @@ def _run(selected, repeat, workers, meter, model, trace_root):
                             # Preserve diagnostics once, rather than counting earlier lines on every step.
                             diagnostics[str(directory.name)] = (dict(reader.diagnostics), reader.valid_turns,
                                                                  reader.bytes_read, reader.lines_read)
-                            observed = _observe(result, trace)
+                            observed = _observe(result, trace, fixed=fixed)
+                            collections = sources.http.calls + sources.daily_reads - before_reads if fixed else collection_attempts(trace)
                             grade = grade_step(step, observed, calls=meter.attempts - before_calls,
-                                               collections=sources.http.calls + sources.daily_reads - before_reads)
-                            if model.failed or model.remaining:
+                                               collections=collections)
+                            if mode != "offline":
+                                grade["offline_expected_matched"] = None
+                            if mode == "offline" and (model.failed or model.remaining):
                                 framework.append("fixture_script_mismatch")
-                            if sources.fault.failed:
+                            if fixed and sources.fault.failed:
                                 framework.append("fixture_deadline_error")
                             serialized_trace = None if trace is None else {**trace, "started_at": trace["started_at"].isoformat()}
                             case_results.append({"case_id": case["id"], "repeat": iteration, "step": index,
                                 "tags": case["tags"], "question": step["question"], "expectation": deepcopy(step["expectation"]),
-                                "data_authenticity": "fixed_synthetic", "observed": observed, **grade,
+                                "data_authenticity": plan["data_authenticity"], "observed": observed, **grade,
+                                "collection_attempts": collections,
                                 "accounting": {"attempts": meter.attempts - before_calls,
-                                               "forwarded": meter.forwarded - before_forwarded},
+                                               "forwarded": meter.forwarded - before_forwarded,
+                                               "ledger": deepcopy(meter.ledger[before_forwarded:])},
                                 "status": "passed" if not framework and not grade["hard_requirement_violations"]
+                                          and not grade["unverified_requirements"]
                                           and not grade["quality_requirement_failures"]
-                                          and grade["acceptable_outcome"] and grade["offline_expected_matched"] else "failed",
+                                          and grade["acceptable_outcome"] and (mode != "offline" or grade["offline_expected_matched"]) else "failed",
                                 "framework_errors": framework, "trace": serialized_trace})
                     finally:
                         service.close()
                     frozen = {path.name: path.read_bytes() for path in directory.glob("*.jsonl")}
                 # Late HTTP work has exited by now. A finished trace must remain unchanged.
-                if frozen != {path.name: path.read_bytes() for path in directory.glob("*.jsonl")} or sources.fault.failed:
+                if frozen != {path.name: path.read_bytes() for path in directory.glob("*.jsonl")} or fixed and sources.fault.failed:
                     for item in case_results:
                         if item["status"] != "not_run":
                             item["status"] = "failed"
@@ -344,8 +364,8 @@ def _run(selected, repeat, workers, meter, model, trace_root):
             case_reports.append({"case_id": case["id"], "repeat": iteration, "description": case["description"],
                 "steps": len(case["steps"]), "tags": case["tags"], "data_profile": case["data_profile"],
                 "passed": all(item["status"] == "passed" for item in case_results),
-                "trace_directory": str(directory), "transport": sources.http.report() if sources else None,
-                "daily_reads": sources.daily_reads if sources else None})
+                "trace_directory": str(directory), "transport": sources.http.report() if sources and fixed else None,
+                "daily_reads": sources.daily_reads if sources and fixed else None})
     summary, reader = TraceSummary(), TraceReader()
     for values, valid, read_bytes, lines in diagnostics.values():
         reader.valid_turns += valid
@@ -359,72 +379,89 @@ def _run(selected, repeat, workers, meter, model, trace_root):
 
 
 def evaluate_workflows(*, mode="offline", selected_cases=None, repeat=1, collection_workers=3,
-                       model_call_limit=None, trace_dir=None):
-    base = {"version": VERSION, "mode": mode if type(mode) is str and mode == "offline" else "unsupported",
-            "evaluation_scope": "fixed_script_workflow_contracts_not_model_language_or_investment_quality",
-            "data_authenticity": "fixed_synthetic", "real_model_requested": False, "real_data_requested": False,
-            "language_quality": "requires_manual_review", "steps": [], "cases": []}
+                       model_call_limit=None, trace_dir=None, provider=None, model=None, prices=None,
+                       directory=None, data_source="tencent", assumed_input_tokens=None, assumed_output_tokens=None):
+    from trading_companion.workflow_evaluation_runtime import make_plan, PlanError, invalid_plan, build_real_model, model_network_boundary
+    from trading_companion.evaluation_pricing import actual_cost
+    from trading_companion.workflow_evaluation_metrics import evaluation_metrics
+    from trading_companion.workflow_evaluation_reporting import manual_review
+    base = {"version": VERSION, "steps": [], "cases": [], "language_quality": "requires_manual_review"}
     try:
-        _require(mode == "offline" and type(repeat) is int and 1 <= repeat <= 3
-                 and type(collection_workers) is int and 1 <= collection_workers <= 3)
-        corpus, fingerprint = load_corpus()
-        ids = [case["id"] for case in corpus["cases"]]
-        requested = ids if selected_cases is None else selected_cases
-        _require(type(requested) in (tuple, list) and bool(requested)
-                 and all(type(value) is str and value in ids for value in requested) and len(set(requested)) == len(requested))
-        selected = [case for case in corpus["cases"] if case["id"] in requested]
-        total = repeat * sum(len(case["steps"]) for case in selected)
-        allowance = 6 * total if model_call_limit is None else model_call_limit
-        _require(type(allowance) is int and 1 <= allowance <= 6 * total)
-        _require(trace_dir is None or isinstance(trace_dir, (str, Path)) and "\0" not in str(trace_dir))
+        plan, selected, price_data = make_plan(mode=mode, selected_cases=selected_cases, repeat=repeat,
+            collection_workers=collection_workers, model_call_limit=model_call_limit, provider=provider, model=model,
+            prices=prices, directory=directory, data_source=data_source, trace_dir=trace_dir,
+            assumed_input_tokens=assumed_input_tokens, assumed_output_tokens=assumed_output_tokens)
+    except PlanError as error:
+        return {**base, **error.result()}
     except (ValueError, TypeError, OSError, KeyError, UnicodeError, RecursionError):
-        return {**base, "status": "invalid_request", "code": "evaluation_input_invalid"}
-    model = ScriptedWorkflowModel()
-    meter = EvaluationModelMeter(model, allowance)
-    output = {**base, "corpus": {"version": corpus["version"], "sha256": fingerprint}, "fixtures": fixture_manifest(),
+        return {**base, **invalid_plan()}
+    if mode != "offline":
+        print(json.dumps({"evaluation_plan": plan}, ensure_ascii=False, allow_nan=False), file=sys.stderr, flush=True)
+    total, allowance = plan["planned_steps"], plan["model_call_limit"]
+    output = {**base, **{key: plan[key] for key in ("mode", "corpus", "provider", "model", "data_authenticity",
+              "selected_cases", "repeat", "collection_workers", "planned_steps", "model_call_limit",
+              "excluded_cases", "not_applicable_to_mode", "not_applicable_steps")}, "plan": plan,
+              "evaluation_scope": "fixed_script_contracts_not_model_quality" if mode == "offline" else "model_workflow_evaluation_not_investment_performance",
+              "real_model_requested": mode != "offline", "real_data_requested": mode == "live",
+              "fixtures": fixture_manifest() if mode != "live" else None,
               "code_revision": _revision(), "working_tree_dirty": _dirty(),
-              "evaluation_implementation_sha256": sha256(Path(__file__).read_bytes().replace(b"\r\n", b"\n")).hexdigest(),
+              "evaluation_implementation_sha256": sha256(b"".join(
+                  (Path(__file__).parent / name).read_bytes().replace(b"\r\n", b"\n") for name in
+                  ("workflow_evaluation.py", "workflow_evaluation_runtime.py", "workflow_evaluation_metrics.py",
+                   "workflow_evaluation_reporting.py", "evaluation_common.py", "evaluation_pricing.py"))).hexdigest(),
               "evaluated_at": datetime.now(timezone.utc).isoformat(),
-              "selected_cases": [case["id"] for case in selected], "repeat": repeat,
-              "collection_workers": collection_workers, "planned_steps": total, "model_call_limit": allowance,
               "traces_retained": trace_dir is not None, "trace_directory": None}
-    credential_attempts = []
+    credential_attempts, network_attempts, error_code, meter = [], [], None, None
 
     def denied(*args, **kwargs):
         credential_attempts.append(True)
         raise RuntimeError("Offline evaluation cannot load model credentials")
     try:
-        # Reuse the same strict offline guards as the repository's acceptance checks.
         from scripts.verify import clean_environment, offline_network
         with ExitStack() as stack:
+            if mode == "offline":
+                stack.enter_context(clean_environment())
+                stack.enter_context(offline_network())
+                stack.enter_context(patch("trading_companion.local_env.load_model_environment", denied))
+                stack.enter_context(patch("trading_companion.local_env._read_local_values", denied))
+            elif mode == "live-model":
+                network_attempts = stack.enter_context(model_network_boundary(plan["provider"]))
+            delegate = ScriptedWorkflowModel() if mode == "offline" else build_real_model(plan)
+            meter = EvaluationModelMeter(delegate, allowance)
             if trace_dir is None:
                 trace_root = Path(stack.enter_context(TemporaryDirectory(prefix="workflow-evaluation-")))
             else:
                 trace_root = Path(trace_dir).absolute() / uuid4().hex
                 trace_root.mkdir(parents=True)
                 output["trace_directory"] = str(trace_root)
-            stack.enter_context(clean_environment())
-            stack.enter_context(offline_network())
-            stack.enter_context(patch("trading_companion.local_env.load_model_environment", denied))
-            stack.enter_context(patch("trading_companion.local_env._read_local_values", denied))
-            steps, cases, trace_summary = _run(selected, repeat, collection_workers, meter, model, trace_root)
+            steps, cases, trace_summary = _run(selected, repeat, collection_workers, meter, delegate, trace_root, plan)
             if trace_dir is None:
                 for case in cases:
                     case["trace_directory"] = None
             output.update(steps=steps, cases=cases, trace_summary=trace_summary)
     except Exception:
-        return {**output, "status": "failed", "code": "evaluation_offline_boundary_or_io_error",
-                "accounting": {"forwarded": meter.forwarded, "attempts": meter.attempts, "blocked": meter.blocked}}
+        output.update(code="evaluation_offline_boundary_or_io_error" if mode == "offline"
+                      else "evaluation_runtime_initialization_or_boundary_error")
+        error_code = output["code"]
+    if not output["steps"]:
+        output["steps"] = [_unrun(case, iteration, index, step, error_code or "evaluation_initialization_error")
+                           for iteration in range(1, repeat + 1) for case in selected for index, step in enumerate(case["steps"], 1)]
+    steps = output["steps"]
     counts = {name: sum(item["status"] == name for item in steps) for name in ("passed", "failed", "not_run")}
-    success = counts["passed"] == total and not credential_attempts
-    return {**output, "status": "passed" if success else "failed",
-            "code": "evaluation_offline_credential_violation" if credential_attempts else
-                    "scenario_expectations_met" if success else "scenario_expectations_not_met",
-            "credential_reads_attempted": len(credential_attempts),
-            "summary": {"planned": total, "executed": total - counts["not_run"], **counts,
-                        "hard_requirement_violations": sum(bool(item["hard_requirement_violations"]) for item in steps),
-                        "outside_acceptable": sum(item["outside_acceptable"] is True for item in steps),
-                        "quality_requirement_failures": sum(bool(item["quality_requirement_failures"]) for item in steps),
-                        "trace_missing": sum(item["status"] != "not_run" and item["trace"] is None for item in steps)},
-            "accounting": {"forwarded": meter.forwarded, "attempts": meter.attempts, "blocked": meter.blocked,
-                           "token_usage": reported_usage(meter.usage)}}
+    success = counts["passed"] == total and not credential_attempts and not network_attempts and error_code is None
+    output.update(status="passed" if success else "failed",
+        code=error_code or ("evaluation_offline_credential_violation" if credential_attempts else
+             "evaluation_source_network_violation" if network_attempts else
+             "scenario_expectations_met" if success else "scenario_expectations_not_met"),
+        credential_reads_attempted=len(credential_attempts), source_network_attempts_blocked=len(network_attempts),
+        summary={"planned": total, "executed": total - counts["not_run"], **counts,
+                 "hard_requirement_violations": sum(bool(item["hard_requirement_violations"]) for item in steps),
+                 "outside_acceptable": sum(item["outside_acceptable"] is True for item in steps),
+                 "quality_requirement_failures": sum(bool(item["quality_requirement_failures"]) for item in steps),
+                 "trace_missing": sum(item["status"] != "not_run" and item["trace"] is None for item in steps)},
+        accounting={"forwarded": meter.forwarded if meter else 0, "attempts": meter.attempts if meter else 0,
+                    "blocked": meter.blocked if meter else 0, "token_usage": reported_usage(meter.usage if meter else [])},
+        cost=actual_cost(price_data, plan["provider"], plan["model"], meter.ledger if meter else []))
+    output["metrics"] = evaluation_metrics(output)
+    output["manual_review"] = manual_review(output)
+    return output

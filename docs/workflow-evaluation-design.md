@@ -1,8 +1,8 @@
-# 聊天工作流离线评估（5a）
+# 聊天工作流评估（5a + 5b）
 
-日期：2026-10-28。状态：已实现，离线验证，待审核；真实模型和真实来源未运行。
+日期：2026-10-28。状态：5a 已提交，5b 已实现并自测，工作区待审核；真实模型和真实来源仅以模拟传输自测，没有发出真实请求。
 
-本入口检查真实聊天流程在固定脚本下是否遵守契约。它不是自然语言理解、投资效果或真实来源性能评估。假模型通过率不能写成真实效果数字。
+默认入口检查真实聊天流程在固定脚本下是否遵守契约。另有显式真实模式供后续评估；本次没有真实理解能力、投资效果或真实来源性能数据。假模型通过率不能写成真实效果数字。
 
 ## 1. 运行与边界
 
@@ -20,22 +20,44 @@
 
 | 选项 | 当前含义 |
 | --- | --- |
-| `--mode offline` | 唯一可运行的模式，也是默认值；其他模式退出 2 |
+| `--mode offline/live-model/live` | 默认 offline；真实模式必须显式配置，见第 7 节 |
 | `--case ID` | 可重复，选择静态语料里的场景；重复 ID、空选择和未知 ID 被拒绝；执行按语料顺序 |
 | `--repeat 1/2/3` | 独立重复，不挑选最好一次 |
 | `--collection-workers 1/2/3` | 公司和腾讯报价共享同一实际执行器，配置每次采集的宽度 |
-| `--model-call-limit N` | 整次模型方法转发上限，默认 `6T`，只能收紧；异常请求仍占额度 |
+| `--model-call-limit N` | offline 默认 `6T`；真实模式必须显式给出且不超过 `6T`；异常仍占额度 |
 | `--trace-dir PATH` | 在新运行子目录中保留记录，不覆盖已有运行；不指定则临时收集并删除，结果中路径为 null |
+| `--plan-only` | 只校验计划，不读凭据、不构造客户端、不联网 |
+| `--report-dir PATH` | 在唯一新子目录导出 report.json、report.md、manual-review.json |
 
 T 是所有选中场景的步骤数乘重复次数，而不是场景数量。完整一次 T=59，默认额度 354；三次 T=177，默认额度 1062。当前完整固定脚本一次实际转发 69 次模型方法，没有真实供应商 HTTP 请求；脚本次数是框架事实，不是模型成本或理解能力。
 
-程序只把版本化 JSON 写到标准输出，不自动写报告。可重定向输出；PowerShell 5.1 默认重定向编码与 Python 不同，后续程序读取时应明确编码。退出码：全部通过 0，场景/框架失败 1，输入无效 2。
+程序把版本化 JSON 写到标准输出；指定 `--report-dir` 才导出文件，导出文件使用 UTF-8。可重定向输出；PowerShell 5.1 默认重定向编码与 Python 不同，后续程序读取时应明确编码。退出码：全部通过或预览成功 0，场景/框架/写报告失败 1，输入无效 2。真实执行先把计划写到标准错误输出并刷新，再读凭据；标准输出仍只有一份合法 JSON。
 
-5a 不读取模型环境或 `.env`，不建立真实来源连接。离线模式复用 [verify.py](../scripts/verify.py) 的清洁环境和网络封锁，即使业务捕获了 DNS/连接异常，整次评估仍判失败。模型环境读取另有拦截和计数。仅允许固定数据配置、有限模型脚本和已知参数，不从语料加载任意 URL、文件、类名或代码。
+计划校验失败时，预览和正式执行返回相同的固定 `code` 与中文 `detail`，说明参数名、合法范围及必要的计算值，不复述路径原文、文件内容、密钥或底层异常。例如：
+
+| 错误码 | 提示内容 |
+| --- | --- |
+| `evaluation_model_call_limit_out_of_range` | live 默认 44 步时，上限为 `1..264`（6 × 44）；选择子集或重复运行后按实际计划步数重新计算 |
+| `evaluation_price_file_invalid` | 说明 prices 文件无法读取或配置无效，提示核查价格结构、单价和核对元数据 |
+| `evaluation_live_directory_stale` | 给出目录原始带时区时间戳和当前北京时间日期，说明快照须在当前日期前 0..7 天内，并提示运行 `python -m trading_companion.security_directory_refresh --live` |
+
+模式、重复次数、并发宽度、场景选择、token 假设、提供方、模型和输出目录等也有对应提示；仅最后兜底保留 `evaluation_input_invalid`。过期目录仍被拒绝，预览不会自动刷新；目录刷新命令需显式联网，和计划预览分开执行。
+
+offline 不读取模型环境或 `.env`，不建立真实来源连接。离线模式复用 [verify.py](../scripts/verify.py) 的清洁环境和网络封锁，即使业务捕获了 DNS/连接异常，整次评估仍判失败。模型环境读取另有拦截和计数。仅允许固定数据配置、有限模型脚本和已知参数，不从语料加载任意 URL、文件、类名或代码。
 
 ## 2. 语料与独立预期
 
 [research-api-v1.json](../data/evaluation/research-api-v1.json) 是版本化语料。40 个场景覆盖知识、单股、多股比较、筛选、编辑、名单研究、各种澄清、缺数据、拒绝、来源截止及修复/降级；59 个步骤包含全部准备和续接消息。每个场景都有 `tags`，多轮含 `multi_turn`，人工故障含 `fault_injected`，部分覆盖含 `partial_coverage`。
+
+语义语料版本保持 `research-api-v1`，结构扩展为 `research-api-corpus-v2`，运行结果为 `research-workflow-evaluation-v2`；运行器与语料须一起更新。原 offline 的问题、脚本、60 条理由和各层预期不变。每个场景增加 `modes` 及其补集 `mode_exclusions`，不适用的模式必须附具体理由：
+
+| 模式 | 默认兼容场景/步骤 | 因模式不适用排除 |
+| --- | --- | --- |
+| offline | 40 / 59 | 无 |
+| live-model | 39 / 57 | R01 依赖假模型刻意给出坏草稿 |
+| live | 30 / 44 | R01；F03 固定 PE 值；L01/L02/C04 固定名单身份；D01/D02/D03/P01/P02 人工缺项、来源故障或截止 |
+
+以上为重复一次。未给 `--case` 时选择所有兼容场景，预览及报告公开列出全部不适用 ID、理由和 `not_applicable_to_mode` 场景数、`not_applicable_steps` 步数（含重复）。这些排除项不算失败或未运行，不进所选任务的分母；显式选择不适用场景会在任何客户端构造前报错。真实模式不消费假模型脚本，`offline_expected_matched=null`；R01 不能要求真实模型照脚本犯错，也不能在 live 注入人工超时冒充来源故障。
 
 预期由 Codex 依据语义要求和现有设计逐项编写，交 Claude 逐场景审核；不把这个过程称为已经完成的人工质量抽查。路由 v1/v2 基线与本语料分开维护。没有从路由结果生成预期、自动更新快照或取当前输出作为答案的功能。修改预期应注明需求依据并再次审核。
 
@@ -89,26 +111,84 @@ API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与�
 
 当前公司入口会把部分 `out_of_scope` 计划投影为公开 `failed`，同时保留 `product_trade_execution_forbidden`、`product_unsafe_request`、`product_request_out_of_scope` 等拒绝码。评估用这三个固定拒绝码判语义类别为拒绝；保留原始终态及 trace 的 `error` 类别，不修改产品行为。其余 completed/limited 映射完成，needs_clarification 映射澄清，invalid_request/out_of_scope 映射拒绝，其他终态映射错误。“完成类别”不等于任务成功，仍须通过静态硬要求、可接受范围和质量要求。
 
-不会导出凭据、模型原文、提示全文、完整工具返回或底层异常文本。公司与技术的已检查显示、公开事实和证据允许用于后续人工抽查；它们不能证明任意观点被证据支持。5a 原始 JSON 的摘要只列计划/执行/通过/失败/未运行以及硬性违反等数量，不宣传效果率。
+不会导出凭据、模型原文、提示全文、完整工具返回或底层异常文本。公司与技术的已检查显示、公开事实和证据允许用于人工抽查；它们不能证明任意观点被证据支持。运行完整性另列：即使逐步结果符合预期，只要检测到越出离线边界的访问，整次仍失败。
 
-## 6. 留给 5b
+## 6. 指标及分母
 
-以下是已约定接口，当前尚未实现或运行：
+[workflow_evaluation_metrics.py](../src/trading_companion/workflow_evaluation_metrics.py) 由逐步结果和已验证追踪计算整体及 `by_tag` 分组。每个比例含分子、分母、未知数，零分母为 null；标签可重叠，不能把分组相加当总数。
 
-- 路由和意图正确率、四类混淆表、整场景/逐步任务成功、联合引用/数字机械检查及适用覆盖、规则/模型修复、应用降级、来源超时部分覆盖、调用与用量完整性、延迟和估算费用。失败仍进分母；未运行、缺追踪和不适用单列。
-- 外部模型价格表包含提供方/模型/币种/核对日期/依据链接/输入输出单价；无可靠价格或 usage 时费用未知，不按零算。缓存费用只在有可靠字段时单列。
-- JSON/Markdown 报告、按标签分组、固定随机种子抽查最多十条回答，以及同语料配置的逐步骤并排比较。对比保留失败和未知，不能只选择两边都成功的样本。
-- `live-model`：真实模型加同样固定数据；`live`：真实模型加真实来源。显式模式、模型/价格和整次额度，启动前打印计划调用数和带假设的费用预估；不自动重试、不退成假模型。实现及自测只用模拟传输，最终真实运行由 Claude 在用户同意费用后另行执行。
+- 路由和意图正确率分别核对静态可接受取值，整体以全部所选兼容步骤为分母，另列已执行口径。准入失败、未运行、缺追踪不能消失。
+- 逐步任务成功沿用三层要求，offline 再核对精确基准；场景成功要求本次重复的全部步骤通过。四类混淆表以静态主目标为预期行，合法备选另计；不根据观测换行。保留原始终态、受限数量，未运行单列。
+- 引用/数字是联合机械检查，按计划要求模型回答的完成步骤列适用分母，未生成回答保留为未执行。按原检查事件和最终来源解释，保留初次拒绝/最终接纳与尝试数，不把同一个码拆成两个语义通过率。截断或缺追踪时细项未知。
+- 规则纠正只计 `intent_rule/rule_applied` 的实际进入，跳过不计；模型重写按实际进入 `model_rewrite`。分别列受影响步骤数、进入次数、全部步骤和计划适用步骤的比例。程序降级按最终应用来源或 fallback 状态计，不是安全违规。
+- 截止部分覆盖同时要求领域截止码、实际保留证据及显示“未取得”的缺失领域。按计划公司研究及实际进入采集分别列分母，全缺、普通来源错误、整轮停止、人工故障和非人工截止另列。未知不补成“没有超时”，聚合 stopped 不能代替证据。
+- p50/p95 和调用/用量直接复用 `TraceSummary`，失败但有记录的耗时也参加，另给延迟覆盖 n/N。细项截断不会抹掉原聚合摘要，但不能据此编造细项。
 
-一次真实端到端运行受来源变化、目录日期和时间顺序影响。没有同条件对照，不能宣称改前改后效果或真实速度提高多少。引用号存在也不等于观点获支持，必须单独记录人工判断。
+## 7. 价格、计划与真实模式
 
-## 7. 验证
+[evaluation_pricing.py](../src/trading_companion/evaluation_pricing.py) 校验 [model-prices.json](../data/evaluation/model-prices.json)。仓库初始 `entries=[]`，没有未核对的假报价。每项使用以下字段，精确选择提供方和模型，不模糊匹配、不混加币种：
+
+```json
+{
+  "provider": "deepseek",
+  "model": "MODEL_ID",
+  "currency": null,
+  "verified_at": null,
+  "source_url": null,
+  "input_per_million": null,
+  "output_per_million": null,
+  "input_pricing": "uniform"
+}
+```
+
+这是结构示例，单价单位为每百万 token；token 是供应商的文本用量单位。填价格时还须给币种（支持 USD/CNY/EUR/GBP/JPY/HKD）、不晚于今天的核对日期和不含凭据的 HTTPS 依据链接。拒绝重复键/条目、未知字段、负数、非有限单价和不完整的核对元数据。Decimal 十进制数用于计算，展示时才保留六位小数。
+
+`input_pricing=cache_split` 表示输入涉及缓存分档；现有公开用量无法可靠拆分时输入费用未知，已知输出费用可作小计。缺价格、部分或不一致用量、超出有界计量范围、模型身份不匹配也单列未知。`known_subtotal` 不等于完整的 `estimated_total`；请求数和用量完整性均保留，零尝试不是零 token。
+
+以下只预览，不读密钥、不联网：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m pytest tests/test_evaluation_common.py tests/test_workflow_evaluation.py tests/test_company_evaluation.py tests/test_trace_cli.py tests/test_turn_trace_events.py tests/test_routing_baseline.py -q
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --mode live-model --provider deepseek --model MODEL_ID --prices data/evaluation/model-prices.json --model-call-limit 300 --assumed-input-tokens 2000 --assumed-output-tokens 1000 --plan-only
+```
+
+[workflow_evaluation_runtime.py](../src/trading_companion/workflow_evaluation_runtime.py) 先校验模式、兼容选集、价格、额度和本地路径。真实模式必须显式给 `--mode`、`--provider`、`--model`、`--prices`、`--model-call-limit`。支持既有 DeepSeek/OpenAI 适配器，只读取所选提供方配置，请求模型使用显式参数。计划在任何凭据读取/客户端构造前写入标准错误输出并刷新。
+
+计划列出 T、单轮最多 6 次、整次最坏 `6T` 和实际转发上限 B。仅 offline 可给精确的脚本次数；真实模式实际次数未知，不能沿用假脚本的 69 次。费用预览使用上限 B 与明确的每次输入/输出 token 假设，缺假设或价格则无法估算，不输出预计免费；这不是账单硬上限。运行后按不含正文的逐请求模型/用量账目估算有依据的部分。
+
+live-model 使用同一固定资料接线，资料侧 DNS/外连被封锁；只有所选模型端点的同步 POST 通道可联网。被捕获的禁止访问仍记录并使整次失败。live 使用真实日期、可信本地目录和实际资料/报价采集器；`--data-source tencent/akshare_eastmoney` 选择日线来源，报价仍用实际腾讯来源，公司/报价共享实际并发池。可用 `--directory` 指定本地目录；只校验和使用，不刷新。目录的摘要、时间与元数据写入计划，运行时变更或过期会失败。真实证据保持产品原有真实性标记，不改标为固定数据。没有模型/来源回退、传输自动重试或额外放宽预算；所有资源在退出时关闭。
+
+本次真实模式只以模拟传输自测。最终付费评估仍由 Claude 核对官方价格、向用户说明并取得费用同意后另行执行。
+
+## 8. 报告、人工清单与并排比较
+
+[workflow_evaluation_reporting.py](../src/trading_companion/workflow_evaluation_reporting.py) 输出同一对象的 JSON/Markdown，标题及范围声明后先给可摘进 README 的 `Verified facts` 总表。表格包含模式、语料与场景/步骤规模、运行状态、任务与路由、三类失败、延迟覆盖和费用；下面保留分组、混淆表、逐步结果、未知及人工清单。
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 1 --report-dir .agentbus/tmp/eval-workers1
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 3 --report-dir .agentbus/tmp/eval-workers3
+```
+
+每次创建唯一子目录，不覆盖旧文件；标准输出中的 `artifacts` 给出 `report.json`、`report.md`、`manual-review.json` 的准确路径。抽样使用局部随机数生成器、固定种子 42 和稳定 case/repeat/step 顺序，最多十条应用允许展示的回答；附问题、证据索引（最多 64 项，截断另记）、有界公开事实、run_id、机械检查及空白人工栏，另列失败/未运行。相关性、观点支持与覆盖必须由人工填写。Markdown 对展示文字转义，不执行其中的链接或 HTML。
+
+将两个 `artifacts.json` 路径分别代入 LEFT/RIGHT：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json --report-dir .agentbus/tmp/eval-comparison
+```
+
+比较脚本只读输入，不运行模型、不重跑案例。按 case/repeat/step 的并集对齐，重复键拒绝，单侧缺项显示未知。先核对语料摘要、选集、重复、模式、模型、额度、价格、目录、固定夹具及实现摘要；仅 workers 差异被明确允许，其余不兼容时输出“不可直接比较”。退出码：可比较 0，不兼容 1，输入/输出无效 2。
+
+失败的已记录耗时仍参加 p50/p95；只有同条件且每步两侧都有耗时，才给耗时变化百分比，缺追踪时留空。live 即使配置一致，也因来源时间与先后顺序存在干扰而不计算受控改善百分比。人工 2ms 等待不是实际来源性能；同条件离线对照不能证明真实提速。
+
+## 9. 验证
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m pytest tests/test_evaluation_pricing.py tests/test_workflow_evaluation_metrics.py tests/test_workflow_evaluation_reporting.py tests/test_workflow_evaluation_runtime.py tests/test_workflow_evaluation.py tests/test_evaluation_common.py tests/test_company_evaluation.py tests/test_trace_cli.py -q
 .\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py python
 ```
 
 专项测试覆盖两种宽度的完整场景、独立会话/请求 ID、额度和异常、不读取预期的假模型、错误路由、网络/密钥读取被捕获后的整次失败、追踪丢失/重复/截断、原 CLI 汇总一致、超时与迟到隔离、拒绝语义、修复及降级。另检查理由去重、质量字段的输入边界、正确证券下的降级仅计质量失败，以及证券错误或覆盖缺失仍计硬性违反。测试依靠事件闸门验证重叠和截止边界，不依靠毫秒性能阈值。
 
 两个宽度完整运行都通过，只证明固定输入的契约一致。原路由基线和两套技术评估不变；没有前端改动或真实模型/来源效果数字。
+
+5b 自测另覆盖手算分母/混淆表、联合检查的初次失败与最终接纳、规则跳过不计纠正、真实模式兼容集合、预览早于凭据读取、仅加载所选模型、模拟 HTTP 上的实际模型适配器与资料采集、失败不重试/不切换、整次额度、资源关闭、价格未知/部分用量/缓存/币种隔离、稳定抽样、Markdown 转义、报告不覆盖、只读比较及缺项不丢失。真实模式执行测试在外连封锁下运行，不发真实请求。

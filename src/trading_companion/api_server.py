@@ -11,6 +11,37 @@ from trading_companion.errors import DataSourceError, DataValidationError, Inval
 from trading_companion.api_service import DATA_MODES, DataModeDependencyError, ensure_data_mode_dependencies
 
 
+def _run_browser_server(app, *, port: int) -> None:
+    """Open the UI only after this server has successfully bound its loopback port."""
+    import asyncio
+    import webbrowser
+    import uvicorn
+
+    url = f"http://127.0.0.1:{port}/"
+
+    class BrowserServer(uvicorn.Server):
+        async def startup(self, sockets=None):
+            await super().startup(sockets=sockets)
+            if not self.started:
+                return
+            try:
+                # Browser startup must not block the loop serving the first page request.
+                opened = await asyncio.to_thread(webbrowser.open, url, new=2)
+            except Exception:
+                opened = False
+            if not opened:
+                print(f"自动打开浏览器失败，请手动访问：{url}", file=sys.stderr)
+
+    server = BrowserServer(uvicorn.Config(app, host="127.0.0.1", port=port, workers=1, access_log=False))
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        pass
+    # Match Uvicorn's failure exit if startup stopped before binding a listener.
+    if not server.started:
+        raise SystemExit(3)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Single-worker loopback research API, not a public deployment.")
     entry = parser.add_mutually_exclusive_group()
@@ -21,6 +52,8 @@ def main(argv=None) -> int:
     parser.add_argument("--directory", help="Existing local security snapshot; Tencent/AKShare modes only")
     parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--open-browser", action=argparse.BooleanOptionalAction, default=False,
+                        help="Open the local UI after successful startup (enabled by start.cmd)")
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
@@ -130,7 +163,10 @@ def main(argv=None) -> int:
     try:
         app = (create_app(service=service) if development_service is None
                else create_app(service=service, development_service=development_service))
-        uvicorn.run(app, host="127.0.0.1", port=args.port, workers=1, access_log=False)
+        if args.open_browser:
+            _run_browser_server(app, port=args.port)
+        else:
+            uvicorn.run(app, host="127.0.0.1", port=args.port, workers=1, access_log=False)
     finally:
         service.close()
         if development_service is not None:

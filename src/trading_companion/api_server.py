@@ -24,7 +24,7 @@ def main(argv=None) -> int:
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
-                        help="Company collection concurrency; use 1 for serial evaluation or source rate limits")
+                        help="Company/Tencent quote I/O width sharing three slots; Eastmoney stays serial (default: 3)")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
                         help="Explicit bounded quote-screening source; no failure fallback (default: tencent)")
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
@@ -83,7 +83,8 @@ def main(argv=None) -> int:
             from trading_companion.company_research import ResearchDataService
             from trading_companion.market_context_live import ExchangeMarketContextSource
             from trading_companion.screening_source import configured_quote_source
-            screening_source = configured_quote_source(args.screening_data, args.screening_coverage) if source is None else None
+            screening_source = configured_quote_source(args.screening_data, args.screening_coverage,
+                max_workers=args.collection_workers) if source is None else None
             background_source = ExchangeMarketContextSource() if source is None and not args.market_context else None
             if args.snapshot_db:
                 from trading_companion.snapshot_store import ResearchSnapshotStore, SnapshotStoreError

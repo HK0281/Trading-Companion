@@ -306,6 +306,37 @@ class TraceEventTests(unittest.TestCase):
         parent = self.events("tool")[0]
         self.assertEqual({event["parent_event_id"] for event in self.events("source")}, {parent["event_id"]})
 
+    def test_tencent_parallel_batches_keep_one_logical_source_and_copy_trace_parent_per_task(self):
+        from trading_companion.collection_execution import CollectionExecutor
+        from trading_companion.screening_source import TencentQuoteSnapshotSource
+        from trading_companion.turn_trace import _PARENT
+        from tests.test_screening_collection_concurrency import QuoteTransport
+        from tests.test_screening_source import directory, NOW as QUOTE_NOW
+        pool, observed, barrier = CollectionExecutor(), [], Barrier(3)
+        self.addCleanup(pool.close, wait=True)
+        def hook(index, url, kwargs):
+            trace, parent = _CURRENT.get(), _PARENT.get()
+            observed.append((trace, parent))
+            _PARENT.set(None)  # A worker's mutation must not affect the next task or caller.
+            if index < 3: barrier.wait(5)
+        http = QuoteTransport(directory(), hook)
+        source = TencentQuoteSnapshotSource(session_factory=http.factory, executor=pool, clock=lambda: QUOTE_NOW)
+        with self.scope(), trace_event("tool", "research"):
+            caller_trace, caller_parent = _CURRENT.get(), _PARENT.get()
+            result = trace_call("source", "screening_snapshot", source.read_snapshot, directory())
+            self.assertEqual((_CURRENT.get(), _PARENT.get()), (caller_trace, caller_parent))
+        self.assertEqual(len(result.quotes), 5)
+        self.assertEqual(len(http.calls), 5)
+        reads = self.events("source")
+        self.assertEqual(len(reads), 1)
+        self.assertEqual((reads[0]["operation"], reads[0]["status"]), ("screening_snapshot", "ok"))
+        self.assertEqual(reads[0]["parent_event_id"], self.events("tool")[0]["event_id"])
+        self.assertEqual(len(observed), 5)
+        self.assertTrue(all(trace is caller_trace and parent[0] is caller_trace
+                            and parent[1]["event_id"] == reads[0]["event_id"]
+                            for trace, parent in observed))
+        self.assertEqual(self.record()["sources"]["seen"], 1)
+
     def test_invalid_source_result_is_not_inspected_or_serialized_as_arbitrary_metadata(self):
         class Untrusted:
             @property

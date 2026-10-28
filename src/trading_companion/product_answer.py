@@ -526,7 +526,6 @@ def _checked_answer(text, *, bundle, context):
         for reference in references:
             if originals[reference] not in evidence:
                 evidence.append(originals[reference])
-    paragraphs, paragraph_evidence = _deadline_notice(bundle, paragraphs, paragraph_evidence)
     if len("\n\n".join(paragraphs)) > MAX_ANSWER_CHARACTERS:
         raise _Invalid()
     # A comparison cannot be reported as complete after silently omitting a covered company.
@@ -537,6 +536,7 @@ def _checked_answer(text, *, bundle, context):
         raise _Invalid(issues[0])
     if not evidence:
         raise _Invalid()
+    paragraphs, paragraph_evidence = _deadline_notice(bundle, paragraphs, paragraph_evidence)
     return ProductAnswer("accepted", "product_research_answered", tuple(paragraphs), tuple(evidence),
                          "model", tuple(paragraph_evidence))
 

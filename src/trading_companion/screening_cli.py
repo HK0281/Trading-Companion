@@ -24,6 +24,8 @@ def main(argv=None):
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
                         help="Expanded: up to 1000 sampled records; more requests, same deadline")
     parser.add_argument("--per-stratum", type=int, help="Tencent standard profile only: at most 100 IDs per stratum")
+    parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3),
+                        help="Tencent batch I/O width (live default: 3); Eastmoney stays serial")
     parser.add_argument("--condition", nargs=3, action="append", metavar=("FIELD", "OP", "NUMBER"),
                         help=f"Repeat AND conditions. Fields: {', '.join(FIELDS)}. Operators: {', '.join(OPERATORS)}")
     parser.add_argument("--sort-by", default="amount_cny", choices=FIELDS)
@@ -38,7 +40,8 @@ def main(argv=None):
         return 0
     if args.demo and args.directory:
         parser.error("--demo cannot use a live security directory")
-    if args.demo and (args.screening_coverage != "standard" or args.per_stratum is not None or args.pages_per_stratum is not None):
+    if args.demo and (args.screening_coverage != "standard" or args.per_stratum is not None
+                     or args.pages_per_stratum is not None or args.collection_workers is not None):
         parser.error("--demo uses fixed synthetic records, not live sample configuration")
     if args.live and (not args.directory or not args.condition):
         parser.error("--live requires --directory and at least one explicit --condition")
@@ -58,7 +61,8 @@ def main(argv=None):
             snapshot = demo_screening_snapshot()
         else:
             collector = configured_quote_source(args.source, args.screening_coverage,
-                per_stratum=args.per_stratum, pages_per_stratum=args.pages_per_stratum)
+                per_stratum=args.per_stratum, pages_per_stratum=args.pages_per_stratum,
+                max_workers=3 if args.collection_workers is None else args.collection_workers)
             snapshot = collector.read_snapshot(load_security_directory(args.directory))
         result = ScreeningService().screen(snapshot, request)
     except (DataSourceError, DataValidationError, InvalidRequestError) as error:

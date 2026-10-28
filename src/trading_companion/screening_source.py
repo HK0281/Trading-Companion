@@ -2,13 +2,18 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from functools import partial
 import json
 from math import isfinite
 import re
+from threading import Lock
 from time import monotonic
 import unicodedata
 
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
+from trading_companion.collection_execution import (
+    POLL_SECONDS, CollectionExecutor, CollectionUnavailable, QuoteCollectionScope, shared_collection_executor,
+)
 from trading_companion.screening import SHANGHAI, ScreeningQuote, ScreeningSnapshot, ScreeningStratumCoverage, market_stratum
 from trading_companion.security_directory import Security, SecurityDirectory
 from trading_companion.turn_control import checkpoint, request_timeout
@@ -247,7 +252,9 @@ class TencentQuoteSnapshotSource:
     """Explicit provider alternative, using only bounded IDs from the trusted directory."""
 
     def __init__(self, *, session=None, clock=None, timeout_seconds=6.0, deadline_seconds=25.0,
-                 per_stratum=None, batch_size=80, coverage="standard"):
+                 per_stratum=None, batch_size=80, coverage="standard", session_factory=None,
+                 max_workers=None, executor=None, monotonic_clock=None):
+        workers = (1 if session is not None else 3) if max_workers is None else max_workers
         if per_stratum is None:
             per_stratum = 200 if coverage == "expanded" else 50
         if (type(timeout_seconds) not in (int, float) or not isfinite(timeout_seconds)
@@ -256,12 +263,20 @@ class TencentQuoteSnapshotSource:
                 or type(coverage) is not str or coverage not in ("standard", "expanded")
                 or type(per_stratum) is not int or not 1 <= per_stratum <= (100 if coverage == "standard" else 200)
                 or type(batch_size) is not int or not 50 <= batch_size <= 80
-                or clock is not None and not callable(clock)):
+                or clock is not None and not callable(clock)
+                or monotonic_clock is not None and not callable(monotonic_clock)
+                or type(workers) is not int or not 1 <= workers <= 3
+                or session_factory is not None and not callable(session_factory)
+                or session is not None and (session_factory is not None or workers != 1)
+                or executor is not None and type(executor) is not CollectionExecutor):
             raise InvalidRequestError("Tencent screening needs bounded trusted sampling and batch configuration")
         self._session, self._clock = session, clock or (lambda: datetime.now(timezone.utc))
         self._timeout, self._deadline = timeout_seconds, deadline_seconds
         self._per_stratum, self._batch_size = per_stratum, batch_size
         self._coverage = coverage
+        self.max_workers, self._executor = workers, executor
+        self._session_factory, self._client_lock = session_factory, Lock()
+        self._timer = monotonic_clock or (lambda: monotonic())
 
     def _now(self):
         value = self._clock()
@@ -269,41 +284,37 @@ class TencentQuoteSnapshotSource:
             raise InvalidRequestError("Quote retrieval clock must be timezone-aware")
         return value
 
-    def _download(self, symbols, deadline, byte_budget):
-        checkpoint()
-        remaining = deadline - monotonic()
-        if remaining <= 0:
-            raise DataSourceError("Quote collection deadline exceeded")
+    def _download(self, symbols, scope, client):
+        scope.check()
         try:
             import requests
         except ImportError:
             raise DataSourceError("Install the data extra to request quote snapshots") from None
         response = None
-        client = requests if self._session is None else self._session
-        timeout = request_timeout(min(self._timeout, remaining))
+        timeout = scope.timeout(self._timeout)
         try:
+            scope.reserve_request()
             response = client.request("GET", TENCENT_ENDPOINT + ",".join(symbols),
                 timeout=(min(3.0, timeout), timeout), allow_redirects=False, stream=True,
                 headers={"User-Agent": "TradingCompanion/0.1 public-research", "Referer": "https://gu.qq.com/"})
-            checkpoint()
+            scope.check()
             if response.status_code != 200:
                 raise DataSourceError("Tencent quotes did not return HTTP 200; no retry or failover")
-            maximum = min(MAX_RESPONSE_BYTES, byte_budget)
+            maximum = MAX_RESPONSE_BYTES
             declared = response.headers.get("Content-Length")
             if declared is not None and (type(declared) is not str or len(declared) > 9 or not declared.isascii()
                     or not declared.isdigit() or int(declared) > maximum):
                 raise DataValidationError("Tencent quote response exceeds its response budget")
             body = bytearray()
             for chunk in response.iter_content(8192):
-                checkpoint()
-                if monotonic() >= deadline:
-                    raise DataSourceError("Quote collection deadline exceeded")
+                scope.check()
                 if type(chunk) is not bytes or len(body) + len(chunk) > maximum:
                     raise DataValidationError("Tencent quote response exceeds its response budget")
+                # Charge actual bytes under the shared ledger lock before retaining this chunk.
+                scope.consume(len(chunk))
                 body.extend(chunk)
-            if monotonic() >= deadline:
-                raise DataSourceError("Quote collection deadline exceeded")
-            return bytes(body).decode("gb18030"), len(body)
+            scope.check()
+            return bytes(body).decode("gb18030")
         except requests.RequestException:
             raise DataSourceError("Tencent quote connection failed; no retry or failover") from None
         except UnicodeError:
@@ -312,15 +323,45 @@ class TencentQuoteSnapshotSource:
             if response is not None:
                 response.close()
 
+    def _read_batch(self, batch, scope):
+        scope.check()
+        borrowed = self._session is not None
+        if borrowed:
+            while not self._client_lock.acquire(timeout=min(POLL_SECONDS, scope.remaining())):
+                scope.check()
+            client = self._session
+        else:
+            try:
+                import requests
+            except ImportError:
+                raise DataSourceError("Install the data extra to request quote snapshots") from None
+            client = (self._session_factory or requests.Session)()
+        try:
+            scope.check()
+            expected = {item.instrument_id[-2:].lower() + item.instrument_id[:6]: item for item in batch}
+            text = self._download(tuple(expected), scope, client)
+            scope.check()
+            parsed = self._parse(text, expected)
+            scope.check()
+            return tuple(parsed.values())
+        finally:
+            if borrowed:
+                self._client_lock.release()
+            else:
+                client.close()
+
     def _parse(self, text, expected):
         # This endpoint returns assignments, not executable JavaScript or JSON.
         if text.strip() == 'v_pv_none_match="1";':
             return {}
         parsed, position = {}, 0
         pattern = re.compile(r'\s*v_([a-z]{2}[0-9]{6})="([^"\r\n]*)";')
-        for match in pattern.finditer(text):
-            if match.start() != position:
-                raise DataValidationError("Unexpected Tencent quote response syntax")
+        while position < len(text):
+            # Match only at the verified cursor. Searching a long whitespace suffix at
+            # every offset would repeatedly scan it and delay cooperative stop checks.
+            match = pattern.match(text, position)
+            if match is None:
+                break
             position = match.end()
             symbol, payload = match.groups()
             if symbol not in expected or symbol in parsed or len(payload) > 5000:
@@ -367,7 +408,8 @@ class TencentQuoteSnapshotSource:
             raise InvalidRequestError("Tencent quotes need a validated security directory")
         started = self._now()
         directory.assert_usable(started.astimezone(SHANGHAI).date(), development=False)
-        deadline, used_bytes, quotes, coverage = monotonic() + self._deadline, 0, [], []
+        deadline = self._timer() + self._deadline
+        plan, strata = [], []
         for stratum in MARKET_FILTERS:
             universe = sorted((item for item in directory.securities if market_stratum(item.instrument_id) == stratum),
                               key=lambda item: item.instrument_id)
@@ -376,38 +418,55 @@ class TencentQuoteSnapshotSource:
                 selected = [universe[index * len(universe) // selected_count] for index in range(selected_count)]
             else:
                 selected = universe[:self._per_stratum]
-            found, requests_made = 0, 0
+            start_index = len(plan)
             for offset in range(0, len(selected), self._batch_size):
-                batch = selected[offset:offset + self._batch_size]
-                expected = {item.instrument_id[-2:].lower() + item.instrument_id[:6]: item for item in batch}
-                text, size = self._download(tuple(expected), deadline, MAX_TOTAL_BYTES - used_bytes)
-                used_bytes += size
-                parsed = self._parse(text, expected)
-                requests_made += 1
-                quotes.extend(parsed.values())
-                found += len(parsed)
-                if monotonic() >= deadline:
-                    raise DataSourceError("Quote collection deadline exceeded")
-            coverage.append(ScreeningStratumCoverage(stratum, len(universe), len(selected), found, requests_made,
-                missing_quote_records=len(selected) - found, total_basis="configured_directory",
+                plan.append(tuple(selected[offset:offset + self._batch_size]))
+            strata.append((stratum, len(universe), len(selected), start_index, len(plan)))
+        scope = QuoteCollectionScope(deadline=deadline, requests=len(plan), response_bytes=MAX_TOTAL_BYTES,
+                                     clock=self._timer)
+        try:
+            results = (self._executor or shared_collection_executor()).run(
+                tuple(partial(self._read_batch, batch, scope) for batch in plan),
+                scope=scope, max_workers=self.max_workers)
+        except CollectionUnavailable as error:
+            if error.code == "research_byte_budget_exhausted":
+                raise DataValidationError("Tencent quote response exceeds its total response budget") from None
+            if error.code == "research_data_deadline_exceeded":
+                raise DataSourceError("Quote collection deadline exceeded; no partial snapshot") from None
+            raise DataSourceError("Tencent quote request budget exhausted; no retry or failover") from None
+        checkpoint()
+        # Company research can use partial results; a quote snapshot needs every batch.
+        if any(result is None for result in results) or self._timer() >= deadline:
+            raise DataSourceError("Quote collection deadline exceeded; no partial snapshot")
+        quotes, coverage = [], []
+        for stratum, total, selected_count, first, last in strata:
+            batches = results[first:last]
+            found = sum(len(batch) for batch in batches)
+            for batch in batches:
+                quotes.extend(batch)
+            requests_made = last - first
+            coverage.append(ScreeningStratumCoverage(stratum, total, selected_count, found, requests_made,
+                missing_quote_records=selected_count - found, total_basis="configured_directory",
                 selection_limit=self._per_stratum if self._coverage == "expanded" else None))
         retrieved = self._now()
         if retrieved < started:
             raise InvalidRequestError("Quote retrieval clock moved backwards")
+        checkpoint()
         return ScreeningSnapshot(tuple(quotes), TENCENT_SOURCE, retrieved, directory, tuple(coverage),
                                  sampling_policy=("configured_directory_code_uniform_interval" if self._coverage == "expanded"
                                      else "configured_directory_fixed_market_strata_code_ascending"))
 
 
-def configured_quote_source(provider, coverage="standard", *, per_stratum=None, pages_per_stratum=None):
+def configured_quote_source(provider, coverage="standard", *, per_stratum=None, pages_per_stratum=None, max_workers=3):
     """Trusted launcher/CLI options only; chat cannot alter these resource bounds."""
     if (type(provider) is not str or provider not in ("tencent", "eastmoney")
-            or type(coverage) is not str or coverage not in ("standard", "expanded")):
+            or type(coverage) is not str or coverage not in ("standard", "expanded")
+            or type(max_workers) is not int or not 1 <= max_workers <= 3):
         raise InvalidRequestError("Choose a supported quote source and coverage profile")
     if provider == "tencent":
         if pages_per_stratum is not None or coverage == "expanded" and per_stratum is not None:
             raise InvalidRequestError("Expanded coverage and provider-specific sample overrides cannot be combined")
-        return TencentQuoteSnapshotSource(coverage=coverage,
+        return TencentQuoteSnapshotSource(coverage=coverage, max_workers=max_workers,
             per_stratum=(200 if coverage == "expanded" else 50 if per_stratum is None else per_stratum))
     if per_stratum is not None or coverage == "expanded" and pages_per_stratum is not None:
         raise InvalidRequestError("Expanded coverage and provider-specific sample overrides cannot be combined")

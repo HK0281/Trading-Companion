@@ -305,6 +305,7 @@ class LauncherTests(unittest.TestCase):
                 self.assertEqual(server_main(args), 0)
             normal, dev = app.call_args.kwargs["service"], app.call_args.kwargs["development_service"]
             self.assertEqual(normal._product_data_service.max_workers, 3 if count is None else count)
+            self.assertEqual(normal._screening_source.max_workers, 3 if count is None else count)
             from tests.test_company_research import CUTOFF, NOW as SOURCE_NOW
             from trading_companion.company_research_contracts import ResearchDataRequest
             collector = normal._product_data_service

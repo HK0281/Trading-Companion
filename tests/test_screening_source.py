@@ -421,3 +421,44 @@ def test_tencent_source_failure_is_not_silently_changed_to_eastmoney():
 def test_tencent_configuration_preserves_total_sample_batch_and_deadline_budgets(options):
     with pytest.raises(InvalidRequestError):
         TencentQuoteSnapshotSource(**options)
+
+
+@pytest.mark.parametrize("options", [
+    {"max_workers": 0}, {"max_workers": 4}, {"max_workers": True}, {"max_workers": 1.5},
+    {"session_factory": 1}, {"monotonic_clock": 1}, {"executor": object()},
+    {"session": TencentSession(), "max_workers": 2}, {"session": TencentSession(), "max_workers": 3},
+    {"session": TencentSession(), "session_factory": TencentSession},
+])
+def test_tencent_worker_client_configuration_rejected_before_any_request(options):
+    with pytest.raises(InvalidRequestError):
+        TencentQuoteSnapshotSource(**options)
+
+
+def test_tencent_default_owns_independent_requests_sessions_and_keeps_borrowed_default_serial(monkeypatch):
+    from tests.test_screening_collection_concurrency import QuoteTransport
+    from trading_companion.collection_execution import CollectionExecutor
+    http = QuoteTransport(directory())
+    pool = CollectionExecutor()
+    monkeypatch.setattr("requests.Session", http.factory)
+    try:
+        normal = TencentQuoteSnapshotSource(executor=pool, clock=lambda: NOW)
+        assert normal.max_workers == 3
+        assert len(normal.read_snapshot(directory()).quotes) == 5
+        assert len(http.clients) == 5 and all(client.closed == 1 for client in http.clients)
+        assert TencentQuoteSnapshotSource(session=TencentSession()).max_workers == 1
+    finally:
+        pool.close(wait=True)
+
+
+@pytest.mark.parametrize("width", [1, 2, 3])
+def test_eastmoney_factory_keeps_cross_page_reads_serial_for_every_worker_setting(monkeypatch, width):
+    from trading_companion.screening_source import configured_quote_source
+    session = Session()
+    monkeypatch.setattr("requests.request", session.request)
+    monkeypatch.setattr("trading_companion.screening_source.shared_collection_executor",
+                        lambda: pytest.fail("Eastmoney must not dispatch quote workers"))
+    selected = configured_quote_source("eastmoney", "expanded", max_workers=width)
+    selected._clock = lambda: NOW
+    snapshot = selected.read_snapshot(directory())
+    assert [call[2]["params"]["fs"] for call in session.calls] == list(MARKET_FILTERS.values())
+    assert len(snapshot.quotes) == 5 and all(response.closed for response in session.responses)

@@ -6,7 +6,7 @@ from threading import Barrier, Event, Lock, Thread
 from time import monotonic
 import unittest
 
-from trading_companion.collection_execution import CollectionExecutor, CollectionScope, CollectionUnavailable
+from trading_companion.collection_execution import CollectionExecutor, CollectionScope, CollectionUnavailable, QuoteCollectionScope
 from trading_companion.errors import InvalidRequestError
 from trading_companion.turn_control import TurnControl, TurnLimits, TurnStopped, bind_turn
 
@@ -54,6 +54,56 @@ class CollectionExecutionTests(unittest.TestCase):
     def setUp(self):
         self.pool = CollectionExecutor()
         self.addCleanup(self.pool.close, wait=True)
+
+    def test_quote_twenty_descriptions_share_three_permits_without_expanding_company_limits(self):
+        current = QuoteCollectionScope(deadline=monotonic() + 20, requests=20)
+        entered, release = [Event() for _ in range(20)], Event()
+        def task(index):
+            current.reserve_request()
+            entered[index].set()
+            if not release.wait(5):
+                raise AssertionError("Unreleased quote task")
+            return index
+        call = BackgroundCall(lambda: self.pool.run(tuple(lambda i=i: task(i) for i in range(20)),
+            scope=current, max_workers=3))
+        try:
+            for event in entered[:3]:
+                self.assertTrue(event.wait(5))
+            self.assertFalse(any(event.is_set() for event in entered[3:]))
+            release.set()
+            self.assertEqual(call.result(), tuple(range(20)))
+            self.assertEqual(current.usage()["requests"], 20)
+        finally:
+            release.set()
+        for budget, size in ((scope(), 13), (QuoteCollectionScope(deadline=monotonic() + 20, requests=20), 21)):
+            with self.assertRaises(InvalidRequestError):
+                self.pool.run((lambda: None,) * size, scope=budget, max_workers=3)
+        self.assertEqual(self.pool.run((), scope=QuoteCollectionScope(deadline=monotonic() + 20, requests=0),
+                                       max_workers=3), ())
+
+    def test_quote_atomic_actual_bytes_and_requests_never_refund_or_accept_after_close(self):
+        for request, limit, size, expected in ((True, 2, 1, "research_request_budget_exhausted"),
+            (False, 2_000_000, 1_000_000, "research_byte_budget_exhausted")):
+            current = QuoteCollectionScope(deadline=monotonic() + 20, requests=2, response_bytes=2_000_000)
+            barrier = Barrier(3)
+            def charge():
+                barrier.wait(5)
+                try:
+                    current.reserve_request() if request else current.consume(size)
+                    return "ok"
+                except CollectionUnavailable as error:
+                    return error.code
+            with ThreadPoolExecutor(max_workers=3) as workers:
+                self.assertEqual(sorted(workers.map(lambda _: charge(), range(3))), sorted(["ok", "ok", expected]))
+            self.assertEqual(current.usage()["requests" if request else "response_bytes"], limit)
+            current.close()
+            for action in (current.reserve_request, lambda: current.consume(0), lambda: current.accept(0, "late")):
+                with self.assertRaises(CollectionUnavailable):
+                    action()
+        for options in ({"requests": 21}, {"requests": True}, {"requests": -1},
+                        {"requests": 1, "response_bytes": 2_000_001}, {"requests": 1, "response_bytes": True}):
+            with self.assertRaises(InvalidRequestError):
+                QuoteCollectionScope(deadline=100, **options)
 
     def test_twelve_descriptions_use_at_most_the_requested_width(self):
         for width in (1, 2, 3):

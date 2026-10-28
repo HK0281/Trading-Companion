@@ -24,25 +24,13 @@ class CollectionUnavailable(Exception):
         super().__init__(code)
 
 
-class CollectionScope:
-    """One absolute source deadline and atomic, non-refundable request/body allowances."""
+class _CollectionScope:
+    """Shared deadline, revocation and result lifecycle; budgets belong to each source."""
 
-    def __init__(self, *, deadline, requests=None, response_bytes=None, company_allowances=None, clock=monotonic):
-        if company_allowances is None:
-            company_allowances = ((requests, response_bytes),)
-        elif requests is not None or response_bytes is not None:
-            raise InvalidRequestError("Use either one company or explicit company allowances")
-        if (type(deadline) not in (int, float) or not isfinite(deadline) or not callable(clock)
-                or type(company_allowances) is not tuple or not 1 <= len(company_allowances) <= 3
-                or any(type(item) is not tuple or len(item) != 2
-                    or type(item[0]) is not int or not 0 <= item[0] <= 5
-                    or type(item[1]) is not int or not 0 <= item[1] <= 4_048_000 for item in company_allowances)):
-            raise InvalidRequestError("Use bounded collection allowances")
+    def __init__(self, *, deadline, clock):
+        if type(deadline) not in (int, float) or not isfinite(deadline) or not callable(clock):
+            raise InvalidRequestError("Use a finite collection deadline and callable clock")
         self.deadline, self._clock = deadline, clock
-        self._allowances = company_allowances
-        self._request_limit = sum(item[0] for item in company_allowances)
-        self._byte_limit = sum(item[1] for item in company_allowances)
-        self._company_usage = [[0, 0] for _ in company_allowances]
         self._requests = self._bytes = 0
         self._lock = Lock()
         self._closed = False
@@ -71,6 +59,47 @@ class CollectionScope:
 
     def timeout(self, per_request):
         return request_timeout(min(per_request, self.remaining()))
+
+    def accept(self, index, value):
+        self.check()
+        with self._lock:
+            self._check()
+            self._results[index] = value
+
+    def close(self, stop=None):
+        with self._lock:
+            if not self._closed:
+                self._closed, self._stop = True, stop
+
+    def results(self, count):
+        with self._lock:
+            return tuple(self._results.get(index) for index in range(count))
+
+    def usage(self):
+        with self._lock:
+            return {"requests": self._requests, "response_bytes": self._bytes}
+
+
+class CollectionScope(_CollectionScope):
+    """One to three company ledgers with atomic, non-refundable allowances."""
+
+    max_tasks = 12
+
+    def __init__(self, *, deadline, requests=None, response_bytes=None, company_allowances=None, clock=monotonic):
+        if company_allowances is None:
+            company_allowances = ((requests, response_bytes),)
+        elif requests is not None or response_bytes is not None:
+            raise InvalidRequestError("Use either one company or explicit company allowances")
+        if (type(company_allowances) is not tuple or not 1 <= len(company_allowances) <= 3
+                or any(type(item) is not tuple or len(item) != 2
+                    or type(item[0]) is not int or not 0 <= item[0] <= 5
+                    or type(item[1]) is not int or not 0 <= item[1] <= 4_048_000 for item in company_allowances)):
+            raise InvalidRequestError("Use bounded collection allowances")
+        super().__init__(deadline=deadline, clock=clock)
+        self._allowances = company_allowances
+        self._request_limit = sum(item[0] for item in company_allowances)
+        self._byte_limit = sum(item[1] for item in company_allowances)
+        self._company_usage = [[0, 0] for _ in company_allowances]
 
     def _charge(self, company_index, resource, size):
         self.check()
@@ -106,24 +135,39 @@ class CollectionScope:
             raise InvalidRequestError("Count actual nonnegative response bytes")
         self._single_company().consume(size)
 
-    def accept(self, index, value):
+
+class QuoteCollectionScope(_CollectionScope):
+    """Fixed quote-batch plan: up to twenty requests sharing one 2 MB body ledger."""
+
+    max_tasks = 20
+
+    def __init__(self, *, deadline, requests, response_bytes=2_000_000, clock=monotonic):
+        if (type(requests) is not int or not 0 <= requests <= 20
+                or type(response_bytes) is not int or not 0 <= response_bytes <= 2_000_000):
+            raise InvalidRequestError("Use bounded quote collection allowances")
+        super().__init__(deadline=deadline, clock=clock)
+        self._request_limit, self._byte_limit = requests, response_bytes
+
+    def _charge(self, size, *, request=False):
         self.check()
         with self._lock:
             self._check()
-            self._results[index] = value
+            used, limit = ((self._requests, self._request_limit) if request else (self._bytes, self._byte_limit))
+            if used + size > limit:
+                raise CollectionUnavailable("research_request_budget_exhausted" if request
+                                            else "research_byte_budget_exhausted")
+            if request:
+                self._requests += size
+            else:
+                self._bytes += size
 
-    def close(self, stop=None):
-        with self._lock:
-            if not self._closed:
-                self._closed, self._stop = True, stop
+    def reserve_request(self):
+        self._charge(1, request=True)
 
-    def results(self, count):
-        with self._lock:
-            return tuple(self._results.get(index) for index in range(count))
-
-    def usage(self):
-        with self._lock:
-            return {"requests": self._requests, "response_bytes": self._bytes}
+    def consume(self, size):
+        if type(size) is not int or size < 0:
+            raise InvalidRequestError("Count actual nonnegative response bytes")
+        self._charge(size)
 
 
 class _CompanyScope:
@@ -184,8 +228,9 @@ class CollectionExecutor:
     def run(self, tasks, *, scope, max_workers):
         if type(max_workers) is not int or not 1 <= max_workers <= 3:
             raise InvalidRequestError("Choose one to three collection workers")
-        if type(tasks) is not tuple or len(tasks) > 12 or any(not callable(task) for task in tasks):
-            raise InvalidRequestError("Use at most twelve bounded collection tasks")
+        if (not isinstance(scope, _CollectionScope) or type(tasks) is not tuple
+                or len(tasks) > min(20, scope.max_tasks) or any(not callable(task) for task in tasks)):
+            raise InvalidRequestError("Use bounded collection tasks within the source-specific limit")
         pending, next_index, stop = {}, 0, None
         try:
             while pending or next_index < len(tasks):

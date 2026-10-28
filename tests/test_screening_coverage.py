@@ -220,3 +220,36 @@ def test_cli_expanded_profile_passes_real_configuration_before_directory_or_netw
         assert main(["--live", "--directory", "unused", "--condition", "price", "gt", "0", *flags]) == 1
         assert json.loads(capsys.readouterr().out)["code"] == "invalid_screening_request"
     assert captured == []
+
+
+def test_cli_worker_width_is_validated_before_directory_and_isolated_from_demo(monkeypatch, capsys):
+    monkeypatch.setattr("trading_companion.screening_cli.load_security_directory",
+                        lambda _: pytest.fail("No directory before argument validation"))
+    monkeypatch.setattr("trading_companion.screening_source.shared_collection_executor",
+                        lambda: pytest.fail("No pool in demo or argument validation"))
+    for value in ("0", "4", "true", "1.5"):
+        with pytest.raises(SystemExit) as error:
+            main(["--live", "--collection-workers", value])
+        assert error.value.code == 2
+    for width in (1, 2, 3):
+        with pytest.raises(SystemExit) as error:
+            main(["--demo", "--collection-workers", str(width)])
+        assert error.value.code == 2
+    assert main(["--demo"]) == 0
+    assert "人工" in capsys.readouterr().out
+
+
+def test_cli_live_width_reaches_actual_quote_configuration(monkeypatch, capsys):
+    trusted = directory()
+    sample = collect(trusted, coverage="standard")
+    captured = []
+    def read(self, value):
+        captured.append(self.max_workers)
+        return sample
+    monkeypatch.setattr("trading_companion.screening_cli.load_security_directory", lambda _: trusted)
+    monkeypatch.setattr(TencentQuoteSnapshotSource, "read_snapshot", read)
+    monkeypatch.setattr("trading_companion.screening_cli.ScreeningService", lambda: ScreeningService(clock=lambda: NOW))
+    for width in (None, 1, 2, 3):
+        flags = [] if width is None else ["--collection-workers", str(width)]
+        assert main(["--live", "--directory", "unused", "--condition", "price", "gt", "0", *flags]) == 0
+    assert captured == [3, 1, 2, 3]

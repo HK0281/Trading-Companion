@@ -1,6 +1,397 @@
-# 有上限的公司资料并发采集（3a、3b）
+# 有上限的资料与报价并发采集（3a、3b、3c）
 
-2026-10-28：3a 已完成同公司领域并发，3b 已在工作区实现最多三家公司的统一采集，待审核。公司资料、财务、新闻和公告进入同一队列，同时最多三个领域任务；筛选批次、技术计算、模型及市场背景请求的执行方式不变。实现位置是[采集执行模块](../src/trading_companion/collection_execution.py)、[公司采集器](../src/trading_companion/company_research.py)、[产品合并流程](../src/trading_companion/product_research.py)和[新浪新闻适配器](../src/trading_companion/company_news_sina.py)。
+2026-10-28：3a 同公司领域并发、3b 最多三家公司统一采集均已审核并提交；3c 腾讯报价固定批次并发已在工作区实现，待审核。公司资料、财务、新闻、公告和腾讯报价共用一个队列，全进程同时最多三个未完成任务；东方财富仍串行分页，技术计算、模型及市场背景请求的执行方式不变。实现位置是[采集执行模块](../src/trading_companion/collection_execution.py)、[公司采集器](../src/trading_companion/company_research.py)、[产品合并流程](../src/trading_companion/product_research.py)、[新浪新闻适配器](../src/trading_companion/company_news_sina.py)和[报价采集器](../src/trading_companion/screening_source.py)。
+
+## 3c 腾讯报价批次（2026-10-28，工作区待审核）
+
+腾讯的证券ID和批次边界在取数前已经确定，因此协调端一次生成任务表，按原五板块、板块内批次顺序编号，逐个交给共享执行器。完成顺序可以不同，全部成功后仍按原编号合并。standard保留代码前缀样本，expanded保留下标`floor(i × 板块目录数量 / 选中数量)`；不跨板块混批、不补样本。标准默认5批，扩大默认15批，50个ID一批时最多20批。
+
+`QuoteCollectionScope`是报价单次采集的预算账本，最多20请求、总响应2,000,000字节；每个预定任务只请求一次。每个响应仍限200,000字节，实际响应块在保留前原子扣减总账，不按每任务预占200KB，失败不退款。共享生命周期只提取截止、关闭、检查点和结果接纳；公司`CollectionScope`仍最多12个任务描述、1～3家公司、每家公司最多5请求和4,048,000字节，不能借报价额度。
+
+公司和报价、不同会话及旧迟到任务合计仍最多三个未完成Future（后台任务结果对象）。20个描述不等于排入20个后台任务，不新建报价池。腾讯来源窗口默认25秒、最多30秒，只在整次选样前起算一次；等共享名额和借用客户端锁都计入。单请求超时取原6秒上限、来源剩余和整轮剩余的最小值，可信请求配置仍最多10秒。
+
+腾讯自有客户端或可信`session_factory`默认宽度3，每个批次创建并关闭自己的客户端。`session=`借用方式默认宽度1，同一实例跨调用也互斥，不代为关闭；单客户端与2/3宽度、客户端与工厂的冲突在取数前拒绝。服务端已有`--collection-workers`同时传给公司采集与报价配置工厂，独立`screening_cli`新增同名参数，在线默认3。CLI的`--demo`拒绝显式在线采集参数，不创建池或联网；服务端原`--demo`忽略该可信宽度，仍使用隔离人工服务。
+
+任何批次失败、协议不合格、共享字节超限、来源截止或结果未完成，整次不构造快照、不发布部分名单。合法遗漏和`no-match`仍计为`missing_quote_records`，不混同传输失败。`TurnStopped`（整轮取消或期限信号）直接传播。停止后已运行请求可以迟到，直到真正退出才归还名额；其响应关闭，不能改写会话、候选缓存、归档或冻结追踪。发生错误时已发出的并发请求可能多于原串行的首错即停；协调端观察到错误后不再提交。成功固定响应对照的任务、请求、实际字节和覆盖完全一致。
+
+追踪仍只有一次`screening_snapshot`逻辑来源事件，HTTP批次不冒充多个快照。每任务独立复制上下文变量，继承本轮控制器和父事件。东方财富保留原total驱动的分页、跨页总数/顺序/重复校验，所有宽度下均串行。公开源实际限流和耗时留到最终联网评估，不根据旧断连记录声称当前限流。
+
+#77的小修已纳入：模型文字先单独核对6000字符及引用、公司覆盖，再追加程序生成的截止提示；6001字符仍拒绝，不增加重写或模型调用，保持六段上限和引用映射。
+
+2MB精确边界验证还暴露旧腾讯协议正则搜索在大段尾部空白下反复扫描的慢路径。解析器现改为仅从已核验游标匹配，不再搜索后续位置；合法尾部空白和原严格协议反例均保持原处理。20个100KB响应分别用payload填充及尾部空白填充，两种输入都验证完整采集和精确总账，不通过延长期限回避问题。
+
+### 3c 验证与离线计时
+
+[并发测试](../tests/test_screening_collection_concurrency.py)使用真实采集器、独立假HTTP客户端和事件屏障验证1/2/3宽度、5/15/20批、逆序完成、缺板块、合法遗漏、共享池、迟到占槽、客户端互斥、请求/字节竞争和2MB精确边界。[API测试](../tests/test_screening_coverage_api.py)在已有名单后中途失败、取消、整轮/来源到期，先返回再启动新轮，最后放行旧请求，核对新会话、缓存、归档和追踪不变。[追踪测试](../tests/test_turn_trace_events.py)核对5次HTTP仍只有一次逻辑读取及正确父事件；原3a/3b及35场景105轮冻结路由保持原基线。
+
+[计时脚本](../scripts/benchmark_screening_collection.py)用人工五板块目录、人工GB18030响应、固定墙钟/来源时钟及每请求100ms等待，封锁网络和本地配置读取。相同输入下串行/宽度3各五次，逐字段比较快照、筛选结果、覆盖、请求ID批次与字节，输出选样ID的SHA256摘要（确认同一组ID）。没有加速比通过门槛。
+
+本轮完整`python`门禁通过2211项unittest、244项pytest函数用例、全部原固定流程与依赖检查；该总数包含工作区另有的浏览器启动测试。没有修改前端、冻结路由基线或观察器，也未运行真实行情/付费模型评估。
+
+| 离线人工场景 | 请求/任务数 | 实际响应字节 | 理论等待批数：串行→宽度3 | 串行中位数 | 宽度3中位数 |
+| --- | ---: | ---: | --- | ---: | ---: |
+| standard，batch_size=80 | 5 | 36,695 | 5→2 | 555.995ms | 229.962ms |
+| expanded，batch_size=80 | 15 | 147,710 | 15→5 | 1639.943ms | 550.966ms |
+| expanded，batch_size=50 | 20 | 147,705 | 20→7 | 2185.807ms | 767.557ms |
+
+这里只证明人工等待可以重叠，不能代表真实腾讯来源速度或覆盖。两个扩大档的ID相同但批次边界不同，行间分隔的字节数相差5；每个配置内串行/并发字节完全相同。下面保留三次命令的完整原始输出。
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage standard --batch-size 80 --repeat 5 --delay-ms 100
+```
+
+```json
+{
+  "benchmark": "Tencent_screening_fixed_delay",
+  "data_mode": "offline_artificial_http_gb18030",
+  "interpretation": "structural_overlap_not_live_source_performance",
+  "coverage": "standard",
+  "batch_size": 80,
+  "repeat": 5,
+  "delay_ms_per_request": 100,
+  "task_descriptions": 5,
+  "pool_unfinished_limit": 3,
+  "selected_ids": {
+    "sse_main": {
+      "count": 50,
+      "first": "600000.SH",
+      "last": "600049.SH",
+      "sha256": "46ad180525c63158c1264096c8cb3ceb6468b70660c94a0b1186e8e9168f6c3e"
+    },
+    "szse_main": {
+      "count": 50,
+      "first": "000000.SZ",
+      "last": "000049.SZ",
+      "sha256": "5dfcbd28150679ea19d298b0a56655b25911d561af2960fcf851a6f1fcdcb5ba"
+    },
+    "star": {
+      "count": 50,
+      "first": "688000.SH",
+      "last": "688049.SH",
+      "sha256": "d088375cd6489000b2d10b024c23ea1de753f1287633d686a52bf68b16cff61c"
+    },
+    "chinext": {
+      "count": 50,
+      "first": "300000.SZ",
+      "last": "300049.SZ",
+      "sha256": "edf42df55d5e46045dd2af488af32ad15af8a32f755af69e0de0b9f1fc1b2045"
+    },
+    "bse": {
+      "count": 50,
+      "first": "920000.BJ",
+      "last": "920049.BJ",
+      "sha256": "aaa3cc9cc1d13fdba1ef1765c72ba5151e6ad7c376beca7d9e7cbbfb4a2c40d6"
+    }
+  },
+  "series": {
+    "serial": {
+      "workers": 1,
+      "theoretical_wait_batches": 5,
+      "elapsed_ms": [
+        558.492,
+        554.522,
+        556.452,
+        554.492,
+        555.995
+      ],
+      "median_ms": 555.995,
+      "maximum_inflight": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "requests": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "response_bytes": [
+        36695,
+        36695,
+        36695,
+        36695,
+        36695
+      ]
+    },
+    "parallel_3c": {
+      "workers": 3,
+      "theoretical_wait_batches": 2,
+      "elapsed_ms": [
+        216.061,
+        229.962,
+        230.579,
+        230.676,
+        227.882
+      ],
+      "median_ms": 229.962,
+      "maximum_inflight": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "requests": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "response_bytes": [
+        36695,
+        36695,
+        36695,
+        36695,
+        36695
+      ]
+    }
+  },
+  "snapshots_results_coverage_requests_bytes_equal": true
+}
+```
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage expanded --batch-size 80 --repeat 5 --delay-ms 100
+```
+
+```json
+{
+  "benchmark": "Tencent_screening_fixed_delay",
+  "data_mode": "offline_artificial_http_gb18030",
+  "interpretation": "structural_overlap_not_live_source_performance",
+  "coverage": "expanded",
+  "batch_size": 80,
+  "repeat": 5,
+  "delay_ms_per_request": 100,
+  "task_descriptions": 15,
+  "pool_unfinished_limit": 3,
+  "selected_ids": {
+    "sse_main": {
+      "count": 200,
+      "first": "600000.SH",
+      "last": "600398.SH",
+      "sha256": "c5669106407aa5194d08b3dbb2998ba1c82de313b33bcb368cbdcbd465e92917"
+    },
+    "szse_main": {
+      "count": 200,
+      "first": "000000.SZ",
+      "last": "000398.SZ",
+      "sha256": "bf40125e61c405cca06b66ded696d1db8c5b392d1904282850489bbb35b303ab"
+    },
+    "star": {
+      "count": 200,
+      "first": "688000.SH",
+      "last": "688398.SH",
+      "sha256": "c98e034bda7c15df3b4aba287dda595f82b2e51ae9b6c7559509a8584ecde418"
+    },
+    "chinext": {
+      "count": 200,
+      "first": "300000.SZ",
+      "last": "300398.SZ",
+      "sha256": "90382a91b85c3e257048db306698b2cd688238eb49f4981de69ac2b464ec5935"
+    },
+    "bse": {
+      "count": 200,
+      "first": "920000.BJ",
+      "last": "920398.BJ",
+      "sha256": "87bacda0d3a757db23cb3de8d4cd10c7e93089b40dee877ab77ed667778ccf6a"
+    }
+  },
+  "series": {
+    "serial": {
+      "workers": 1,
+      "theoretical_wait_batches": 15,
+      "elapsed_ms": [
+        1647.95,
+        1639.355,
+        1639.943,
+        1641.182,
+        1639.789
+      ],
+      "median_ms": 1639.943,
+      "maximum_inflight": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "requests": [
+        15,
+        15,
+        15,
+        15,
+        15
+      ],
+      "response_bytes": [
+        147710,
+        147710,
+        147710,
+        147710,
+        147710
+      ]
+    },
+    "parallel_3c": {
+      "workers": 3,
+      "theoretical_wait_batches": 5,
+      "elapsed_ms": [
+        548.74,
+        550.966,
+        551.966,
+        547.073,
+        551.799
+      ],
+      "median_ms": 550.966,
+      "maximum_inflight": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "requests": [
+        15,
+        15,
+        15,
+        15,
+        15
+      ],
+      "response_bytes": [
+        147710,
+        147710,
+        147710,
+        147710,
+        147710
+      ]
+    }
+  },
+  "snapshots_results_coverage_requests_bytes_equal": true
+}
+```
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage expanded --batch-size 50 --repeat 5 --delay-ms 100
+```
+
+```json
+{
+  "benchmark": "Tencent_screening_fixed_delay",
+  "data_mode": "offline_artificial_http_gb18030",
+  "interpretation": "structural_overlap_not_live_source_performance",
+  "coverage": "expanded",
+  "batch_size": 50,
+  "repeat": 5,
+  "delay_ms_per_request": 100,
+  "task_descriptions": 20,
+  "pool_unfinished_limit": 3,
+  "selected_ids": {
+    "sse_main": {
+      "count": 200,
+      "first": "600000.SH",
+      "last": "600398.SH",
+      "sha256": "c5669106407aa5194d08b3dbb2998ba1c82de313b33bcb368cbdcbd465e92917"
+    },
+    "szse_main": {
+      "count": 200,
+      "first": "000000.SZ",
+      "last": "000398.SZ",
+      "sha256": "bf40125e61c405cca06b66ded696d1db8c5b392d1904282850489bbb35b303ab"
+    },
+    "star": {
+      "count": 200,
+      "first": "688000.SH",
+      "last": "688398.SH",
+      "sha256": "c98e034bda7c15df3b4aba287dda595f82b2e51ae9b6c7559509a8584ecde418"
+    },
+    "chinext": {
+      "count": 200,
+      "first": "300000.SZ",
+      "last": "300398.SZ",
+      "sha256": "90382a91b85c3e257048db306698b2cd688238eb49f4981de69ac2b464ec5935"
+    },
+    "bse": {
+      "count": 200,
+      "first": "920000.BJ",
+      "last": "920398.BJ",
+      "sha256": "87bacda0d3a757db23cb3de8d4cd10c7e93089b40dee877ab77ed667778ccf6a"
+    }
+  },
+  "series": {
+    "serial": {
+      "workers": 1,
+      "theoretical_wait_batches": 20,
+      "elapsed_ms": [
+        2180.279,
+        2186.693,
+        2187.445,
+        2183.224,
+        2185.807
+      ],
+      "median_ms": 2185.807,
+      "maximum_inflight": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "requests": [
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "response_bytes": [
+        147705,
+        147705,
+        147705,
+        147705,
+        147705
+      ]
+    },
+    "parallel_3c": {
+      "workers": 3,
+      "theoretical_wait_batches": 7,
+      "elapsed_ms": [
+        767.557,
+        769.416,
+        765.848,
+        764.277,
+        769.935
+      ],
+      "median_ms": 767.557,
+      "maximum_inflight": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "requests": [
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "response_bytes": [
+        147705,
+        147705,
+        147705,
+        147705,
+        147705
+      ]
+    }
+  },
+  "snapshots_results_coverage_requests_bytes_equal": true
+}
+```
 
 ## 启动配置与串行对照
 
@@ -14,7 +405,7 @@
 
 参数只接受1、2、3，默认3；非法值在加载配置、启动服务前被拒绝。设为1用于同一数据源的串行/并发真实评估对照，也可在来源对重叠请求敏感时手动退回逐领域获取。没有自动重试或换源。配置只来自服务端启动，聊天和HTTP请求没有修改它的字段。--demo和网页独立Dev Mode仍使用原人工夹具，不创建这些网络采集任务。
 
-参数控制单批采集的宽度，所有默认公司采集服务还共用进程级的三个在途名额。因此多个会话也不能各自放入三个任务使池膨胀；设为1是每批资料按公司、领域依次执行，不把整个应用所有会话和所有HTTP路径改为全局串行。3b只应用一次宽度，不能外层三家公司各放入三个领域。筛选批次留到3c，届时也须共用执行器及整轮额度。
+参数控制单批采集的宽度，所有默认公司和腾讯报价采集服务还共用进程级的三个在途名额。因此多个会话也不能各自放入三个任务使池膨胀；设为1是每批资料按公司、领域或报价批次依次执行，不把整个应用所有会话和所有HTTP路径改为全局串行。3b、3c只应用一次宽度，不能外层三家公司或五个板块各放入三个任务。东方财富在宽度1/2/3下均保持串行。
 
 直接使用ResearchDataService时，内置客户端或可信session_factory默认宽度为3，可显式传max_workers=1对照。每个任务创建自己的客户端并负责关闭。旧session=注入默认宽度为1，且同一服务实例的借用客户端跨采集调用也互斥访问；客户端仍由注入者关闭。只给一个session却显式要求2/3，或同时提供session和工厂，均提前拒绝。工厂必须每次返回独立客户端；注入时钟和工厂是可信、可在线程间调用的服务端依赖。
 

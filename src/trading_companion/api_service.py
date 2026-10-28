@@ -25,6 +25,7 @@ from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
 from trading_companion.turn_trace import (
+    trace_call,
     JsonlTraceSink, trace_control, trace_message, trace_model_identity, trace_outcome,
     trace_phase, trace_replay, trace_route, trace_run_id, trace_session,
 )
@@ -401,7 +402,7 @@ class ResearchApiService:
         if len(entry.market_contexts) >= self.limits.messages:
             return {"version": "research-market-context-v1", "status": "unavailable", "code": "context_cache_limit"}, None
         try:
-            snapshot = self._market_context_loader(timestamp) if self._market_context_loader is not None else None
+            snapshot = trace_call("source", "market_context_load", self._market_context_loader, timestamp) if self._market_context_loader is not None else None
             value = build_market_context(saved.result, expected_request=saved.request,
                                          snapshot=snapshot, reference_at=timestamp)
         except Exception:
@@ -428,7 +429,7 @@ class ResearchApiService:
                                                           session=routing_session)
             if education_candidate:
                 try:
-                    directory = self._directory_loader(timestamp)
+                    directory = trace_call("source", "directory", self._directory_loader, timestamp)
                 except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                     # A local identity hint may veto education; its availability or
                     # freshness must never authorize or block a generic explanation.
@@ -440,7 +441,7 @@ class ResearchApiService:
             else:
                 if directory is None:
                     try:
-                        directory = self._directory_loader(timestamp)
+                        directory = trace_call("source", "directory", self._directory_loader, timestamp)
                     except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                         raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
                 screening_research_source = "csv" if self._development_source is not None else self._research_source

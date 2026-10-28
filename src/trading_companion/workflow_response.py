@@ -3,6 +3,7 @@
 from dataclasses import replace
 import json
 import re
+from trading_companion.turn_trace import trace_call
 import unicodedata
 
 from trading_companion.multi_contracts import MultiIndicatorRequest, MultiIndicatorResult
@@ -94,6 +95,7 @@ def _observations(observations, expected_request):
     return indexed
 
 
+@trace_call("check", "workflow_response")
 def validate_workflow_response(text, *, observations, expected_request):
     """Check all selected relation claims; this does not verify arbitrary prose semantics."""
     request_id = expected_request.request_id if type(expected_request) is MultiIndicatorRequest else None

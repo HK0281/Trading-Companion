@@ -9,6 +9,7 @@ from trading_companion import indicators as calculations
 from trading_companion.daily_bar import DailyBar
 from trading_companion.data_source import DailyBarSource
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
+from trading_companion.turn_trace import trace_call
 from trading_companion.multi_contracts import (
     ALGORITHM_VERSIONS, DEFAULT_INDICATORS, ComponentMetadata, Fact, FieldResult,
     IndicatorResult, IndicatorRow, IndicatorSpec, MultiIndicatorRequest,
@@ -390,7 +391,7 @@ def analyze_indicators(
     source: DailyBarSource, request: MultiIndicatorRequest, *, allow_development_csv: bool = False,
 ) -> MultiIndicatorResult:
     """Analyze one validated snapshot; CSV injection is trusted development configuration."""
-    _validate_source(source, request, allow_development_csv)
+    trace_call("check", "daily_source", _validate_source, source, request, allow_development_csv)
     synthetic = bool(request.source == "csv" and getattr(source, "is_synthetic", False))
     authenticity = "synthetic" if synthetic else "unverified_csv" if request.source == "csv" else "provider_reported"
     warnings = [
@@ -415,14 +416,14 @@ def analyze_indicators(
                                     retrieved_at, warnings=tuple(warnings))
 
     try:
-        bars = source.read_daily_bars()
+        bars = trace_call("source", "daily_bars", source.read_daily_bars)
     except DataSourceError:
         return failure("source_error", "source_unavailable", "行情源读取失败；未使用替代来源。")
     except DataValidationError:
         return failure("invalid_data", "invalid_source_data", "行情源返回的数据无效。")
     retrieved_at = datetime.now(timezone.utc)
     try:
-        _validate_records(bars, request)
+        trace_call("check", "daily_records", _validate_records, bars, request)
     except DataValidationError:
         return failure("invalid_data", "invalid_source_data", "行情记录、顺序或字段未通过校验。")
     if not bars:

@@ -16,6 +16,7 @@ from trading_companion.multi_contracts import ALGORITHM_VERSIONS, Fact, MultiInd
 from trading_companion.tencent_adapter import TencentDailyBarSource
 from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages
 from trading_companion.turn_control import TurnStopped, checkpoint, reserve_analysis
+from trading_companion.turn_trace import trace_call, trace_event
 
 
 TOOL_NAME = "analyze_daily_indicators"
@@ -292,8 +293,9 @@ class ResearchToolExecutor:
         with self._lock:
             return self._used
 
+    @trace_call("tool", "research")
     def execute(self, response: ToolModelResponse, *, messages) -> ToolExecution:
-        history, _, seen_ids = validate_tool_messages(messages, tools=(RESEARCH_TOOL_DEFINITION,))
+        history, _, seen_ids = trace_call("check", "tool_history", validate_tool_messages, messages, tools=(RESEARCH_TOOL_DEFINITION,))
         if type(response) is not ToolModelResponse or response.status != "tool_calls":
             raise ToolExecutionError("not_a_tool_proposal")
         if any(call.name != TOOL_NAME for call in response.tool_calls):
@@ -304,7 +306,7 @@ class ResearchToolExecutor:
                                 else "invalid_arguments") for call in response.tool_calls)
 
         def check_history(outputs):
-            validate_tool_messages([*history, response.as_message(), *outputs],
+            trace_call("check", "tool_history", validate_tool_messages, [*history, response.as_message(), *outputs],
                                    tools=(RESEARCH_TOOL_DEFINITION,))
 
         # Verify that even an error can close the proposal before spending an attempt or IO.
@@ -313,7 +315,7 @@ class ResearchToolExecutor:
             return ToolExecution("rejected", rejected)
         call = response.tool_calls[0]
         try:
-            request = _request(call.arguments, development=self._development_source is not None,
+            request = trace_call("check", "tool_request", _request, call.arguments, development=self._development_source is not None,
                                request_id=self._request_id)
         except (InvalidRequestError, TypeError, ValueError):
             return ToolExecution("rejected", rejected)
@@ -327,9 +329,10 @@ class ResearchToolExecutor:
             # Consume before construction/read; a failed attempt cannot be retried invisibly.
             self._used = 1
         try:
-            source = self._development_source if self._development_source is not None else _build_source(request)
-            full_result = analyze_indicators(source, request,
-                                             allow_development_csv=self._development_source is not None)
+            with trace_event("tool", "execute"):
+                source = self._development_source if self._development_source is not None else _build_source(request)
+                full_result = analyze_indicators(source, request,
+                                                 allow_development_csv=self._development_source is not None)
         except TurnStopped:
             raise
         except (ModelConfigurationError, InvalidRequestError, DataSourceError, DataValidationError):

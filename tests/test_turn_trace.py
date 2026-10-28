@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from trading_companion.model import ModelCallError, TokenUsage
 from trading_companion.tool_model import ToolCall, ToolModelResponse
 from trading_companion.turn_trace import (
-    JsonlTraceSink, TraceLimits, TurnTrace, _CODES, trace_message, trace_model_attempt, trace_model_response,
+    JsonlTraceSink, TraceLimits, TurnTrace, _CODES, _EVENT_CODES, trace_message, trace_model_attempt, trace_model_response,
     trace_outcome, trace_phase, trace_provider_request, trace_run_id,
 )
 
@@ -22,12 +22,10 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
-    "additional_analysis_budget_exhausted": "工具内部补充分析拒绝；整轮另报工作流结果或共享预算停止码。",
     "aligned_research_series": "图表附件成功状态，不是整轮结束原因。",
     "archive_replay_unavailable": "独立归档回放CLI结果，未接入消息追踪。",
     "asset_not_found": "静态资源HTTP错误，不经过消息入口。",
     "at_least_two_candidates_required": "候选比较附件的数量校验状态。",
-    "bounded_evidence_available": "单个公司资料领域的证据状态。",
     "candidate_evidence_ids_not_unique": "候选比较附件的证据ID校验状态。",
     "candidate_metric_missing_or_invalid": "候选比较附件的指标可用性状态。",
     "candidate_metrics_compared": "候选比较附件的完成状态，整轮使用公司研究结果码。",
@@ -53,7 +51,6 @@ NON_TURN_CODES = {
     "context_unusable": "可选市场背景附件构建失败，保留原回复。",
     "contextual_outlook_ready": "继承展望条件的内部准备状态。",
     "conversation_call_limit": "独立终端会话的调用上限，该入口未开启持久化追踪。",
-    "current_background_not_allowed": "单个公司资料领域拒绝当前背景的状态。",
     "current_background_not_covered": "市场背景附件未覆盖该证券。",
     "current_background_stale": "市场背景附件过期，不是整轮结果。",
     "current_background_unavailable": "市场背景附件来源不可用。",
@@ -62,29 +59,17 @@ NON_TURN_CODES = {
     "directory_refreshed": "独立证券目录刷新CLI的成功结果。",
     "directory_source_error": "独立证券目录刷新CLI的来源错误。",
     "directory_validation_error": "独立证券目录刷新CLI的校验错误。",
-    "duplicate_indicator": "工作流工具的重复指标拒绝，整轮另有结果码。",
-    "duplicate_request": "工作流工具的重复请求拒绝，整轮另有结果码。",
     "evaluation_call_limit": "独立评估运行器的调用上限，不是产品轮次结果。",
     "evaluation_fixture_unusable": "独立评估运行器的夹具错误。",
     "evaluation_internal_error": "独立评估运行器的内部错误。",
     "exchange_current_context_available": "公司背景证据领域的来源状态。",
     "exchange_current_context_unavailable": "公司背景证据领域的来源缺失状态。",
-    "execution_failed": "工具响应中的执行失败；整轮使用工具或研究失败码。",
-    "explanation_context_mismatch": "解释检查附件的上下文问题，整轮使用解释拒绝码。",
-    "explanation_evidence_mismatch": "解释检查附件的证据问题，整轮使用解释拒绝码。",
-    "explanation_not_ready": "解释检查附件尚未准备好。",
-    "explanation_relation_mismatch": "解释检查附件的关系问题，整轮使用解释拒绝码。",
     "final_tool_calls": "最终回答阶段仍提议工具的内部failure_code；整轮另报模型或解释不可用。",
     "fixture_unavailable": "独立MVP评估运行器的夹具错误。",
     "historical_long_scenario_ready": "ATR风险情景附件的完成状态。",
     "historical_replay_computed": "历史回放附件的计算状态。",
-    "indicator_period_reduction_not_allowed": "工具拒绝缩短指标周期；整轮另有工作流结果。",
-    "indicator_relations_checked": "指标解释附件的检查成功状态。",
-    "invalid_arguments": "工具响应的参数拒绝，不是整轮结束原因。",
     "invalid_content_length": "消息服务之前的HTTP长度校验错误。",
     "invalid_evaluation_options": "独立评估CLI参数校验错误。",
-    "invalid_explanation_json": "解释检查附件的JSON校验问题。",
-    "invalid_explanation_shape": "解释检查附件的结构校验问题。",
     "invalid_known_at": "可选归档的观察时间校验问题。",
     "invalid_refresh_configuration": "独立目录刷新CLI配置错误。",
     "invalid_risk_parameters": "ATR风险情景附件的参数校验问题。",
@@ -96,7 +81,6 @@ NON_TURN_CODES = {
     "invalid_snapshot_path": "可选归档的本地路径校验问题。",
     "invalid_snapshot_payload": "可选归档的序列化内容校验问题。",
     "invalid_snapshot_timestamp": "可选归档的时间格式校验问题。",
-    "invalid_source_shape": "单个公司证据领域的来源结构问题。",
     "json_required": "消息服务之前的HTTP内容类型校验错误。",
     "live_refresh_not_enabled": "独立目录刷新CLI未显式开启联网。",
     "market_context_limited": "市场背景附件的部分可用状态。",
@@ -110,16 +94,9 @@ NON_TURN_CODES = {
     "metric_raw_value_invalid": "比较附件中单个指标的数值校验问题。",
     "metric_report_period_invalid": "比较附件中单个指标的报告期校验问题。",
     "metric_unit_not_percent": "比较附件中单个指标的百分比单位校验问题。",
-    "no_conversational_response": "会话回答附件未生成的初始状态。",
-    "no_eligible_evidence_in_bounded_response": "单个公司证据领域中没有合格证据。",
-    "no_structured_explanation": "结构化解释附件未生成的初始状态。",
-    "not_a_tool_proposal": "工具协议异常，被整轮工具失败码包装。",
     "not_started": "结果对象及评估对象的初始状态，不是已结束轮次。",
     "origin_not_allowed": "消息服务之前的HTTP来源拒绝。",
-    "primary_analysis_completed": "主分析工具响应的完成状态。",
-    "primary_snapshot_unavailable": "工作流工具响应的主快照缺失状态。",
     "product_plan_not_started": "公司计划对象的初始状态，不是已结束轮次。",
-    "product_research_answered": "公司答案附件检查成功；整轮使用公司研究结果码。",
     "proposal_complete": "研究提议阶段直接完成的内部failure_code；整轮另报模型不可用。",
     "proposal_incomplete": "提议或独立smoke检查的不完整状态；整轮另报模型不可用。",
     "proposal_refused": "提议或独立smoke检查的拒绝状态；整轮另报模型不可用。",
@@ -130,9 +107,6 @@ NON_TURN_CODES = {
     "reported_market_context": "市场背景附件的成功状态。",
     "request_too_large": "消息服务之前的HTTP请求体容量拒绝。",
     "research_input_ready": "技术请求理解已准备好，随后仍须执行研究。",
-    "response_evidence_checked": "会话答案附件的检查成功状态。",
-    "response_invalid_shape": "会话答案附件的结构校验问题。",
-    "reused_call_id": "工具协议重复调用ID，被整轮工具失败码包装。",
     "risk_atr_not_requested": "ATR风险情景附件未请求该指标。",
     "risk_atr_selection_ambiguous": "ATR风险情景附件的指标实例选择歧义。",
     "risk_atr_unavailable": "ATR风险情景附件缺少ATR证据。",
@@ -157,7 +131,6 @@ NON_TURN_CODES = {
     "snapshot_store_closed": "可选归档已关闭，不覆盖研究回复结果码。",
     "snapshot_store_unavailable": "可选归档不可用，不覆盖研究回复结果码。",
     "snapshot_too_large": "可选归档的内容容量限制问题。",
-    "source_configuration_error": "研究工具来源配置异常，被整轮工具失败码包装。",
     "stopped_after_failure": "独立评估首错停止后的未执行场景状态。",
     "synthesis_data_unavailable": "确定性综合报告附件的数据不足状态。",
     "synthesis_evidence_mismatch": "确定性综合报告附件的证据校验问题。",
@@ -166,24 +139,10 @@ NON_TURN_CODES = {
     "technical_insights_computed": "技术派生事实附件的完成状态。",
     "technical_insights_evidence_mismatch": "技术派生事实附件的证据校验问题。",
     "technical_insights_no_data": "技术派生事实附件的缺失状态。",
-    "tool_call_budget_exhausted": "工作流工具内部次数拒绝，整轮另有迭代上限结果码。",
     "tool_execution_error": "独立工具往返smoke CLI的工具异常结果。",
     "tool_execution_not_usable": "独立工具往返smoke CLI的工具结果拒绝。",
-    "tool_internal_error": "工作流工具响应中的内部错误，整轮另有结果码。",
-    "tool_result_too_large": "工作流工具响应中的容量拒绝，整轮另有结果码。",
     "tool_round_trip_completed": "独立工具往返smoke CLI的成功结果。",
     "unclassified_failure": "独立评估报告的未分类失败，不是产品结果。",
-    "workflow_response_context_mismatch": "工作流解释检查的上下文问题，整轮使用解释拒绝码。",
-    "workflow_response_duplicate_key": "工作流解释检查的重复JSON键问题。",
-    "workflow_response_evidence_checked": "工作流解释检查的成功状态。",
-    "workflow_response_invalid_citations": "工作流解释检查的引用问题。",
-    "workflow_response_invalid_claims": "工作流解释检查的断言结构问题。",
-    "workflow_response_invalid_json": "工作流解释检查的JSON问题。",
-    "workflow_response_invalid_observations": "工作流解释检查的观察值结构问题。",
-    "workflow_response_invalid_paragraphs": "工作流解释检查的段落结构问题。",
-    "workflow_response_invalid_shape": "工作流解释检查的整体结构问题。",
-    "workflow_response_numeric_prose_not_supported": "工作流解释检查的自由数值文本拒绝。",
-    "workflow_response_snapshot_mismatch": "工作流解释检查的快照校验问题。",
 }
 
 
@@ -287,7 +246,9 @@ def source_code_literals(sources):
                   and isinstance(node.value.elts[0], ast.Constant) and type(node.value.elts[0].value) is str
                   and isinstance(node.value.elts[1], ast.Constant) and type(node.value.elts[1].value) is str):
                 # Existing invalid_reason() helpers return (fixed_code, public_message).
-                collect(path, node, node.value.elts[0])
+                # Trace metadata helpers explicitly return (fixed_status, fixed_code).
+                index = 1 if node.value.elts[0].value in ("ok", "limited", "rejected", "failed", "stopped", "skipped") else 0
+                collect(path, node, node.value.elts[index])
     return codes
 
 
@@ -298,11 +259,11 @@ class TraceCodeVocabularyTests(unittest.TestCase):
                    for path in (root / "src/trading_companion").rglob("*.py")}
         codes = source_code_literals(sources)
         self.assertTrue(codes, "No source codes were discovered")
-        missing = codes.keys() - _CODES - NON_TURN_CODES.keys()
+        missing = codes.keys() - _CODES - _EVENT_CODES - NON_TURN_CODES.keys()
         self.assertFalse(missing, "Unreviewed trace result codes:\n" + "\n".join(
             f"{code}: {', '.join(sorted(codes[code]))}" for code in sorted(missing)))
         self.assertFalse(NON_TURN_CODES.keys() - codes.keys(), "Remove obsolete non-turn exclusions")
-        self.assertFalse(NON_TURN_CODES.keys() & _CODES, "A code cannot be both registered and excluded")
+        self.assertFalse(NON_TURN_CODES.keys() & (_CODES | _EVENT_CODES), "A code cannot be both registered and excluded")
         for code, reason in NON_TURN_CODES.items():
             with self.subTest(code=code):
                 self.assertTrue(reason.strip(), "Each exclusion needs its own reviewed reason")
@@ -371,7 +332,7 @@ class TraceStorageTests(unittest.TestCase):
         with self.scope():
             self.attempt()
         record = read_records(self.directory)[0]
-        self.assertEqual(record["schema_version"], "trace-v1")
+        self.assertEqual(record["schema_version"], "trace-v2")
         self.assertEqual(record["models"]["attempted"], 1)
         self.assertEqual(record["models"]["provider_requests_started"], 0)
         self.assertEqual(record["models"]["reported_usage"], dict.fromkeys(("prompt_tokens", "completion_tokens", "total_tokens")))

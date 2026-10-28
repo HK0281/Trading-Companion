@@ -15,6 +15,7 @@ from trading_companion.tool_model import (
     MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
 from trading_companion.turn_control import checkpoint
+from trading_companion.turn_trace import trace_call
 
 
 GENERAL_KNOWLEDGE_VERSION = "general-knowledge-answer-v1"
@@ -257,6 +258,7 @@ def _positive_claim(text, pattern):
     return False
 
 
+@trace_call("check", "knowledge_answer")
 def _paragraphs(text, retrieval):
     if type(text) is not str or len(text) > MAX_RESPONSE_CHARACTERS:
         raise _Invalid()
@@ -343,7 +345,7 @@ def answer_general_knowledge(question: str, *, model: ToolCapableModel,
     try:
         checkpoint()
         try:
-            retrieval = (retriever if retriever is not None else default_knowledge_retriever()).search(question)
+            retrieval = trace_call("source", "knowledge_search", (retriever if retriever is not None else default_knowledge_retriever()).search, question)
             if type(retrieval) is not KnowledgeRetrieval:
                 raise ValueError("Invalid retrieval result")
         except (ValueError, TypeError, KeyError, AttributeError):

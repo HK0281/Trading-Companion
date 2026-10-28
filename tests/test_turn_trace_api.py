@@ -82,6 +82,36 @@ class TurnTraceApiTests(unittest.TestCase):
         self.assertEqual(record["outcome"], {"category": "completed", "code": "indicator_knowledge_answered"})
         self.assertNotIn("run_id", json.dumps(actual))
 
+    def test_v2_actual_execution_and_projection_checks_are_counted_while_replay_has_no_new_events(self):
+        service, credentials = self.build()
+        key = uuid4().hex
+        actual = self.send(service, credentials, request_id=key)
+        replay = self.send(service, credentials, request_id=key)
+        self.assertEqual(replay["result"], actual["result"])
+        first, second = read_records(self.path)
+        self.assertEqual(first["schema_version"], "trace-v2")
+        self.assertEqual(first["tools"]["seen"], 1)
+        self.assertEqual(first["tools"]["entered"], 1)
+        self.assertEqual(first["sources"]["seen"], 2)  # Directory load and one synthetic daily read.
+        checks = [event for event in first["events"] if event["kind"] == "check"]
+        self.assertEqual({event["phase"] for event in checks}, {"execution", "projection"})
+        self.assertGreater(sum(event["operation"] == "workflow_response" for event in checks), 1)
+        self.assertEqual(second["events"], [])
+        for category in ("tools", "sources", "checks", "repairs"):
+            self.assertEqual(second[category]["seen"], 0)
+        serialized = json.dumps([first, second], ensure_ascii=False)
+        for private in (QUESTION, "平安银行", "000001.SZ", key, credentials["session_id"], credentials["access_token"]):
+            self.assertNotIn(private, serialized)
+
+    def test_trace_event_instrumentation_failure_preserves_reply_and_replay(self):
+        from trading_companion.turn_trace import TurnTrace
+        service, credentials = self.build()
+        with patch.object(TurnTrace, "event_start", side_effect=RuntimeError(PRIVATE)):
+            actual = self.send(service, credentials)
+        replay = self.send(service, credentials, request_id=actual["request_id"])
+        self.assertEqual(actual["result"], replay["result"])
+        self.assertEqual(actual["result"]["code"], "research_completed")
+
     def test_knowledge_failure_and_noncomplete_codes_are_preserved_in_real_message_trace(self):
         cases = (
             ("general_knowledge_model_unavailable", ModelCallError("timeout", PRIVATE)),

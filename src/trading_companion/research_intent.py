@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 import re
+from trading_companion.turn_trace import trace_call
 
 from trading_companion.agent_input import InputIssue, parse_indicator_specs, request_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
@@ -69,6 +70,7 @@ _SUPPORTED_WORDS = re.compile("|".join(re.escape(value) for value in sorted((
 ), key=len, reverse=True)))
 
 
+@trace_call("check", "intent_shape")
 def _bounded_research_shape(question, draft):
     """Repair a model's spurious clarification only for a fully checked, limited request shape."""
     if not draft["instrument_mentions"] or not _RESEARCH_CUE.search(question):
@@ -377,7 +379,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         security = candidates[0]
         result = replace(result, security=security, stage="parameters")
         request = conditions.for_security(security.instrument_id)
-        return replace(result, status="ready", code="research_input_ready", request=request, intent="research",
+        return trace_call("repair", "intent_rule", replace, result, status="ready", code="research_input_ready", request=request, intent="research",
                        message="证券身份及研究参数已校验；默认值和实际区间将随结果展示。")
     except InputIssue as issue:
         return replace(result, status=issue.status, code=issue.code, message=str(issue))

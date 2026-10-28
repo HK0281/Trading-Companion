@@ -5,6 +5,7 @@ from itertools import combinations
 import json
 from math import isfinite
 import re
+from trading_companion.turn_trace import trace_call
 
 from trading_companion.multi_contracts import Fact, MultiIndicatorRequest, MultiIndicatorResult
 from trading_companion.research_report import (
@@ -290,6 +291,7 @@ def _render(label, kind, relation, value):
     raise _Rejected("explanation_relation_mismatch")
 
 
+@trace_call("check", "indicator_relations")
 def validate_indicator_explanation(text: str, *, execution: ToolExecution,
                                    expected_request: MultiIndicatorRequest | None) -> ExplanationValidation:
     """Accept all selected claims or none, without model calls or data acquisition."""

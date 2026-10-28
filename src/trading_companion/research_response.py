@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import json
 import re
+from trading_companion.turn_trace import trace_call
 
 from trading_companion.relation_explanation import (
     EXPLANATION_VERSION, ExplanationValidation, validate_indicator_explanation,
@@ -66,6 +67,7 @@ def _constant(value):
     raise _Invalid("response_invalid_json")
 
 
+@trace_call("check", "research_response")
 def validate_research_response(text, *, execution, expected_request):
     """Keep legacy relation JSON; check the entire new envelope before exposing prose."""
     legacy = lambda: ResponseValidation(relations=validate_indicator_explanation(

@@ -2,12 +2,15 @@
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import wraps
 import json
 from math import isfinite
 from pathlib import Path
 import re
+import sys
 from threading import Lock
 from time import monotonic
 from uuid import uuid4
@@ -15,7 +18,7 @@ from uuid import uuid4
 from trading_companion.model import TokenUsage
 
 
-SCHEMA_VERSION = "trace-v1"
+SCHEMA_VERSION = "trace-v2"
 _PROVIDERS = frozenset(("fake", "deepseek", "openai"))
 _PHASES = frozenset(("admission", "directory", "routing", "execution", "projection"))
 _STATUSES = {"completed": "completed", "needs_clarification": "clarification", "limited": "limited",
@@ -83,6 +86,155 @@ _WORKFLOW_REASONS = frozenset(("answered", "invalid_answer", "model_error", "too
 _USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 _CURRENT = ContextVar("research_turn_trace", default=None)
 _MODEL = ContextVar("research_trace_model_attempt", default=None)
+_PARENT = ContextVar("research_trace_parent", default=None)
+_TOOL = ContextVar("research_trace_tool", default=None)
+_KINDS = {"tool": "tools", "source": "sources", "check": "checks", "repair": "repairs"}
+_OPERATIONS = frozenset("""
+research workflow execute daily_bars company_section company_collect directory market_context_load market_background
+screening_snapshot knowledge_search tool_history tool_request tool_scope research_response workflow_response
+indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule rewrite_decision model_rewrite
+daily_source daily_records
+""".split())
+_EVENT_STATUSES = ("ok", "limited", "rejected", "failed", "stopped", "skipped", "unfinished")
+_TOOLS = {"analyze_daily_indicators": "primary_analysis_completed", "get_indicator_knowledge": "indicator_knowledge_returned",
+          "inspect_research_snapshot": "snapshot_summary_returned", "analyze_additional_indicators": "additional_analysis_completed"}
+# Event-only codes are deliberately separate from public turn outcome codes.
+_EVENT_CODES = frozenset("""
+ok empty local_result source_unavailable invalid_source_data invalid_source_shape
+bounded_evidence_available no_eligible_evidence_in_bounded_response current_background_not_allowed
+additional_analysis_completed additional_analysis_budget_exhausted duplicate_indicator duplicate_request execution_failed
+indicator_period_reduction_not_allowed invalid_arguments not_a_tool_proposal primary_analysis_completed
+primary_snapshot_unavailable reused_call_id source_configuration_error tool_call_budget_exhausted tool_internal_error
+tool_result_too_large indicator_knowledge_returned snapshot_summary_returned
+explanation_context_mismatch explanation_evidence_mismatch explanation_not_ready explanation_relation_mismatch
+indicator_relations_checked invalid_explanation_json invalid_explanation_shape no_structured_explanation
+no_conversational_response response_duplicate_key response_invalid_json response_invalid_shape
+response_invalid_paragraphs response_invalid_citations response_numeric_prose_not_supported response_evidence_checked
+workflow_response_context_mismatch workflow_response_duplicate_key workflow_response_evidence_checked
+workflow_response_invalid_citations workflow_response_invalid_claims workflow_response_invalid_json
+workflow_response_invalid_observations workflow_response_invalid_paragraphs workflow_response_invalid_shape
+workflow_response_numeric_prose_not_supported workflow_response_snapshot_mismatch
+invalid_output citation_association numeric_citation_association comparison_company_coverage
+product_research_answered
+rewrite_disabled rewrite_not_repairable rewrite_limit_reached rewrite_allowed rule_applied rule_not_needed rule_not_applicable
+research_data_deadline_exceeded source_redirect_blocked source_http_error source_response_too_large
+news_callback_mismatch invalid_source_json source_connection_failed source_business_error invalid_source_rows
+source_record_limit_exceeded source_profile_not_unique invalid_source_text duplicate_source_json_key invalid_source_date
+missing_publication_timestamp invalid_publication_timestamp invalid_source_number source_instrument_mismatch
+financial_record_not_available_at_cutoff financial_currency_unknown invalid_news_result news_article_result_missing
+invalid_news_document_id news_company_association_unverified news_outside_publication_window
+announcement_exchange_mapping_unverified invalid_announcement_result invalid_announcement_document_id
+announcement_instrument_mismatch announcement_outside_publication_window cninfo_exchange_mapping_unverified
+invalid_cninfo_directory cninfo_company_not_unique invalid_cninfo_announcements cninfo_instrument_or_document_mismatch
+source_deadline_exceeded source_request_failed source_http_unavailable invalid_news_html news_response_too_large
+news_source_unavailable news_source_invalid news_identity_unverified
+news_list_not_unique invalid_news_list_markup sina_news_exchange_unverified news_layout_invalid
+news_page_instrument_mismatch news_list_missing_or_incomplete invalid_source_encoding news_title_association_unverified
+""".split())
+_SAFE_EVENT_CODES = _CODES | _EVENT_CODES
+
+
+def _event_code(value):
+    return value if type(value) is str and value in _SAFE_EVENT_CODES else "other"
+
+
+def _known(value, module, name):
+    """Only exact known types, never class-name strings supplied by an object."""
+    loaded = sys.modules.get("trading_companion." + module)
+    return loaded is not None and type(value) is getattr(loaded, name, None)
+
+
+def _source_identity(operation, function, args):
+    owner = getattr(function, "__self__", None)
+    if operation == "company_section" and args and _known(args[0], "company_research", "ResearchDataService"):
+        service, kind = args[0], args[2] if len(args) > 2 else None
+        if kind == "news":
+            return ("sina_news" if service._news_provider == "sina" else "eastmoney_news"), "network"
+        if kind == "announcements":
+            return ("cninfo_announcements" if service._announcement_provider == "cninfo" else "eastmoney_announcements"), "network"
+        return {"profile": "eastmoney_company", "financial": "eastmoney_financial"}.get(kind), "network"
+    for module, name, source, access in (
+        ("tencent_adapter", "TencentDailyBarSource", "tencent", "network"),
+        ("akshare_adapter", "AkshareDailyBarSource", "akshare_eastmoney", "network"),
+        ("data_source", "CsvDailyBarSource", "csv", "local"),
+        ("workflow_tools", "_SnapshotSource", "research_snapshot", "snapshot"),
+        ("screening_source", "TencentQuoteSnapshotSource", "tencent", "network"),
+        ("screening_source", "EastmoneyQuoteSnapshotSource", "eastmoney_quotes", "network"),
+        ("market_context_live", "ExchangeMarketContextSource", "exchange_metadata", "network"),
+        ("knowledge_retrieval", "KnowledgeRetriever", "local_knowledge", "local"),
+    ):
+        if _known(owner, module, name):
+            return source, access
+    # Injectable loaders and test doubles may do arbitrary IO; do not infer from their names.
+    return None, "unknown"
+
+
+def _result_metadata(operation, result):
+    if operation == "intent_shape":
+        return ("ok", "ok") if result is True else ("rejected", "rule_not_applicable")
+    if operation == "tool_scope":
+        return ("ok", "ok") if result is True else ("rejected", "proposal_request_mismatch")
+    if operation == "intent_rule":
+        if not _known(result, "research_intent", "PreparedResearchInput"):
+            return "failed", "other"
+        response = result.model_response
+        draft = response.tool_calls[0].arguments if response is not None and response.tool_calls else {}
+        applied = draft.get("intent") != "research" or draft.get("clarification_reason") is not None
+        return ("ok", "rule_applied") if applied else ("skipped", "rule_not_needed")
+    if operation in ("daily_bars", "knowledge_search"):
+        if operation == "daily_bars" and type(result) in (list, tuple):
+            empty = not result
+        elif operation == "knowledge_search" and _known(result, "knowledge_retrieval", "KnowledgeRetrieval"):
+            empty = not result.hits
+        else:
+            return "failed", "invalid_source_shape"
+        return "ok", "empty" if empty else "ok"
+    if operation == "company_section":
+        if not _known(result, "company_research_contracts", "ResearchDataSection"):
+            return "failed", "invalid_source_shape"
+        code = _event_code(result.code)
+        status = {"available": "ok", "empty": "ok", "unavailable": "failed"}.get(result.status, "failed")
+        return ("skipped" if code == "current_background_not_allowed" else status), code
+    if _known(result, "research_tool", "ToolExecution"):
+        payload = result.messages[0].result if result.messages else {}
+        return {"executed": "ok", "limited": "limited", "rejected": "rejected"}.get(result.status, "failed"), _event_code(payload.get("code", "primary_analysis_completed"))
+    if _known(result, "tool_model", "ToolMessage"):
+        payload = result.result if type(result.result) is dict else {}
+        return {"rejected": "rejected", "failed": "failed", "result_too_large": "limited"}.get(payload.get("status"), "ok"), _event_code(payload.get("code", _TOOLS.get(result.name, "other")))
+    if operation in ("research_response", "workflow_response", "indicator_relations"):
+        if not (_known(result, "research_response", "ResponseValidation") or _known(result, "relation_explanation", "ExplanationValidation")):
+            return "failed", "other"
+        return {"accepted": "ok", "rejected": "rejected", "not_performed": "skipped"}.get(result.status, "failed"), _event_code(result.code)
+    if operation == "product_answer" and _known(result, "product_answer", "ProductAnswer"):
+        return "ok", _event_code(result.code)
+    return "ok", "ok"
+
+
+def _error_metadata(error, operation):
+    from trading_companion.errors import DataSourceError, DataValidationError
+    from trading_companion.turn_control import TurnStopped
+    if isinstance(error, TurnStopped):
+        return "stopped", _event_code(error.code)
+    if isinstance(error, (KeyboardInterrupt, SystemExit)):
+        return "stopped", "interrupted"
+    if isinstance(error, DataSourceError):
+        return "failed", "source_unavailable"
+    if isinstance(error, DataValidationError):
+        return "failed", "invalid_source_data"
+    if _known(error, "research_tool", "ToolExecutionError"):
+        return "rejected", _event_code(error.code)
+    if operation == "tool_history":
+        return "rejected", "model_request_invalid"
+    if operation == "tool_request":
+        return "rejected", "invalid_arguments"
+    if operation == "company_batch":
+        return "rejected", "company_evidence_invalid"
+    # Known private validation exceptions carry fixed reasons; never serialize arbitrary str(error).
+    for module, name in (("product_answer", "_Invalid"), ("open_knowledge", "_Invalid")):
+        if _known(error, module, name):
+            reason = getattr(error, "reason", None)
+            return "rejected", _event_code(reason) if reason is not None else "invalid_output"
+    return "failed", _event_code(getattr(error, "code", None))
 
 
 def _code(value):
@@ -198,6 +350,8 @@ class TurnTrace:
         self._outcome = {"category": "error", "code": "internal_error"}
         self._workflow, self._original, self._done = None, None, False
         self._events, self._dropped = [], 0
+        self._details, self._sequence = [], 0
+        self._summaries = {name: dict.fromkeys(("seen", "entered", *_EVENT_STATUSES), 0) for name in _KINDS.values()}
         self._attempts = self._requests = self._responses = self._complete = self._unknown_transport = 0
         self._totals = dict.fromkeys(_USAGE_KEYS)
 
@@ -211,58 +365,119 @@ class TurnTrace:
         return min(10**12, max(0, round((self._now() - start) * 1000)))
 
     def phase(self, phase):
-        if phase in _PHASES:
-            self._phase = phase
+        with self._lock:
+            if not self._done and phase in _PHASES:
+                self._phase = phase
 
     def control(self, control, provider):
-        self._control = control
-        self.session(provider)
+        with self._lock:
+            if not self._done:
+                self._control = control
+                if provider in _PROVIDERS:
+                    self.provider = provider
 
     def session(self, provider):
-        if provider in _PROVIDERS:
-            self.provider = provider
+        with self._lock:
+            if not self._done and provider in _PROVIDERS:
+                self.provider = provider
 
     def route(self, decision):
         # Lazy import avoids changing the Agent/control/routing dependency graph.
         from trading_companion.request_routing import RouteDecision, ROUTE_SPECS
-        if type(decision) is RouteDecision and any(decision.rule_id == spec.rule_id and decision.intent == spec.intent
-                                                  for spec in ROUTE_SPECS):
-            self._route = {"kind": decision.kind.value, "intent": decision.intent.value, "rule_id": decision.rule_id}
-        self._phase = "execution"
+        with self._lock:
+            if self._done:
+                return
+            if type(decision) is RouteDecision and any(decision.rule_id == spec.rule_id and decision.intent == spec.intent
+                                                      for spec in ROUTE_SPECS):
+                self._route = {"kind": decision.kind.value, "intent": decision.intent.value, "rule_id": decision.rule_id}
+            self._phase = "execution"
 
     def replay(self, original_run_id, code):
-        if type(original_run_id) is str and re.fullmatch(r"[0-9a-f]{32}", original_run_id):
-            self._original = original_run_id
-        self._outcome = {"category": "replayed", "code": _code(code)}
+        with self._lock:
+            if self._done:
+                return
+            if type(original_run_id) is str and re.fullmatch(r"[0-9a-f]{32}", original_run_id):
+                self._original = original_run_id
+            self._outcome = {"category": "replayed", "code": _code(code)}
 
     def outcome(self, result):
-        self._outcome = {"category": _STATUSES.get(result.status, "error"), "code": _code(result.code)}
-        workflow = result.workflow_trace
-        if type(workflow) is dict:
-            reason = workflow.get("stop_reason")
-            self._workflow = {"stop_reason": reason if reason in _WORKFLOW_REASONS else "other",
-                              "tool_calls_used": _count(workflow.get("tool_calls_used"))}
+        with self._lock:
+            if self._done:
+                return
+            self._outcome = {"category": _STATUSES.get(result.status, "error"), "code": _code(result.code)}
+            workflow = result.workflow_trace
+            if type(workflow) is dict:
+                reason = workflow.get("stop_reason")
+                self._workflow = {"stop_reason": reason if reason in _WORKFLOW_REASONS else "other",
+                                  "tool_calls_used": _count(workflow.get("tool_calls_used"))}
 
     def problem(self, error):
-        code = _code(getattr(error, "code", None))
-        if self._outcome["category"] == "replayed":
-            self._outcome["code"] = code
+        with self._lock:
+            if self._done:
+                return
+            code = _code(getattr(error, "code", None))
+            if self._outcome["category"] == "replayed":
+                self._outcome["code"] = code
+            else:
+                self._outcome = {"category": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit))
+                                 else "rejected" if self._phase == "admission" else "error",
+                                 "code": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else code}
+
+    def _retain(self, event, destination):
+        self._sequence += 1
+        parent = _PARENT.get()
+        event.update(event_id=self._sequence, parent_event_id=parent[1]["event_id"] if parent and parent[0] is self else None)
+        if len(self._events) + len(self._details) < self.sink.limits.max_events:
+            destination.append(event)
         else:
-            self._outcome = {"category": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit))
-                             else "rejected" if self._phase == "admission" else "error",
-                             "code": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else code}
+            self._dropped += 1
+
+    def event_start(self, kind, operation, source, access):
+        with self._lock:
+            if self._done:
+                return None
+            started = self._now()
+            event = {"kind": kind, "operation": operation, "phase": self._phase,
+                     "start_ms": self._ms(self._start), "elapsed_ms": None,
+                     "source": source, "access": access, "entered": kind != "tool",
+                     "status": "unfinished", "code": "other"}
+            self._retain(event, self._details)
+            summary = self._summaries[_KINDS[kind]]
+            summary["seen"] += 1
+            summary["entered"] += int(event["entered"])
+            summary["unfinished"] += 1
+            return event, started
+
+    def event_enter(self, event):
+        with self._lock:
+            if not self._done and event["status"] == "unfinished" and not event["entered"]:
+                event["entered"] = True
+                self._summaries[_KINDS[event["kind"]]]["entered"] += 1
+
+    def event_end(self, event, started, status, code):
+        with self._lock:
+            if self._done or event["status"] != "unfinished":
+                return
+            elapsed = self._ms(started)
+            status = status if status in _EVENT_STATUSES and status != "unfinished" else "failed"
+            entered = event["entered"] and status != "skipped"
+            summary = self._summaries[_KINDS[event["kind"]]]
+            if event["entered"] and not entered:
+                summary["entered"] -= 1
+            event.update(status=status, code=_event_code(code), entered=entered, elapsed_ms=elapsed)
+            summary["unfinished"] -= 1
+            summary[status] += 1
 
     def model_start(self):
         with self._lock:
+            if self._done:
+                return None
             self._attempts += 1
             event = {"sequence": self._attempts, "start_ms": self._ms(self._start), "elapsed_ms": None,
                      "provider": self.provider, "requested_model": None, "transport": "unknown",
                      "provider_requests_started": 0, "response_received": False, "response_status": None,
                      "usage": dict.fromkeys(_USAGE_KEYS), "usage_complete": False, "error_code": None}
-            if len(self._events) < self.sink.limits.max_events:
-                self._events.append(event)
-            else:
-                self._dropped += 1
+            self._retain(event, self._events)
             return event, self._now()
 
     def identity(self, event, model):
@@ -270,11 +485,15 @@ class TurnTrace:
         from trading_companion.openai_tool_model import OpenAIToolModel
         if type(model) in (DeepSeekToolModel, OpenAIToolModel):
             with self._lock:
+                if self._done:
+                    return
                 event["provider"] = "deepseek" if type(model) is DeepSeekToolModel else "openai"
                 event["requested_model"], event["transport"] = _model_name(model.config.model), "http"
 
     def request(self, event, provider, model):
         with self._lock:
+            if self._done:
+                return
             event["provider"] = provider if provider in _PROVIDERS else None
             event["requested_model"], event["transport"] = _model_name(model), "http"
             event["provider_requests_started"] += 1
@@ -286,6 +505,8 @@ class TurnTrace:
             return
         usage, complete = _usage(response.usage)
         with self._lock:
+            if self._done:
+                return
             if response.is_mock and response.provider == "fake" and event["transport"] == "unknown":
                 event["provider"], event["requested_model"], event["transport"] = "fake", "fake-tools-v1", "mock"
             event.update(response_received=True, response_status=response.status, usage=usage, usage_complete=complete)
@@ -297,6 +518,8 @@ class TurnTrace:
 
     def model_end(self, event, start, error):
         with self._lock:
+            if self._done:
+                return
             event["elapsed_ms"] = self._ms(start)
             if error is not None:
                 event["error_code"] = "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else _code(
@@ -335,10 +558,13 @@ class TurnTrace:
                                  "responses_with_complete_usage": self._complete,
                                  "usage_complete_for_attempts": self._complete == self._attempts,
                                  "attempts_with_unknown_transport": self._unknown_transport,
-                                 "events": list(self._events)},
+                                 "events": deepcopy(self._events)},
+                      **deepcopy(self._summaries), "events": deepcopy(self._details),
                       "truncated": self._dropped > 0, "dropped_events": self._dropped}
-            while len(_line(record)) > self.sink.limits.record_bytes and record["models"]["events"]:
-                record["models"]["events"].pop()
+            while len(_line(record)) > self.sink.limits.record_bytes and (record["models"]["events"] or record["events"]):
+                models, details = record["models"]["events"], record["events"]
+                destination = models if models and (not details or models[-1]["event_id"] > details[-1]["event_id"]) else details
+                destination.pop()
                 record["dropped_events"] += 1
                 record["truncated"] = True
         # Never hold collector, control, API or publication locks during disk I/O.
@@ -384,6 +610,116 @@ def trace_run_id():
     return trace.run_id if trace is not None else None
 
 
+class _EventHandle:
+    """Only fixed metadata is retained; result objects never outlive result()."""
+
+    def __init__(self, operation, started):
+        self.operation, self.started = operation, started
+        self.status, self.code = "ok", "ok"
+
+    def result(self, value):
+        if self.started is not None:
+            try:
+                self.status, self.code = _result_metadata(self.operation, value)
+            except Exception:
+                self.status, self.code = "failed", "other"
+
+    def record_failure(self, code):
+        if self.started is not None:
+            try:
+                self.status, self.code = "failed", _event_code(code)
+            except Exception:
+                self.status, self.code = "failed", "other"
+
+
+@contextmanager
+def trace_event(kind, operation, *, enabled=True, source=None, decision=None):
+    """The sole span interface. Neither metadata failures nor disabled spans own business work.
+
+    ``tool/execute`` marks dispatch of the active logical tool without making a second event.
+    ``source`` is an internal (callable, positional arguments) descriptor, never serialized.
+    """
+    trace, started = _CURRENT.get(), None
+    parent_token = tool_token = None
+    handle = _EventHandle(operation, None)
+    try:
+        if trace is not None and enabled is True and operation in _OPERATIONS:
+            active_tool = _TOOL.get()
+            duplicate = (kind == "tool" and active_tool is not None and active_tool[0] is trace
+                         and (operation == "execute" or operation == "research"
+                              and active_tool[1]["operation"] == "analyze_daily_indicators"))
+            if duplicate:
+                if operation == "execute":
+                    _update("event_enter", active_tool[1])
+            elif kind in _KINDS:
+                origin, access = _source_identity(operation, *source) if source is not None else (None, "unknown")
+                label = operation
+                if operation == "workflow" and source is not None and len(source[1]) > 1:
+                    call = source[1][1]
+                    if _known(call, "tool_model", "ToolCall") and call.name in _TOOLS:
+                        label = call.name
+                elif operation == "research":
+                    label = "analyze_daily_indicators"
+                started = _update("event_start", kind, label, origin, access)
+                if started is not None:
+                    handle.started = started
+                    parent_token = _PARENT.set((trace, started[0]))
+                    if kind == "tool":
+                        tool_token = _TOOL.set((trace, started[0]))
+                    if operation == "rewrite_decision":
+                        attempt, allowed, repairable = decision
+                        handle.code = ("rewrite_limit_reached" if attempt else "rewrite_disabled" if not allowed
+                                       else "rewrite_not_repairable" if not repairable else "rewrite_allowed")
+                        handle.status = "ok" if handle.code == "rewrite_allowed" else "rejected"
+    except Exception:
+        # Do not let metadata inspection change whether or how often the callable runs.
+        pass
+    try:
+        yield handle
+    except BaseException as error:
+        if started is not None and operation != "rewrite_decision":
+            try:
+                handle.status, handle.code = _error_metadata(error, operation)
+            except Exception:
+                handle.status, handle.code = "failed", "other"
+        raise
+    finally:
+        try:
+            if started is not None:
+                _update("event_end", started[0], started[1], handle.status, handle.code)
+        finally:
+            if tool_token is not None:
+                _TOOL.reset(tool_token)
+            if parent_token is not None:
+                _PARENT.reset(parent_token)
+
+
+def trace_call(kind, operation, function=None, /, *args, **kwargs):
+    """Wrap one existing call, or decorate a boundary; disabled calls go straight through."""
+    if function is None:
+        def decorate(target):
+            @wraps(target)
+            def wrapped(*arguments, **keywords):
+                return trace_call(kind, operation, target, *arguments, **keywords)
+            return wrapped
+        return decorate
+    if _CURRENT.get() is None:
+        return function(*args, **kwargs)
+    section_traced = False
+    try:
+        section_traced = operation == "company_collect" and _known(
+            getattr(function, "__self__", None), "company_research", "ResearchDataService")
+    except Exception:
+        pass
+    if section_traced:
+        # The built-in service records each section itself. Opaque injected services get one batch event.
+        return function(*args, **kwargs)
+    with trace_event(kind, operation, source=(function, args)) as event:
+        result = function(*args, **kwargs)
+        event.result(result)
+        return result
+
+
 def _model_update(method, *args):
     active = _MODEL.get()
     if active is not None and active[0] is _CURRENT.get():
@@ -408,6 +744,7 @@ def trace_model_attempt():
     trace = _CURRENT.get()
     started = _update("model_start")
     token = _MODEL.set((trace, started[0]) if started is not None else None)
+    parent = _PARENT.set((trace, started[0])) if started is not None else None
     error = None
     try:
         yield
@@ -418,6 +755,8 @@ def trace_model_attempt():
         if started is not None:
             _update("model_end", started[0], started[1], error)
         _MODEL.reset(token)
+        if parent is not None:
+            _PARENT.reset(parent)
 
 
 @contextmanager

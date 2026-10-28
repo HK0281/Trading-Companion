@@ -22,6 +22,7 @@ from trading_companion.tool_model import (
     ToolCall, ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
 from trading_companion.turn_control import TurnStopped, checkpoint, reserve_analysis
+from trading_companion.turn_trace import trace_call, trace_event
 
 
 KNOWLEDGE_TOOL_NAME = "get_indicator_knowledge"
@@ -178,13 +179,14 @@ class WorkflowToolExecutor:
     def _record(self, tool, status, code):
         self._steps.append({"tool": tool, "status": status, "code": code})
 
+    @trace_call("tool", "workflow")
     def execute(self, call: ToolCall, *, messages) -> ToolMessage:
         """Process one call; the runner owns batching, history and model-call limits."""
         with self._lock:
             checkpoint()
             if type(call) is not ToolCall:
                 raise ToolExecutionError("not_a_tool_proposal")
-            history, _, seen_ids = validate_tool_messages(messages, tools=self.definitions)
+            history, _, seen_ids = trace_call("check", "tool_history", validate_tool_messages, messages, tools=self.definitions)
             if call.call_id in seen_ids or call.call_id in self._seen_ids:
                 raise ToolExecutionError("reused_call_id")
             if call.name not in {definition.name for definition in self.definitions}:
@@ -192,7 +194,7 @@ class WorkflowToolExecutor:
             proposal = ToolMessage("assistant", tool_calls=(call,))
 
             def check(output):
-                validate_tool_messages([*history, proposal, output], tools=self.definitions)
+                trace_call("check", "tool_history", validate_tool_messages, [*history, proposal, output], tools=self.definitions)
 
             # Reserve a closed error and a transport-limit envelope before any IO or budget use.
             check(_message(call, "rejected", "indicator_period_reduction_not_allowed"))
@@ -250,7 +252,7 @@ class WorkflowToolExecutor:
         return _message(call, "rejected", code), "rejected", code, None
 
     def _primary(self, call):
-        if not proposal_matches_request(call, self._request):
+        if not trace_call("check", "tool_scope", proposal_matches_request, call, self._request):
             return self._reject(call, "proposal_request_mismatch")
         if self._primary_attempted:
             return self._reject(call, "duplicate_request")
@@ -282,9 +284,10 @@ class WorkflowToolExecutor:
         if signature in self._signatures:
             return self._reject(call, "duplicate_request")
         self._signatures.add(signature)
-        payload = {**KnowledgeAnswer(tuple(topics)).to_dict(), "status": "knowledge_result"}
-        return (ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload),
-                "executed", "indicator_knowledge_returned", None)
+        with trace_event("tool", "execute"):
+            payload = {**KnowledgeAnswer(tuple(topics)).to_dict(), "status": "knowledge_result"}
+            return (ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload),
+                    "executed", "indicator_knowledge_returned", None)
 
     def _snapshot(self, call):
         arguments = call.arguments
@@ -298,25 +301,26 @@ class WorkflowToolExecutor:
         if signature in self._signatures:
             return self._reject(call, "duplicate_request")
         self._signatures.add(signature)
-        result = primary.full_result
-        payload = {"status": "snapshot_summary", "snapshot_key": "primary",
-                   "section": arguments["section"], "market_data_requested": False,
-                   "request_id": result.request.request_id, "instrument_id": result.request.instrument_id,
-                   "source": result.source, "data_authenticity": result.data_authenticity,
-                   "price_adjustment": result.price_adjustment,
-                   "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None,
-                   "data_status": result.data_status, "calculation_status": result.calculation_status,
-                   "synthesis_allowed": result.synthesis_allowed, "bars_used": len(result.bars)}
-        if arguments["section"] == "overview":
-            payload.update(range=[result.request.start_date.isoformat(), result.request.as_of_date.isoformat()],
-                           latest_trade_date=result.latest_trade_date.isoformat() if result.latest_trade_date else None,
-                           indicator_count=len(result.request.indicators))
-        else:
-            payload["fields"] = [
-                [indicator.indicator_id, field, value.status, value.missing_bars]
-                for indicator in result.indicators for field, value in indicator.latest.items()]
-        return (ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload),
-                "executed", "snapshot_summary_returned", None)
+        with trace_event("tool", "execute"):
+            result = primary.full_result
+            payload = {"status": "snapshot_summary", "snapshot_key": "primary",
+                       "section": arguments["section"], "market_data_requested": False,
+                       "request_id": result.request.request_id, "instrument_id": result.request.instrument_id,
+                       "source": result.source, "data_authenticity": result.data_authenticity,
+                       "price_adjustment": result.price_adjustment,
+                       "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None,
+                       "data_status": result.data_status, "calculation_status": result.calculation_status,
+                       "synthesis_allowed": result.synthesis_allowed, "bars_used": len(result.bars)}
+            if arguments["section"] == "overview":
+                payload.update(range=[result.request.start_date.isoformat(), result.request.as_of_date.isoformat()],
+                               latest_trade_date=result.latest_trade_date.isoformat() if result.latest_trade_date else None,
+                               indicator_count=len(result.request.indicators))
+            else:
+                payload["fields"] = [
+                    [indicator.indicator_id, field, value.status, value.missing_bars]
+                    for indicator in result.indicators for field, value in indicator.latest.items()]
+            return (ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload),
+                    "executed", "snapshot_summary_returned", None)
 
     def _additional(self, call):
         arguments = call.arguments
@@ -346,24 +350,25 @@ class WorkflowToolExecutor:
         if self._supplement_attempted:
             return self._reject(call, "additional_analysis_budget_exhausted")
         reserve_analysis()
-        self._supplement_attempted = True
-        original = primary.full_result
-        request = replace(self._request, indicators=specs, request_id=uuid4().hex)
-        source = _SnapshotSource(tuple(original.bars), original.source, original.price_adjustment,
-                                 original.data_authenticity == "synthetic", request.instrument_id,
-                                 request.start_date, request.as_of_date)
-        result = analyze_indicators(source, request, allow_development_csv=request.source == "csv")
-        result = replace(result, retrieved_at=original.retrieved_at,
-                         data_authenticity=original.data_authenticity,
-                         price_adjustment=original.price_adjustment)
-        payload, aliases = _project(result, development=request.source == "csv")
-        payload.update(snapshot_key="supplement", based_on_request_id=original.request.request_id,
-                       market_data_requested=False)
-        metrics = _metrics(payload)
-        try:
-            message = ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload)
-            status, code = "executed", "additional_analysis_completed"
-        except ModelRequestError:
-            message, status, code = _limited(call, "supplement"), "limited", "tool_result_too_large"
-        execution = ToolExecution(status, (message,), result, aliases, metrics)
-        return message, status, code, WorkflowObservation("supplement", execution)
+        with trace_event("tool", "execute"):
+            self._supplement_attempted = True
+            original = primary.full_result
+            request = replace(self._request, indicators=specs, request_id=uuid4().hex)
+            source = _SnapshotSource(tuple(original.bars), original.source, original.price_adjustment,
+                                     original.data_authenticity == "synthetic", request.instrument_id,
+                                     request.start_date, request.as_of_date)
+            result = analyze_indicators(source, request, allow_development_csv=request.source == "csv")
+            result = replace(result, retrieved_at=original.retrieved_at,
+                             data_authenticity=original.data_authenticity,
+                             price_adjustment=original.price_adjustment)
+            payload, aliases = _project(result, development=request.source == "csv")
+            payload.update(snapshot_key="supplement", based_on_request_id=original.request.request_id,
+                           market_data_requested=False)
+            metrics = _metrics(payload)
+            try:
+                message = ToolMessage("tool", call_id=call.call_id, name=call.name, result=payload)
+                status, code = "executed", "additional_analysis_completed"
+            except ModelRequestError:
+                message, status, code = _limited(call, "supplement"), "limited", "tool_result_too_large"
+            execution = ToolExecution(status, (message,), result, aliases, metrics)
+            return message, status, code, WorkflowObservation("supplement", execution)

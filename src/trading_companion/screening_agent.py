@@ -13,6 +13,7 @@ from trading_companion.screening_intent import (SCREEN_TOOL, _OPERATORS, _plain_
     checked_screening_request, edited_screening_request, is_screening_request, _clauses, MissingScreeningField)
 from trading_companion.tool_model import ToolMessage
 from trading_companion.turn_control import checkpoint
+from trading_companion.turn_trace import trace_call
 
 
 def _preflight(question, *, directory, base):
@@ -88,7 +89,7 @@ def _execute(question, *, session, model, directory, source, now, clock, researc
 def _collect(request, *, defaulted, responses, session, directory, source, clock, research_source, base):
     session.begin_research()
     checkpoint()
-    snapshot = source.read_snapshot(directory)
+    snapshot = trace_call("source", "screening_snapshot", source.read_snapshot, directory)
     checkpoint()
     result = ScreeningService(clock=clock).screen(snapshot, request)
     text = render_screening_result(result)

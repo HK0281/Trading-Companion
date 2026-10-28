@@ -14,6 +14,7 @@ from trading_companion.research_tool import _build_source
 from trading_companion.risk_research import build_risk_scenario
 from trading_companion.technical_insights import TechnicalInsights, build_technical_insights
 from trading_companion.turn_control import checkpoint, reserve_analysis
+from trading_companion.turn_trace import trace_call
 
 
 LABELS = {
@@ -37,6 +38,7 @@ def evidence_display(value, unit):
     return str(value)
 
 
+@trace_call("check", "company_batch")
 def _validate_batch(batch, request, kinds):
     if (type(batch) is not ResearchDataBatch or batch.request != request
             or len(batch.source_results) != len(kinds)
@@ -145,7 +147,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
         and ("profile" in kinds or re.search(r"ST|上市|板块|交易规则|涨跌幅限制", plan.user_question, re.I)))
     if background_requested:
         try:
-            background_snapshot = market_background_source.read_snapshot(directory=directory,
+            background_snapshot = trace_call("source", "market_background", market_background_source.read_snapshot, directory=directory,
                 instrument_ids=tuple(security.instrument_id for security in plan.securities))
         except Exception:
             # Optional exchange background cannot discard other available research domains.
@@ -176,7 +178,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
             publication_start = max(plan.start_date, document_cutoff.astimezone(SHANGHAI).date() - timedelta(days=366))
             request = ResearchDataRequest(security.instrument_id, security.name, document_cutoff,
                 start_date=publication_start, allow_current_background=not plan.explicit_historical)
-            batch = data_service.collect(request, kinds=kinds)
+            batch = trace_call("source", "company_collect", data_service.collect, request, kinds=kinds)
             checkpoint()
             _validate_batch(batch, request, kinds)
             for section in batch.source_results:

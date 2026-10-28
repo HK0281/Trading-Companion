@@ -16,6 +16,7 @@ from trading_companion.company_research_contracts import (
 from trading_companion.company_news_sina import SinaCompanyNewsAdapter
 from trading_companion.errors import InvalidRequestError
 from trading_companion.turn_control import checkpoint, request_timeout
+from trading_companion.turn_trace import trace_call
 
 
 _ENDPOINTS = {
@@ -230,6 +231,7 @@ class ResearchDataService:
             if response is not None:
                 response.close()
 
+    @trace_call("source", "company_section")
     def _fetch(self, request, kind, deadline):
         if kind == "news" and self._news_provider == "sina":
             return SinaCompanyNewsAdapter(session=self._session, clock=self._clock,

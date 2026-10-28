@@ -15,6 +15,7 @@ from trading_companion.tool_model import (
     MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
 from trading_companion.turn_control import TurnStopped, checkpoint
+from trading_companion.turn_trace import trace_call, trace_event
 
 
 PRODUCT_ANSWER_VERSION = "product-research-answer-v1"
@@ -435,6 +436,7 @@ def _bounded_context(question, bundle, *, reserve_repair=False):
             context["omitted_from_model"] += 1
 
 
+@trace_call("check", "product_answer")
 def _checked_answer(text, *, bundle, context):
     if type(text) is not str or len(text) > MAX_RAW_CHARACTERS:
         raise _Invalid()
@@ -535,30 +537,33 @@ def synthesize_product_answer(question: str, bundle: ProductResearchBundle, *,
         if not context["evidence"]:
             return ProductAnswerRun(_fallback(bundle, "product_answer_no_context_evidence"))
         for attempt in range(2 if repair_invalid else 1):
-            checkpoint()
-            calls += 1
-            try:
-                response = model.complete(messages, tools=())
-            except TurnStopped:
-                raise
-            except Exception:
-                code = "product_answer_model_unavailable"
-                return ProductAnswerRun(_fallback(bundle, code), calls,
-                    responses[-1] if responses else None, code, tuple(responses))
-            if type(response) is ToolModelResponse:
-                responses.append(response)
-            checkpoint()
-            if type(response) is not ToolModelResponse or response.status != "complete":
-                raise _Invalid()
-            try:
-                answer = _checked_answer(response.text, bundle=bundle, context=context)
-            except _Invalid as issue:
-                if attempt != 0 or not repair_invalid or not issue.repairable:
+            with trace_event("repair", "model_rewrite", enabled=attempt == 1) as repair:
+                checkpoint()
+                calls += 1
+                try:
+                    response = model.complete(messages, tools=())
+                except TurnStopped:
                     raise
-                messages = _repair_messages(messages)
-                validate_tool_messages(messages, tools=())
-                continue
-            return ProductAnswerRun(answer, calls, response, model_responses=tuple(responses))
+                except Exception:
+                    code = "product_answer_model_unavailable"
+                    repair.record_failure(code)
+                    return ProductAnswerRun(_fallback(bundle, code), calls,
+                        responses[-1] if responses else None, code, tuple(responses))
+                if type(response) is ToolModelResponse:
+                    responses.append(response)
+                checkpoint()
+                if type(response) is not ToolModelResponse or response.status != "complete":
+                    raise _Invalid()
+                try:
+                    answer = _checked_answer(response.text, bundle=bundle, context=context)
+                except _Invalid as issue:
+                    with trace_event("check", "rewrite_decision", decision=(attempt, repair_invalid, issue.repairable)):
+                        if attempt != 0 or not repair_invalid or not issue.repairable:
+                            raise
+                        messages = _repair_messages(messages)
+                        validate_tool_messages(messages, tools=())
+                        continue
+                return ProductAnswerRun(answer, calls, response, model_responses=tuple(responses))
     except _Invalid:
         code = "product_answer_output_invalid" if calls else "product_answer_context_unusable"
     except (ModelCallError, ModelConfigurationError, ModelRequestError):

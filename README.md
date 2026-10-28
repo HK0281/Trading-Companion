@@ -54,6 +54,10 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 
 ## Start the product
 
+For an already configured Windows checkout, double-click [`start.cmd`](start.cmd), or run `.\start.cmd` from PowerShell. It uses the project virtual environment and the existing root `.env` through the normal server entry point. Open the local URL printed in the window (default: <http://127.0.0.1:8765/>); press Ctrl+C to stop. Arguments are forwarded, for example `.\start.cmd --port 8767` or `.\start.cmd --demo` for the fixed offline demonstration. An occupied port is reported by the server; the script does not terminate another process or change ports automatically.
+
+The script builds missing frontend assets using already installed local dependencies. It does not install packages, refresh the security directory or overwrite configuration. If assets already exist, it reuses them: after changing frontend source, run `pnpm.cmd --dir frontend build` before restarting. Startup errors keep the window open; automation can set `TRADING_COMPANION_NO_PAUSE=1` to suppress the pause. A fresh checkout still needs the preparation steps below.
+
 In Windows PowerShell, install the backend extras and build the frontend from the project root (Python 3.11+, Node 22.12+ and the project's pnpm version are required):
 
 ```powershell

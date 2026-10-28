@@ -210,6 +210,7 @@ def test_cli_expanded_profile_passes_real_configuration_before_directory_or_netw
         return sample
     monkeypatch.setattr("trading_companion.screening_cli.load_security_directory", lambda _: trusted)
     monkeypatch.setattr(TencentQuoteSnapshotSource, "read_snapshot", read)
+    monkeypatch.setattr("trading_companion.screening_cli.ScreeningService", lambda: ScreeningService(clock=lambda: NOW))
     assert main(["--live", "--directory", "unused", "--condition", "price", "gt", "0",
         "--screening-coverage", "expanded", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["coverage"]["scanned_records"] == 1000

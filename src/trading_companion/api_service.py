@@ -14,8 +14,6 @@ from time import monotonic
 from uuid import uuid4
 
 from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn, run_natural_research_turn
-from trading_companion.open_knowledge import is_general_knowledge_question
-from trading_companion.indicator_knowledge import parse_knowledge_question
 from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
@@ -26,6 +24,10 @@ from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
+from trading_companion.request_routing import (
+    RouteKind, RoutingContext, RoutingSessionView, probe_general_knowledge,
+    resolve_general_knowledge, route_research_request,
+)
 
 
 DATA_MODES = ("synthetic", "tencent", "akshare_eastmoney")
@@ -403,17 +405,16 @@ class ResearchApiService:
         try:
             timestamp = self._wall_clock()
             directory = None
-            education = (self._workflow_enabled and not history and parse_knowledge_question(question) is None
-                         and is_general_knowledge_question(question))
-            if education:
+            education_candidate = probe_general_knowledge(question, workflow=self._workflow_enabled, history=history)
+            if education_candidate:
                 try:
                     directory = self._directory_loader(timestamp)
                 except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                     # A local identity hint may veto education; its availability or
                     # freshness must never authorize or block a generic explanation.
                     pass
-                education = is_general_knowledge_question(question, directory=directory)
-            if education:
+            decision = resolve_general_knowledge(question, candidate=education_candidate, directory=directory)
+            if decision is not None:
                 result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
             else:
                 if directory is None:
@@ -421,44 +422,31 @@ class ResearchApiService:
                         directory = self._directory_loader(timestamp)
                     except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                         raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
-                from trading_companion.product_plan import wants_product_research, is_explicit_technical_request
-                from trading_companion.product_agent import is_product_followup
-                product = self._product_data_service is not None and (
-                    entry.session.product_pending is not None or wants_product_research(question)
-                    or bool(directory.mentioned_spans(question)) and not is_explicit_technical_request(question)
-                    or entry.session.product_saved is not None and is_product_followup(question)
-                    or history and entry.session.product_saved is not None)
-                from trading_companion.screening_agent import is_screening_request, run_screening_turn
-                from trading_companion.screening_context import is_screening_followup
-                from trading_companion.screening_intent import is_screening_edit
                 screening_research_source = "csv" if self._development_source is not None else self._research_source
-                if (not history and parse_knowledge_question(question) is None
-                        and entry.session.product_pending is None and entry.session.pending is None
-                        and entry.session.pending_edit is None
-                        and is_screening_edit(question, session=entry.session)):
+                decision = route_research_request(question, context=RoutingContext(
+                    session=RoutingSessionView.capture(entry.session), directory=directory, history=history,
+                    company_enabled=self._product_data_service is not None, quote_source=self._screening_source,
+                    research_source=screening_research_source, development=self._development_source is not None),
+                    clock=self._wall_clock)
+                if decision.kind == RouteKind.SCREENING_EDIT:
                     from trading_companion.screening_agent import run_screening_edit_turn
                     result = run_screening_edit_turn(question, model=entry.model, session=entry.session,
                         directory=directory, source=self._screening_source, now=timestamp, control=control,
                         clock=self._wall_clock, research_source=screening_research_source,
                         development=self._development_source is not None)
-                elif is_screening_request(question):
+                elif decision.kind == RouteKind.SCREENING:
+                    from trading_companion.screening_agent import run_screening_turn
                     result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
                         source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock,
                         research_source=screening_research_source)
-                elif (not history and parse_knowledge_question(question) is None
-                      and entry.session.product_pending is None and entry.session.pending is None
-                      and entry.session.pending_edit is None
-                      and is_screening_followup(question, session=entry.session, directory=directory,
-                          now=self._wall_clock(), quote_source=self._screening_source,
-                          source=screening_research_source,
-                          development=self._development_source is not None)):
+                elif decision.kind == RouteKind.SCREENING_FOLLOWUP:
                     from trading_companion.screening_followup import run_screening_followup_turn
                     result = run_screening_followup_turn(question, model=entry.model, session=entry.session,
                         directory=directory, quote_source=self._screening_source, source=self._research_source,
                         now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
                         data_service=self._product_data_service, market_background_source=self._market_background_source,
                         clock=self._wall_clock, control=control, workflow=self._workflow_enabled)
-                elif product:
+                elif decision.kind == RouteKind.COMPANY_RESEARCH:
                     from trading_companion.product_agent import run_product_research_turn
                     result = run_product_research_turn(question, model=entry.model, directory=directory,
                         source=self._research_source, development_source=self._development_source,

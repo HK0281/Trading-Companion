@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Callable
 
 from trading_companion.model import ModelConfigurationError, TokenUsage
+from trading_companion.turn_trace import trace_model_attempt, trace_model_response
 
 
 @dataclass(frozen=True)
@@ -220,10 +221,12 @@ class ControlledToolModel:
 
     def complete(self, messages, *, tools):
         self.control.reserve_model()
-        try:
-            response = self.delegate.complete(messages, tools=tools)
-        except Exception:
-            self.control.checkpoint()
-            raise
-        self.control.observe_response(response.usage)
-        return response
+        with trace_model_attempt():
+            try:
+                response = self.delegate.complete(messages, tools=tools)
+            except Exception:
+                self.control.checkpoint()
+                raise
+            trace_model_response(response)
+            self.control.observe_response(response.usage)
+            return response

@@ -28,6 +28,7 @@ Windows is the supported runtime and acceptance platform. Use PowerShell for the
 - [Saved results, follow-ups and indicator knowledge (Chinese)](docs/result-followup-design.md): detached result snapshots, current/history separation, checked cached answers, local definitions, and a complete offline conversation demo.
 - [Explicit session condition updates (Chinese)](docs/condition-update-design.md): directory-grounded stock changes, exact date updates, single-indicator addition/removal, atomic validation, and failure-safe history.
 - [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
+- [Opt-in turn tracing (Chinese)](docs/turn-tracing-design.md): bounded local routing/model metadata, distinct send/response counts, replay links, privacy and failure isolation.
 - [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
 - [Request intent routing (Chinese)](docs/request-routing-design.md): explicit priorities, clarification ownership, read-only decisions and frozen offline behavior records.
 - [Routing conflict changes (Chinese)](docs/request-routing-1b-deltas.md): user-visible corrections and an exhaustive comparison of the old observations with the new targets.
@@ -107,6 +108,14 @@ To opt into a local evidence archive:
 ```
 
 The SQLite archive stores company-research evidence, technical snapshots and derived technical observations with their raw dependencies, alongside local observation and source retrieval times. It excludes original questions, chat and model answers. Saving problems do not discard the research reply. This is an evidence store, without a chat-restoration interface or a strict historical-version/backtesting system; omitting the flag creates no archive.
+
+To explicitly enable local run metadata for Web/API messages:
+
+```powershell
+.\.venv\Scripts\python.exe -m trading_companion.api_server --trace-dir ".\data\traces"
+```
+
+Tracing is off by default. The ignored `data/traces/` directory holds bounded JSONL records of routing, model attempts, HTTP send attempts, valid responses, reported tokens, stop reasons and timing. It excludes questions, prompts, answers, raw tool data and credentials; write failures preserve research replies. Limits are 64 detailed events and 64 KiB per turn, and four files of at most 5 MiB each. Normal mode and its isolated Dev Mode share only the writer; offline `--demo --trace-dir ".\data\traces"` is also supported. Tool/source details and a dedicated viewer are deferred to the next tracing step. See the [tracing design and actual offline example](docs/turn-tracing-design.md) for coverage, unknown usage and retention limits.
 
 The Web **Dev Mode** button switches an idle page to a separate, server-configured `fake + synthetic` service. It does not change normal-mode configuration or let a client choose arbitrary providers, data sources or paths. Once old-session cleanup succeeds, the page selects the target and clears its chat/draft before checking target health. If that check fails, it stays disconnected in the selected target; the discarded chat is not restored and no automatic fallback occurs. Cleanup failure preserves the old chat, and unresolved requests prevent switching. Reloading returns to normal mode. The fixed demo only has four directory entries and five artificial daily bars, not a full market.
 

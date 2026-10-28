@@ -12,6 +12,7 @@ from trading_companion.model import (
     validate_messages,
 )
 from trading_companion.turn_control import request_timeout
+from trading_companion.turn_trace import trace_provider_request
 
 
 DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions"
@@ -95,11 +96,13 @@ def _post_chat(config: DeepSeekConfig, body: dict[str, object]) -> object:
 
     try:
         # Requests has no automatic retries by default; redirects are refused.
+        timeout = request_timeout(config.timeout_seconds)
+        trace_provider_request("deepseek", config.model)
         response = requests.post(
             DEEPSEEK_CHAT_URL,
             headers={"Authorization": f"Bearer {config.api_key}"},
             json=body,
-            timeout=request_timeout(config.timeout_seconds),
+            timeout=timeout,
             allow_redirects=False,
         )
         try:

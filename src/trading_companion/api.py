@@ -141,11 +141,12 @@ class _LocalBoundary:
         return await self.app(scope, receive, safe_send)
 
 
-def create_demo_service() -> ResearchApiService:
+def create_demo_service(*, trace_sink=None, trace_mode="development") -> ResearchApiService:
     source, _ = load_development_fixtures()
     return ResearchApiService(model_factory=ConversationDemoModel,
         directory_loader=lambda _: load_development_fixtures()[1], development_source=source,
-        reference_date=REFERENCE_DATE, market_context_loader=lambda _: load_development_market_context())
+        reference_date=REFERENCE_DATE, market_context_loader=lambda _: load_development_market_context(),
+        trace_sink=trace_sink, trace_mode=trace_mode)
 
 
 def create_app(*, service: ResearchApiService | None = None,

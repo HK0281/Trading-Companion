@@ -23,6 +23,7 @@ data/security_directory_live.json
 data/market_context_local.json
 data/*.sqlite3
 data/*.sqlite3-*
+data/traces/
 
 # Frontend dependencies and generated package assets
 node_modules/

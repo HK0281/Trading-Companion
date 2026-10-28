@@ -24,6 +24,10 @@ from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
 from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
+from trading_companion.turn_trace import (
+    JsonlTraceSink, trace_control, trace_message, trace_model_identity, trace_outcome,
+    trace_phase, trace_replay, trace_route, trace_run_id, trace_session,
+)
 from trading_companion.request_routing import (
     IntentKind, RouteKind, RoutingContext, RoutingSessionView, probe_general_knowledge,
     resolve_general_knowledge, route_research_request,
@@ -81,6 +85,7 @@ class _SessionModel:
         self._lock = Lock()
 
     def complete(self, messages, *, tools):
+        trace_model_identity(self.delegate)
         with self._lock:
             if self.forwarded >= self.limit:
                 raise ModelCallError("api_session_call_limit", "Session model allowance exhausted")
@@ -94,6 +99,7 @@ class _Record:
     response: dict | None = None
     problem: tuple[int, str, str] | None = None
     retired: bool = False
+    run_id: str | None = None
 
 
 @dataclass
@@ -226,13 +232,15 @@ class ResearchApiService:
                  development_source=None, reference_date=None, limits=None, market_context_loader=None,
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
-                 screening_source=None, market_background_source=None):
+                 screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal"):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
                 or market_context_loader is not None and not callable(market_context_loader)
-                or type(workflow_enabled) is not bool):
+                or type(workflow_enabled) is not bool
+                or trace_sink is not None and type(trace_sink) is not JsonlTraceSink
+                or trace_mode not in ("normal", "development", "demo")):
             raise ModelConfigurationError("Use trusted API application configuration")
         factories = {provider: model_factory} if model_factories is None else dict(model_factories)
         if (not factories or provider not in factories or factories[provider] is not model_factory
@@ -249,6 +257,7 @@ class ResearchApiService:
         self._workflow_enabled = workflow_enabled
         self._product_data_service = product_data_service
         self._snapshot_store = snapshot_store
+        self._trace_sink, self._trace_mode = trace_sink, trace_mode
         # A development service cannot gain network access through injected add-ons.
         self._screening_source = screening_source if data_mode != "synthetic" else None
         self._market_background_source = market_background_source if data_mode != "synthetic" else None
@@ -323,6 +332,7 @@ class ResearchApiService:
         digest = sha256(question.encode("utf-8")).hexdigest()
         with self._lock:
             entry = self._entry(session_id, token)
+            trace_session(entry.provider)
             record = entry.records.get(request_id)
             if record is not None:
                 if record.digest != digest:
@@ -330,8 +340,10 @@ class ResearchApiService:
                 if record.retired:
                     raise ApiProblem(409, "request_id_retired", "会话已重置，请使用新的请求编号。")
                 if record.response is not None:
+                    trace_replay(record.run_id, record.response["result"].get("code"))
                     return entry, None, {**deepcopy(record.response), "replayed": True}
                 if record.problem is not None:
+                    trace_replay(record.run_id)
                     raise ApiProblem(*record.problem)
                 raise ApiProblem(409, "request_in_progress", "该请求仍在执行，没有再次调用模型。")
             if entry.control is not None:
@@ -345,7 +357,7 @@ class ResearchApiService:
                 raise ModelConfigurationError("Control factory must create a fresh trusted TurnControl")
             if not history:
                 entry.messages_used += 1
-                entry.records[request_id] = _Record(digest)
+                entry.records[request_id] = _Record(digest, run_id=trace_run_id())
             entry.active_id, entry.control = request_id, control
             self._active += 1
             return entry, control, None
@@ -397,12 +409,18 @@ class ResearchApiService:
         return deepcopy(value), (key, deepcopy(value))
 
     def message(self, session_id, token, request_id, question, *, history=False):
+        with trace_message(self._trace_sink, mode=self._trace_mode, provider=None, history=history):
+            return self._message(session_id, token, request_id, question, history=history)
+
+    def _message(self, session_id, token, request_id, question, *, history=False):
         entry, control, replay = self._admit(session_id, token, request_id, question, history=history)
         if replay is not None:
             return replay
+        trace_control(control, entry.provider)
         problem, response, staged_context = None, None, None
         reset_contexts = False
         try:
+            trace_phase("directory")
             timestamp = self._wall_clock()
             directory = None
             routing_session = RoutingSessionView.capture(entry.session)
@@ -417,6 +435,7 @@ class ResearchApiService:
                     pass
             decision = resolve_general_knowledge(question, candidate=education_candidate, directory=directory)
             if decision is not None:
+                trace_route(decision)
                 result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
             else:
                 if directory is None:
@@ -425,11 +444,13 @@ class ResearchApiService:
                     except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
                         raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
                 screening_research_source = "csv" if self._development_source is not None else self._research_source
+                trace_phase("routing")
                 decision = route_research_request(question, context=RoutingContext(
                     session=routing_session, directory=directory, history=history, workflow=self._workflow_enabled,
                     company_enabled=self._product_data_service is not None, quote_source=self._screening_source,
                     research_source=screening_research_source, development=self._development_source is not None),
                     clock=self._wall_clock)
+                trace_route(decision)
                 if decision.kind == RouteKind.LOCAL_REPLY:
                     code = ("routing_state_conflict" if decision.intent == IntentKind.STATE_CONFLICT
                             else "general_knowledge_disabled")
@@ -466,6 +487,8 @@ class ResearchApiService:
                         source=self._research_source,
                         development_source=self._development_source, reference_date=self._reference_date,
                         session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
+            trace_outcome(result)
+            trace_phase("projection")
             saved = self._saved_for_view(entry, result, directory, timestamp)
             projected = public_turn(result, saved=saved)
             if (self._snapshot_store is not None and result.product_bundle is not None

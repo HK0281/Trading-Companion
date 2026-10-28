@@ -22,6 +22,7 @@ def main(argv=None) -> int:
     parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
+    parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
                         help="Explicit bounded quote-screening source; no failure fallback (default: tencent)")
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
@@ -48,8 +49,11 @@ def main(argv=None) -> int:
             REFERENCE_DATE, ROOT, load_development_fixtures, load_development_market_context,
         )
         from trading_companion.market_context import load_market_context
+        from trading_companion.turn_trace import JsonlTraceSink
+        trace_sink = (JsonlTraceSink(Path(args.trace_dir), warning=lambda: print(
+            "[trace_unavailable] 本地运行记录暂不可写；研究回复不受影响。", file=sys.stderr)) if args.trace_dir else None)
         if args.demo:
-            service = create_demo_service()
+            service = create_demo_service(trace_sink=trace_sink, trace_mode="demo")
         else:
             from trading_companion.model_registry import configured_models
             from trading_companion.security_directory import load_security_directory
@@ -90,9 +94,9 @@ def main(argv=None) -> int:
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
                 market_context_loader=context_loader,
                 product_data_service=ResearchDataService() if source is None else None, snapshot_store=snapshot_store,
-                screening_source=screening_source, market_background_source=background_source)
+                screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink)
             # A separate fixture-only service can never alter the normal service's source or budget.
-            development_service = create_demo_service()
+            development_service = create_demo_service(trace_sink=trace_sink)
     except DataModeDependencyError:
         print("[data_dependency_missing] AKShare可选依赖未安装；先运行 python -m pip install -e '.[data]'。未读取模型配置或启动服务，不自动切换来源。", file=sys.stderr)
         return 2
@@ -108,6 +112,8 @@ def main(argv=None) -> int:
         print("正常模式不会自动退回测试数据。请检查 .env 与证券目录；需要离线演示时显式使用 --demo。", file=sys.stderr)
         return 2
     print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
+    if trace_sink is not None:
+        print("本地运行记录已开启：仅运行元数据，有容量上限；不保存问题、答案、密钥或令牌。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
           f"正常服务默认模型：{args.provider}；发送研究问题后调用所选提供方。")
     if not args.demo:

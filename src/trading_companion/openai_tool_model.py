@@ -19,6 +19,7 @@ from trading_companion.tool_model import (
     MAX_METADATA_CHARACTERS, ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
 from trading_companion.turn_control import checkpoint, request_timeout
+from trading_companion.turn_trace import trace_provider_request
 
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
@@ -60,9 +61,11 @@ def _post_chat(config, body):
         raise ModelConfigurationError("Install the model extra to use OpenAI") from None
     try:
         # requests.post has no automatic retries; redirecting bearer credentials is forbidden.
+        timeout = request_timeout(config.timeout_seconds)
+        trace_provider_request("openai", config.model)
         response = requests.post(OPENAI_CHAT_URL,
             headers={"Authorization": f"Bearer {config.api_key}"}, json=body,
-            timeout=request_timeout(config.timeout_seconds), allow_redirects=False)
+            timeout=timeout, allow_redirects=False)
         try:
             status = response.status_code
             if status in (401, 403):

@@ -72,6 +72,28 @@ class SinaCompanyNewsTests(unittest.TestCase):
         with self.assertRaises(InvalidRequestError):
             ResearchDataService(news_provider="unknown")
 
+    def test_shared_scope_reserves_from_existing_request_balance(self):
+        from trading_companion.collection_execution import CollectionUnavailable
+        from tests.test_collection_execution import scope
+        shared = scope(requests=1, response_bytes=512_000)
+        shared.reserve_request()  # Another domain has already consumed the sole request.
+        with self.assertRaises(CollectionUnavailable) as caught:
+            self.adapter.fetch_section(self.request, deadline=shared.deadline, scope=shared)
+        self.assertEqual(caught.exception.code, "research_request_budget_exhausted")
+        self.session.request.assert_not_called()
+
+    def test_shared_byte_budget_rejects_sina_body_and_closes_response(self):
+        from trading_companion.collection_execution import CollectionUnavailable
+        from tests.test_collection_execution import scope
+        shared = scope(requests=1, response_bytes=1)
+        result = response()
+        self.session.request.return_value = result
+        with self.assertRaises(CollectionUnavailable) as caught:
+            self.adapter.fetch_section(self.request, deadline=shared.deadline, scope=shared)
+        self.assertEqual(caught.exception.code, "research_byte_budget_exhausted")
+        self.assertEqual(shared.usage(), {"requests": 1, "response_bytes": 0})
+        result.close.assert_called_once()
+
     def test_shanghai_symbol_binding_is_explicit_and_beijing_is_not_guessed(self):
         self.request = replace(self.request, instrument_id="600000.SH", security_name="浦发银行")
         section = self.fetch(html([("2026-10-23 12:10", "浦发银行人工标题", URL)],

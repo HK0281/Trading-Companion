@@ -4,16 +4,21 @@ from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from html.parser import HTMLParser
+from functools import partial
 import json
 from math import isfinite
 import re
 from time import monotonic
+from threading import Lock
 from urllib.parse import urlencode
 
 from trading_companion.company_research_contracts import (
     RESEARCH_KINDS, SHANGHAI, ResearchDataBatch, ResearchDataRequest, ResearchDataSection, ResearchEvidence, aware,
 )
 from trading_companion.company_news_sina import SinaCompanyNewsAdapter
+from trading_companion.collection_execution import (
+    CollectionExecutor, CollectionScope, CollectionUnavailable, POLL_SECONDS, shared_collection_executor,
+)
 from trading_companion.errors import InvalidRequestError
 from trading_companion.turn_control import checkpoint, request_timeout
 from trading_companion.turn_trace import trace_call
@@ -145,17 +150,28 @@ class ResearchDataService:
     """Trusted fixed-endpoint collectors; one failed section never discards the others."""
 
     def __init__(self, *, session=None, clock=None, timeout_seconds=6.0, deadline_seconds=20.0,
-                 announcement_provider="eastmoney", news_provider="sina"):
+                 announcement_provider="eastmoney", news_provider="sina", session_factory=None,
+                 max_workers=None, executor=None, monotonic_clock=None):
+        workers = (1 if session is not None else 3) if max_workers is None else max_workers
         if (type(timeout_seconds) not in (int, float) or not isfinite(timeout_seconds) or not 0 < timeout_seconds <= 10
                 or type(deadline_seconds) not in (int, float) or not isfinite(deadline_seconds)
                 or not 0 < deadline_seconds <= 30 or announcement_provider not in ("eastmoney", "cninfo")
                 or news_provider not in ("sina", "eastmoney")
-                or clock is not None and not callable(clock)):
+                or clock is not None and not callable(clock)
+                or monotonic_clock is not None and not callable(monotonic_clock)
+                or type(workers) is not int or not 1 <= workers <= 3
+                or session_factory is not None and not callable(session_factory)
+                or session is not None and (session_factory is not None or workers != 1)
+                or executor is not None and type(executor) is not CollectionExecutor):
             raise InvalidRequestError("Use bounded research-source configuration")
         self._session, self._clock = session, clock or (lambda: datetime.now(timezone.utc))
         self._timeout, self._deadline = timeout_seconds, deadline_seconds
         self._announcement_provider = announcement_provider
         self._news_provider = news_provider
+        self.max_workers, self._executor = workers, executor
+        self._session_factory, self._client_lock = session_factory, Lock()
+        self._timer = monotonic_clock or (lambda: monotonic())
+        self._scope = None
 
     def _now(self):
         value = self._clock()
@@ -172,24 +188,85 @@ class ResearchDataService:
         if (type(kinds) is not tuple or not kinds or any(type(kind) is not str or kind not in RESEARCH_KINDS for kind in kinds)
                 or len(set(kinds)) != len(kinds)):
             raise InvalidRequestError("Choose distinct supported research sections")
-        deadline = monotonic() + self._deadline
-        return ResearchDataBatch(request, tuple(self._fetch(request, kind, deadline) for kind in kinds))
+        requests, response_bytes = self._allowances(request, kinds)
+        scope = CollectionScope(deadline=self._timer() + self._deadline, requests=requests,
+                                response_bytes=response_bytes, clock=self._timer)
+        tasks = tuple(partial(self._run_section, request, kind, scope) for kind in kinds)
+        results = (self._executor or shared_collection_executor()).run(
+            tasks, scope=scope, max_workers=self.max_workers)
+        checkpoint()
+        sections = tuple(result if result is not None else self._section_unavailable(
+            kind, "research_data_deadline_exceeded") for kind, result in zip(kinds, results, strict=True))
+        checkpoint()
+        return ResearchDataBatch(request, sections)
 
     def fetch_section(self, request, kind):
-        self._validate(request)
-        if kind not in RESEARCH_KINDS:
+        if type(kind) is not str or kind not in RESEARCH_KINDS:
             raise InvalidRequestError("Choose one supported research section")
-        return self._fetch(request, kind, monotonic() + self._deadline)
+        return self.collect(request, (kind,)).source_results[0]
+
+    def _allowances(self, request, kinds):
+        requests = response_bytes = 0
+        for kind in kinds:
+            if (kind == "profile" and not request.allow_current_background
+                    or kind == "news" and self._news_provider == "sina" and request.instrument_id.endswith(".BJ")
+                    or kind == "announcements" and self._announcement_provider == "cninfo"
+                    and not request.instrument_id.endswith(".SZ")
+                    or kind == "announcements" and self._announcement_provider == "eastmoney"
+                    and request.instrument_id.endswith(".BJ")):
+                continue
+            requests += 1
+            response_bytes += 512_000
+            if kind == "announcements" and self._announcement_provider == "cninfo":
+                requests += 1
+                response_bytes += 2_000_000
+        return requests, response_bytes
+
+    def _run_section(self, request, kind, scope):
+        scope.check()
+        borrowed = self._session is not None
+        if borrowed:
+            while not self._client_lock.acquire(timeout=min(POLL_SECONDS, scope.remaining())):
+                scope.check()
+            client = self._session
+        else:
+            import requests
+            client = (self._session_factory or requests.Session)()
+        try:
+            scope.check()
+            # Each task owns this lightweight adapter; the long-lived service is never mutated.
+            task_service = ResearchDataService(session=client, clock=self._clock, timeout_seconds=self._timeout,
+                deadline_seconds=self._deadline, announcement_provider=self._announcement_provider,
+                news_provider=self._news_provider, monotonic_clock=self._timer)
+            task_service._scope = scope
+            result = task_service._fetch(request, kind, scope.deadline)
+        finally:
+            if borrowed:
+                self._client_lock.release()
+            else:
+                client.close()
+        scope.check()
+        return result
+
+    def _section_unavailable(self, kind, code):
+        source = ("sina_company_news" if kind == "news" and self._news_provider == "sina" else
+                  "cninfo_announcements" if kind == "announcements" and self._announcement_provider == "cninfo"
+                  else _SOURCES[kind])
+        return ResearchDataSection(kind, source, "unavailable", (), code,
+            "该来源本次未返回可核验的资料；没有伪造空结果、重试或静默换源。", self._now())
 
     def _json(self, endpoint, params, deadline, *, payload=None):
         checkpoint()
-        remaining = deadline - monotonic()
+        remaining = deadline - self._timer()
         if remaining <= 0:
             raise _Rejected("research_data_deadline_exceeded")
         import requests
         client = requests if self._session is None else self._session
         method, url = _ENDPOINTS[endpoint]
         timeout = request_timeout(min(self._timeout, remaining))
+        if self._scope is not None:
+            timeout = self._scope.timeout(self._timeout)
+            self._scope.reserve_request()
         response = None
         try:
             response = client.request(method, url, params=params, data=payload, timeout=(min(3.0, timeout), timeout),
@@ -207,10 +284,12 @@ class ResearchDataService:
             body = bytearray()
             for chunk in response.iter_content(8192):
                 checkpoint()
-                if monotonic() >= deadline:
+                if self._timer() >= deadline:
                     raise _Rejected("research_data_deadline_exceeded")
                 if len(body) + len(chunk) > maximum:
                     raise _Rejected("source_response_too_large")
+                if self._scope is not None:
+                    self._scope.consume(len(chunk))
                 body.extend(chunk)
             text = bytes(body).decode("utf-8-sig").strip()
             if endpoint == "news" and not text.startswith("{"):
@@ -233,9 +312,20 @@ class ResearchDataService:
 
     @trace_call("source", "company_section")
     def _fetch(self, request, kind, deadline):
+        try:
+            if self._scope is not None:
+                self._scope.check()
+            result = self._fetch_checked(request, kind, deadline)
+            if self._scope is not None:
+                self._scope.check()
+            return result
+        except CollectionUnavailable as error:
+            return self._section_unavailable(kind, error.code)
+
+    def _fetch_checked(self, request, kind, deadline):
         if kind == "news" and self._news_provider == "sina":
             return SinaCompanyNewsAdapter(session=self._session, clock=self._clock,
-                timeout_seconds=self._timeout).fetch_section(request, deadline=deadline)
+                timeout_seconds=self._timeout).fetch_section(request, deadline=deadline, scope=self._scope)
         source = "cninfo_announcements" if kind == "announcements" and self._announcement_provider == "cninfo" else _SOURCES[kind]
         if kind == "profile" and not request.allow_current_background:
             return ResearchDataSection(kind, source, "unavailable", (), "current_background_not_allowed",

@@ -23,6 +23,8 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
+    parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
+                        help="Company collection concurrency; use 1 for serial evaluation or source rate limits")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
                         help="Explicit bounded quote-screening source; no failure fallback (default: tencent)")
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
@@ -93,7 +95,8 @@ def main(argv=None) -> int:
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
                 market_context_loader=context_loader,
-                product_data_service=ResearchDataService() if source is None else None, snapshot_store=snapshot_store,
+                product_data_service=ResearchDataService(max_workers=args.collection_workers) if source is None else None,
+                snapshot_store=snapshot_store,
                 screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service(trace_sink=trace_sink)

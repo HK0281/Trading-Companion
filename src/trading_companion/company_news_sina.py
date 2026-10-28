@@ -103,14 +103,14 @@ class SinaCompanyNewsAdapter:
             raise InvalidRequestError("News retrieval clock must be timezone-aware")
         return value
 
-    def fetch_section(self, request, *, deadline=None):
+    def fetch_section(self, request, *, deadline=None, scope=None):
         if type(request) is not ResearchDataRequest or request.as_of > self._now():
             raise InvalidRequestError("News needs a validated historical research request")
         deadline = monotonic() + 10 if deadline is None else deadline
         try:
             if not request.instrument_id.endswith((".SH", ".SZ")):
                 raise _Unavailable("sina_news_exchange_unverified")
-            text = self._read(request, deadline)
+            text = self._read(request, deadline, scope=scope)
             parser = _NewsList()
             try:
                 parser.feed(text)
@@ -133,13 +133,16 @@ class SinaCompanyNewsAdapter:
             return ResearchDataSection("news", _SOURCE, "unavailable", (), str(error),
                 "新闻来源本次未返回可核验内容。", self._now())
 
-    def _read(self, request, deadline):
+    def _read(self, request, deadline, *, scope=None):
         import requests
         checkpoint()
-        remaining = deadline - monotonic()
+        remaining = deadline - monotonic() if scope is None else scope.remaining()
         if remaining <= 0:
             raise _Unavailable("research_data_deadline_exceeded")
         timeout = request_timeout(min(self._timeout, remaining))
+        if scope is not None:
+            timeout = scope.timeout(self._timeout)
+            scope.reserve_request()
         client = requests if self._session is None else self._session
         response = None
         try:
@@ -158,10 +161,12 @@ class SinaCompanyNewsAdapter:
             body = bytearray()
             for chunk in response.iter_content(8192):
                 checkpoint()
-                if monotonic() >= deadline:
+                if scope is None and monotonic() >= deadline:
                     raise _Unavailable("research_data_deadline_exceeded")
                 if len(body) + len(chunk) > 512000:
                     raise _Unavailable("source_response_too_large")
+                if scope is not None:
+                    scope.consume(len(chunk))
                 body.extend(chunk)
             if "charset=utf-8" in response.headers.get("Content-Type", "").lower().replace(" ", ""):
                 return bytes(body).decode("utf-8-sig")

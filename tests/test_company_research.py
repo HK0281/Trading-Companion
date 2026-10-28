@@ -292,9 +292,14 @@ class CompanyResearchTests(unittest.TestCase):
                 self.assertNotIn("Cookie", arguments["headers"])
 
     def test_total_deadline_is_shared_across_sections_not_reset_for_each_source(self):
-        self.session.request.return_value = response(profile())
-        with patch("trading_companion.company_research.monotonic", side_effect=[0, 0, 21, 21, 21, 21]):
-            batch = self.service.collect(self.request)
+        from tests.test_collection_execution import MutableClock
+        clock = MutableClock()
+        self.service = ResearchDataService(session=self.session, clock=lambda: NOW, monotonic_clock=clock)
+        def delayed(*args, **kwargs):
+            clock.set(21)
+            return response(profile())
+        self.session.request.side_effect = delayed
+        batch = self.service.collect(self.request)
         self.assertEqual(batch.status, "unavailable")
         self.assertTrue(all(section.code == "research_data_deadline_exceeded" for section in batch.source_results))
         self.session.request.assert_called_once()

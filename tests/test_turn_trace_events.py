@@ -175,7 +175,8 @@ class TraceEventTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "src" / "trading_companion"
         reasons = set()
         for filename, exception in (("company_research.py", "_Rejected"), ("company_news_sina.py", "_Unavailable"),
-                                    ("product_answer.py", "_Invalid"), ("research_response.py", "_Invalid")):
+                                    ("product_answer.py", "_Invalid"), ("research_response.py", "_Invalid"),
+                                    ("collection_execution.py", "CollectionUnavailable")):
             tree = ast.parse((root / filename).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == exception
@@ -183,6 +184,62 @@ class TraceEventTests(unittest.TestCase):
                     reasons.add(node.args[0].value)
         self.assertGreater(len(reasons), 35)
         self.assertFalse(reasons - _CODES - _EVENT_CODES)
+
+    def test_actual_parallel_company_collector_keeps_parent_and_source_counts(self):
+        from trading_companion.collection_execution import CollectionExecutor
+        from tests.test_company_collection_concurrency import FakeTransport
+        pool = CollectionExecutor()
+        self.addCleanup(pool.close, wait=True)
+        barrier = Barrier(3)
+        def wait_for_peers(kind):
+            barrier.wait(5)
+        http = FakeTransport(wait_for_peers)
+        service = ResearchDataService(session_factory=http.factory, executor=pool,
+                                     clock=lambda: NOW, news_provider="eastmoney")
+        request = ResearchDataRequest("300308.SZ", "中际旭创", CUTOFF, allow_current_background=True)
+        with self.scope(), trace_event("tool", "research"):
+            batch = service.collect(request, ("profile", "financial", "announcements"))
+        self.assertEqual(batch.status, "ok")
+        sources, parent = self.events("source"), self.events("tool")[0]
+        self.assertEqual(len(sources), 3)
+        self.assertEqual({item["parent_event_id"] for item in sources}, {parent["event_id"]})
+        self.assertEqual({item["source"] for item in sources},
+                         {"eastmoney_company", "eastmoney_financial", "eastmoney_announcements"})
+        self.assertEqual(self.record()["sources"]["seen"], 3)
+        self.assertEqual(http.maximum, 3)
+
+    def test_independent_turns_share_pool_but_not_controls_or_trace_parents(self):
+        from trading_companion.collection_execution import CollectionExecutor
+        from trading_companion.turn_control import _ACTIVE
+        from tests.test_collection_execution import BackgroundCall
+        from tests.test_company_collection_concurrency import FakeTransport
+        pool, barrier = CollectionExecutor(), Barrier(3)
+        self.addCleanup(pool.close, wait=True)
+        def run():
+            control = TurnControl()
+            control.start()
+            def handler(kind):
+                self.assertIs(_ACTIVE.get(), control)
+                barrier.wait(5)
+            http = FakeTransport(handler)
+            service = ResearchDataService(session_factory=http.factory, executor=pool,
+                                         clock=lambda: NOW, news_provider="eastmoney")
+            with self.scope(), bind_turn(control), trace_event("repair", "model_rewrite"):
+                result = service.collect(ResearchDataRequest("300308.SZ", "中际旭创", CUTOFF,
+                    allow_current_background=True), ("profile", "financial", "announcements"))
+            self.assertEqual(result.status, "ok")
+            control.finish()
+        first, second = BackgroundCall(run), BackgroundCall(run)
+        first.result()
+        second.result()
+        records = read_records(self.path)
+        self.assertEqual(len({record["run_id"] for record in records}), 2)
+        for record in records:
+            reads = [item for item in record["events"] if item["kind"] == "source"]
+            parent = next(item for item in record["events"] if item["kind"] == "repair")
+            self.assertEqual(len(reads), 3)
+            self.assertEqual({item["parent_event_id"] for item in reads}, {parent["event_id"]})
+            self.assertEqual(len({item["event_id"] for item in record["events"]}), 4)
 
     def test_invalid_source_result_is_not_inspected_or_serialized_as_arbitrary_metadata(self):
         class Untrusted:

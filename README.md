@@ -84,6 +84,12 @@ Reproduce the fixed-delay comparison locally, with generated responses and netwo
 .\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage expanded --batch-size 80 --repeat 5 --delay-ms 100
 ```
 
+The [workflow evaluation corpus and offline runner](docs/workflow-evaluation-design.md) exercise the actual chat entry with fixed model scripts and artificial data. This checks workflow contracts; real-model quality remains pending:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py
+```
+
 ## Scope & limits
 
 - No brokerage connection, orders or fund management. Trading remains with the user.

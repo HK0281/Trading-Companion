@@ -89,6 +89,22 @@ class TraceCliTests(unittest.TestCase):
         self.assertEqual(report["models"]["attempted"], 6)
         self.assertEqual(report["models"]["reported_usage"]["total_tokens"], None)
 
+    def test_evaluation_projection_keeps_only_safe_intent_and_event_metadata(self):
+        raw = record()
+        item = event(raw, status="stopped", source="private-viewer-source")
+        item["code"] = "research_data_deadline_exceeded"
+        item["private_payload"] = PRIVATE
+        row = cli.parse_record(encoded(raw))
+        self.assertEqual(row["intent"], raw["route"]["intent"])
+        self.assertEqual(row["event_records"], [{"kind": "source", "operation": "daily_bars", "source": "unknown",
+            "code": "research_data_deadline_exceeded", "status": "stopped", "entered": True,
+            "event_id": item["event_id"], "parent_event_id": None, "elapsed_ms": 2}])
+        self.assertNotIn(PRIVATE, json.dumps(row, default=str))
+        raw["route"]["intent"] = PRIVATE
+        self.assertEqual(cli.parse_record(encoded(raw))["intent"], "unknown")
+        old = cli.parse_record(LEGACY.read_bytes())
+        self.assertEqual(old["event_records"], [])
+
     def test_v1_only_table_and_json_explicitly_say_unrecorded(self):
         self.write(LEGACY.read_bytes())
         self.assertIsNone(self.invoke()[1]["event_summaries"])

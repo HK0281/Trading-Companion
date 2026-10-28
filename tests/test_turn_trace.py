@@ -22,6 +22,7 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "202609250001234567": "工作流评估人工新闻响应的文档编号字段，不是来源或整轮结果码。",
     "aligned_research_series": "图表附件成功状态，不是整轮结束原因。",
     "archive_replay_unavailable": "独立归档回放CLI结果，未接入消息追踪。",
     "asset_not_found": "静态资源HTTP错误，不经过消息入口。",
@@ -60,8 +61,13 @@ NON_TURN_CODES = {
     "directory_source_error": "独立证券目录刷新CLI的来源错误。",
     "directory_validation_error": "独立证券目录刷新CLI的校验错误。",
     "evaluation_call_limit": "独立评估运行器的调用上限，不是产品轮次结果。",
+    "evaluation_budget_exhausted": "独立评估的整次转发额度耗尽；产品轮次仍使用原有预算和失败结果码。",
+    "evaluation_case_initialization_error": "独立工作流评估的场景初始化/未运行标记，不是实际消息终态。",
     "evaluation_fixture_unusable": "独立评估运行器的夹具错误。",
+    "evaluation_input_invalid": "独立工作流评估的语料或命令参数错误，在消息调用前拒绝。",
     "evaluation_internal_error": "独立评估运行器的内部错误。",
+    "evaluation_offline_boundary_or_io_error": "独立工作流评估检测外连或记录目录错误的整次运行状态。",
+    "evaluation_offline_credential_violation": "独立工作流评估检测禁止读取模型环境的整次运行状态。",
     "exchange_current_context_available": "公司背景证据领域的来源状态。",
     "exchange_current_context_unavailable": "公司背景证据领域的来源缺失状态。",
     "final_tool_calls": "最终回答阶段仍提议工具的内部failure_code；整轮另报模型或解释不可用。",
@@ -120,6 +126,7 @@ NON_TURN_CODES = {
     "saved_result_ready": "缓存结果内部核验成功，随后仍须形成轮次答复。",
     "scenario_expectations_failed": "独立评估场景的契约失败，不是产品答复。",
     "scenario_expectations_met": "独立评估场景的契约成功，不是产品答复。",
+    "scenario_expectations_not_met": "独立工作流评估的契约未达预期，不是实际消息结果码。",
     "screening_data_validation_error": "独立筛选CLI的数据校验错误。",
     "screening_selection_ready": "名单选择的内部准备状态，随后继续研究。",
     "screening_source_error": "独立筛选CLI的来源错误。",

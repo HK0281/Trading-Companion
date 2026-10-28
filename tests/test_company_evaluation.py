@@ -160,6 +160,27 @@ class CompanyEvaluationTests(unittest.TestCase):
         self.assertTrue(usage["complete_for_forwarded_requests"])
         self.assertIn("not_cost", usage["scope"])
 
+    def test_shared_accounting_keeps_a_failed_request_unknown_when_later_cases_succeed(self):
+        class FirstFailure:
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, messages, *, tools):
+                self.calls += 1
+                if self.calls == 1:
+                    raise ModelCallError("timeout", PRIVATE)
+                return replace(evaluation._FixedModel().complete(messages, tools=tools), usage=TokenUsage(10, 20, 30))
+        with patch.object(evaluation, "_build_model", return_value=FirstFailure()):
+            result = evaluation.evaluate_company_research()
+        self.assertEqual(result["version"], "company-research-evaluation-v1")
+        self.assertEqual((result["summary"]["model_calls"], result["summary"]["provider_calls_forwarded"]), (9, 9))
+        self.assertEqual((result["summary"]["passed"], result["summary"]["failed"]), (4, 1))
+        usage = result["summary"]["token_usage"]
+        self.assertEqual((usage["requests_with_complete_usage"], usage["requests_without_complete_usage"]), (8, 1))
+        self.assertEqual(usage["reported_total_tokens"], 240)
+        self.assertFalse(usage["complete_for_forwarded_requests"])
+        self.assertNotIn(PRIVATE, json.dumps(result))
+
     def test_cli_defaults_to_fake_and_emits_only_json_without_writing_a_report(self):
         output = io.StringIO()
         with redirect_stdout(output):

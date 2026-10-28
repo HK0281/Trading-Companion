@@ -9,7 +9,7 @@ from time import monotonic
 
 from trading_companion.company_research_contracts import ResearchDataBatch, ResearchDataSection, ResearchEvidence
 from trading_companion.daily_bar import DailyBar
-from trading_companion.model import ModelCallError, TokenUsage
+from trading_companion.evaluation_common import EvaluationModelMeter, reported_usage
 from trading_companion.open_knowledge import (
     GENERAL_KNOWLEDGE_INSTRUCTION, GENERAL_KNOWLEDGE_VERSION, answer_general_knowledge,
 )
@@ -185,30 +185,12 @@ class _FixedModel:
         return ToolModelResponse("complete", json.dumps(payload, ensure_ascii=False))
 
 
-class _SuiteModel:
-    def __init__(self, delegate, limit):
-        self.delegate, self.limit, self.usage = delegate, limit, []
-
-    def complete(self, messages, *, tools):
-        if len(self.usage) >= self.limit:
-            raise ModelCallError("evaluation_budget_exhausted", "Evaluation model budget exhausted")
-        self.usage.append(None)
-        response = self.delegate.complete(messages, tools=tools)
-        if type(response) is ToolModelResponse:
-            self.usage[-1] = response.usage
-        return response
+class _SuiteModel(EvaluationModelMeter):
+    """Compatibility name for the company evaluator's shared allowance."""
 
 
 def _usage(values):
-    totals = {}
-    for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
-        reported = [getattr(value, name) for value in values if type(value) is TokenUsage and getattr(value, name) is not None]
-        totals["reported_" + name] = sum(reported) if reported else None
-    complete = sum(type(value) is TokenUsage and None not in (value.prompt_tokens, value.completion_tokens, value.total_tokens)
-                   and value.total_tokens == value.prompt_tokens + value.completion_tokens for value in values)
-    return {**totals, "requests_with_complete_usage": complete, "requests_without_complete_usage": len(values) - complete,
-            "complete_for_forwarded_requests": bool(values) and complete == len(values),
-            "scope": "provider_reported_values_only_not_cost_or_total_billed_usage"}
+    return reported_usage(values)
 
 
 def _build_model(provider):

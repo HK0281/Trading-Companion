@@ -13,6 +13,7 @@ import stat
 import sys
 import unicodedata
 
+from trading_companion.request_routing import IntentKind
 from trading_companion.turn_trace import (
     _CODES, _EVENT_STATUSES, _KINDS, _OPERATIONS, _PHASES, _PROVIDERS, _SAFE_EVENT_CODES,
     _STOPS, _TOOLS, _USAGE_KEYS, _WORKFLOW_REASONS,
@@ -210,7 +211,7 @@ def _base_record(raw, version):
     _bool(raw["history"])
     _choice(raw["phase"], _PHASES)
     _identifier(raw["original_run_id"], nullable=True)
-    route = "unrouted"
+    route, intent = "unrouted", None
     if raw["route"] is not None:
         if type(raw["route"]) is not dict:
             raise InvalidTrace()
@@ -218,6 +219,7 @@ def _base_record(raw, version):
         for key in ("intent", "rule_id"):
             if type(raw["route"][key]) is not str or not 1 <= len(raw["route"][key]) <= 128:
                 raise InvalidTrace()
+        intent = raw["route"]["intent"] if raw["route"]["intent"] in {item.value for item in IntentKind} else "unknown"
     executed = _bool(raw["execution_started"])
     elapsed = _count(raw["execution_elapsed_ms"], nullable=True)
     if not executed and elapsed is not None:
@@ -250,12 +252,12 @@ def _base_record(raw, version):
     if truncated != (dropped > 0):
         raise InvalidTrace()
     return {"run_id": _identifier(raw["run_id"]), "started_at": _timestamp(raw["started_at"]),
-            "schema_version": version, "mode": mode, "route": route, "category": category,
+            "schema_version": version, "mode": mode, "route": route, "intent": intent, "category": category,
             "code": _safe_code(outcome["code"]), "total_elapsed_ms": _count(raw["total_elapsed_ms"], nullable=True),
             "execution_started": executed, "execution_elapsed_ms": elapsed, "models": counts,
             "usage_complete": complete, "usage": usage, "summaries": None, "events": [],
             "retained": len(models["events"]), "observed": counts["attempted"], "truncated": truncated,
-            "missing_parents": 0}, links
+            "missing_parents": 0, "event_records": []}, links
 
 
 def _v1(raw):
@@ -279,7 +281,7 @@ def _v2(raw):
     events = raw["events"]
     if type(events) is not list or len(events) + row["retained"] > 64:
         raise InvalidTrace()
-    normalized = []
+    normalized, metadata = [], []
     for event in events:
         if type(event) is not dict:
             raise InvalidTrace()
@@ -296,10 +298,14 @@ def _v2(raw):
             raise InvalidTrace()
         links.append((_count(event["event_id"], positive=True), _count(event["parent_event_id"], nullable=True, positive=True)))
         normalized.append((kind, operation, origin if origin in SOURCES else "unknown", _safe_code(event["code"], event=True)))
+        metadata.append({"kind": kind, "operation": operation, "source": origin if origin in SOURCES else "unknown",
+                         "code": _safe_code(event["code"], event=True), "status": event["status"],
+                         "entered": event["entered"], "event_id": event["event_id"],
+                         "parent_event_id": event["parent_event_id"], "elapsed_ms": event["elapsed_ms"]})
     identifiers = {identifier for identifier, _ in links}
     if len(identifiers) != len(links) or any(parent is not None and parent >= identifier for identifier, parent in links):
         raise InvalidTrace()
-    row.update(summaries=summaries, events=normalized, retained=row["retained"] + len(events),
+    row.update(summaries=summaries, events=normalized, event_records=metadata, retained=row["retained"] + len(events),
                observed=row["observed"] + sum(summary["seen"] for summary in summaries.values()),
                missing_parents=sum(parent is not None and parent not in identifiers for _, parent in links))
     if row["observed"] != row["retained"] + raw["dropped_events"]:

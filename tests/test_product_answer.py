@@ -93,6 +93,27 @@ class ProductAnswerTests(unittest.TestCase):
         run = synthesize_product_answer(question, bundle or self.bundle, model=model)
         return run, model
 
+    def test_deadline_notice_preserves_six_paragraph_limit_and_citations_without_another_model_call(self):
+        company = replace(self.bundle.companies[0], coverage=(
+            {"kind": "financial", "status": "available", "code": "ok"},
+            {"kind": "news", "status": "unavailable", "code": "research_data_deadline_exceeded"}))
+        selected = replace(self.bundle, companies=(company,))
+        for paragraphs in ((PARAGRAPHS[0],) * 3, (PARAGRAPHS[0],) * 6):
+            with self.subTest(paragraphs=len(paragraphs)):
+                run, model = self.run_answer(response(paragraphs), bundle=selected)
+                answer = run.answer
+                self.assertEqual(answer.status, "accepted")
+                self.assertIn("000001.SZ的新闻未取得", answer.paragraphs[-1])
+                self.assertLessEqual(len(answer.paragraphs), 6)
+                self.assertTrue(all(len(paragraph) <= 1800 for paragraph in answer.paragraphs))
+                self.assertEqual(len(answer.paragraphs), len(answer.paragraph_evidence))
+                self.assertEqual(answer.paragraph_evidence[-1], () if len(paragraphs) == 3 else ("revenue-real-id", "profit-real-id"))
+                self.assertEqual(len(model.calls), 1)
+        run, model = self.run_answer(ToolModelResponse("complete", "invalid"), bundle=selected)
+        self.assertEqual(run.answer.status, "fallback")
+        self.assertIn("000001.SZ的新闻未取得", run.answer.text)
+        self.assertEqual(len(model.calls), 1)
+
     def test_one_tool_free_call_returns_direct_paragraphs_and_original_evidence(self):
         run, model = self.run_answer()
         self.assertEqual((run.answer.status, run.answer.origin, run.answer.code),

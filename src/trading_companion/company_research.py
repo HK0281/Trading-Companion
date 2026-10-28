@@ -21,7 +21,7 @@ from trading_companion.collection_execution import (
 )
 from trading_companion.errors import InvalidRequestError
 from trading_companion.turn_control import checkpoint, request_timeout
-from trading_companion.turn_trace import trace_call
+from trading_companion.turn_trace import trace_event
 
 
 _ENDPOINTS = {
@@ -40,6 +40,27 @@ _SNAPSHOT_WARNING = "Current vendor snapshot filtered by publication dates; hist
 
 class _Rejected(ValueError):
     pass
+
+
+class _CollectionEvents:
+    """Finish only entered, unaccepted sources on a source deadline, without joining workers."""
+
+    def __init__(self):
+        self._lock, self._handles, self._missing = Lock(), {}, frozenset()
+
+    def register(self, index, event):
+        with self._lock:
+            self._handles[index] = event
+            stopped = index in self._missing
+        if stopped:
+            event.stop("research_data_deadline_exceeded")
+
+    def stop_missing(self, results):
+        with self._lock:
+            self._missing = frozenset(index for index, result in enumerate(results) if result is None)
+            handles = tuple(event for index, event in self._handles.items() if index in self._missing)
+        for event in handles:
+            event.stop("research_data_deadline_exceeded")
 
 
 class _PlainText(HTMLParser):
@@ -172,6 +193,7 @@ class ResearchDataService:
         self._session_factory, self._client_lock = session_factory, Lock()
         self._timer = monotonic_clock or (lambda: monotonic())
         self._scope = None
+        self._events, self._event_index = None, None
 
     def _now(self):
         value = self._clock()
@@ -184,21 +206,37 @@ class ResearchDataService:
             raise InvalidRequestError("Company research needs a trusted historical cutoff")
 
     def collect(self, request, kinds=RESEARCH_KINDS):
-        self._validate(request)
+        return self.collect_many((request,), kinds)[0]
+
+    def collect_many(self, requests, kinds=RESEARCH_KINDS):
+        """One source window and dispatch width for up to three independent companies."""
+        if type(requests) is not tuple or not 1 <= len(requests) <= 3:
+            raise InvalidRequestError("Choose one to three distinct company requests")
+        for request in requests:
+            self._validate(request)
+        if len({request.instrument_id for request in requests}) != len(requests):
+            raise InvalidRequestError("Choose one to three distinct company requests")
         if (type(kinds) is not tuple or not kinds or any(type(kind) is not str or kind not in RESEARCH_KINDS for kind in kinds)
                 or len(set(kinds)) != len(kinds)):
             raise InvalidRequestError("Choose distinct supported research sections")
-        requests, response_bytes = self._allowances(request, kinds)
-        scope = CollectionScope(deadline=self._timer() + self._deadline, requests=requests,
-                                response_bytes=response_bytes, clock=self._timer)
-        tasks = tuple(partial(self._run_section, request, kind, scope) for kind in kinds)
+        scope = CollectionScope(deadline=self._timer() + self._deadline,
+            company_allowances=tuple(self._allowances(request, kinds) for request in requests), clock=self._timer)
+        indices = (tuple((company, kind) for company in range(len(requests)) for kind in kinds)
+                   if self.max_workers == 1 else
+                   tuple((company, kind) for kind in kinds for company in range(len(requests))))
+        events = _CollectionEvents()
+        tasks = tuple(partial(self._run_section, requests[company], kind, scope.for_company(company), events, index)
+                      for index, (company, kind) in enumerate(indices))
         results = (self._executor or shared_collection_executor()).run(
             tasks, scope=scope, max_workers=self.max_workers)
+        events.stop_missing(results)
         checkpoint()
-        sections = tuple(result if result is not None else self._section_unavailable(
-            kind, "research_data_deadline_exceeded") for kind, result in zip(kinds, results, strict=True))
+        sections = {(company, kind): result if result is not None else self._section_unavailable(
+            kind, "research_data_deadline_exceeded")
+            for (company, kind), result in zip(indices, results, strict=True)}
         checkpoint()
-        return ResearchDataBatch(request, sections)
+        return tuple(ResearchDataBatch(request, tuple(sections[company, kind] for kind in kinds))
+                     for company, request in enumerate(requests))
 
     def fetch_section(self, request, kind):
         if type(kind) is not str or kind not in RESEARCH_KINDS:
@@ -222,7 +260,7 @@ class ResearchDataService:
                 response_bytes += 2_000_000
         return requests, response_bytes
 
-    def _run_section(self, request, kind, scope):
+    def _run_section(self, request, kind, scope, events, index):
         scope.check()
         borrowed = self._session is not None
         if borrowed:
@@ -239,6 +277,7 @@ class ResearchDataService:
                 deadline_seconds=self._deadline, announcement_provider=self._announcement_provider,
                 news_provider=self._news_provider, monotonic_clock=self._timer)
             task_service._scope = scope
+            task_service._events, task_service._event_index = events, index
             result = task_service._fetch(request, kind, scope.deadline)
         finally:
             if borrowed:
@@ -252,8 +291,10 @@ class ResearchDataService:
         source = ("sina_company_news" if kind == "news" and self._news_provider == "sina" else
                   "cninfo_announcements" if kind == "announcements" and self._announcement_provider == "cninfo"
                   else _SOURCES[kind])
-        return ResearchDataSection(kind, source, "unavailable", (), code,
-            "该来源本次未返回可核验的资料；没有伪造空结果、重试或静默换源。", self._now())
+        message = ("资料获取已到本批次截止时间，本领域未取得可核验资料；已取得的其他资料仍可使用。"
+                   if code == "research_data_deadline_exceeded" else
+                   "该来源本次未返回可核验的资料；没有伪造空结果、重试或静默换源。")
+        return ResearchDataSection(kind, source, "unavailable", (), code, message, self._now())
 
     def _json(self, endpoint, params, deadline, *, payload=None):
         checkpoint()
@@ -310,17 +351,20 @@ class ResearchDataService:
             if response is not None:
                 response.close()
 
-    @trace_call("source", "company_section")
     def _fetch(self, request, kind, deadline):
-        try:
-            if self._scope is not None:
-                self._scope.check()
-            result = self._fetch_checked(request, kind, deadline)
-            if self._scope is not None:
-                self._scope.check()
+        with trace_event("source", "company_section", source=(type(self)._fetch, (self, request, kind, deadline))) as event:
+            if self._events is not None:
+                self._events.register(self._event_index, event)
+            try:
+                if self._scope is not None:
+                    self._scope.check()
+                result = self._fetch_checked(request, kind, deadline)
+                if self._scope is not None:
+                    self._scope.check()
+            except CollectionUnavailable as error:
+                result = self._section_unavailable(kind, error.code)
+            event.result(result)
             return result
-        except CollectionUnavailable as error:
-            return self._section_unavailable(kind, error.code)
 
     def _fetch_checked(self, request, kind, deadline):
         if kind == "news" and self._news_provider == "sina":

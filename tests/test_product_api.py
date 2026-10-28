@@ -2,7 +2,9 @@
 
 from copy import deepcopy
 import json
-from threading import Event, Thread
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Barrier, Event, Thread
 import unittest
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -12,8 +14,18 @@ from fastapi.testclient import TestClient
 from scripts.verify import offline_network
 from trading_companion.api import create_app
 from trading_companion.api_service import ApiProblem, ResearchApiService
+from trading_companion.collection_execution import CollectionExecutor
+from trading_companion.company_research import ResearchDataService
+from trading_companion.security_directory import SecurityDirectory
+from trading_companion.tool_model import ToolModelResponse
+from trading_companion.turn_trace import JsonlTraceSink
+from tests.test_collection_execution import BackgroundCall, MutableClock
+from tests.test_company_collection_concurrency import FakeTransport
+from tests.test_company_research import NOW as COLLECTION_NOW
+from tests.test_multi_company_collection import COMPANIES
 from tests.test_product_agent import ProductModelFixture
 from tests.test_product_research import CompanyDataFixture, MemorySourceFactory, NOW, directory
+from tests.test_turn_trace import read_records
 
 
 QUESTION = "分析平安银行的基本面"
@@ -244,6 +256,122 @@ class ProductApiTests(unittest.TestCase):
             news = next(section for section in company["coverage"][0]["sections"] if section["kind"] == "news")
             self.assertEqual((news["status"], news["source"]), ("unavailable", "fixture_news"))
             self.assertIn("financial", {item["kind"] for item in self.model.contexts[0]["evidence"]})
+
+
+class MultiCompanyApiTests(unittest.TestCase):
+    def setUp(self):
+        network = offline_network()
+        network.__enter__()
+        self.addCleanup(network.__exit__, None, None, None)
+        self.pool = CollectionExecutor()
+        self.addCleanup(self.pool.close, wait=True)
+        env = patch("trading_companion.local_env._read_local_values", side_effect=AssertionError("No .env"))
+        env.start()
+        self.addCleanup(env.stop)
+        self.question = "比较中际旭创、平安银行和浦发银行的基本面、新闻和公告，不要技术指标"
+
+    def make_api(self, http, *, model=None, **kwargs):
+        data = ResearchDataService(session_factory=http.factory, executor=self.pool, clock=lambda: COLLECTION_NOW,
+                                   news_provider="eastmoney", **kwargs.pop("collection", {}))
+        model = ProductModelFixture(tuple(company.name for company in COMPANIES)) if model is None else model
+        service = ResearchApiService(model_factory=lambda: model,
+            directory_loader=lambda _: SecurityDirectory(COMPANIES, "artificial-directory", COLLECTION_NOW),
+            product_data_service=data, data_mode="tencent", reference_date=COLLECTION_NOW.date(),
+            clock=lambda: 100.0, wall_clock=lambda: COLLECTION_NOW, **kwargs)
+        self.addCleanup(service.close)
+        credentials = service.create_session()
+        return service, credentials["session_id"], credentials["access_token"], model
+
+    def test_http_uses_real_multi_company_dispatch_and_publishes_stable_checked_evidence(self):
+        barrier = Barrier(3)
+        def peers(symbol, kind, kwargs):
+            if kind == "profile":
+                barrier.wait(5)
+        http = FakeTransport(company_handler=peers)
+        service, sid, token, model = self.make_api(http)
+        with TestClient(create_app(service=service), base_url="http://localhost") as client:
+            response = client.post(f"/v1/sessions/{sid}/messages", headers={"Authorization": "Bearer " + token},
+                json={"request_id": uuid4().hex, "question": self.question})
+            self.assertIsNotNone(service._entries[sid].session.product_saved)
+        self.assertEqual(response.status_code, 200)
+        turn = response.json()["result"]
+        self.assertEqual((turn["status"], turn["code"]), ("completed", "company_research_completed"))
+        self.assertEqual([company["instrument_id"] for company in turn["company_research"]["coverage"]],
+                         [company.instrument_id for company in COMPANIES])
+        self.assertEqual((http.maximum, len(http.calls), len(model.contexts)), (3, 12, 1))
+        self.assertEqual((turn["model_calls_attempted"], turn["analyses_used"]), (2, 0))
+
+    def test_third_company_timeout_is_visible_in_prose_coverage_and_sources_summary(self):
+        for fallback in (False, True):
+            with self.subTest(fallback=fallback), TemporaryDirectory() as temporary:
+                clock, entered, release, closed = MutableClock(), Event(), Event(), Event()
+                def late(symbol, kind, kwargs):
+                    if symbol == COMPANIES[-1].instrument_id and kind == "announcements":
+                        http.clients[-1].close.side_effect = closed.set
+                        entered.set()
+                        if not release.wait(5):
+                            raise AssertionError("Unreleased third company API source")
+                http = FakeTransport(company_handler=late)
+                model = ProductModelFixture(tuple(company.name for company in COMPANIES),
+                    synthesis_response=ToolModelResponse("complete", "invalid") if fallback else None)
+                service, sid, token, _ = self.make_api(http, model=model, trace_sink=JsonlTraceSink(Path(temporary)),
+                    collection={"max_workers": 1, "monotonic_clock": clock, "deadline_seconds": 1})
+                call = BackgroundCall(lambda: service.message(sid, token, uuid4().hex, self.question))
+                try:
+                    self.assertTrue(entered.wait(5))
+                    clock.set(2)
+                    turn = call.result()["result"]
+                    self.assertEqual((turn["status"], turn["code"]), ("limited", "company_research_partial"))
+                    self.assertIn("600000.SH的公告未取得", turn["answer"])
+                    answer = turn["company_research"]
+                    last = answer["coverage"][-1]["sections"][-1]
+                    self.assertEqual((last["status"], last["code"]), ("unavailable", "research_data_deadline_exceeded"))
+                    self.assertIn("未取得", last["message"])
+                    self.assertEqual([section["status"] for section in answer["coverage"][0]["sections"]], ["available"] * 4)
+                    self.assertEqual(len(model.calls), 2)
+                    if not fallback:
+                        self.assertEqual(answer["paragraph_evidence"][-1], [])
+                    trace = deepcopy(read_records(Path(temporary))[0])
+                    self.assertEqual((trace["sources"]["seen"], trace["sources"]["stopped"], trace["sources"]["failed"]), (13, 1, 0))
+                    self.assertEqual(sum(event["operation"] == "company_section" for event in trace["events"]), 12)
+                    saved = service._entries[sid].session.product_saved
+                    frozen = deepcopy(saved.bundle.to_dict())
+                    release.set()
+                    self.assertTrue(closed.wait(5))
+                    self.assertEqual(read_records(Path(temporary))[0], trace)
+                    self.assertEqual(saved.bundle.to_dict(), frozen)
+                finally:
+                    release.set()
+
+    def test_cancelled_batch_can_finish_after_next_turn_without_publishing_or_archiving(self):
+        barrier, release = Barrier(4), Event()
+        def late(symbol, kind, kwargs):
+            barrier.wait(5)
+            if not release.wait(5):
+                raise AssertionError("Unreleased cancelled multi-company API source")
+        http = FakeTransport(company_handler=late)
+        with TemporaryDirectory() as temporary:
+            archive = Mock()
+            service, sid, token, model = self.make_api(http, trace_sink=JsonlTraceSink(Path(temporary)), snapshot_store=archive)
+            key = uuid4().hex
+            call = BackgroundCall(lambda: service.message(sid, token, key, self.question))
+            try:
+                barrier.wait(5)
+                service.cancel(sid, token, key)
+                turn = call.result()["result"]
+                self.assertEqual((turn["status"], turn["code"]), ("cancelled", "turn_cancelled"))
+                first = deepcopy(read_records(Path(temporary))[0])
+                self.assertEqual(first["sources"]["unfinished"], 3)
+                service.message(sid, token, uuid4().hex, "MACD是什么")
+                self.assertEqual(len(model.calls), 1)
+                release.set()
+                self.pool.close(wait=True)
+                self.assertEqual(read_records(Path(temporary))[0], first)
+                self.assertEqual(len(read_records(Path(temporary))), 2)
+                self.assertIsNone(service._entries[sid].session.product_saved)
+                self.assertEqual(archive.mock_calls, [])
+            finally:
+                release.set()
 
 
 if __name__ == "__main__":

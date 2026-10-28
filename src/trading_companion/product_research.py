@@ -6,6 +6,7 @@ import json
 import re
 
 from trading_companion.company_research_contracts import ResearchDataBatch, ResearchDataRequest, SHANGHAI
+from trading_companion.company_research import ResearchDataService
 from trading_companion.multi_analysis import analyze_indicators
 from trading_companion.multi_contracts import DEFAULT_INDICATORS, MultiIndicatorRequest, MultiIndicatorResult
 from trading_companion.research_report import build_research_report, FIELD_LABELS, UNITS
@@ -153,7 +154,24 @@ def collect_product_research(plan, *, data_service, now, development_source=None
             # Optional exchange background cannot discard other available research domains.
             pass
         checkpoint()
-    for security in plan.securities:
+    requests, batches = (), None
+    if kinds:
+        # Documents use one cutoff even though completed daily bars have an earlier one.
+        document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI) if plan.explicit_historical else now)
+        publication_start = max(plan.start_date, document_cutoff.astimezone(SHANGHAI).date() - timedelta(days=366))
+        requests = tuple(ResearchDataRequest(security.instrument_id, security.name, document_cutoff,
+            start_date=publication_start, allow_current_background=not plan.explicit_historical)
+            for security in plan.securities)
+        if type(data_service) is ResearchDataService and len(requests) > 1:
+            checkpoint()
+            batches = trace_call("source", "company_collect", data_service.collect_many, requests, kinds=kinds)
+            checkpoint()
+            if type(batches) is not tuple or len(batches) != len(requests):
+                raise ValueError("Company evidence batches must match the checked request sequence")
+            # Validate the entire prefetch before any daily analysis spends the shared turn budget.
+            for batch, request in zip(batches, requests, strict=True):
+                _validate_batch(batch, request, kinds)
+    for company_index, security in enumerate(plan.securities):
         checkpoint()
         evidence, coverage, result, risk, insights, replay, background = [], [], None, None, None, None, None
         if background_snapshot is not None:
@@ -172,15 +190,13 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 "source": "sse_szse", "retrieved_at": background_snapshot.retrieved_at.isoformat()
                     if background_snapshot is not None else None})
         if kinds:
-            # Current documents and completed daily bars have different cutoffs.
-            document_cutoff = (datetime.combine(plan.end_date, time.max, SHANGHAI)
-                               if plan.explicit_historical else now)
-            publication_start = max(plan.start_date, document_cutoff.astimezone(SHANGHAI).date() - timedelta(days=366))
-            request = ResearchDataRequest(security.instrument_id, security.name, document_cutoff,
-                start_date=publication_start, allow_current_background=not plan.explicit_historical)
-            batch = trace_call("source", "company_collect", data_service.collect, request, kinds=kinds)
-            checkpoint()
-            _validate_batch(batch, request, kinds)
+            if batches is not None:
+                batch = batches[company_index]
+            else:
+                request = requests[company_index]
+                batch = trace_call("source", "company_collect", data_service.collect, request, kinds=kinds)
+                checkpoint()
+                _validate_batch(batch, request, kinds)
             for section in batch.source_results:
                 coverage.append({"kind": section.kind, "status": section.status,
                                  "code": section.code, "message": section.message, "source": section.source,

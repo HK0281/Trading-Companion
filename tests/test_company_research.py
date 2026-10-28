@@ -108,6 +108,24 @@ class CompanyResearchTests(unittest.TestCase):
                 self.service.collect(self.request, kinds)
         self.session.request.assert_not_called()
 
+    def test_many_requests_are_validated_together_before_any_network(self):
+        second = replace(self.request, instrument_id="000001.SZ", security_name="平安银行")
+        third = replace(self.request, instrument_id="600000.SH", security_name="浦发银行")
+        for requests_ in ((), [self.request], (None,), (self.request, second, third, self.request),
+                          (self.request, second, self.request), (self.request, replace(second, as_of=NOW + timedelta(seconds=1)))):
+            with self.subTest(requests=requests_), self.assertRaises(InvalidRequestError):
+                self.service.collect_many(requests_)
+        for kinds in (("financial", "financial"), (), ["financial"], ("technical",), (True,)):
+            with self.subTest(kinds=kinds), self.assertRaises(InvalidRequestError):
+                self.service.collect_many((self.request, second), kinds)
+        self.session.request.assert_not_called()
+
+    def test_single_collect_delegates_without_changing_return_type(self):
+        expected = object()
+        with patch.object(self.service, "collect_many", return_value=(expected,)) as many:
+            self.assertIs(self.service.collect(self.request, ("financial",)), expected)
+        many.assert_called_once_with((self.request,), ("financial",))
+
     def test_profile_requires_explicit_current_background_and_never_invents_publication(self):
         blocked = self.service.fetch_section(replace(self.request, allow_current_background=False), "profile")
         self.assertEqual((blocked.status, blocked.code), ("unavailable", "current_background_not_allowed"))

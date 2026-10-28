@@ -7,6 +7,7 @@ from time import monotonic
 import unittest
 
 from trading_companion.collection_execution import CollectionExecutor, CollectionScope, CollectionUnavailable
+from trading_companion.errors import InvalidRequestError
 from trading_companion.turn_control import TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
@@ -53,6 +54,83 @@ class CollectionExecutionTests(unittest.TestCase):
     def setUp(self):
         self.pool = CollectionExecutor()
         self.addCleanup(self.pool.close, wait=True)
+
+    def test_twelve_descriptions_use_at_most_the_requested_width(self):
+        for width in (1, 2, 3):
+            with self.subTest(width=width):
+                entered, release = [Event() for _ in range(12)], Event()
+                def task(index):
+                    entered[index].set()
+                    if not release.wait(5):
+                        raise AssertionError("Unreleased collection task")
+                    return index
+                call = BackgroundCall(lambda: self.pool.run(tuple(lambda i=i: task(i) for i in range(12)),
+                                                            scope=scope(), max_workers=width))
+                try:
+                    for event in entered[:width]:
+                        self.assertTrue(event.wait(5))
+                    self.assertFalse(entered[width].is_set())
+                    release.set()
+                    self.assertEqual(call.result(), tuple(range(12)))
+                finally:
+                    release.set()
+        with self.assertRaises(InvalidRequestError):
+            self.pool.run((lambda: None,) * 13, scope=scope(), max_workers=3)
+
+    def test_company_and_batch_ledgers_charge_atomically_without_borrowing(self):
+        for method, key, expected in (("reserve_request", "requests", "research_request_budget_exhausted"),
+                                      ("consume", "response_bytes", "research_byte_budget_exhausted")):
+            current = CollectionScope(deadline=monotonic() + 20, company_allowances=((2, 2), (1, 1), (0, 0)))
+            first, second, third = (current.for_company(index) for index in range(3))
+            barrier = Barrier(3)
+            def spend():
+                barrier.wait(5)
+                try:
+                    getattr(first, method)(*(() if method == "reserve_request" else (1,)))
+                    return "ok"
+                except CollectionUnavailable as error:
+                    return error.code
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                self.assertEqual(sorted(pool.map(lambda _: spend(), range(3))), sorted(["ok", "ok", expected]))
+            self.assertEqual((current.usage()[key], first.usage()[key], second.usage()[key]), (2, 2, 0))
+            with self.assertRaises(CollectionUnavailable):
+                getattr(third, method)(*(() if method == "reserve_request" else (1,)))
+            getattr(second, method)(*(() if method == "reserve_request" else (1,)))
+            self.assertEqual((current.usage()[key], second.usage()[key]), (3, 1))
+            with self.assertRaises(CollectionUnavailable):
+                getattr(first, method)(*(() if method == "reserve_request" else (1,)))
+        current.close()
+        with self.assertRaises(CollectionUnavailable):
+            second.consume(0)
+
+    def test_batch_allowances_must_be_one_to_three_bounded_company_quotas(self):
+        for allowances in ((), ((6, 1),), ((1, 4_048_001),), ((True, 1),), ((1, -1),),
+                           ((1, 1),) * 4, [(1, 1)], ((1,),)):
+            with self.subTest(allowances=allowances), self.assertRaises(InvalidRequestError):
+                CollectionScope(deadline=100, company_allowances=allowances)
+        with self.assertRaises(InvalidRequestError):
+            CollectionScope(deadline=100, requests=15, response_bytes=12_144_000)
+        current = CollectionScope(deadline=monotonic() + 20, company_allowances=((5, 4_048_000),) * 3)
+        with self.assertRaises(InvalidRequestError):
+            current.reserve_request()
+        for index in (True, -1, 3):
+            with self.assertRaises(InvalidRequestError):
+                current.for_company(index)
+
+    def test_concurrent_company_views_update_the_same_batch_totals(self):
+        current = CollectionScope(deadline=monotonic() + 20, company_allowances=((1, 1),) * 3)
+        views, barrier = tuple(current.for_company(index) for index in range(3)), Barrier(3)
+        def spend(view):
+            barrier.wait(5)
+            view.reserve_request()
+            view.consume(1)
+            for action in (view.reserve_request, lambda: view.consume(1)):
+                with self.assertRaises(CollectionUnavailable):
+                    action()
+        with ThreadPoolExecutor(max_workers=3) as workers:
+            list(workers.map(spend, views))
+        self.assertEqual(current.usage(), {"requests": 3, "response_bytes": 3})
+        self.assertTrue(all(view.usage() == {"requests": 1, "response_bytes": 1} for view in views))
 
     def test_three_inflight_and_original_order_with_reverse_completion(self):
         entered = [Event() for _ in range(4)]

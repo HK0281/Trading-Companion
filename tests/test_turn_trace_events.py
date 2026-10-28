@@ -9,7 +9,7 @@ from datetime import date
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Barrier
+from threading import Barrier, Event
 import unittest
 from unittest.mock import Mock, patch
 
@@ -240,6 +240,71 @@ class TraceEventTests(unittest.TestCase):
             self.assertEqual(len(reads), 3)
             self.assertEqual({item["parent_event_id"] for item in reads}, {parent["event_id"]})
             self.assertEqual(len({item["event_id"] for item in record["events"]}), 4)
+
+    def test_multi_company_source_deadline_is_stopped_separately_from_failed_and_freezes_late_work(self):
+        from copy import deepcopy
+        import requests
+        from trading_companion.collection_execution import CollectionExecutor
+        from tests.test_collection_execution import BackgroundCall, MutableClock
+        from tests.test_company_collection_concurrency import FakeTransport
+        from tests.test_multi_company_collection import REQUESTS
+        pool, clock, entered, release = CollectionExecutor(), MutableClock(), Event(), Event()
+        self.addCleanup(pool.close, wait=True)
+        def handler(symbol, kind, kwargs):
+            if symbol == REQUESTS[1].instrument_id and kind == "financial":
+                raise requests.Timeout(PRIVATE)
+            if symbol == REQUESTS[2].instrument_id and kind == "news":
+                entered.set()
+                if not release.wait(5):
+                    raise AssertionError("Unreleased trace deadline source")
+        http = FakeTransport(company_handler=handler)
+        service = ResearchDataService(session_factory=http.factory, executor=pool, max_workers=1,
+            clock=lambda: NOW, news_provider="eastmoney", monotonic_clock=clock, deadline_seconds=1)
+        def invoke():
+            with self.scope(), trace_event("tool", "research"):
+                return trace_call("source", "company_collect", service.collect_many, REQUESTS, kinds=("financial", "news"))
+        call = BackgroundCall(invoke)
+        try:
+            self.assertTrue(entered.wait(5))
+            clock.set(2)
+            batches = call.result()
+            self.assertEqual(batches[2].source_results[1].code, "research_data_deadline_exceeded")
+            self.assertTrue(batches[2].source_results[0].items)
+            record = deepcopy(self.record())
+            summary = record["sources"]
+            self.assertEqual((summary["seen"], summary["ok"], summary["failed"], summary["stopped"], summary["unfinished"]),
+                             (6, 4, 1, 1, 0))
+            sources, parent = self.events("source"), self.events("tool")[0]
+            self.assertEqual({item["parent_event_id"] for item in sources}, {parent["event_id"]})
+            stopped = [item for item in sources if item["status"] == "stopped"]
+            self.assertEqual([(item["source"], item["code"]) for item in stopped],
+                             [("eastmoney_news", "research_data_deadline_exceeded")])
+            encoded = json.dumps(record, ensure_ascii=False)
+            for private in (PRIVATE, "300308.SZ", "000001.SZ", "600000.SH", "中际旭创"):
+                self.assertNotIn(private, encoded)
+            release.set()
+            pool.close(wait=True)
+            self.assertEqual(self.record(), record)
+        finally:
+            release.set()
+
+    def test_three_company_four_section_trace_has_twelve_sources_with_one_parent(self):
+        from trading_companion.collection_execution import CollectionExecutor
+        from tests.test_company_collection_concurrency import FakeTransport
+        from tests.test_multi_company_collection import REQUESTS
+        pool, barrier = CollectionExecutor(), Barrier(3)
+        self.addCleanup(pool.close, wait=True)
+        def wait_for_peers(kind):
+            barrier.wait(5)
+        http = FakeTransport(wait_for_peers)
+        service = ResearchDataService(session_factory=http.factory, executor=pool, clock=lambda: NOW, news_provider="eastmoney")
+        with self.scope(), trace_event("tool", "research"):
+            batches = trace_call("source", "company_collect", service.collect_many, REQUESTS)
+        self.assertTrue(all(batch.status == "ok" for batch in batches))
+        self.assertEqual(self.record()["sources"]["seen"], 12)
+        self.assertEqual(len(self.events("source")), 12)
+        parent = self.events("tool")[0]
+        self.assertEqual({event["parent_event_id"] for event in self.events("source")}, {parent["event_id"]})
 
     def test_invalid_source_result_is_not_inspected_or_serialized_as_arbitrary_metadata(self):
         class Untrusted:

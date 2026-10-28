@@ -320,6 +320,27 @@ def _technical_fallback(company):
         return None
 
 
+def _deadline_notice(bundle, paragraphs, mappings=()):
+    labels = {"profile": "公司资料", "financial": "财务", "news": "新闻", "announcements": "公告"}
+    missing = []
+    for company in bundle.companies:
+        kinds = [labels[section["kind"]] for section in company.coverage if section.get("kind") in labels
+                 and section.get("status") != "available"
+                 and section.get("code") in ("research_data_deadline_exceeded", "source_deadline_exceeded")]
+        if kinds:
+            missing.append(company.instrument_id + "的" + "、".join(kinds) + "未取得")
+    if missing:
+        # Fixed application coverage text, not another model claim or a new evidence citation.
+        note = "资料获取已到本批次截止时间：" + "；".join(missing) + "。已取得的资料仍可使用。"
+        if len(paragraphs) < 6:
+            paragraphs = [*paragraphs, note]
+            if mappings:
+                mappings = [*mappings, ()]
+        else:
+            paragraphs = [*paragraphs[:-1], paragraphs[-1] + note]
+    return tuple(paragraphs), tuple(mappings)
+
+
 def _fallback(bundle, code):
     companies = bundle.companies if type(bundle) is ProductResearchBundle else ()
     evidence = []
@@ -354,6 +375,8 @@ def _fallback(bundle, code):
             paragraphs.append(note)
     if not paragraphs:
         paragraphs.append("这次还没有取得足以回答问题的研究资料。评估公司可以先对照营收、利润与现金流的变化，判断走势则需要足够的历史行情；资料补齐后才能给出有依据的判断。")
+    if companies:
+        paragraphs, _ = _deadline_notice(bundle, paragraphs)
     return ProductAnswer("fallback", code, tuple(paragraphs), tuple(evidence))
 
 
@@ -503,6 +526,7 @@ def _checked_answer(text, *, bundle, context):
         for reference in references:
             if originals[reference] not in evidence:
                 evidence.append(originals[reference])
+    paragraphs, paragraph_evidence = _deadline_notice(bundle, paragraphs, paragraph_evidence)
     if len("\n\n".join(paragraphs)) > MAX_ANSWER_CHARACTERS:
         raise _Invalid()
     # A comparison cannot be reported as complete after silently omitting a covered company.

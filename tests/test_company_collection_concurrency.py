@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import date
 from functools import partial
 import json
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Barrier, Event, Lock
@@ -33,10 +34,11 @@ from tests.test_turn_trace import read_records
 class FakeTransport:
     """URL-dispatched fixtures; each factory call supplies a fresh owned client."""
 
-    def __init__(self, handler=None):
-        self.handler = handler
+    def __init__(self, handler=None, *, company_handler=None):
+        self.handler, self.company_handler = handler, company_handler
         self.lock = Lock()
         self.clients, self.responses, self.calls = [], [], []
+        self.company_calls = []
         self.active = self.maximum = 0
 
     def factory(self):
@@ -48,19 +50,35 @@ class FakeTransport:
 
     def request(self, client, method, url, **kwargs):
         kind = next(key for key, (_, endpoint) in _ENDPOINTS.items() if url == endpoint)
+        params = kwargs["params"]
+        if kind in ("profile", "financial"):
+            instrument_id = re.search(r'SECUCODE="([0-9]{6}\.(?:SH|SZ|BJ))"', params["filter"])[1]
+        else:
+            code = (json.loads(params["param"])["keyword"] if kind == "news" else
+                    params.get("stock_list", "300308"))
+            instrument_id = code + (".SH" if code.startswith("6") else ".SZ")
         with self.lock:
             self.calls.append((kind, client, kwargs))
+            self.company_calls.append((instrument_id, kind))
             self.active += 1
             self.maximum = max(self.maximum, self.active)
         try:
-            if self.handler:
-                value = self.handler(kind)
+            if self.handler or self.company_handler:
+                value = (self.company_handler(instrument_id, kind, kwargs) if self.company_handler is not None
+                         else self.handler(kind))
                 if value is not None:
                     with self.lock:
                         self.responses.append(value)
                     return value
             payload = {"profile": profile, "financial": financial, "news": news,
                        "announcements": announcements}[kind]()
+            payload = json.loads(json.dumps(payload, ensure_ascii=False).replace("300308.SZ", instrument_id)
+                .replace("300308", instrument_id[:6]))
+            if kind == "news":
+                # The real adapter verifies a title/name or code association with the requested company.
+                payload["result"]["cmsArticleWebOld"][0]["title"] = instrument_id[:6] + "人工新闻"
+            if kind == "announcements":
+                payload["data"]["list"][0]["codes"][0]["market_code"] = "1" if instrument_id.endswith(".SH") else "0"
             value = response(payload)
             with self.lock:
                 self.responses.append(value)

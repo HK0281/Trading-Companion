@@ -138,6 +138,27 @@ class ProductResearchTests(unittest.TestCase):
                             for company in bundle.companies))
         self.assertEqual({item["instrument_id"] for item in model_research_context(bundle)["evidence"]}, set(expected))
 
+    def test_opaque_injected_service_is_never_probed_for_many_and_keeps_interleaved_order(self):
+        order = []
+        class Opaque(CompanyDataFixture):
+            @property
+            def collect_many(self):
+                raise AssertionError("Do not inspect untrusted concurrency capabilities")
+            def collect(self, request, kinds):
+                order.append(("documents", request.instrument_id))
+                return super().collect(request, kinds)
+        factory = self.factory
+        def daily(request):
+            order.append(("daily", request.instrument_id))
+            return factory(request)
+        runtime = company_turn_control()
+        runtime.start()
+        with bind_turn(runtime):
+            collect_product_research(plan(securities=SECURITIES[:3], kinds=("financial", "technical")),
+                data_service=Opaque(), now=NOW, source_factory=daily)
+        self.assertEqual(order, [(kind, security.instrument_id) for security in SECURITIES[:3]
+                                 for kind in ("documents", "daily")])
+
     def test_news_failure_does_not_discard_financials_or_technical_evidence(self):
         bundle, _ = self.collect(plan(kinds=("financial", "news", "technical")),
                                  data=CompanyDataFixture(unavailable=("news",)))

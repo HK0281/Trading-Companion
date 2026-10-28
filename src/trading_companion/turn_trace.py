@@ -194,6 +194,8 @@ def _result_metadata(operation, result):
         if not _known(result, "company_research_contracts", "ResearchDataSection"):
             return "failed", "invalid_source_shape"
         code = _event_code(result.code)
+        if code in ("research_data_deadline_exceeded", "source_deadline_exceeded"):
+            return "stopped", code
         status = {"available": "ok", "empty": "ok", "unavailable": "failed"}.get(result.status, "failed")
         return ("skipped" if code == "current_background_not_allowed" else status), code
     if _known(result, "research_tool", "ToolExecution"):
@@ -614,9 +616,18 @@ def trace_run_id():
 class _EventHandle:
     """Only fixed metadata is retained; result objects never outlive result()."""
 
-    def __init__(self, operation, started):
+    def __init__(self, operation, started, trace=None):
         self.operation, self.started = operation, started
+        self._trace = trace
         self.status, self.code = "ok", "ok"
+
+    def stop(self, code):
+        """End a logically abandoned source from its coordinator; late completion is ignored."""
+        if self.started is not None and self._trace is not None:
+            try:
+                self._trace.event_end(self.started[0], self.started[1], "stopped", _event_code(code))
+            except Exception:
+                pass  # Trace bookkeeping never owns cancellation or source result acceptance.
 
     def result(self, value):
         if self.started is not None:
@@ -642,7 +653,7 @@ def trace_event(kind, operation, *, enabled=True, source=None, decision=None):
     """
     trace, started = _CURRENT.get(), None
     parent_token = tool_token = None
-    handle = _EventHandle(operation, None)
+    handle = _EventHandle(operation, None, trace)
     try:
         if trace is not None and enabled is True and operation in _OPERATIONS:
             active_tool = _TOOL.get()

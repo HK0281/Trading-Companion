@@ -1,56 +1,97 @@
 # Trading Companion
 
-Trading Companion is a research and decision-support assistant for China's A-share market. All trading decisions and operations remain with the user.
+A Chinese-language research agent for China's A-share market, with application-controlled tools, checked evidence, and trading decisions kept with the human.
 
-Windows is the supported runtime and acceptance platform. Use PowerShell for the commands below; GitHub Actions runs one Windows job with the same acceptance entry point.
+![Offline demo with synthetic data: candlesticks, SMA3, volume and RSI2](docs/images/demo-research-chart.png)
 
-## Documentation
+**Offline demo with synthetic data.** Actual interface capture using a fixed fake model and five artificial daily bars; no live market data or model API calls. Reproduce with `.\start.cmd --demo`, send `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`, then expand **历史 K 线与指标**. First-time setup is below.
 
-- [Project context and Agent collaboration handoff (Chinese)](docs/agent-handoff.md): user requirements, working preferences, current architecture and capabilities, verification boundaries, remaining work, and coordination rules for new collaborators.
-- [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
-- [Product agent PRD (Chinese)](docs/prd-agent-v0.1.md): first-agent scope, indicator conventions, and acceptance criteria.
-- [Agent learning notes (Chinese)](docs/agent-learning-notes.md): project concepts and concise interview Q&A.
-- [Multi-indicator service contract (Chinese)](docs/multi-indicator-design.md): request limits, field availability, initialization metadata, deterministic relations, and evidence identifiers.
-- [Tool-model protocol and offline round trip (Chinese)](docs/tool-model-design.md): tool messages, call IDs, response states, scripted fake behavior, and validation boundaries.
-- [Controlled research-tool executor (Chinese)](docs/research-tool-design.md): strict business validation, one execution per turn, trusted source configuration, and compact evidence results.
-- [DeepSeek tool adapter (Chinese)](docs/deepseek-tool-model-design.md): provider message conversion, completion states, shared transport, and mocked HTTP verification.
-- [Opt-in tool smoke test (Chinese)](docs/tool-smoke-design.md): a fixed synthetic task, offline default, explicit paid-provider selection, and stop conditions.
-- [Bounded single-turn Agent (Chinese)](docs/single-turn-agent-design.md): explicit Chinese input, request-bound proposals, partial-result handling, and unchecked explanation drafts.
-- [Natural-language research input (Chinese)](docs/natural-input-design.md): model-first interpretation, dated security snapshots, ambiguity gates, visible defaults, and an offline fixture demo.
-- [Natural single-stock analysis and outlook scope (Chinese)](docs/natural-research-scope-design.md): date-free analysis requests, separate historical windows and future horizons, directory-checked continuation and fresh research rather than stale-snapshot forecasts.
-- [Explicit exchange-directory refresh (Chinese)](docs/security-directory-refresh-design.md): real SSE/SZSE name lists, validation limits, atomic snapshots, and separate live verification.
-- [Identity clarification continuation (Chinese)](docs/identity-clarification-design.md): per-session pending conditions, short stock-selection replies, expiry, cancellation, and replay protection.
-- [Deterministic safe-answer reports (Chinese)](docs/safe-report-design.md): request-bound fact cards, evidence consistency, explicit missing fields, and separation from unchecked model prose.
-- [Checked indicator explanations (Chinese)](docs/grounded-explanation-design.md): bounded JSON claims, current-request evidence and operand checks, application-rendered relations, and fact-only fallback.
-- [Fixed-scenario Agent contract evaluation (Chinese)](docs/agent-evaluation-design.md): pinned synthetic fixtures, independent scenario expectations, bounded model calls, fail-fast reports, and explicit DeepSeek opt-in.
-- [Terminal research entry (Chinese)](docs/terminal-agent-design.md): explicit model/data selection, safe display, per-launch session ownership, local commands, and bounded interactive input.
-- [Bounded indicator edits (Chinese)](docs/indicator-edit-design.md): checked per-session conditions, whole-message single-instance replacement, fresh requests, and failure isolation.
-- [Saved results, follow-ups and indicator knowledge (Chinese)](docs/result-followup-design.md): detached result snapshots, current/history separation, checked cached answers, local definitions, and a complete offline conversation demo.
-- [Explicit session condition updates (Chinese)](docs/condition-update-design.md): directory-grounded stock changes, exact date updates, single-indicator addition/removal, atomic validation, and failure-safe history.
-- [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
-- [Opt-in turn tracing (Chinese)](docs/turn-tracing-design.md): bounded local routing/model metadata, distinct send/response counts, replay links, privacy and failure isolation.
-- [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
-- [Request intent routing (Chinese)](docs/request-routing-design.md): explicit priorities, clarification ownership, read-only decisions and frozen offline behavior records.
-- [Routing conflict changes (Chinese)](docs/request-routing-1b-deltas.md): user-visible corrections and an exhaustive comparison of the old observations with the new targets.
-- [Local React research workspace (Chinese)](docs/web-workspace-design.md): build/start instructions, same-origin delivery, in-memory sessions, uncertainty-safe retries, evidence display and browser verification.
-- [Conversation-first interface (Chinese)](docs/conversation-ui-design.md): compact checked answers, relevant follow-up metrics, collapsible sources, fixed composer, responsive navigation and compatibility boundaries.
-- [Natural-language research responses (Chinese)](docs/natural-research-response-design.md): original-question context, model-written conditional analysis, checked relation references and concise data-readiness answers.
-- [Bounded research workflow (Chinese)](docs/bounded-research-workflow-design.md): model-selected read-only tools, same-snapshot supplementary indicators, independently checked citations and a collapsible research trace.
-- [Offline acceptance and CI (Chinese)](docs/ci-design.md): shared local/Actions gates, no-skip tests, compiled-resource/ASGI checks, clean wheel validation and explicit offline boundaries.
-- [Historical chart workspace (Chinese)](docs/chart-workspace-design.md): same-analysis candlesticks and indicators, bounded chart DTOs, missing-value gaps, unit-separated axes, saved context and optional-view failure isolation.
-- [MVP delivery and remaining acceptance (Chinese)](docs/mvp-completion.md): completed code, launch instructions, 30-scenario repeated evaluation, and the separate live/browser acceptance checklist.
-- [Cross-indicator synthesis (Chinese)](docs/research-synthesis-design.md): request-bound trend/momentum/volatility/volume comparisons, evidence dependencies, unknowns and conditional observations, not predictions.
-- [Resumable edits and bounded refresh (Chinese)](docs/mvp-conversation-design.md): pending window targets, short selections, relative dates and previous-Shanghai-day refresh.
-- [Explicit product source selection (Chinese)](docs/source-selection-design.md): synthetic/Tencent/AKShare startup configuration, optional dependency checks and no silent fallback.
-- [Local model configuration and startup (Chinese)](docs/local-environment.md): root `.env`, normal-mode defaults, local checks and explicit directory refresh.
-- [Normal mode and Dev Mode (Chinese)](docs/dev-mode-design.md): normal-by-default Web startup, a separate fixed offline backend and safe in-page switching without shared sessions.
-- [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
-- [Technical analysis, signals and timeframes (Chinese)](docs/technical-analysis-design.md): ADX/OBV/VWMA conventions, complementary indicator profiles, confirmed-pivot candidates, completed weekly bars and traceable dependencies.
-- [Historical replay and archive inspection (Chinese)](docs/historical-replay-design.md): a fixed SMA next-open exposure comparison, same-period benchmark, cost/drawdown metrics and offline archive commands.
-- [Numeric candidate screening (Chinese)](docs/screening-design.md): explicit numeric filters, bounded Tencent/Eastmoney snapshots and sample coverage.
-- [Retrieved knowledge answers (Chinese)](docs/knowledge-retrieval-design.md): local versioned notes, lexical retrieval and checked paragraph citations.
-- [Current exchange context and dated rules (Chinese)](docs/market-rules-design.md): listing metadata, official references, effective dates and unknown historical states.
-- [Current module status and examples (Chinese)](docs/module-progress-2026-10-26.md): completed basic modules, chat examples, data flow and remaining work.
+## Architecture
+
+One controlled research agent in a modular Python backend, with a React/TypeScript workspace. Routing chooses the handler; each handler retains its own authorization and evidence checks.
+
+```mermaid
+flowchart TD
+    U["Web / API request"] --> A["Session admission and idempotency"]
+    A --> R["Read-only intent routing<br/>priority and clarification owner"]
+    subgraph X["Controlled executors"]
+        K["Knowledge"]
+        S["Screening<br/>edits and shortlist continuation"]
+        C["Company research"]
+        T["Technical research"]
+    end
+    R --> K
+    R --> S
+    R --> C
+    R --> T
+    K --> V["Path-specific evidence checks<br/>at most one company-answer repair"]
+    S --> V
+    C --> V
+    T --> V
+    V --> P["Cancel-safe publication"]
+    B["TurnControl<br/>budgets, deadline, cancellation"] -.-> X
+    B -.-> P
+    S -. "Tencent quote batches" .-> Q["Shared collection capacity<br/>at most 3 unfinished tasks"]
+    C -. "Company evidence" .-> Q
+    X -.-> O["Optional trace-v2 metadata"]
+    P -.-> H["Optional checked-evidence archive"]
+```
+
+Executors use controlled models and read-only tools as needed. Dashed arrows show shared controls or optional facilities. The collection pool serves company evidence and Tencent screening batches; Eastmoney pagination stays sequential, as do technical calculations and model calls. Fixed knowledge answers can use zero model calls and zero data reads. The single model repair applies to company answers. Traces store bounded metadata; the optional archive stores evidence, without chat or model answers. Local clarification/conflict replies and the full flow are covered in the [current architecture](docs/architecture.md#2026-10-28当前已实现的处理链路) and [routing design](docs/request-routing-design.md).
+
+## Quick start
+
+Windows is the supported runtime and acceptance platform. From PowerShell in a checkout with local dependencies prepared:
+
+```powershell
+.\start.cmd --demo
+```
+
+The fixed demo runs offline, needs no model key, ignores `.env`, and opens the default browser after the local server is ready. Send the question above to reproduce the screenshots. Press Ctrl+C in the server window to stop; `--no-open-browser` suppresses browser launch.
+
+For a fresh checkout, follow [Setup](#setup-windows-powershell--vs-code) and the [dependency/build steps](#start-the-product) first: Python 3.11+, Node 22.12+ and pnpm 11.25.0 are required. Normal mode uses `.\start.cmd` after configuring a supported model and a current real security directory; see [Start the product](#start-the-product). Normal questions can call paid model APIs and public market sources.
+
+## Engineering highlights
+
+- **Model proposals pass application gates.** The program checks identity, dates, parameters and tool permissions before execution. [Controlled tools](docs/research-tool-design.md) · [Research loop](docs/bounded-research-workflow-design.md)
+- **Answers carry checked evidence.** Paths check citations, numeric claims and company attribution, with explicit missing data and fallbacks. These checks do not prove all prose correct. [Company answers](docs/company-research-design.md) · [Indicator claims](docs/grounded-explanation-design.md)
+- **Intent and clarification have explicit owners.** A read-only priority table chooses among existing handlers; routing v1/v2 records protect 35 scenarios and 105 turns. [Routing and characterization tests](docs/request-routing-design.md)
+- **Each turn can be inspected.** Opt-in trace-v2 records routing, model attempts, tools, sources, checks and repairs; a read-only CLI reports coverage and timing. [Tracing and viewer](docs/turn-tracing-design.md)
+- **Collection has shared capacity and separate budgets.** Company evidence and Tencent batches share at most three unfinished tasks; request and byte ledgers enforce business limits. [Concurrent collection](docs/collection-concurrency-design.md)
+- **Retries and cancellation preserve session boundaries.** Idempotent request IDs prevent repeated execution; cancelled or late work cannot publish new results. [Local API](docs/local-api-design.md) · [Turn control](docs/turn-control-design.md)
+- **Tool calls use a project-owned protocol.** DeepSeek and OpenAI adapters share message and result contracts, without an Agent orchestration framework. [Tool protocol](docs/tool-model-design.md) · [Provider selection](docs/company-research-design.md)
+
+![Offline demo with synthetic data: answer, data limitations and collection record](docs/images/demo-research-answer.png)
+
+**Offline demo with synthetic data.** The same fixed question displays the artificial-data warning, answer limits and collection record. Captured from the running app at 1440 × 900 with 2× pixels; timestamps and temporary session identifiers vary between runs.
+
+## Verified facts
+
+Local offline evidence for this revision, dated 2026-10-28. Tests verify program contracts and constructed scenarios; live quality and source performance require separate evaluation.
+
+| Fact | Reproduction / evidence |
+| --- | --- |
+| Offline Python tests | **2,213 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
+| Frontend tests, type checking and build | **633 Vitest tests across 20 files**, TypeScript `--noEmit` and Vite production build pass; the bundle gate confirms served and wheel assets. Vitest, tsc and Vite were invoked directly with Node because pnpm was unavailable; `verify.py web` requires pnpm. [Acceptance gates](docs/ci-design.md) |
+| Characterization baseline: 35 scenarios / 105 turns (routing v1/v2) | [Frozen observations and reviewed behavior changes](docs/request-routing-design.md) |
+| Windows CI configured | [One Windows Actions job](.github/workflows/ci.yml) runs the same Python, web and bundle gates; remote run status is separate from local results. |
+| Offline fixed-delay collection timing | 15 Tencent batches, artificial 100 ms/request, 5 runs per mode: median **1,643 ms serial → 555 ms with 3 slots**; results, coverage, requests and bytes match. Structural, not live. [Method and boundaries](docs/collection-concurrency-design.md) |
+| Real-model answer quality and live-source performance | **Pending.** Offline results do not establish investment quality or live latency/coverage. |
+
+Reproduce the fixed-delay comparison locally, with generated responses and network access blocked:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/benchmark_screening_collection.py --coverage expanded --batch-size 80 --repeat 5 --delay-ms 100
+```
+
+## Scope & limits
+
+- No brokerage connection, orders or fund management. Trading remains with the user.
+- Screening covers a bounded quote sample, with explicit gaps; it does not establish whole-market completeness or rankings. [Screening scope](docs/screening-design.md)
+- Optional evidence snapshots are not a point-in-time database of historical revisions. The fixed SMA exposure replay is not an order-fill strategy backtest. [Archive and replay limits](docs/historical-replay-design.md)
+- Citation and numeric checks have defined limits. Real-model quality acceptance, full filing/article retrieval and production deployment remain separate work. [Company research boundaries](docs/company-research-design.md) · [Acceptance checklist](docs/mvp-completion.md)
+
+The detailed startup, configuration, module commands and [documentation index](#documentation) follow.
 
 ## Start the product
 
@@ -482,7 +523,7 @@ The tool-message protocol is independent of the old text-only API. It represents
 
 ```powershell
 $env:PYTHONPATH='src'
-python -m trading_companion.tool_model_demo
+.\.venv\Scripts\python.exe -m trading_companion.tool_model_demo
 ```
 
 The script uses a `FakeToolModel`: it proposes a declared tool, the caller explicitly supplies a fixed artificial result with the matching call ID, and the fake returns a scripted final answer. It does not execute the tool, fetch prices, read credentials, or request a real model. This verifies protocol handling; it is not yet the research Agent.
@@ -694,7 +735,7 @@ Adding `--provider deepseek` explicitly permits potentially paid requests; the w
 
 ```powershell
 $env:PYTHONPATH='src'
-python -m trading_companion.research_tool_demo
+.\.venv\Scripts\python.exe -m trading_companion.research_tool_demo
 ```
 
 This demonstration uses a scripted `FakeToolModel` and a trusted, fixed synthetic CSV. Unlike the fixed-result protocol demo, it actually runs the existing multi-indicator calculations and returns their evidence under the proposed call ID. It uses no network or credentials; the final model text is still scripted.
@@ -801,6 +842,8 @@ The workspace also shows optional **security state and exchange calendar** conte
 
 ## Tests
 
+Current local results appear in [Verified facts](#verified-facts); the dated runs below describe earlier revisions.
+
 Windows local acceptance (2026-10-25): `scripts/verify.py all` passed 1,791 Python tests and 533 frontend tests, TypeScript checking, the Vite build, ASGI resource checks, clean wheel checks and `pip check`. This is offline engineering acceptance; the remote Windows Actions result remains separate.
 
 Historical Windows acceptance (2026-10-24): 1,229 Python tests and 339 frontend tests, plus offline scenarios, TypeScript/build and ASGI/wheel checks. The new natural-language response protocol has fixture coverage, not a new real-DeepSeek quality evaluation. These are dated results, not acceptance of later changes. See the [response design](docs/natural-research-response-design.md).
@@ -885,3 +928,52 @@ A successful test run does not guarantee that a public endpoint is reachable. Th
 The expanded product now also has numeric screening within bounded quote samples, retrieved educational explanations, current exchange listing context, dated rule explanations and a fixed next-open SMA exposure replay. These share the existing conversation service, identity checks and execution controls. See [current examples and boundaries](docs/module-progress-2026-10-26.md).
 
 The next milestone is quality acceptance of these workflows: repeated real-model reviews, ambiguous follow-ups, multi-company evidence attribution, missing sources and provider switching. Full article/filing retrieval, proven whole-market completeness, Jev, strict historical versions, order-fill strategy simulation, US equities and public deployment remain later work. See the [company design](docs/company-research-design.md) and earlier [MVP checklist](docs/mvp-completion.md).
+
+## Documentation
+
+- [Project context and Agent collaboration handoff (Chinese)](docs/agent-handoff.md): user requirements, working preferences, current architecture and capabilities, verification boundaries, remaining work, and coordination rules for new collaborators.
+- [Target architecture and implementation roadmap (Chinese)](docs/architecture.md): module responsibilities, data flow, safety boundaries, technology choices, and current-versus-planned capabilities.
+- [Product agent PRD (Chinese)](docs/prd-agent-v0.1.md): first-agent scope, indicator conventions, and acceptance criteria.
+- [Agent learning notes (Chinese)](docs/agent-learning-notes.md): project concepts and concise interview Q&A.
+- [Multi-indicator service contract (Chinese)](docs/multi-indicator-design.md): request limits, field availability, initialization metadata, deterministic relations, and evidence identifiers.
+- [Tool-model protocol and offline round trip (Chinese)](docs/tool-model-design.md): tool messages, call IDs, response states, scripted fake behavior, and validation boundaries.
+- [Controlled research-tool executor (Chinese)](docs/research-tool-design.md): strict business validation, one execution per turn, trusted source configuration, and compact evidence results.
+- [DeepSeek tool adapter (Chinese)](docs/deepseek-tool-model-design.md): provider message conversion, completion states, shared transport, and mocked HTTP verification.
+- [Opt-in tool smoke test (Chinese)](docs/tool-smoke-design.md): a fixed synthetic task, offline default, explicit paid-provider selection, and stop conditions.
+- [Bounded single-turn Agent (Chinese)](docs/single-turn-agent-design.md): explicit Chinese input, request-bound proposals, partial-result handling, and unchecked explanation drafts.
+- [Natural-language research input (Chinese)](docs/natural-input-design.md): model-first interpretation, dated security snapshots, ambiguity gates, visible defaults, and an offline fixture demo.
+- [Natural single-stock analysis and outlook scope (Chinese)](docs/natural-research-scope-design.md): date-free analysis requests, separate historical windows and future horizons, directory-checked continuation and fresh research rather than stale-snapshot forecasts.
+- [Explicit exchange-directory refresh (Chinese)](docs/security-directory-refresh-design.md): real SSE/SZSE name lists, validation limits, atomic snapshots, and separate live verification.
+- [Identity clarification continuation (Chinese)](docs/identity-clarification-design.md): per-session pending conditions, short stock-selection replies, expiry, cancellation, and replay protection.
+- [Deterministic safe-answer reports (Chinese)](docs/safe-report-design.md): request-bound fact cards, evidence consistency, explicit missing fields, and separation from unchecked model prose.
+- [Checked indicator explanations (Chinese)](docs/grounded-explanation-design.md): bounded JSON claims, current-request evidence and operand checks, application-rendered relations, and fact-only fallback.
+- [Fixed-scenario Agent contract evaluation (Chinese)](docs/agent-evaluation-design.md): pinned synthetic fixtures, independent scenario expectations, bounded model calls, fail-fast reports, and explicit DeepSeek opt-in.
+- [Terminal research entry (Chinese)](docs/terminal-agent-design.md): explicit model/data selection, safe display, per-launch session ownership, local commands, and bounded interactive input.
+- [Bounded indicator edits (Chinese)](docs/indicator-edit-design.md): checked per-session conditions, whole-message single-instance replacement, fresh requests, and failure isolation.
+- [Saved results, follow-ups and indicator knowledge (Chinese)](docs/result-followup-design.md): detached result snapshots, current/history separation, checked cached answers, local definitions, and a complete offline conversation demo.
+- [Explicit session condition updates (Chinese)](docs/condition-update-design.md): directory-grounded stock changes, exact date updates, single-indicator addition/removal, atomic validation, and failure-safe history.
+- [Shared turn control (Chinese)](docs/turn-control-design.md): cooperative deadlines, shared call/analysis allowances, observed-token thresholds, cancellation, and late-result-safe session publication.
+- [Opt-in turn tracing (Chinese)](docs/turn-tracing-design.md): bounded local routing/model metadata, distinct send/response counts, replay links, privacy and failure isolation.
+- [Local FastAPI service (Chinese)](docs/local-api-design.md): loopback startup, session tokens, idempotent requests, cancellation, safe HTTP projections, limits, and a hands-on PowerShell walkthrough.
+- [Request intent routing (Chinese)](docs/request-routing-design.md): explicit priorities, clarification ownership, read-only decisions and frozen offline behavior records.
+- [Routing conflict changes (Chinese)](docs/request-routing-1b-deltas.md): user-visible corrections and an exhaustive comparison of the old observations with the new targets.
+- [Local React research workspace (Chinese)](docs/web-workspace-design.md): build/start instructions, same-origin delivery, in-memory sessions, uncertainty-safe retries, evidence display and browser verification.
+- [Conversation-first interface (Chinese)](docs/conversation-ui-design.md): compact checked answers, relevant follow-up metrics, collapsible sources, fixed composer, responsive navigation and compatibility boundaries.
+- [Natural-language research responses (Chinese)](docs/natural-research-response-design.md): original-question context, model-written conditional analysis, checked relation references and concise data-readiness answers.
+- [Bounded research workflow (Chinese)](docs/bounded-research-workflow-design.md): model-selected read-only tools, same-snapshot supplementary indicators, independently checked citations and a collapsible research trace.
+- [Offline acceptance and CI (Chinese)](docs/ci-design.md): shared local/Actions gates, no-skip tests, compiled-resource/ASGI checks, clean wheel validation and explicit offline boundaries.
+- [Historical chart workspace (Chinese)](docs/chart-workspace-design.md): same-analysis candlesticks and indicators, bounded chart DTOs, missing-value gaps, unit-separated axes, saved context and optional-view failure isolation.
+- [MVP delivery and remaining acceptance (Chinese)](docs/mvp-completion.md): completed code, launch instructions, 30-scenario repeated evaluation, and the separate live/browser acceptance checklist.
+- [Cross-indicator synthesis (Chinese)](docs/research-synthesis-design.md): request-bound trend/momentum/volatility/volume comparisons, evidence dependencies, unknowns and conditional observations, not predictions.
+- [Resumable edits and bounded refresh (Chinese)](docs/mvp-conversation-design.md): pending window targets, short selections, relative dates and previous-Shanghai-day refresh.
+- [Explicit product source selection (Chinese)](docs/source-selection-design.md): synthetic/Tencent/AKShare startup configuration, optional dependency checks and no silent fallback.
+- [Local model configuration and startup (Chinese)](docs/local-environment.md): root `.env`, normal-mode defaults, local checks and explicit directory refresh.
+- [Normal mode and Dev Mode (Chinese)](docs/dev-mode-design.md): normal-by-default Web startup, a separate fixed offline backend and safe in-page switching without shared sessions.
+- [Company research workflow (Chinese)](docs/company-research-design.md): company/financial/news/announcement evidence, named-candidate comparisons, ATR scenarios, optional SQLite snapshots and explicit DeepSeek/OpenAI selection.
+- [Technical analysis, signals and timeframes (Chinese)](docs/technical-analysis-design.md): ADX/OBV/VWMA conventions, complementary indicator profiles, confirmed-pivot candidates, completed weekly bars and traceable dependencies.
+- [Historical replay and archive inspection (Chinese)](docs/historical-replay-design.md): a fixed SMA next-open exposure comparison, same-period benchmark, cost/drawdown metrics and offline archive commands.
+- [Numeric candidate screening (Chinese)](docs/screening-design.md): explicit numeric filters, bounded Tencent/Eastmoney snapshots and sample coverage.
+- [Retrieved knowledge answers (Chinese)](docs/knowledge-retrieval-design.md): local versioned notes, lexical retrieval and checked paragraph citations.
+- [Current exchange context and dated rules (Chinese)](docs/market-rules-design.md): listing metadata, official references, effective dates and unknown historical states.
+- [Current module status and examples (Chinese)](docs/module-progress-2026-10-26.md): completed basic modules, chat examples, data flow and remaining work.
+- [Bounded concurrent collection (Chinese)](docs/collection-concurrency-design.md): shared company/Tencent capacity, per-business request/byte budgets, late-result isolation and offline timing.

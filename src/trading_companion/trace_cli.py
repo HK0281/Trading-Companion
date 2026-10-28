@@ -611,7 +611,7 @@ def format_table(report):
     diagnostics = report["diagnostics"]
     coverage, details = report["event_summary_coverage"], report["details"]
     lines = [f"样本 {report['selected_turns']}/{report['valid_unique_turns']} | 模式 {counts(report['modes'])} | 版本 {counts(report['versions'])} | "
-             f"事件摘要覆盖 {coverage['recorded_turns']}/{report['selected_turns']} | 跳过项 {sum(value for key, value in diagnostics.items() if key != 'changed_files')} | 变动文件 {diagnostics['changed_files']}"]
+             f"事件摘要覆盖 {coverage['recorded_turns']}/{report['selected_turns']} | 读取诊断 {sum(value for key, value in diagnostics.items() if key != 'changed_files')} | 变动文件 {diagnostics['changed_files']}"]
     rows = [(name, item["turns"], duration(item["total_elapsed_ms"]), duration(item["execution_elapsed_ms"]),
              item["model_attempted"], item["provider_requests_started"]) for name, item in report["paths"].items()]
     overall = report["overall"]
@@ -641,7 +641,7 @@ def format_table(report):
     if distribution:
         lines.append("保留事件分布（仅代表保留明细；最多显示前20组）:")
         lines.append(_table(("类别", "操作", "来源", "结果码", "次数"),
-                            [(item["kind"], item["operation"], item["source"], item["code"], item["count"])
+                            [(item["kind"], item["operation"], item["source"] if item["kind"] == "source" else "—", item["code"], item["count"])
                              for item in sorted(distribution, key=lambda item: (-item["count"], item["kind"], item["operation"], item["code"]))[:20]]))
         if len(distribution) > 20:
             lines.append(f"另有 {len(distribution) - 20} 组，可用 --format json 查看。")

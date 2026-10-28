@@ -112,6 +112,49 @@ class TraceCliTests(unittest.TestCase):
         self.assertEqual(executed["selected_turns"], 3)
         self.assertEqual(executed["categories"]["error"], 1)
 
+    def test_table_distinguishes_inapplicable_source_from_unknown_without_changing_json(self):
+        raw = record()
+        for kind, operation in (("tool", "analyze_daily_indicators"), ("check", "daily_records"),
+                                ("repair", "intent_rule")):
+            event(raw, kind=kind, operation=operation, source=None)
+        event(raw, source=PRIVATE)
+        event(raw, source="tencent")
+        self.write(raw)
+
+        status, table = self.invoke(table=True)
+        self.assertEqual(status, 0)
+        rows = [line.split() for line in table.splitlines()
+                if line.startswith(("tool ", "check ", "repair ", "source "))]
+        self.assertCountEqual([(row[0], row[2]) for row in rows],
+                              [("tool", "—"), ("check", "—"), ("repair", "—"),
+                               ("source", "unknown"), ("source", "tencent")])
+        self.assertNotIn(PRIVATE, table)
+        status, report = self.invoke()
+        self.assertEqual(status, 0)
+        self.assertCountEqual([(row["kind"], row["source"]) for row in report["retained_event_distribution"]],
+                              [("tool", "unknown"), ("check", "unknown"), ("repair", "unknown"),
+                               ("source", "unknown"), ("source", "tencent")])
+        self.assertNotIn(PRIVATE, json.dumps(report))
+
+    def test_table_labels_mixed_file_and_line_diagnostics_without_counting_them_as_skipped_turns(self):
+        path = self.write(record(), b"{broken}\n")
+        outputs = {}
+        for mode in ("table", "json"):
+            stdout, stderr = StringIO(), StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                status = cli.main(["--file", str(path), "--file", str(path), "--format", mode])
+            self.assertEqual(status, 1)
+            self.assertEqual(stderr.getvalue(), "")
+            outputs[mode] = stdout.getvalue()
+        first_line = outputs["table"].splitlines()[0]
+        self.assertIn("样本 1/1", first_line)
+        self.assertIn("读取诊断 2 | 变动文件 0", first_line)
+        self.assertNotIn("跳过项", first_line)
+        diagnostics = json.loads(outputs["json"])["diagnostics"]
+        self.assertEqual(diagnostics["invalid_lines"], 1)
+        self.assertEqual(diagnostics["duplicate_files"], 1)
+        self.assertEqual(diagnostics["changed_files"], 0)
+
     def test_half_open_utc_time_route_and_turn_code_filters(self):
         first, middle, last = (record(n) for n in range(1, 4))
         first["started_at"] = "2026-10-27T00:00:00+08:00"

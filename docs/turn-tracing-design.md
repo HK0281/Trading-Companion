@@ -447,20 +447,22 @@ v1 可以参与路由、终态、耗时与模型统计；工具/来源/检查/�
 | `oversized_files` / `changed_files` | 文件超大 / 检测到变化的文件或目录数，同一路径只计一次 |
 | `input_limit_reached` | 总字节、行数或运行号资源上限阻止继续读取 |
 
-退出码 `0` 表示读取完成（空目录或筛选后没有样本也为 0）；`1` 表示读取不完整，仍输出有效结果及上述诊断；`2` 表示参数错误，只给固定输入提示。缺失目录是读取失败，不当作空目录。JSON 的 `status` 为 `ok` 或 `partial`；首行“跳过项”是除文件变动外的诊断计数之和，可能混合文件与行，不能解释成跳过轮数。详细计数以 `diagnostics` 为准。
+退出码 `0` 表示读取完成（空目录或筛选后没有样本也为 0）；`1` 表示读取不完整，仍输出有效结果及上述诊断；`2` 表示参数错误，只给固定输入提示。缺失目录是读取失败，不当作空目录。JSON 的 `status` 为 `ok` 或 `partial`；首行“读取诊断”是除文件变动外的诊断计数之和，包含行级、文件级及资源限制诊断，不是丢弃行数或跳过轮数；“变动文件”单列。详细计数以 `diagnostics` 为准。
+
+事件分布表的“来源”仅对 `source`（逻辑数据读取）事件显示白名单来源或 `unknown`（未知）。工具、检查与修复不以数据源为维度，显示 `—`（不适用）；不把实际来源未知改成不适用。此区别只影响表格显示，JSON 保留原安全投影：未提供或不在白名单内的来源仍是 `unknown`，不输出外部任意字符串。输入记录格式和计数不变。
 
 ### 实际离线多轮终端样例
 
 通过真实 `api_server.main(['--demo', '--trace-dir', ...])` 启动入口，用进程内 HTTP 测试客户端驱动 5 轮：固定指标知识、技术研究、同请求重放、再发一条普通消息，以及无效会话凭据。固定假模型脚本用完后，第四轮返回 `intent_model_unavailable`；第五轮拒绝。这些失败保留在分母。网络和 `.env` 读取守卫全程启用，无真实模型或行情请求。随后以独立子进程执行查看命令，输入名称与字节前后完全相同；可重复的启动器验证在[查看器测试](../tests/test_trace_cli.py)中。
 
-下面表格是该文件实际命令输出的开头，耗时为单次离线观测；完整审核输出还含保留事件分布与最近运行号。
+2026-10-28 使用修改后查看器重新读取同一份原始记录，输入名称和字节保持不变。下面为实际输出，包含“不适用”与“未知”的来源区别；仅省略最近运行号，耗时仍为原单次离线观测，没有重新计时或手工改数。
 
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.trace_cli --trace-dir .agentbus/tmp/trace-viewer-demo-20261027 --list 5
 ```
 
 ```text
-样本 5/5 | 模式 demo:5 | 版本 trace-v2:5 | 事件摘要覆盖 5/5 | 跳过项 0 | 变动文件 0
+样本 5/5 | 模式 demo:5 | 版本 trace-v2:5 | 事件摘要覆盖 5/5 | 读取诊断 0 | 变动文件 0
 路径                样本数  总耗时 p50/p95 ms  执行耗时 p50/p95 ms  模型尝试总数  发送总数
 ------------------  ------  -----------------  -------------------  ------------  --------
 technical_research  3       0/32 (n=3)         0/16 (n=3)           4             0
@@ -482,6 +484,23 @@ tools     1         1         1     0     0     0     0     0     0
 sources   5         5         5     0     0     0     0     0     0
 checks    20        16        16    0     0     0     0     4     0
 repairs   1         0         0     0     0     0     0     1     0
+保留事件分布（仅代表保留明细；最多显示前20组）:
+类别    操作                      来源     结果码                       次数
+------  ------------------------  -------  ---------------------------  ----
+check   tool_history              —        ok                           9
+source  directory                 unknown  ok                           3
+check   indicator_relations       —        indicator_relations_checked  2
+check   research_response         —        no_conversational_response   2
+check   workflow_response         —        no_conversational_response   2
+check   daily_records             —        ok                           1
+check   daily_source              —        ok                           1
+check   intent_shape              —        ok                           1
+check   tool_request              —        ok                           1
+check   tool_scope                —        ok                           1
+repair  intent_rule               —        rule_not_needed              1
+source  daily_bars                csv      ok                           1
+source  market_context_load       unknown  ok                           1
+tool    analyze_daily_indicators  —        primary_analysis_completed   1
 ```
 
 ## 验证

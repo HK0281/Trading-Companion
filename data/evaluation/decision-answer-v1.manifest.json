@@ -1,0 +1,21 @@
+{
+  "version": "decision-answer-manifest-v1",
+  "corpus_version": "decision-answer-v1",
+  "corpus_sha256_lf": "b8279ffd09d0b03dfb00518d545b1ac9c7447765c305ef1733f662f243b46e12",
+  "questions": 20,
+  "groups": {
+    "buy": 5,
+    "sell": 5,
+    "outlook": 5,
+    "stop": 5
+  },
+  "minimum_formed": 18,
+  "main_denominator": 20,
+  "maximum_calls_per_question": 6,
+  "maximum_total_calls": 120,
+  "requires_batch_b": [
+    "D05",
+    "D20"
+  ],
+  "policy": "题目和阈值在真实运行前固定；不预设评级，不因失败删题。上下文题的准备步骤也计入每题6次及总120次上限。"
+}

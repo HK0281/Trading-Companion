@@ -98,6 +98,8 @@ The [workflow evaluation corpus and runner](docs/workflow-evaluation-design.md) 
 
 Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) records verified Jev and DeepSeek evaluation rates; the DeepSeek rates estimate an upper bound using peak, uncached pricing. Unknown prices, usage or mismatched model identities remain unknown. No live research-workflow evaluation has been run yet.
 
+The [20-question decision answer evaluator](docs/decision-answer-evaluation-design.md) fixes five questions each for buying, selling, outlook and stops. It keeps failures and context questions in the denominator of 20, with a predeclared target of 18 valid model verdicts; prose deletion, repair and structure failures are reported separately. Run `scripts/evaluate_decision_answers.py` for offline contracts or add `--plan-only` to preview. Live runs require explicit model, prices, source configuration and call allowance; preparation turns share the six-call-per-question and 120-call total limits. Real-model results and manual review remain pending.
+
 ### Headline triage: live results
 
 A 72-headline set covers fictional issuers. Each headline is labelled for three questions, and Claude reviewed every label (the user decided two ambiguous ones):

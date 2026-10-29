@@ -68,7 +68,7 @@ class ProductPlanTests(unittest.TestCase):
         plan, _ = self.prepare(question, _arguments(kinds=["technical"], outlook="接下来"))
         self.assertEqual(plan.status, "ready")
         self.assertEqual(plan.kinds, ("profile", "financial", "news", "announcements", "technical"))
-        self.assertEqual(plan.objective.kind, "outlook")
+        self.assertEqual(plan.objective.kind, "decision")
 
     def test_named_market_rule_question_requests_profile_without_financial_fanout(self):
         for question in ("平安银行是ST吗", "平安银行的涨跌幅限制", "分析平安银行交易规则"):
@@ -205,7 +205,7 @@ class ProductPlanTests(unittest.TestCase):
     def test_future_outlook_is_separate_from_historical_input_dates(self):
         plan, _ = self.prepare("结合平安银行基本面预测下个月走势", _arguments(outlook="下个月"))
         self.assertEqual(plan.status, "ready")
-        self.assertEqual(plan.objective.to_dict(), {"kind": "outlook", "horizon": "下个月"})
+        self.assertEqual(plan.objective.to_dict(), {"kind": "decision", "horizon": "下个月"})
         self.assertEqual(plan.as_of, date(2026, 9, 25))
         self.assertFalse(plan.explicit_historical)
 
@@ -338,7 +338,7 @@ class ProductPlanTests(unittest.TestCase):
             research_kinds=["technical", "financial", "news", "profile", "announcements"],
             outlook_expression="后续观察方向"))
         self.assertEqual(plan.status, "ready")
-        self.assertEqual(plan.objective.kind, "outlook")
+        self.assertEqual(plan.objective.kind, "decision")
         self.assertIn("announcements", plan.kinds)
 
     def test_explicit_only_domain_does_not_expand_with_model_suggestions(self):

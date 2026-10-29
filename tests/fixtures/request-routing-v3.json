@@ -1,0 +1,3604 @@
+{
+  "metadata": {
+    "corpus_version": "request-routing-v3",
+    "source_kind": "uncommitted_worktree_candidate",
+    "base_revision": "b714276",
+    "v2_sha256": "68c6e8b389c84e4350aaf3ffd7231a3bd6dcf80476f6c5f2b694196dcbfa918c",
+    "old_scenarios": 35,
+    "old_turns": 105,
+    "old_differences_expected": 0,
+    "source_sha256_lf": {
+      "src/trading_companion/research_decision.py": "9a58364827bd69b5320973c9f233cc0731fa83a16c66290f18c8898679829b0b",
+      "src/trading_companion/trade_plan.py": "f3fa3b0f224f87f71299387114c77eae8113cdc9dc73d49cf8cda697bb574fe9",
+      "src/trading_companion/product_decision_answer.py": "3c693561d0863a841d6e4b3abbf83314fcc6ab6bf057875a31d3266e16bf8e6d",
+      "src/trading_companion/product_plan.py": "4797df77052d5be5af352cb5a81643bc2c5b4f0a79b090a2d950da4fd8feca0d",
+      "src/trading_companion/product_research.py": "8964de0fa180cd59460c7e5e4d9cc751302cd3520f98d54ade9e6502957e8187",
+      "src/trading_companion/product_agent.py": "0cf7f429414ae531aaeca7a9a6717248c149aecc4afeaba1206f3238b8e84860",
+      "src/trading_companion/product_answer.py": "4bc6b76ef047c26af314061219db5b5b639bc4177798c26d9ae6ece028048cf3",
+      "src/trading_companion/request_routing.py": "ebd5a767e8ed863541a84b6498137b1fa6319b7f576cdc6012f65b6c2ff45763",
+      "src/trading_companion/research_objective.py": "62698e1c92f7394fc4851769af76c8ecf4d6f7fa31faf0740f912a4b5c47a05e",
+      "src/trading_companion/decision_demo.py": "c6989bfe5c41d5ebfd0491baa55e27da65e7c5d52ec835e28f6572180adb0191",
+      "tests/routing_decision_support.py": "e5d6063fcbab6bf0bf2be5174ba23c561190966a4bf64171f7599558494512cc",
+      "tests/test_decision_routing_api.py": "652fb3ae07797695bc1a8b9c49001aa21e4e7bdacfa6e6e09c1e61d1f54ab0c2",
+      "tests/test_product_decision_answer.py": "d089e8d7301a51df7a4b380a79902043fc12905405dad53810af5c6b555514d6",
+      "tests/test_product_agent.py": "91ef4a6569ac5881f0686d743905d514f058bcb6f182aa36e40ebcf89090f213"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "decision-direct-and-history",
+      "steps": [
+        {
+          "question": "平安银行现在能买吗"
+        },
+        {
+          "question": "查看上次结果"
+        }
+      ],
+      "contracts": [
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        },
+        {
+          "code": "product_saved_result",
+          "version": "product-research-answer-v2",
+          "model_forwards": 0,
+          "daily_reads": 0
+        }
+      ],
+      "observed": [
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": null,
+            "screening_saved": null,
+            "messages_used": 0,
+            "model_calls_forwarded": 0,
+            "busy": false,
+            "active_id": null,
+            "records": {},
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-1",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "19a6051e2ece04d81bbc899dba9ef5deafcf0a0ed1811324947ffdd37a34af16",
+                  "utf8_bytes": 62525
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "806c6a87c14895b99f091f71b7bf6085a4763575b89e70002c37815fb5e8b971",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 1,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "23921cda48d929c34fdf730ec51842187ff6dc1db91aaaa4c12caa148e8cfceb",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-1>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-2",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "product_saved_result",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 0,
+                "analyses_used": 0,
+                "full_json": {
+                  "sha256": "d746d94861f713b50374f514c96dc53b9f32ea564dee2a3272bf6545a7efd604",
+                  "utf8_bytes": 62533
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 0,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "806c6a87c14895b99f091f71b7bf6085a4763575b89e70002c37815fb5e8b971",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 2,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "23921cda48d929c34fdf730ec51842187ff6dc1db91aaaa4c12caa148e8cfceb",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "48b290bfc7a2be11b07a4a21ccd6fa0bef8a3be1105596aa761e75cb95b66a0a",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "product_saved_result"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            }
+          ],
+          "calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decision-paraphrases",
+      "steps": [
+        {
+          "question": "分析平安银行的基本面"
+        },
+        {
+          "question": "现在这个价位值得购买吗"
+        },
+        {
+          "question": "那现在能买吗"
+        },
+        {
+          "question": "它后面怎么走"
+        }
+      ],
+      "contracts": [
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v1",
+          "model_forwards": 2,
+          "daily_reads": 0
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        }
+      ],
+      "observed": [
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": null,
+            "screening_saved": null,
+            "messages_used": 0,
+            "model_calls_forwarded": 0,
+            "busy": false,
+            "active_id": null,
+            "records": {},
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-1",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": null,
+                "model_calls_attempted": 2,
+                "analyses_used": 0,
+                "full_json": {
+                  "sha256": "064729c65140dcf02c1cc074a30eb5000c691fa5045f5f42092caa5d5b87beb4",
+                  "utf8_bytes": 3200
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "analysis",
+                  "horizon": null
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "00e3ccd8612bb48052393a952f1125cef4b8f40eca1560837ce85b8c78447806",
+                  "utf8_bytes": 943
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "76c81948b7eead722e9f709c06b0e8558d141da949ec41b6944c1bbb1ba1d37b",
+                  "utf8_bytes": 1299
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 1,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "02221535475985c46254e2ded4410a671fad2dabbfd8843557d76e2ddc37acd3",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial"
+              ]
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 0
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-2",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "19a6051e2ece04d81bbc899dba9ef5deafcf0a0ed1811324947ffdd37a34af16",
+                  "utf8_bytes": 62525
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "806c6a87c14895b99f091f71b7bf6085a4763575b89e70002c37815fb5e8b971",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 2,
+            "model_calls_forwarded": 4,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "02221535475985c46254e2ded4410a671fad2dabbfd8843557d76e2ddc37acd3",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "cf24a614dd61e4a593aab3f2509c249431bd2c0eec9d1f10e63cd34162efaf59",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-1>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-3",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "8833f31aea91fcc3aa9351660ed7be1c41f9d299ac8464548506f028b6576fa4",
+                  "utf8_bytes": 62525
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "c45b19b41c9a3c8e38042e00f1af3b93e07393bc037af9fbe047c46bf05ad0c9",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 3,
+            "model_calls_forwarded": 6,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "02221535475985c46254e2ded4410a671fad2dabbfd8843557d76e2ddc37acd3",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "cf24a614dd61e4a593aab3f2509c249431bd2c0eec9d1f10e63cd34162efaf59",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-3": {
+                "digest": "a021b7bc1bed2b9ffd97dba951b25558b918d427476f3ba3576c2a49a9b24697",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-2>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-4",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "b7ba33a1cde80f65d45129c43c2d1a3b5343082bf353d8671533651f27fd6875",
+                  "utf8_bytes": 62494
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "72e2114a5f54291da7f3c48fc3ede5363cd2c5e6f6f5618c5006c3c24f8857ad",
+                  "utf8_bytes": 995
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "f3a884a38322cb64d8f2d959d2104ad821606a3faf62d624fbdd1d7f6883432b",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 4,
+            "model_calls_forwarded": 8,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "02221535475985c46254e2ded4410a671fad2dabbfd8843557d76e2ddc37acd3",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "cf24a614dd61e4a593aab3f2509c249431bd2c0eec9d1f10e63cd34162efaf59",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-3": {
+                "digest": "a021b7bc1bed2b9ffd97dba951b25558b918d427476f3ba3576c2a49a9b24697",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-4": {
+                "digest": "a046cc025f4fd3e7c3d08621845274b0be1dc7578503e49d8f25a0e0b67abf4b",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-3>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "decision-identity-boundary",
+      "steps": [
+        {
+          "question": "那现在能买吗"
+        },
+        {
+          "question": "平安银行现在能买吗"
+        },
+        {
+          "question": "新问题：现在能买吗"
+        }
+      ],
+      "contracts": [
+        {
+          "code": "decision_instrument_required",
+          "version": null,
+          "model_forwards": 0,
+          "daily_reads": 0
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        },
+        {
+          "code": "decision_instrument_required",
+          "version": null,
+          "model_forwards": 0,
+          "daily_reads": 0
+        }
+      ],
+      "observed": [
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": null,
+            "screening_saved": null,
+            "messages_used": 0,
+            "model_calls_forwarded": 0,
+            "busy": false,
+            "active_id": null,
+            "records": {},
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-1",
+              "replayed": false,
+              "result": {
+                "status": "needs_clarification",
+                "code": "decision_instrument_required",
+                "stage": "clarification",
+                "parameters": null,
+                "model_calls_attempted": 0,
+                "analyses_used": 0,
+                "full_json": {
+                  "sha256": "47ca7794e1275831ae5704e556b7499ab14ab3338d37ccc4b855688831af25be",
+                  "utf8_bytes": 1042
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 0,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": null,
+            "screening_saved": null,
+            "messages_used": 1,
+            "model_calls_forwarded": 0,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "a021b7bc1bed2b9ffd97dba951b25558b918d427476f3ba3576c2a49a9b24697",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "decision_instrument_required"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            }
+          ],
+          "calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-2",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "19a6051e2ece04d81bbc899dba9ef5deafcf0a0ed1811324947ffdd37a34af16",
+                  "utf8_bytes": 62525
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "806c6a87c14895b99f091f71b7bf6085a4763575b89e70002c37815fb5e8b971",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 2,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "a021b7bc1bed2b9ffd97dba951b25558b918d427476f3ba3576c2a49a9b24697",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "decision_instrument_required"
+              },
+              "turn-2": {
+                "digest": "23921cda48d929c34fdf730ec51842187ff6dc1db91aaaa4c12caa148e8cfceb",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-1>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-3",
+              "replayed": false,
+              "result": {
+                "status": "needs_clarification",
+                "code": "decision_instrument_required",
+                "stage": "clarification",
+                "parameters": null,
+                "model_calls_attempted": 0,
+                "analyses_used": 0,
+                "full_json": {
+                  "sha256": "47ca7794e1275831ae5704e556b7499ab14ab3338d37ccc4b855688831af25be",
+                  "utf8_bytes": 1042
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 0,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "806c6a87c14895b99f091f71b7bf6085a4763575b89e70002c37815fb5e8b971",
+                  "utf8_bytes": 6614
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 3,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "a021b7bc1bed2b9ffd97dba951b25558b918d427476f3ba3576c2a49a9b24697",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "decision_instrument_required"
+              },
+              "turn-2": {
+                "digest": "23921cda48d929c34fdf730ec51842187ff6dc1db91aaaa4c12caa148e8cfceb",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-3": {
+                "digest": "2c480cf709323da16110aba0f070af7e158ad09b1c994604af1c548b5053c213",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "decision_instrument_required"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            }
+          ],
+          "calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decision-domain-limits",
+      "steps": [
+        {
+          "question": "只看平安银行新闻，现在能买吗"
+        },
+        {
+          "question": "平安银行现在能买吗，不要ATR"
+        },
+        {
+          "question": "平安银行现在能买吗，不要交易计划"
+        }
+      ],
+      "contracts": [
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 0
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        },
+        {
+          "code": "company_research_completed",
+          "version": "product-research-answer-v2",
+          "model_forwards": 2,
+          "daily_reads": 1
+        }
+      ],
+      "observed": [
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": null,
+            "screening_saved": null,
+            "messages_used": 0,
+            "model_calls_forwarded": 0,
+            "busy": false,
+            "active_id": null,
+            "records": {},
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-1",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": null,
+                "model_calls_attempted": 2,
+                "analyses_used": 0,
+                "full_json": {
+                  "sha256": "877670685f10ed9d68cb2ef55d0cd9470ca99d5065b9e639d4492268137fa6f0",
+                  "utf8_bytes": 5729
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "news"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "b96bddd8ae3402bbb9fe02b602c69692e2fb30a255ac6fc831edc76e8fbf9579",
+                  "utf8_bytes": 976
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "5f231b7de6bebf3ca7e8d8912a37944464fbc51dd05024c8960817453847a545",
+                  "utf8_bytes": 3947
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 1,
+            "model_calls_forwarded": 2,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "0f9f6c030e5686c268b3c0862759ae1e8e5c4251a9fb17314a788a1c49e0f13c",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "news"
+              ]
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 0
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-2",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "f76deb1350f02c81e552b4a0ffb290892183e8bbda2d784b38a7d89dec416567",
+                  "utf8_bytes": 57706
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "d7988a3e77928f332490af22859cb67db0e51e69df4ac6dac18c35ea80b4e5a1",
+                  "utf8_bytes": 998
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "634a810ada159dede95a94ae3454d031b78b2a2daaea8158f8042f01050f0bc0",
+                  "utf8_bytes": 4196
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 2,
+            "model_calls_forwarded": 4,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "0f9f6c030e5686c268b3c0862759ae1e8e5c4251a9fb17314a788a1c49e0f13c",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "aab61dc4728b58dcbab1533182c1263c7c36f10ae2328a07b51aba493343d6f4",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-1>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        },
+        {
+          "route": "company_research",
+          "executor_chain": [
+            "company_research"
+          ],
+          "before": {
+            "$ref": "previous.after"
+          },
+          "outcome": {
+            "response": {
+              "request_id": "turn-3",
+              "replayed": false,
+              "result": {
+                "status": "completed",
+                "code": "company_research_completed",
+                "stage": "company_research",
+                "parameters": {
+                  "instrument_id": "000001.SZ",
+                  "start_date": "2025-09-26",
+                  "as_of_date": "2026-09-25",
+                  "indicators": [
+                    {
+                      "kind": "sma",
+                      "window": 20
+                    },
+                    {
+                      "kind": "sma",
+                      "window": 60
+                    },
+                    {
+                      "kind": "ema",
+                      "window": 20
+                    },
+                    {
+                      "kind": "macd",
+                      "fast": 12,
+                      "slow": 26,
+                      "signal": 9
+                    },
+                    {
+                      "kind": "rsi",
+                      "window": 14
+                    },
+                    {
+                      "kind": "boll",
+                      "window": 20,
+                      "stddev_multiplier": 2.0
+                    },
+                    {
+                      "kind": "atr",
+                      "window": 14
+                    },
+                    {
+                      "kind": "volume",
+                      "window": 20
+                    }
+                  ],
+                  "source": "tencent"
+                },
+                "model_calls_attempted": 2,
+                "analyses_used": 1,
+                "full_json": {
+                  "sha256": "9b18b1d57fc1405faf1625ba680f2de9002d50cac16c6536af64daf6739dd60e",
+                  "utf8_bytes": 59972
+                },
+                "runtime": {
+                  "stop_code": null,
+                  "responses_received": 2,
+                  "observed_tokens": 0,
+                  "limits": {
+                    "timeout_seconds": 90.0,
+                    "model_calls": 6,
+                    "analyses": 3,
+                    "observed_tokens": 24000
+                  }
+                },
+                "company_research": {
+                  "securities": [
+                    {
+                      "instrument_id": "000001.SZ",
+                      "name": "平安银行"
+                    }
+                  ],
+                  "daily_cutoff": "2026-09-25",
+                  "explicit_historical": false
+                }
+              }
+            }
+          },
+          "after": {
+            "technical": {
+              "state": "idle",
+              "pending": null,
+              "confirmed": null,
+              "saved_result": null
+            },
+            "pending": null,
+            "pending_edit": null,
+            "product_pending": null,
+            "product_saved": {
+              "saved_at": "2026-09-26T12:00:00+08:00",
+              "plan": {
+                "status": "ready",
+                "code": "product_plan_ready",
+                "securities": [
+                  {
+                    "instrument_id": "000001.SZ",
+                    "name": "平安银行"
+                  }
+                ],
+                "kinds": [
+                  "profile",
+                  "financial",
+                  "news",
+                  "announcements",
+                  "technical"
+                ],
+                "as_of": "2026-09-25",
+                "start_date": "2025-09-26",
+                "end_date": "2026-09-25",
+                "source": "tencent",
+                "explicit_historical": false,
+                "objective": {
+                  "kind": "decision",
+                  "horizon": "未来20个交易日"
+                },
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "window": 20
+                  },
+                  {
+                    "kind": "sma",
+                    "window": 60
+                  },
+                  {
+                    "kind": "ema",
+                    "window": 20
+                  },
+                  {
+                    "kind": "macd",
+                    "fast": 12,
+                    "slow": 26,
+                    "signal": 9
+                  },
+                  {
+                    "kind": "rsi",
+                    "window": 14
+                  },
+                  {
+                    "kind": "boll",
+                    "window": 20,
+                    "stddev_multiplier": 2.0
+                  },
+                  {
+                    "kind": "atr",
+                    "window": 14
+                  },
+                  {
+                    "kind": "volume",
+                    "window": 20
+                  }
+                ],
+                "full_json": {
+                  "sha256": "e6ed526c11c045eb148b38c128dceb3dc4ac33d45cb9197e1bcc7baa349d6855",
+                  "utf8_bytes": 1026
+                }
+              },
+              "answer": {
+                "status": "accepted",
+                "code": "product_research_answered",
+                "origin": "model",
+                "full_json": {
+                  "sha256": "80259fe200720004350563284b328bb56321163973332c176608bda77f588b64",
+                  "utf8_bytes": 4061
+                }
+              }
+            },
+            "screening_saved": null,
+            "messages_used": 3,
+            "model_calls_forwarded": 6,
+            "busy": false,
+            "active_id": null,
+            "records": {
+              "turn-1": {
+                "digest": "0f9f6c030e5686c268b3c0862759ae1e8e5c4251a9fb17314a788a1c49e0f13c",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-2": {
+                "digest": "aab61dc4728b58dcbab1533182c1263c7c36f10ae2328a07b51aba493343d6f4",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              },
+              "turn-3": {
+                "digest": "5e638d58b58e814b44bd027dc2125c2b145d5ebd3e2a048af2fc4f40e6d74ebc",
+                "retired": false,
+                "problem": null,
+                "has_response": true,
+                "result_code": "company_research_completed"
+              }
+            },
+            "market_contexts": {},
+            "service_active": 0
+          },
+          "events": [
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "directory_load",
+              "at": "2026-09-26T12:00:00+08:00",
+              "mode": "ready"
+            },
+            {
+              "event": "wall_clock",
+              "value": "2026-09-26T12:00:00+08:00"
+            },
+            {
+              "event": "executor",
+              "kind": "company_research"
+            },
+            {
+              "event": "model_forward",
+              "tools": [
+                "interpret_product_research"
+              ]
+            },
+            {
+              "event": "company_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "security_name": "平安银行",
+                "as_of": "2026-09-26T12:00:00+08:00",
+                "start_date": "2025-09-26",
+                "limit": 5,
+                "allow_current_background": true
+              },
+              "kinds": [
+                "profile",
+                "financial",
+                "news",
+                "announcements"
+              ]
+            },
+            {
+              "event": "daily_read",
+              "request": {
+                "instrument_id": "000001.SZ",
+                "start_date": "2025-09-26",
+                "as_of_date": "2026-09-25",
+                "indicators": [
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "sma",
+                    "_parameters": [
+                      [
+                        "window",
+                        60
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "ema",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "macd",
+                    "_parameters": [
+                      [
+                        "fast",
+                        12
+                      ],
+                      [
+                        "slow",
+                        26
+                      ],
+                      [
+                        "signal",
+                        9
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "rsi",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "boll",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ],
+                      [
+                        "stddev_multiplier",
+                        2.0
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "atr",
+                    "_parameters": [
+                      [
+                        "window",
+                        14
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "volume",
+                    "_parameters": [
+                      [
+                        "window",
+                        20
+                      ]
+                    ]
+                  }
+                ],
+                "source": "tencent",
+                "request_id": "<uuid-2>"
+              }
+            },
+            {
+              "event": "model_forward",
+              "tools": []
+            }
+          ],
+          "calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          }
+        }
+      ]
+    }
+  ]
+}

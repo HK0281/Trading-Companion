@@ -150,7 +150,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
 
     def test_topic_first_named_investment_questions_use_real_company_orchestration(self):
         from tests.test_product_agent import ProductModelFixture
-        from tests.test_product_research import CompanyDataFixture, NOW as COMPANY_NOW, directory
+        from tests.test_product_research import CompanyDataFixture, MemorySourceFactory, NOW as COMPANY_NOW, directory
 
         for question in ("ROE如何判断平安银行估值", "PE低的平安银行值得买吗", "什么是PE，平安银行能买吗"):
             with self.subTest(question=question):
@@ -159,7 +159,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
                 self.install(model_factory=lambda: model, directory_loader=loader,
                     development_source=None, data_mode="tencent", product_data_service=data,
                     reference_date=COMPANY_NOW.date(), wall_clock=lambda: COMPANY_NOW)
-                with TestClient(create_app(service=self.service), base_url="http://localhost") as client:
+                with patch("trading_companion.product_research._build_source", MemorySourceFactory()), TestClient(create_app(service=self.service), base_url="http://localhost") as client:
                     response = client.post("/v1/sessions/" + self.sid + "/messages",
                         headers={"Authorization": "Bearer " + self.token},
                         json={"request_id": uuid4().hex, "question": question})

@@ -129,6 +129,15 @@ def _public_data(bundle):
                     or build_research_report(technical, expected_request=technical.request).status == "blocked"):
                 raise SnapshotStoreError("invalid_snapshot_bundle")
         payload = company.to_dict()
+        if company.trade_plans:
+            from trading_companion.trade_plan import build_trade_plans
+            from trading_companion.research_decision import excludes_plan
+            blocked = excludes_plan(bundle.plan.user_question) or "technical" not in bundle.plan.kinds
+            expected = build_trade_plans(technical if technical is not None else company.instrument_id,
+                expected_request=technical.request if technical is not None else None,
+                unavailable_code="plan_excluded" if blocked else None)
+            if company.trade_plans != expected:
+                raise SnapshotStoreError("invalid_snapshot_bundle")
         payload["technical"] = technical.to_dict() if technical is not None else None
         if company.technical_insights is not None:
             from trading_companion.technical_insights import TechnicalInsights, build_technical_insights

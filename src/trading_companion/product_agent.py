@@ -8,8 +8,9 @@ from trading_companion.agent import AgentTurnResult, _controlled
 from trading_companion.model import ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.multi_contracts import IndicatorSpec
-from trading_companion.product_plan import prepare_product_plan
+from trading_companion.product_plan import prepare_product_plan, _execution_requested, _INJECTION
 from trading_companion.product_research import collect_product_research
+from trading_companion.research_decision import wants_decision
 from trading_companion.turn_control import checkpoint, company_turn_control
 
 
@@ -22,13 +23,13 @@ class SavedProductResearch:
 
 
 def is_product_followup(question):
-    return type(question) is str and bool(re.search(
+    return type(question) is str and (wants_decision(question) or bool(re.search(
         r"回测|历史回放|策略回放|周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|趋势强度|趋势强不强|"
         r"那.*(?:面|呢|如何)|为什么.*(?:判断|结论|看|说)|为何.*(?:判断|结论)|"
         r"(?:它|这只|这家|这两只|这三只).*(?:涨|跌|走势|方向|业务|盈利|风险)|"
         r"(?:解释|说明|详细|展开).*(?:判断|结论|依据|分析)|(?:还有|哪些).*(?:依据|风险)|"
         r"查看上次结果|上次研究结果|^(?:改成|改为|换成|再看|重新分析|继续分析|刷新)|"
-        r"^(?:只|仅)?(?:看|分析|研究)?(?:技术面|基本面|新闻|公告|风险|止盈止损)(?:呢|如何|怎么样)?[。?？]?$", question))
+        r"^(?:只|仅)?(?:看|分析|研究)?(?:技术面|基本面|新闻|公告|风险|止盈止损)(?:呢|如何|怎么样)?[。?？]?$", question)))
 
 
 def _inherit_scope(plan, saved_plan, question):
@@ -43,13 +44,14 @@ def _inherit_scope(plan, saved_plan, question):
                        as_of=saved_plan.as_of, explicit_historical=saved_plan.explicit_historical,
                        applied_defaults=("scope:previous_research", *(
                            item for item in plan.applied_defaults if item not in date_defaults)))
-    if plan.objective.horizon is None:
+    if plan.objective.horizon is None or (plan.objective.kind == "decision"
+            and "horizon:20_trading_sessions" in plan.applied_defaults and saved_plan.objective.horizon is not None):
         updates["objective"] = saved_plan.objective if plan.objective.kind == "analysis" else replace(
             plan.objective, horizon=saved_plan.objective.horizon)
     selected_profile = any(item.startswith("indicators:profile:") for item in plan.applied_defaults)
     if not plan.indicators_explicit and (saved_plan.indicators_explicit or not selected_profile):
         updates.update(indicators=saved_plan.indicators, indicators_explicit=saved_plan.indicators_explicit)
-        if plan.wants_risk and not any(spec.kind == "atr" for spec in saved_plan.indicators):
+        if (plan.wants_risk or plan.objective.kind == "decision") and not any(spec.kind == "atr" for spec in saved_plan.indicators):
             updates["indicators"] += (IndicatorSpec("atr", window=14),)
             defaults = updates.get("applied_defaults", plan.applied_defaults)
             updates["applied_defaults"] = tuple(dict.fromkeys((*defaults, "indicator_dependency:atr14_for_risk")))
@@ -95,6 +97,14 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             stage="clarification", input_mode="natural", message="会话已清空。" if reset else "已取消待澄清的研究。")
     saved = saved_product(session, directory=directory, now=now, source=source,
                           development=development_source is not None)
+    if (wants_decision(question) and not directory.mentioned_spans(question)
+            and not _execution_requested(question) and not _INJECTION.search(question)):
+        new_question = re.match(r"\s*新问题\s*[:：]", question)
+        ambiguous = saved is not None and len(saved.plan.securities) > 1 and not re.search(r"两只|三只|分别|各自|它们|这几只", question)
+        if new_question or session.product_pending is None and (saved is None or ambiguous):
+            return AgentTurnResult(status="needs_clarification", code="decision_instrument_required",
+                stage="clarification", input_mode="natural", message="请明确要研判的股票名称或代码。",
+                user_question=question)
     history = command in ("查看上次结果", "查看上一次结果", "上次研究结果")
     if history:
         if saved is None:
@@ -105,6 +115,7 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             product_bundle=saved.bundle, product_plan=saved.plan, session_event="history")
     if (saved is not None and session.product_pending is None and not directory.mentioned_spans(question)
             and re.search(r"为什么|为何|依据|解释.*(?:结论|判断)|详细.*(?:结论|判断)", question)
+            and not wants_decision(question)
             and not re.search(r"最新|刷新|重新|新闻|公告|财报|财务|基本面|技术面|止损|止盈", question)):
         run = synthesize_product_answer("基于刚才保存的研究资料，未重新取数。" + question, saved.bundle,
                                         model=model, repair_invalid=True)
@@ -119,7 +130,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     effective_question = question
     continuation = None
     # A short new-domain follow-up may reuse identities, never silently reuse current market data.
-    if saved is not None and session.product_pending is None and not directory.mentioned_spans(question):
+    if (saved is not None and session.product_pending is None and not directory.mentioned_spans(question)
+            and not re.match(r"\s*新问题\s*[:：]", question)):
         if is_product_followup(question) or re.search(r"那|它|这(?:家|只|个|两|三)|再|继续|基本面|财报|公告|新闻|止盈|止损|风险|公司", question):
             names = "、".join(security.name for security in saved.plan.securities)
             effective_question = f"分析{names}：{question}"

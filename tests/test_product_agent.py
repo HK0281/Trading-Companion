@@ -35,6 +35,9 @@ class ProductModelFixture:
         context = json.loads(next(message.content.split("\n", 1)[1] for message in messages
             if message.role == "assistant" and message.content.startswith("UNTRUSTED_RESEARCH_CONTEXT\n")))
         self.contexts.append(context)
+        if context.get("objective", {}).get("kind") == "decision":
+            from trading_companion.decision_demo import scripted_decision
+            return ToolModelResponse("complete", text=json.dumps(scripted_decision(context), ensure_ascii=False))
         paragraphs = []
         for company in context["securities"]:
             record = next((item for item in context["evidence"] if item["instrument_id"] == company["instrument_id"]), None)
@@ -81,7 +84,7 @@ class ProductAgentTests(unittest.TestCase):
         self.assertEqual(result.product_plan.kinds, ("profile", "financial", "news", "announcements", "technical"))
         self.assertEqual((result.status, result.model_calls_attempted, result.analyses_used), ("completed", 2, 1))
         self.assertEqual(len(self.factory.reads), 1)
-        self.assertEqual({item.kind for item in result.product_bundle.evidence}, set(result.product_plan.kinds))
+        self.assertEqual({item.kind for item in result.product_bundle.evidence}, set(result.product_plan.kinds) | {"risk"})
         self.assertEqual(self.model.calls[1][1], ())
 
     def test_three_stock_comparison_keeps_identities_and_uses_three_analysis_budget(self):

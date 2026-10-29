@@ -142,17 +142,24 @@ class ProductAnswer:
     evidence: tuple[ProductEvidence, ...] = ()
     origin: str = "application"
     paragraph_evidence: tuple[tuple[str, ...], ...] = ()
+    decisions: tuple = ()
+    trade_plans: tuple = ()
+    decision_mode: bool = False
 
     @property
     def text(self) -> str:
         return "\n\n".join(self.paragraphs)
 
     def to_dict(self):
-        return {"version": PRODUCT_ANSWER_VERSION, "status": self.status, "code": self.code,
+        result = {"version": PRODUCT_ANSWER_VERSION, "status": self.status, "code": self.code,
                 "origin": self.origin, "paragraphs": list(self.paragraphs), "text": self.text,
                 "evidence": [item.to_dict() for item in self.evidence],
                 "paragraph_evidence": [list(items) for items in self.paragraph_evidence],
                 "validation_scope": PRODUCT_ANSWER_SCOPE, "trading_enabled": False}
+        if self.decision_mode:
+            result.update(version="product-research-answer-v2", decisions=list(self.decisions),
+                          trade_plans=[p.to_dict() for p in self.trade_plans])
+        return result
 
 
 @dataclass(frozen=True)
@@ -170,7 +177,8 @@ class ProductAnswerRun:
 
 class _Invalid(ValueError):
     def __init__(self, reason="invalid_output"):
-        allowed = {"citation_association", "numeric_citation_association", "comparison_company_coverage"}
+        allowed = {"citation_association", "numeric_citation_association", "comparison_company_coverage",
+                   "decision_fields"}
         self.reason = reason if reason in allowed else "invalid_output"
         self.repairable = self.reason in allowed
         super().__init__(self.reason)
@@ -460,7 +468,7 @@ def _bounded_context(question, bundle, *, reserve_repair=False):
 
 
 @trace_call("check", "product_answer")
-def _checked_answer(text, *, bundle, context):
+def _checked_answer(text, *, bundle, context, trade_plans=None):
     if type(text) is not str or len(text) > MAX_RAW_CHARACTERS:
         raise _Invalid()
     try:
@@ -508,7 +516,10 @@ def _checked_answer(text, *, bundle, context):
             if numbers - _allowed_numbers(tuple(supplied.values()), names, horizon):
                 raise _Invalid()
             issues.append("numeric_citation_association")
-        if _TARGET.search(_NEGATED_TARGETS.sub("", prose)) and numbers:
+        if trade_plans is not None:
+            from trading_companion.product_decision_answer import check_plan_prices
+            check_plan_prices(prose, records, trade_plans)
+        elif _TARGET.search(_NEGATED_TARGETS.sub("", prose)) and numbers:
             if not _SCENARIO.search(prose):
                 raise _Invalid()
             if any(item.get("content_kind") == "scenario" for item in records):
@@ -549,6 +560,9 @@ def synthesize_product_answer(question: str, bundle: ProductResearchBundle, *,
     company attribution or the truth of every free-text judgment. No semantic claim
     is promoted to a deterministically verified trading signal.
     """
+    if type(bundle) is ProductResearchBundle and bundle.plan.objective.kind == "decision":
+        from trading_companion.product_decision_answer import synthesize_decision_answer
+        return synthesize_decision_answer(question, bundle, model=model, repair_invalid=repair_invalid)
     if (type(question) is not str or not question.strip() or len(question) > MAX_USER_CHARACTERS
             or type(bundle) is not ProductResearchBundle or type(repair_invalid) is not bool):
         return ProductAnswerRun(_fallback(bundle, "product_answer_invalid_input"))

@@ -29,6 +29,9 @@ _STOPS = frozenset(("turn_cancelled", "turn_deadline_exceeded", "model_call_budg
 # Source-code coverage and reasoned non-turn exclusions live in test_turn_trace.py.
 # Unknown external values still become "other"; source discovery never runs in production.
 _CODES = _STOPS | frozenset("""
+decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable
+decision_no_evidence decision_output_invalid decision_ready demo_domain_unavailable demo_evidence_missing
+demo_question_unsupported plan_price_grid_unavailable plan_ready plan_excluded
 api_session_call_limit authentication_error connection_error invalid_response provider_error rate_limited timeout
 invalid_input invalid_product_input invalid_product_parameters invalid_research_parameters invalid_research_context
 invalid_condition_update invalid_request model_configuration_error product_configuration_error unknown_tool

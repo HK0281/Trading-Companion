@@ -66,7 +66,7 @@ class ObjectiveTests(unittest.TestCase):
     def test_unsupported_counts_and_calendar_requirements_are_rejected(self):
         for expression in ("未来0天", "未来-3天", "未来+3天", "未来3.5天", "未来367天",
                 "未来53周", "未来13个月", "未来两年", "未来一百二天", "未来一两个月",
-                "未来20个交易日", "未来半个月", "下个季度", "明年", "长期", "今天"):
+                "未来367个交易日", "未来半个月", "下个季度", "明年", "长期", "今天"):
             with self.subTest(expression=expression), self.assertRaises(InputIssue):
                 parse_outlook_expression(expression)
 
@@ -220,7 +220,7 @@ class NaturalObjectiveTests(unittest.TestCase):
                 self.assertIsNone(result.request)
 
     def test_unknown_future_horizons_are_not_lost_when_model_omits_them(self):
-        for phrase in ("明年", "未来几天", "未来两年", "未来一年半", "未来20个交易日", "下周和下个月"):
+        for phrase in ("明年", "未来几天", "未来两年", "未来一年半", "未来367个交易日", "下周和下个月"):
             with self.subTest(phrase=phrase):
                 result = self.prepare("预测一下中际旭创" + phrase + "的走势")
                 self.assertEqual(result.status, "needs_clarification")

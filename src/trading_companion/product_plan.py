@@ -13,6 +13,7 @@ from trading_companion.research_intent import _dates, _INDICATOR_CUE as _DAILY_I
 from trading_companion.research_objective import (
     ResearchObjective, extract_outlook, mask_outlook_expressions,
 )
+from trading_companion.research_decision import wants_decision, excludes_plan
 from trading_companion.security_directory import Security, SecurityDirectory
 from trading_companion.tool_model import MAX_USER_CHARACTERS, ToolDefinition, ToolMessage, ToolModelResponse
 
@@ -209,7 +210,7 @@ def wants_product_research(question: str) -> bool:
     original = question
     question, _ = _positive_scope(question)
     return (len(question) <= MAX_USER_CHARACTERS
-            and (_FEATURE_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
+            and (wants_decision(question) or _FEATURE_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
                      (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
                  or _GENERAL.search(question) is not None and _EXPLICIT_TECHNICAL.search(question) is None))
 
@@ -229,7 +230,8 @@ def _execution_requested(question: str) -> bool:
 def _required_kinds(question: str) -> tuple[str, ...]:
     original = question
     question, excluded = _positive_scope(question)
-    if (_broadens_only(original, question)
+    if (wants_decision(question) and not _EXPLICIT_TECHNICAL.search(question) and not _ONLY.search(question)
+            or _broadens_only(original, question)
             or (_GENERAL.search(question) or _RISK.search(question)) and not _EXPLICIT_TECHNICAL.search(question)
             and not any(pattern.search(question) for pattern in
                         (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _PRICE_SCENARIO, _COMPARE))):
@@ -439,7 +441,9 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         return replace(base, code="product_directory_unavailable", message="证券目录尚不可用，未调用模型或自动补码。")
     try:
         directory.assert_usable(reference_date, development=development)
-        if context is not None and not wants_product_research(question):
+        if context is not None and (not wants_product_research(question)
+                or wants_decision(question) and not directory.mentioned_spans(question)
+                and not re.match(r"\s*新问题\s*[:：]", question)):
             return _resume(context, question, directory=directory, reference_date=reference_date, now=now,
                            source=source, development=development)
         base = replace(base, user_question=question)
@@ -482,12 +486,18 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
             historical_expression = None
         if draft["outlook_expression"] is not None:
             extract_outlook(draft["outlook_expression"])
-        objective = extract_outlook(remaining) or ResearchObjective()
+        outlook = extract_outlook(remaining)
+        objective = outlook or ResearchObjective()
+        decision = wants_decision(positive)
+        if decision:
+            objective = ResearchObjective("decision", objective.horizon or "未来20个交易日")
         date_text = re.sub(vague_period, "", mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
+        if decision and (outlook is None or outlook.horizon is None):
+            defaults += ("horizon:20_trading_sessions",)
         if not indicator_phrases and selection.profile != "balanced":
             defaults += ("indicators:profile:" + selection.profile,)
-        needs_risk = _PRICE_SCENARIO.search(positive) is not None
+        needs_risk = (_PRICE_SCENARIO.search(positive) is not None or decision) and not excludes_plan(question)
         if (needs_risk and not any(spec.kind == "atr" for spec in indicators)
                 and "indicator:atr" not in excluded_indicators):
             indicators += (IndicatorSpec("atr", window=14),)
@@ -502,7 +512,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         scope_text, excluded = _positive_scope(question)
         selected = set(required) if _ONLY.search(scope_text) else set(required) | set(draft["research_kinds"])
         selected.difference_update(excluded)
-        if indicator_phrases and "technical" not in excluded:
+        if (indicator_phrases or decision and not _ONLY.search(scope_text)) and "technical" not in excluded:
             selected.add("technical")
         kinds = tuple(kind for kind in RESEARCH_KINDS if kind in selected)
         if not kinds:
@@ -511,7 +521,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
             raise InputIssue("needs_clarification", "product_no_research_domain", "请保留至少一个希望研究的领域。")
         base = replace(base, kinds=kinds, start_date=start, end_date=end, as_of=end,
                        explicit_historical=bool(historical_expression and re.search(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", historical_expression)),
-                       wants_risk=_PRICE_SCENARIO.search(question) is not None and "risk" not in excluded,
+                       wants_risk=not decision and _PRICE_SCENARIO.search(question) is not None and "risk" not in excluded,
                        objective=objective, applied_defaults=defaults)
         base = replace(base, indicators=indicators, indicators_explicit=bool(indicator_phrases)
                        or any(key.startswith("indicator:") for key in excluded_indicators))

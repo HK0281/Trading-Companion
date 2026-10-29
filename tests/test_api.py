@@ -314,13 +314,15 @@ class LauncherTests(unittest.TestCase):
                 shared.return_value.run.return_value = (None,)
                 collector.collect(ResearchDataRequest("300308.SZ", "中际旭创", CUTOFF), ("financial",))
             self.assertEqual(shared.return_value.run.call_args.kwargs["max_workers"], 3 if count is None else count)
-            self.assertIsNone(dev._product_data_service)
+            from trading_companion.decision_demo import DemoCompanyData
+            self.assertIsInstance(dev._product_data_service, DemoCompanyData)
             self.assertEqual(dev.data_mode, "synthetic")
         with redirect_stdout(StringIO()), patch("uvicorn.run"), patch(
             "trading_companion.api.create_app", return_value="test-app") as app, patch(
             "trading_companion.company_research.ResearchDataService", side_effect=AssertionError("No live collector")):
             self.assertEqual(server_main(["--demo", "--collection-workers", "1"]), 0)
-        self.assertIsNone(app.call_args.kwargs["service"]._product_data_service)
+            from trading_companion.decision_demo import DemoCompanyData
+            self.assertIsInstance(app.call_args.kwargs["service"]._product_data_service, DemoCompanyData)
 
     def test_invalid_collection_workers_fail_before_configuration_or_service(self):
         for value in ("0", "4", "-1", "1.5", "true"):

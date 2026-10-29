@@ -57,11 +57,11 @@ class ProductApiTests(unittest.TestCase):
     def send(self, question=QUESTION, request_id=None):
         return self.service.message(self.sid, self.token, request_id or uuid4().hex, question)
 
-    def assert_company_dto(self, turn):
+    def assert_company_dto(self, turn, *, version="product-research-answer-v1"):
         self.assertEqual(turn["stage"], "company_research")
         company = turn["company_research"]
         self.assertIsInstance(company, dict)
-        self.assertEqual(company["version"], "product-research-answer-v1")
+        self.assertEqual(company["version"], version)
         self.assertFalse(company["trading_enabled"])
         self.assertEqual(company["securities"], [{"instrument_id": "000001.SZ", "name": "平安银行"}])
         self.assertEqual(turn["answer"], "\n\n".join(company["paragraphs"]))
@@ -111,7 +111,7 @@ class ProductApiTests(unittest.TestCase):
 
     def test_broad_research_exposes_matching_chart_and_price_source(self):
         turn = self.send("分析平安银行，预测接下来方向")["result"]
-        company = self.assert_company_dto(turn)
+        company = self.assert_company_dto(turn, version="product-research-answer-v2")
         self.assertEqual(turn["status"], "completed")
         self.assertEqual(turn["parameters"]["source"], "tencent")
         self.assertEqual(turn["chart"]["source"], "tencent")
@@ -175,7 +175,7 @@ class ProductApiTests(unittest.TestCase):
         self.send()
         turn = self.send("它还会涨吗")["result"]
         self.assertEqual((turn["status"], turn["code"]), ("completed", "company_research_completed"))
-        company = self.assert_company_dto(turn)
+        company = self.assert_company_dto(turn, version="product-research-answer-v2")
         self.assertEqual((turn["model_calls_attempted"], turn["analyses_used"]), (2, 1))
         self.assertEqual(len(self.data.calls), 2)
         self.assertEqual(self.data.calls[-1][0].instrument_id, "000001.SZ")

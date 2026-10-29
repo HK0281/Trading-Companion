@@ -42,7 +42,7 @@ _TEMPORAL_SUFFIX = re.compile(
 def _issue(code="unsupported_outlook_horizon"):
     return InputIssue("needs_clarification", code,
         "可以基于已完成日线讨论未来的条件性走势，但请使用一个明确期限，"
-        "例如下周、下个月、未来30天或短线/中线；不推测未来价格，也不换算交易日。")
+        "例如下周、下个月、未来30天或未来20个交易日；不推导具体到期日。")
 
 
 def _integer(text):
@@ -85,7 +85,9 @@ def _canonical_horizon(expression):
         return "未来6个月"
     number = _integer(number_text)
     if "交易日" in unit:
-        raise _issue()
+        if not 1 <= number <= 366:
+            raise _issue()
+        return f"未来{number}个交易日"
     multiplier, canonical_unit = ({"自然日": (1, "天"), "天": (1, "天"), "日": (1, "天"),
         "周": (7, "周"), "星期": (7, "周"), "个星期": (7, "周"),
         "礼拜": (7, "周"), "个礼拜": (7, "周"), "月": (30, "个月"),
@@ -103,8 +105,10 @@ class ResearchObjective:
     horizon: str | None = None
 
     def __post_init__(self):
-        if self.kind not in ("analysis", "outlook") or (self.kind == "analysis" and self.horizon is not None):
+        if self.kind not in ("analysis", "outlook", "decision") or (self.kind == "analysis" and self.horizon is not None):
             raise InvalidRequestError("Invalid research objective")
+        if self.kind == "decision" and self.horizon is None:
+            raise InvalidRequestError("Decision objective requires an explicit canonical horizon")
         if self.horizon is not None:
             try:
                 canonical = _canonical_horizon(self.horizon)

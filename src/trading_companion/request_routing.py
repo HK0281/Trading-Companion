@@ -10,6 +10,7 @@ from trading_companion.indicator_knowledge import parse_knowledge_question
 from trading_companion.open_knowledge import is_general_knowledge_question
 from trading_companion.product_agent import is_product_followup
 from trading_companion.product_plan import is_explicit_technical_request, wants_product_research
+from trading_companion.research_decision import wants_decision
 from trading_companion.research_session import ResearchSession
 from trading_companion.screening_context import SavedScreening, is_screening_followup
 from trading_companion.screening_intent import is_screening_edit, is_screening_request
@@ -187,6 +188,9 @@ def _screening_followup(value: _MatchInput) -> bool:
 
 def _company(value: _MatchInput) -> bool:
     context = value.context
+    if (wants_decision(value.question) and context.session.product_saved is None
+            and context.session.confirmed is not None and not context.directory.mentioned_spans(value.question)):
+        return False
     return context.company_enabled and (
         wants_product_research(value.question)
         or bool(context.directory.mentioned_spans(value.question)) and not is_explicit_technical_request(value.question)

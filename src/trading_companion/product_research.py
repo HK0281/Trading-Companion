@@ -13,6 +13,8 @@ from trading_companion.research_report import build_research_report, FIELD_LABEL
 from trading_companion.research_synthesis import build_research_synthesis
 from trading_companion.research_tool import _build_source
 from trading_companion.risk_research import build_risk_scenario
+from trading_companion.trade_plan import build_trade_plans, plan_display
+from trading_companion.research_decision import excludes_plan
 from trading_companion.technical_insights import TechnicalInsights, build_technical_insights
 from trading_companion.turn_control import checkpoint, reserve_analysis
 from trading_companion.turn_trace import trace_call
@@ -108,12 +110,16 @@ class ProductCompany:
     technical_insights: TechnicalInsights | None = None
     historical_replay: object | None = None
     market_background: dict | None = None
+    trade_plans: tuple = ()
 
     def to_dict(self):
-        return {"instrument_id": self.instrument_id, "name": self.name,
+        result = {"instrument_id": self.instrument_id, "name": self.name,
                 "evidence": [item.to_dict() for item in self.evidence],
                 "coverage": [dict(item) for item in self.coverage],
                 "risk": self.risk.to_dict() if self.risk else None}
+        if self.trade_plans:
+            result["trade_plans"] = [item.to_dict() for item in self.trade_plans]
+        return result
 
 
 @dataclass(frozen=True)
@@ -279,7 +285,20 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=result.data_authenticity,
                         temporal_scope="historical_long_scenario", dependencies=risk.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
-        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background))
+        plans = ()
+        if plan.objective.kind == "decision":
+            blocked = excludes_plan(plan.user_question) or "technical" not in plan.kinds
+            plans = build_trade_plans(result if result is not None else security.instrument_id,
+                expected_request=result.request if result is not None else None,
+                unavailable_code="plan_excluded" if blocked else None)
+            for candidate in plans:
+                if candidate.status == "available":
+                    evidence.append(ProductEvidence(candidate.plan_id, security.instrument_id, "risk", "ATR参考计划",
+                        plan_display(candidate), candidate.source, candidate.source_date, content_kind="trade_plan",
+                        publication_precision="date", data_authenticity=candidate.data_authenticity,
+                        temporal_scope="conditional_atr_reference_plan", dependencies=candidate.evidence_ids,
+                        retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
+        companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background, plans))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:
         from trading_companion.comparison_research import build_candidate_comparison
@@ -424,7 +443,7 @@ def model_research_context(bundle, *, limit=14500):
         record = {key: value for key, value in item.to_dict().items() if key not in (
             "dependencies", "url", "published_at", "retrieved_at", "raw_value")
                   and value is not None}
-        record.update(id=f"E{index}", display=item.display[:480])
+        record.update(id=f"E{index}", display=item.display if item.content_kind == "trade_plan" else item.display[:480])
         if item.temporal_scope == "daily_signal_derived" and type(item.raw_value) is str:
             record["signal_state"] = item.raw_value
         records.append(record)
@@ -435,8 +454,21 @@ def model_research_context(bundle, *, limit=14500):
                "daily_cutoff": bundle.plan.end_date.isoformat(),
                "explicit_historical": bundle.plan.explicit_historical,
                "evidence": records, "omitted_from_model": 0}
+    pinned = []
+    if bundle.plan.objective.kind == "decision":
+        # Full public plans repeat provenance and display metadata already present
+        # in the pinned evidence. The model only selects a candidate; it does not
+        # serialize the plan back to the application.
+        payload["trade_plans"] = [
+            {"plan_id": p.plan_id, "instrument_id": p.instrument_id,
+             "purpose": p.purpose, "status": p.status, "code": p.code}
+            for c in bundle.companies for p in c.trade_plans]
+        pinned = [r for r in records if r["content_kind"] == "trade_plan"
+                  or r["label"] in ("营收同比", "归母净利润同比")]
+        if len(json.dumps({**payload, "evidence": pinned}, ensure_ascii=False)) > limit:
+            raise ValueError("decision_context_too_large")
     # Reserve opportunities across both companies and domains; scenario data must survive later trimming.
-    selected = []
+    selected = list(pinned)
     domains = ("risk", "technical", "financial", "news", "announcements", "profile")
 
     def priority(record):
@@ -458,7 +490,7 @@ def model_research_context(bundle, *, limit=14500):
         return 3 if record["content_kind"] in ("relation", "scenario") else 4
 
     queues = {(company.instrument_id, kind): sorted(
-        [r for r in records if r["instrument_id"] == company.instrument_id and r["kind"] == kind],
+        [r for r in records if r not in pinned and r["instrument_id"] == company.instrument_id and r["kind"] == kind],
         key=priority)
         for company in bundle.companies for kind in domains}
     while any(queues.values()):

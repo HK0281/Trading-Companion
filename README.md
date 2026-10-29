@@ -310,7 +310,11 @@ The intended product scope includes main-board, STAR Market, ST, and newly liste
 
 ## Safety boundaries
 
-The application does not connect to brokerage accounts, place/modify/cancel orders, manage funds, or guarantee returns. A technical indicator is not a trading recommendation.
+For decision questions, the application provides a reference model verdict and an ATR-based conditional plan with entry, stop, two targets and rounded reward/risk ratios. The verdict can be wrong; its conviction is self-assessed and has not been historically calibrated. Calculated target levels are conditional references, not predicted future prices. Missing data or rejected model output is shown explicitly.
+
+The application does not connect to brokerage accounts, place/modify/cancel orders, manage funds, recommend position sizes, or guarantee returns. Bearish plans describe hypothetical existing-position exits and observation while uninvested; they do not authorize short selling. Users decide whether to trade. See [decision contracts and calculation limits](docs/research-decision-plan-design.md).
+
+In offline `--demo` or Dev Mode, ask **平安银行现在能买吗** to see the verdict card and ATR table without credentials. Both the bullish verdict and market data in this example are artificial; the verdict is a fixed demonstration, not evidence of prediction quality.
 
 ## Setup: Windows PowerShell / VS Code
 

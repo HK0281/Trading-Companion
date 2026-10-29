@@ -1,10 +1,13 @@
 /** Optional company sources; untrusted source text is always rendered as text nodes. */
 import type { PublicTurn } from "./api";
+import { parseDecision, ResearchDecision } from "./ResearchDecision";
+import type { DecisionData } from "./ResearchDecision";
 
 type Evidence = { id: string; instrument_id: string; kind: string; label: string; display: string;
   source: string; date: string | null; url: string | null; content_kind: string; report_period: string | null;
   temporal_scope: string };
 type CompanyAnswer = { paragraphs: string[]; evidence: Evidence[]; origin: string;
+  decision?: DecisionData;
   paragraph_evidence?: string[][];
   securities: { name: string; instrument_id: string }[]; daily_cutoff: string };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -27,7 +30,7 @@ export function sourceUrl(value: unknown): string | null {
 }
 
 export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
-  if (!object(value) || value.version !== "product-research-answer-v1"
+  if (!object(value) || !["product-research-answer-v1", "product-research-answer-v2"].includes(String(value.version))
       || !["model", "application"].includes(String(value.origin))
       || !Array.isArray(value.paragraphs) || value.paragraphs.length < 1 || value.paragraphs.length > 6
       || !value.paragraphs.every(item => text(item, 1800))
@@ -49,6 +52,11 @@ export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
     if (!Array.isArray(mappings) || mappings.length !== 0 && mappings.length !== value.paragraphs.length
       || !mappings.every(items => Array.isArray(items) && items.length <= evidenceIds.size
         && items.every(id => text(id, 200) && evidenceIds.has(id)) && new Set(items).size === items.length)) return null;
+  }
+  if (value.version === "product-research-answer-v2") {
+    const decision = parseDecision(value, allowed, new Map(value.evidence.map(item => [item.id, item.instrument_id])));
+    if (!decision) return null;
+    return { ...value, decision } as unknown as CompanyAnswer;
   }
   return value as unknown as CompanyAnswer;
 }
@@ -91,6 +99,8 @@ function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer;
 export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
   const evidence = new Map(data.evidence.map(item => [item.id, item]));
   return <div className="conversation-response readable-text">
+    {data.decision && <ResearchDecision data={data.decision} securities={data.securities}
+      renderEvidence={ids => <SourceList data={data} evidence={ids.map(id => evidence.get(id)!)} previewLimit={ids.length} />} />}
     {data.paragraphs.map((paragraph, index) => {
       const referenced = (data.paragraph_evidence?.[index] ?? []).map(id => evidence.get(id)!);
       return <div className="company-paragraph" key={index}>

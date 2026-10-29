@@ -142,8 +142,10 @@ class _LocalBoundary:
 
 
 def create_demo_service(*, trace_sink=None, trace_mode="development") -> ResearchApiService:
-    source, _ = load_development_fixtures()
-    return ResearchApiService(model_factory=ConversationDemoModel,
+    from trading_companion.decision_demo import DecisionDemoModel, DemoCompanyData, load_decision_demo_source
+    load_development_fixtures()
+    source = load_decision_demo_source()
+    return ResearchApiService(model_factory=DecisionDemoModel, product_data_service=DemoCompanyData(),
         directory_loader=lambda _: load_development_fixtures()[1], development_source=source,
         reference_date=REFERENCE_DATE, market_context_loader=lambda _: load_development_market_context(),
         trace_sink=trace_sink, trace_mode=trace_mode)

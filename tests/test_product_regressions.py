@@ -144,7 +144,8 @@ class ProductRegressions(unittest.TestCase):
                              model=ScopeAwareModel(on_synthesis=unavailable_model))
         self.assertEqual((turn.status, turn.product_answer.status), ("limited", "fallback"))
         self.assertTrue(any(item.kind == "technical" for item in turn.product_bundle.evidence))
-        self.assertTrue(any(item.kind == "technical" for item in turn.product_answer.evidence))
+        self.assertTrue(any(item.content_kind == "trade_plan" for item in turn.product_answer.evidence))
+        self.assertIsNone(turn.product_answer.decisions[0]["rating"])
 
     def api_turn(self, question, *, model=None):
         selected_model = ScopeAwareModel() if model is None else model

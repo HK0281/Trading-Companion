@@ -64,6 +64,8 @@ DEEPSEEK_MODEL=deepseek-flash
 
 `local_env.load_model_environment()` 只在六个真实模型启动路径调用：网页服务、终端 Agent、文本联通、工具联通、Agent 固定评估和 MVP 重复评估。
 
+[新闻分诊评估](news-triage-design.md)另用 `load_evaluation_key_environment()`，只在显式 live 输出计划且通过标注复核检查后，提取所选的 `TYPESAFE_API_KEY` 或 `DEEPSEEK_API_KEY`。它沿用下述固定路径、环境优先及禁用规则，不读取模型名、不改变原六入口的提供方语义；offline 和 `--plan-only` 不读文件或密钥。
+
 读取固定的源码项目根目录 `.env`，不会因为终端位于 `src` 而改读另一个文件，也不会向父目录搜索。仅在识别到源码布局及 `pyproject.toml` 标记时启用；独立 wheel 安装不会尝试读取虚拟环境上层的 `.env`，应显式提供进程环境变量。
 
 优先级：**当前进程环境变量 > `.env`**。现有环境变量即使为空，也不会被文件静默替换。两个变量已全部存在时，完全不打开文件；缺文件时仍允许只使用环境变量。

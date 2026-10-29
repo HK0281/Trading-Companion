@@ -126,7 +126,7 @@ API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与�
 
 ## 7. 价格、计划与真实模式
 
-[evaluation_pricing.py](../src/trading_companion/evaluation_pricing.py) 校验 [model-prices.json](../data/evaluation/model-prices.json)。仓库初始 `entries=[]`，没有未核对的假报价。每项使用以下字段，精确选择提供方和模型，不模糊匹配、不混加币种：
+[evaluation_pricing.py](../src/trading_companion/evaluation_pricing.py) 校验 [model-prices.json](../data/evaluation/model-prices.json)。仓库没有已核对报价；新闻分诊实验另加了 TypeSafe/Jev 的空价格模板，不改变本工作流的提供方和计费约定。每项使用以下字段，精确选择提供方和模型，不模糊匹配、不混加币种：
 
 ```json
 {

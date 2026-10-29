@@ -50,3 +50,15 @@ def load_model_environment(*, provider: str = "deepseek") -> dict[str, str]:
         return environment
     local = _read_local_values()
     return {**{name: local[name] for name in variables if isinstance(local.get(name), str)}, **environment}
+
+
+def load_evaluation_key_environment(name: str) -> dict[str, str]:
+    """Read only the selected evaluation key; callers enforce live plan/review gates."""
+    if type(name) is not str or name not in ("TYPESAFE_API_KEY", "DEEPSEEK_API_KEY"):
+        raise ModelConfigurationError("Unsupported evaluation key")
+    if name in os.environ:
+        return {name: os.environ[name]}
+    if os.environ.get("PYTHON_DOTENV_DISABLED", "").lower() in ("1", "true", "yes", "on"):
+        return {}
+    local = _read_local_values()
+    return {name: local[name]} if isinstance(local.get(name), str) else {}

@@ -33,11 +33,24 @@ class PricingTests(unittest.TestCase):
 
     def test_repository_prices_are_unknown_and_no_matching_is_fuzzy(self):
         data, digest = load_prices()
-        self.assertEqual(data["entries"], [])
+        self.assertEqual([(entry["provider"], entry["model"]) for entry in data["entries"]], [("typesafe", "jev-latest")])
+        self.assertTrue(all(entry[field] is None for entry in data["entries"]
+                            for field in ("verified_at", "currency", "source_url", "input_per_million", "output_per_million")))
         self.assertEqual(len(digest), 64)
         self.assertIsNone(estimate_cost(data, "deepseek", "test-model", 5, 100, 100)["amount"])
         self.assertIsNone(price_for(price_fixture(), "deepseek", "test-model-latest"))
         self.assertIsNone(actual_cost(data, "deepseek", "test-model", [record()])["known_subtotal"])
+        self.assertIsNone(estimate_cost(data, "typesafe", "jev-latest", 72, 120, 12)["amount"])
+
+    def test_typesafe_verified_prices_use_the_same_exact_identity_accounting(self):
+        data = price_fixture()
+        data["entries"][0].update(provider="typesafe", model="jev-latest", input_per_million="0.042", output_per_million="0")
+        data = self.load(data)
+        ledger = record(prompt=1_000_000, completion=12, total=1_000_012,
+                        provider="typesafe", requested_model="jev-latest", model="jev-latest")
+        self.assertEqual(actual_cost(data, "typesafe", "jev-latest", [ledger])["estimated_total"], "0.042000")
+        ledger["model"] = "jev-served-version"
+        self.assertIsNone(actual_cost(data, "typesafe", "jev-latest", [ledger])["estimated_total"])
 
     def test_decimal_cost_and_explicit_preview_assumptions(self):
         data = self.load(price_fixture())

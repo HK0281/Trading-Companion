@@ -93,7 +93,9 @@ The [workflow evaluation corpus and runner](docs/workflow-evaluation-design.md) 
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 3 --report-dir .agentbus/tmp/eval-workers3
 ```
 
-Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) is empty; unknown prices or usage remain unknown, and no live evaluation was run for this delivery.
+Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) has no verified prices; unknown prices or usage remain unknown, and no live evaluation was run for this delivery.
+
+Synthetic headline triage: `.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage.py` ([design and opt-in evaluation](docs/news-triage-design.md)).
 
 ## Scope & limits
 

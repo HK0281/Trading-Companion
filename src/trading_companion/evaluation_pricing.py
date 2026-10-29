@@ -54,7 +54,7 @@ def load_prices(path=DEFAULT_PRICES):
     seen = set()
     for entry in data["entries"]:
         require(type(entry) is dict and entry.keys() == FIELDS)
-        require(entry["provider"] in ("deepseek", "openai") and type(entry["model"]) is str
+        require(entry["provider"] in ("deepseek", "openai", "typesafe") and type(entry["model"]) is str
                 and MODEL_ID.fullmatch(entry["model"]) is not None)
         key = (entry["provider"], entry["model"])
         require(key not in seen)

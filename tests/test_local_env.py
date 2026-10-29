@@ -53,6 +53,28 @@ class LocalEnvironmentTests(unittest.TestCase):
             "DEEPSEEK_MODEL": "terminal-model", "DEEPSEEK_API_KEY": ARTIFICIAL_KEY,
         })
 
+    def test_evaluation_keys_are_selected_without_mutating_environment_or_model_settings(self):
+        self.write_file(FILE_CONTENT + 'TYPESAFE_API_KEY="synthetic-typesafe-key"\nOPENAI_API_KEY=unrelated\n')
+        self.assertEqual(local_env.load_evaluation_key_environment("TYPESAFE_API_KEY"),
+                         {"TYPESAFE_API_KEY": "synthetic-typesafe-key"})
+        self.assertEqual(local_env.load_evaluation_key_environment("DEEPSEEK_API_KEY"),
+                         {"DEEPSEEK_API_KEY": ARTIFICIAL_KEY})
+        self.assertEqual(dict(os.environ), {})
+        with self.assertRaises(ModelConfigurationError):
+            local_env.load_model_environment(provider="typesafe")
+
+    def test_evaluation_key_process_precedence_opt_out_and_invalid_names_do_not_open_file(self):
+        with patch.object(local_env, "_read_local_values", side_effect=AssertionError("No file reads")):
+            for name in ("TYPESAFE_API_KEY", "DEEPSEEK_API_KEY"):
+                for value in ("", "synthetic-process-key"):
+                    with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}, clear=True):
+                        self.assertEqual(local_env.load_evaluation_key_environment(name), {name: value})
+                with patch.dict(os.environ, {"PYTHON_DOTENV_DISABLED": "true"}, clear=True):
+                    self.assertEqual(local_env.load_evaluation_key_environment(name), {})
+            for name in ("OPENAI_API_KEY", "DEEPSEEK_MODEL", "", None, []):
+                with self.subTest(name=name), self.assertRaises(ModelConfigurationError):
+                    local_env.load_evaluation_key_environment(name)
+
     def test_complete_environment_does_not_open_local_file(self):
         os.environ.update(DEEPSEEK_MODEL="terminal-model", DEEPSEEK_API_KEY="terminal-key")
         with patch.object(local_env, "_read_local_values", side_effect=AssertionError("Do not open .env")):

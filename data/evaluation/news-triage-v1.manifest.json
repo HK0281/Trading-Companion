@@ -1,0 +1,50 @@
+{
+  "version": "news-triage-v1",
+  "count": 72,
+  "synthetic": true,
+  "annotation_status": "reviewed",
+  "author": "codex",
+  "reviewer": "claude",
+  "corpus_sha256": "f0094623ffa6db7b46c1712e97b0403edf456080bb46e9e03e578135c75e1605",
+  "definition_sha256": "d4fc26a758f9db5377756874daf0968d593e3bf67324759d2408e9ed3244408e",
+  "label_counts": {
+    "relevance": {
+      "primary": 44,
+      "mentioned": 16,
+      "unrelated": 12
+    },
+    "event_type": {
+      "earnings": 10,
+      "capital": 12,
+      "governance": 8,
+      "regulatory": 10,
+      "operations": 12,
+      "market": 8,
+      "industry": 6,
+      "other": 6
+    },
+    "tone": {
+      "positive": 23,
+      "neutral": 29,
+      "negative": 20
+    }
+  },
+  "difficulty_counts": {
+    "multi_event": 10,
+    "mixed": 8,
+    "routine": 11,
+    "industry_mention": 14,
+    "mismatch": 12,
+    "negation": 12,
+    "clickbait": 6
+  },
+  "reviewed_at": "2026-10-28",
+  "user_confirmed": {
+    "date": "2026-10-28",
+    "items": [
+      "N011",
+      "N031"
+    ],
+    "tone": "neutral"
+  }
+}

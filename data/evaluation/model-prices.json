@@ -1,4 +1,15 @@
 {
   "version": "evaluation-prices-v1",
-  "entries": []
+  "entries": [
+    {
+      "provider": "typesafe",
+      "model": "jev-latest",
+      "currency": null,
+      "verified_at": null,
+      "source_url": null,
+      "input_per_million": null,
+      "output_per_million": null,
+      "input_pricing": "uniform"
+    }
+  ]
 }

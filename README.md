@@ -60,6 +60,7 @@ For a fresh checkout, follow [Setup](#setup-windows-powershell--vs-code) and the
 - **Collection has shared capacity and separate budgets.** Company evidence and Tencent batches share at most three unfinished tasks; request and byte ledgers enforce business limits. [Concurrent collection](docs/collection-concurrency-design.md)
 - **Retries and cancellation preserve session boundaries.** Idempotent request IDs prevent repeated execution; cancelled or late work cannot publish new results. [Local API](docs/local-api-design.md) · [Turn control](docs/turn-control-design.md)
 - **Tool calls use a project-owned protocol.** DeepSeek and OpenAI adapters share message and result contracts, without an Agent orchestration framework. [Tool protocol](docs/tool-model-design.md) · [Provider selection](docs/company-research-design.md)
+- **A cheap classifier is measured before it is trusted.** Jev (TypeSafe's hosted "System One" decision model) and DeepSeek label the same reviewed synthetic headlines. Reports cover accuracy, calibration, latency, cost and a confidence-gated cascade that sends uncertain titles to DeepSeek. Nothing is wired into answers yet. [News triage evaluation](docs/news-triage-design.md)
 
 ![Offline demo with synthetic data: answer, data limitations and collection record](docs/images/demo-research-answer.png)
 
@@ -71,12 +72,13 @@ Local offline evidence for this revision, dated 2026-10-28. Tests verify program
 
 | Fact | Reproduction / evidence |
 | --- | --- |
-| Offline Python tests | **2,283 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
+| Offline Python tests | **2,315 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
 | Frontend tests, type checking and build | **633 Vitest tests across 20 files**, TypeScript `--noEmit` and Vite production build pass; the bundle gate confirms served and wheel assets. Vitest, tsc and Vite were invoked directly with Node because pnpm was unavailable; `verify.py web` requires pnpm. [Acceptance gates](docs/ci-design.md) |
 | Characterization baseline: 35 scenarios / 105 turns (routing v1/v2) | [Frozen observations and reviewed behavior changes](docs/request-routing-design.md) |
 | Windows CI configured | [One Windows Actions job](.github/workflows/ci.yml) runs the same Python, web and bundle gates; remote run status is separate from local results. |
 | Offline fixed-delay collection timing | 15 Tencent batches, artificial 100 ms/request, 5 runs per mode: median **1,643 ms serial → 555 ms with 3 slots**; results, coverage, requests and bytes match. Structural, not live. [Method and boundaries](docs/collection-concurrency-design.md) |
 | Offline workflow contracts (corpus v1, 40 scenarios / 59 steps) | **59/59 steps passed** at workers 1 and 3; hard/range/quality failures all 0. Uses artificial data and scripted models, with JSON/Markdown reports and a human-review queue. [Evaluation boundaries](docs/workflow-evaluation-design.md) |
+| Live headline triage, synthetic set (72 reviewed headlines × 3 questions, 2026-10-28) | Combined accuracy: rules **50.9%**, Jev **87.0%**, DeepSeek **88.0%**. Median latency: Jev **375 ms**, DeepSeek **1,172 ms**. Jev calibration error (ECE) **0.066**. A cascade at confidence 0.65 reaches **89.4%** and sends **26/72** titles to DeepSeek. Real model calls on synthetic data; small sample, not production traffic. [Results and limits](#headline-triage-live-results) |
 | Real-model answer quality and live-source performance | **Pending.** Offline results do not establish investment quality or live latency/coverage. |
 
 Reproduce the fixed-delay comparison locally, with generated responses and network access blocked:
@@ -93,9 +95,42 @@ The [workflow evaluation corpus and runner](docs/workflow-evaluation-design.md) 
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_workflows.py --collection-workers 3 --report-dir .agentbus/tmp/eval-workers3
 ```
 
-Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) records verified Jev and DeepSeek evaluation rates; the DeepSeek rates estimate an upper bound using peak, uncached pricing. Unknown prices, usage or mismatched model identities remain unknown, and no live evaluation was run for this delivery.
+Use each run's printed `artifacts.json` path with `scripts/compare_research_workflows.py --left LEFT/report.json --right RIGHT/report.json`. The comparison preserves failures and missing steps and rejects incompatible conditions. `--plan-only` previews without credentials or requests. Real modes require an explicit provider, model, price file and whole-run call limit; their default compatible sets are 39 scenarios / 57 steps for `live-model` and 30 / 44 for `live`, with public exclusion reasons. The checked-in [price file](data/evaluation/model-prices.json) records verified Jev and DeepSeek evaluation rates; the DeepSeek rates estimate an upper bound using peak, uncached pricing. Unknown prices, usage or mismatched model identities remain unknown. No live research-workflow evaluation has been run yet.
 
-Synthetic headline triage: `.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage.py` ([design and opt-in evaluation](docs/news-triage-design.md)).
+### Headline triage: live results
+
+A 72-headline set covers fictional issuers. Each headline is labelled for three questions, and Claude reviewed every label (the user decided two ambiguous ones):
+
+- **relevance**: is the headline mainly about the issuer, a passing mention, or a name collision?
+- **event type**: one of eight classes.
+- **tone toward the issuer**: describes wording, not a trading signal.
+
+Each model sees only the title, company name and code. The set deliberately includes name collisions (a shop or association whose name contains the issuer's), denials of rumours, multi-event and mixed-tone titles. One live run on 2026-10-28 made 144 real calls with no failures:
+
+| | relevance | event type | tone | all three questions | all three correct | p50 / p95 latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Keyword rules (frozen baseline) | 66.7% | 40.3% | 45.8% | 50.9% | 19.4% | <1 ms |
+| Jev (`jev-latest`, served `jev-1.14.0`) | 76.4% | 94.4% | 90.3% | 87.0% | 68.1% | 375 / 515 ms |
+| DeepSeek (`deepseek-flash`, JSON labels) | 75.0% | 97.2% | 91.7% | 88.0% | 66.7% | 1,172 / 1,422 ms |
+| Cascade at Jev confidence ≥ 0.65 | | | | 89.4% | 70.8% | DeepSeek on 26/72 titles |
+
+- **Different weaknesses on relevance.** Jev labelled none of the 12 name collisions as unrelated. DeepSeek caught 9 of 12, but recognised only 1 of the 16 passing mentions.
+- **Jev's confidence is broadly informative.** Expected calibration error is 0.066. In 145 answers at or above 0.9 confidence, 96.6% were correct. Relevance is overconfident (ECE 0.16).
+- **Cascade.** When Jev's minimum confidence across the three questions meets a threshold, its labels are used; otherwise DeepSeek's saved labels are. Ten thresholds (0.50–0.95) were fixed in advance and all are reported. 0.65 and 0.70 both give 89.4%.
+- **How much the comparison shows.** 89.4% vs 88.0% is 3 of 216 answers; it is not a significant difference.
+- **Cost of this run.**
+  - DeepSeek: at most **¥0.16** (73,799 input / 1,542 output tokens at peak, uncached rates).
+  - Jev: about **$0.0047**, computed by hand from 111,163 input tokens at $0.042/1M. The report leaves Jev cost unknown because the served model differs from the requested alias.
+  - DeepSeek's repeated instructions are likely cache hits, so this run does not show that Jev is cheaper. Its measured advantages are latency and calibrated confidence.
+
+The labels and the keyword rules share an author, so the rule score may be optimistic. Results on fictional headlines do not establish accuracy on real news flow. Jev is not connected to research answers. Reproduce offline, or preview the live plan without credentials or requests:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage.py
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage.py --mode live --classifier jev --classifier deepseek --deepseek-model deepseek-flash --call-limit 144 --prices data/evaluation/model-prices.json --plan-only
+```
+
+A live run reads only the selected `TYPESAFE_API_KEY` / `DEEPSEEK_API_KEY`, and only after the plan is printed and the label review check passes. See the [design, metrics and authorization rules](docs/news-triage-design.md).
 
 ## Scope & limits
 
@@ -209,7 +244,7 @@ The Agent resolves names against the security directory and uses bounded histori
 
 An implicit same-stock continuation requires unexpired, directory-rechecked conditions (15-minute lifetime). Saved-result explanations can reuse existing evidence; a new domain performs new research while retaining the historical window, historical/current scope and future horizon unless explicitly changed. “Latest/refresh” or a new date window can replace those conditions. A missing, ambiguous or expired identity still needs clarification. The offline Dev Mode remains a fixed artificial example, not a real-market research substitute. See the [scope design](docs/natural-research-scope-design.md) and [company workflow](docs/company-research-design.md).
 
-Broad research can combine company background, current vendor financial records, bounded news/announcement titles or excerpts, and historical technical evidence. Comparisons cover at most three explicitly named stocks and rank compatible financial metrics separately; this is not whole-market screening. ATR levels are calculated hypothetical references, not orders. Missing domains remain visible and do not erase available evidence. Full article/filing understanding, strict historical versions, Jev, whole-market discovery and strategy backtesting remain future work.
+Broad research can combine company background, current vendor financial records, bounded news/announcement titles or excerpts, and historical technical evidence. Comparisons cover at most three explicitly named stocks and rank compatible financial metrics separately; this is not whole-market screening. ATR levels are calculated hypothetical references, not orders. Missing domains remain visible and do not erase available evidence. Full article/filing understanding, strict historical versions, using Jev headline triage inside research answers, whole-market discovery and strategy backtesting remain future work.
 
 ## Current status
 
@@ -265,7 +300,7 @@ The original bounded daily-research MVP, the 2026-10-25 company-research extensi
 - Explicit `--data akshare_eastmoney` for Web/API and terminal launchers, alongside synthetic/Tencent modes. Each backend's source is fixed at startup; Web Dev Mode selects a separate fixed offline backend, not a source override within an existing session. Missing optional dependencies fail before model configuration, with no automatic fallback.
 - A 30-scenario MVP evaluation catalogue with up to three independent repeats, whole-run call allowance checks, checked explanation/synthesis expectations and fail-fast reports. CI executes 90 offline scenario instances, not paid model calls or investment benchmarks.
 
-The original explicit and natural-input paths retain bounded identity clarification, explicit edits and result follow-ups. The company path adds its own checked plan and saved research, without claiming unrestricted conversation memory or arbitrary prose validation. Model transports are tested offline with mocked HTTP. Historical verification records remain separate: the user supplied one passing live `deepseek-flash` `complete` synthetic contract report with two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20); see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Earlier text/tool feedback and the independently checked directory refresh do not prove the expanded workflow's real-market quality. Repeated real-model evaluation, human review of answer relevance and browser acceptance are still required. Long-term chat memory, Jev, whole-market screening, DuckDB, production multi-user deployment and historical strategy evaluation are not implemented.
+The original explicit and natural-input paths retain bounded identity clarification, explicit edits and result follow-ups. The company path adds its own checked plan and saved research, without claiming unrestricted conversation memory or arbitrary prose validation. Model transports are tested offline with mocked HTTP. Historical verification records remain separate: the user supplied one passing live `deepseek-flash` `complete` synthetic contract report with two model calls, one analysis, 3,520 ms and 5,873 provider-reported tokens (recorded 2026-10-20); see the [evaluation record](docs/agent-evaluation-design.md#8-用户回传一次完整指标场景通过). Earlier text/tool feedback and the independently checked directory refresh do not prove the expanded workflow's real-market quality. Repeated real-model evaluation, human review of answer relevance and browser acceptance are still required. Long-term chat memory, product use of Jev (only the standalone headline-triage evaluation exists), whole-market screening, DuckDB, production multi-user deployment and historical strategy evaluation are not implemented.
 
 Technical observations do not yet provide a complete candlestick/chart-pattern library, exchange-calendar proof of weekly completeness or validated forecast performance.
 

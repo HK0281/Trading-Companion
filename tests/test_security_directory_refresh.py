@@ -435,6 +435,22 @@ class SnapshotSaveTests(GuardedTests):
             load_security_directory(self.path).assert_usable(date(2026, 10, 20), development=False)
         self.assertEqual(load_security_directory(self.path).retrieved_at, NOW - timedelta(days=8))
 
+    def test_optional_reference_date_validates_before_replacing_existing_snapshot(self):
+        save_security_directory(directory(age=2), self.path)
+        original = self.path.read_bytes()
+        for fetched in (directory(age=8), directory(age=-1), directory(fixture=True)):
+            with self.subTest(fetched=fetched.metadata()), patch(
+                    "trading_companion.exchange_directory.ExchangeDirectorySource.read_directory", return_value=fetched), \
+                    self.assertRaises(DataValidationError):
+                refresh_security_directory(self.path, reference_date=date(2026, 10, 20))
+            self.assertEqual(self.path.read_bytes(), original)
+
+    def test_optional_reference_date_accepts_a_current_real_snapshot(self):
+        with patch("trading_companion.exchange_directory.ExchangeDirectorySource.read_directory", return_value=directory()):
+            refreshed = refresh_security_directory(self.path, reference_date=date(2026, 10, 20))
+        self.assertEqual(refreshed, directory())
+        self.assertEqual(load_security_directory(self.path), directory())
+
 
 class RefreshCliTests(GuardedTests):
     def invoke(self, arguments):

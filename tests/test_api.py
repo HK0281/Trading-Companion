@@ -394,7 +394,7 @@ class LauncherTests(unittest.TestCase):
             "trading_companion.deepseek_model.DeepSeekConfig.from_env", side_effect=ModelConfigurationError(PRIVATE)), patch(
             "trading_companion.api.create_app") as app, patch("trading_companion.api.create_demo_service") as demo:
             self.assertEqual(server_main([]), 2)
-        self.assertIn("configuration_error", output.getvalue())
+        self.assertIn("[model_configuration_error]", output.getvalue())
         self.assertNotIn(PRIVATE, output.getvalue())
         app.assert_not_called()
         demo.assert_not_called()

@@ -1,6 +1,6 @@
 # 本地模型配置与启动
 
-更新：2026-10-25。Web 服务默认正常模式；离线演示保留显式入口。
+更新：2026-10-28。Web 服务默认正常模式；Windows 启动脚本按需刷新默认证券名单。
 
 ## 1. 只需填写什么
 
@@ -26,7 +26,17 @@ DEEPSEEK_MODEL=deepseek-flash
 .\.venv\Scripts\python.exe -m pip install -e '.[api,model]'
 ```
 
-构建过前端后，从项目根目录启动正常产品：
+API 依赖包含刷新深交所 Excel 名单所需的 `openpyxl`；已有环境缺少它时，重新执行上面的安装命令即可，不必为腾讯模式安装 AKShare。
+
+构建过前端后，双击根目录 `start.cmd`，或从项目根目录执行：
+
+```powershell
+.\start.cmd
+```
+
+脚本使用项目虚拟环境，在服务成功监听后打开浏览器。参数照常传入，例如 `.\start.cmd --port 8767`、`.\start.cmd --demo`；`--no-open-browser` 可关闭自动打开浏览器。
+
+也可以直接启动 Python 入口，默认不自动刷新名单：
 
 ```powershell
 .\.venv\Scripts\python.exe -m trading_companion.api_server
@@ -34,17 +44,36 @@ DEEPSEEK_MODEL=deepseek-flash
 
 打开 `http://127.0.0.1:8765/`。默认使用真实 DeepSeek、腾讯不复权历史日线及 `data/security_directory_live.json`；这不是实时行情。使用可编辑安装后不用激活虚拟环境或反复设置 `PYTHONPATH`。不需要再逐次输入模型名和密钥。修改 `.env` 后，先在服务终端按 `Ctrl+C` 停止，再执行启动命令；运行中的服务不会自动刷新密钥。
 
-启动只做本地配置、依赖和目录检查，不向 DeepSeek 请求、不取行情、不自动刷新目录；网页载入也只读 health。用户明确发送研究问题时才按需求调用模型或行情，DeepSeek 请求可能计费。启动失败会明确报错，不会自动切成人工数据或更换供应商。
+启动不向 DeepSeek 请求、不取行情；网页载入也只读 health。`start.cmd` 会在需要时先联网刷新默认名单，再检查模型配置；直接 Python 启动默认只检查现有名单。用户明确发送研究问题时才按需求调用模型或行情，DeepSeek 请求可能计费。启动失败会明确报错，不会自动切成人工数据或更换供应商。
 
 ### 真实目录缺失或过期
 
-正常模式需要当前有效、非人工的本地证券目录；已有有效目录时不用每次刷新。目录缺失、格式错误、未来日期或超过允许新鲜度时会拒绝正常启动，而不是让模型凭记忆补股票代码。需要更新时手动执行：
+正常模式需要当前有效、非人工的本地证券目录。`start.cmd` 自动传入 `--refresh-stale-directory`：仅当正常模式使用真实数据、未显式传入 `--directory`，且默认 `data/security_directory_live.json` 缺失、上海日期下超过 7 天或日期在未来时，刷新一次。名单有效时不联网；`--demo`、`--data synthetic` 或任何显式 `--directory`（即使指向默认路径）都不自动刷新。
+
+窗口先显示等待原因和“正在刷新证券名单”，成功后显示条数与日期。刷新沿用上交所主板、科创板和深交所导出三份必需数据，全部校验后才原子替换旧文件，再重新加载检查；刷新前不读 `.env`，失败就停止启动并保留旧文件。格式无效、人工名单或读取失败直接报错，不通过联网尝试覆盖修复。
+
+只在启动阶段刷新。运行中名单过期时，继续按原规则拒绝需要有效名单的研究，不在对话中自动联网更新。直接 Python 启动默认不刷新；也可显式使用该参数启用相同的启动检查。需要手动更新时执行：
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m trading_companion.security_directory_refresh --live --timeout 15
 ```
 
-该命令明确联网下载交易所名单并更新本地目录；不要把它放进每次启动或页面载入流程。目录覆盖沪深 A 股，不代表北交所也已支持。目录刷新成功也不等于模型或腾讯行情连接已通过验证，详见[目录设计](security-directory-refresh-design.md)。
+自选目录须在刷新命令后追加 `--output` 指定同一路径。该命令明确联网下载交易所名单并更新本地目录，不调用模型或取日线；页面载入不会刷新名单。目录覆盖沪深 A 股，不代表北交所也已支持。目录刷新成功也不等于模型或腾讯行情连接已通过验证，详见[目录设计](security-directory-refresh-design.md)。
+
+### 启动错误原因
+
+启动失败返回非零码，窗口按固定原因提示，不输出异常原文或配置值：
+
+| 原因码 | 含义及处理 |
+| --- | --- |
+| `directory_missing` | 名单缺失，按提示手动刷新，或使用 `start.cmd` |
+| `directory_stale` | 名单过期或日期在未来，按提示刷新 |
+| `directory_invalid` | 格式无效或属于人工名单，检查文件；自动刷新不会覆盖它 |
+| `directory_unavailable` | 文件无法读取，检查访问权限 |
+| `directory_refresh_failed` | 自动刷新失败，检查网络、交易所页面、安装依赖和本地写入条件，稍后重试或手动刷新 |
+| `model_configuration_error` | 检查 `.env` 或环境中的 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`；显式 OpenAI 模式检查对应字段 |
+| `snapshot_store_unavailable` | 检查 `--snapshot-db` 指定的本地证据快照库及权限 |
+| `configuration_error` | 其他本地配置或夹具问题，检查启动配置 |
 
 ### 离线开发与显式覆盖
 

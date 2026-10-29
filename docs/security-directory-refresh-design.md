@@ -1,6 +1,6 @@
 # 真实证券目录：显式刷新与安全保存
 
-更新：2026-10-20（America/Los_Angeles）
+更新：2026-10-28（America/Los_Angeles）
 
 ## 1. 这一步解决什么问题
 
@@ -17,7 +17,7 @@
          → 新鲜度/歧义/研究参数检查 → 原有研究流程
 ```
 
-对话不会自动刷新目录。刷新不调用模型、不读凭据，也不请求个股日线。
+对话不会自动刷新目录。Windows `start.cmd` 会显式开启启动阶段的按需刷新：默认真实名单缺失、超过上海日期下 0–7 天范围或日期在未来时才刷新一次，名单可用时不联网。直接 `api_server` 默认不开启，须显式传入 `--refresh-stale-directory` 才有相同行为；`--demo`、`--data synthetic` 或任意显式 `--directory` 均跳过。格式无效、人工名单和读取失败直接报错，不自动覆盖修复。刷新不调用模型、不读凭据，也不请求个股日线；启动检查通过后才加载 `.env`。运行期间名单过期仍由既有研究检查拒绝，不在运行中刷新。
 
 ## 2. 文件职责
 
@@ -26,7 +26,9 @@
 | [exchange_directory.py](../src/trading_companion/exchange_directory.py) | 固定交易所URL、限量HTTP读取、JSON/Excel解析和必要分片合并 |
 | [security_directory.py](../src/trading_companion/security_directory.py) | 原有身份与时效规则；新增输出路径检查、快照序列化及原子保存 |
 | [security_directory_refresh.py](../src/trading_companion/security_directory_refresh.py) | 独立刷新函数与显式 `--live` CLI |
+| [api_server.py](../src/trading_companion/api_server.py) / [start.cmd](../start.cmd) | 默认关闭的启动刷新开关；Windows 脚本显式开启，只处理默认真实名单 |
 | [test_security_directory_refresh.py](../tests/test_security_directory_refresh.py) | 模拟HTTP、内存Excel、失败时文件保留及自然入口衔接测试 |
+| [test_startup_directory.py](../tests/test_startup_directory.py) | 启动刷新、模式绕过、旧文件保留、不提前读取配置及错误脱敏的离线测试 |
 
 `data/security_directory_live.json` 是运行生成的本地快照，已加入 `.gitignore`，不替换人工夹具、不提交数千条易过期的数据。自定义输出路径需自行决定是否忽略。
 
@@ -57,11 +59,14 @@
 - 单次HTTP解码后的响应最多10MB；Excel的ZIP条目最多1,000个、声明解压大小合计最多32MB；Excel扫描最多10,000条证券。它们是保守资源保护，不是完整的文件解析沙箱。
 - 默认每次连接/读取等待15秒，可用 `--timeout` 调整；它不是完整刷新总截止时间。三个请求串行，没有自动重试或源回退。
 - 任意分片失败，不进入保存阶段，不返回“部分成功”，也不为旧数据换上新时间。
+- 启动入口传入检查基准日期，刷新函数先执行 `assert_usable(..., development=False)`，拒绝过期、未来日期和人工的新名单，再进入保存阶段。手动刷新 CLI 的既有默认行为不变。
 - 保存只接受 `.json` 路径，拒绝符号链接、已有人工夹具及非目录JSON文件。已有目录可过期，因为刷新正是为了替换它。
 - 完整结果先写目标同一文件夹的临时文件，`flush`/`fsync` 后用原加载器读回比较，最后 `os.replace()`。替换前失败保留旧文件；成功才替换。正常失败会清理临时文件，清理本身失败则明确报错。
 - 原子替换避免读者看到半份文件，不提供旧版本备份、并发刷新锁或所有崩溃情况下的持久性保证。当前按单个刷新进程使用。
 
 CLI失败返回非零码与错误类别，不把底层网络错误、凭据或本地错误路径直接输出。失败后不会自动把旧快照作为“本次成功”返回；应用若加载旧文件，仍必须通过上海日期下0–7天的 `assert_usable()` 检查，不能静默使用过期目录。
+
+启动器先显示缺失或过期原因及刷新进度，成功后显示条数和日期，并从正式文件重新加载、再次检查；失败输出固定的 `directory_refresh_failed` 中文提示和手动刷新命令，不读取 `.env`，不启动研究服务。错误分类详见[本地配置与启动](local-environment.md#启动错误原因)。API 安装依赖包含深圳 Excel 解析器，腾讯模式无需为刷新安装完整 AKShare。
 
 ## 6. 如何运行
 

@@ -45,7 +45,9 @@ $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server
 ```
 
-无参数默认 DeepSeek + 腾讯不复权历史日线、端口8765，自动按原规则读取根目录 `.env`；`--provider` / `--data` / `--port` 可显式覆盖正常后端。启动仅检查本地配置、依赖和现有目录，不请求模型或行情、不自动刷新目录；缺配置明确失败，不切人工数据。运行后打开 <http://127.0.0.1:8765/docs> 查看Swagger接口；Ctrl+C停止服务。
+无参数默认 DeepSeek + 腾讯不复权历史日线、端口8765，自动按原规则读取根目录 `.env`；`--provider` / `--data` / `--port` 可显式覆盖正常后端。上面的直接 Python 启动默认仅检查本地配置、依赖和现有目录，不请求模型或行情、不自动刷新目录；缺配置明确失败，不切人工数据。运行后打开 <http://127.0.0.1:8765/docs> 查看Swagger接口；Ctrl+C停止服务。
+
+Windows 可直接运行 `.\start.cmd`，它额外启用 `--open-browser --refresh-stale-directory`。只有正常真实数据模式、未显式传入 `--directory` 时，缺失、过期或未来日期的默认名单才在启动阶段从交易所刷新一次。名单有效时不联网；格式错误、人工名单、读取失败直接报错。刷新前不读取 `.env`，新名单校验后才原子替换旧文件，再重新加载检查；失败返回非零并保留旧文件。运行期间不自动刷新，名单失效继续由既有研究检查拒绝。直接 Python 入口也可显式传入这个参数，默认关闭；`--demo` / `--data synthetic` / 自选目录不生效。原因码与排错见[本地启动文档](local-environment.md#启动错误原因)。
 
 扩大筛选样本须显式从PowerShell启动，不由模型、网页参数或聊天文本修改可信采集规模：
 
@@ -79,7 +81,7 @@ $apiReply.result.answer
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.api_server --provider deepseek --data synthetic
 ```
 
-该命令可能计费，并不等于离线 Dev Mode。真实腾讯模式现为默认，也可显式 `--data tencent`；需当前有效本地目录，可用 `--directory` 指定服务端路径。不会刷新目录、静默换源或让HTTP客户端提交模型密钥/路径。用户明确提交的研究问题、确认参数与紧凑证据会发给配置好的 DeepSeek，可能计费；启动及 health 检查不发送这些内容。终端 `agent_cli` 仍保留原显式模式规则，没有改变其默认行为。
+该命令可能计费，并不等于离线 Dev Mode。真实腾讯模式现为默认，也可显式 `--data tencent`；需当前有效本地目录，可用 `--directory` 指定服务端路径。除上述显式开启的启动刷新外，不会自动刷新目录、静默换源或让HTTP客户端提交模型密钥/路径。用户明确提交的研究问题、确认参数与紧凑证据会发给配置好的 DeepSeek，可能计费；启动及 health 检查不发送这些内容。终端 `agent_cli` 仍保留原显式模式规则，没有改变其默认行为。
 
 ## 3. 接口契约
 

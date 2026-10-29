@@ -1,6 +1,7 @@
 """Opt-in directory refresh, separate from model calls and market analysis."""
 
 import argparse
+from datetime import date
 import json
 from pathlib import Path
 
@@ -11,11 +12,15 @@ from trading_companion.security_directory import (
 )
 
 
-def refresh_security_directory(path: str | Path, *, timeout_seconds: float = 15.0) -> SecurityDirectory:
+def refresh_security_directory(
+    path: str | Path, *, timeout_seconds: float = 15.0, reference_date: date | None = None,
+) -> SecurityDirectory:
     """Only a fully validated fetch may replace the configured local snapshot."""
     source = ExchangeDirectorySource(timeout_seconds=timeout_seconds)
     selected = check_directory_destination(path)
     directory = source.read_directory()
+    if reference_date is not None:
+        directory.assert_usable(reference_date, development=False)
     save_security_directory(directory, selected)
     return directory
 

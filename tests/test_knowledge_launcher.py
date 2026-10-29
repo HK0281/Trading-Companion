@@ -84,7 +84,7 @@ class KnowledgeLauncherTests(unittest.TestCase):
               redirect_stdout(StringIO()), redirect_stderr(StringIO()) as errors):
             status = api_server.main(["--directory", str(self.path)])
         self.assertEqual(status, 2)
-        self.assertIn("configuration_error", errors.getvalue())
+        self.assertIn("[directory_stale]", errors.getvalue())
         models.assert_not_called()
         server.assert_not_called()
 

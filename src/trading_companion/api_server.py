@@ -1,7 +1,7 @@
 """Normal local-server launcher with an explicitly selected offline development mode."""
 
 import argparse
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -9,6 +9,67 @@ from trading_companion.model import ModelConfigurationError
 from trading_companion.local_env import load_model_environment
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.api_service import DATA_MODES, DataModeDependencyError, ensure_data_mode_dependencies
+
+
+_SHANGHAI = timezone(timedelta(hours=8))
+_DIRECTORY_REFRESH_HINT = (
+    r"请手动运行：.\.venv\Scripts\python.exe -B -m trading_companion.security_directory_refresh --live"
+    "（自选目录请追加 --output 指定同一路径）。"
+)
+
+
+class _StartupError(Exception):
+    """Only fixed application messages may cross the startup error boundary."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(code)
+
+
+def _prepare_startup_directory(path: Path, *, refresh_stale: bool) -> None:
+    """Refresh only absent/dated snapshots; never refresh from the runtime loader."""
+    from trading_companion.security_directory import load_security_directory
+
+    directory = None
+    reference_date = datetime.now(_SHANGHAI).date()
+    try:
+        try:
+            directory = load_security_directory(path)
+        except DataSourceError:
+            try:
+                path.stat()
+            except FileNotFoundError:
+                raise _StartupError("directory_missing", "证券名单缺失；" + _DIRECTORY_REFRESH_HINT) from None
+            except OSError:
+                pass
+            raise _StartupError("directory_unavailable", "证券名单无法读取，请检查文件访问权限。") from None
+        except (DataValidationError, InvalidRequestError):
+            raise _StartupError("directory_invalid", "证券名单格式无效，请检查本地名单文件。") from None
+        try:
+            directory.assert_usable(reference_date, development=False)
+        except (DataValidationError, InvalidRequestError):
+            if not directory.is_fixture and not 0 <= (
+                    reference_date - directory.retrieved_at.astimezone(_SHANGHAI).date()).days <= 7:
+                raise _StartupError("directory_stale", "证券名单已过期或日期在未来；" + _DIRECTORY_REFRESH_HINT) from None
+            raise _StartupError("directory_invalid", "证券名单格式无效或属于人工测试名单，不能用于正常研究。") from None
+    except _StartupError as error:
+        if not refresh_stale or error.code not in ("directory_missing", "directory_stale"):
+            raise
+        reason = ("证券名单缺失" if directory is None else
+                  f"证券名单已过期或日期在未来（取于 {directory.retrieved_at.astimezone(_SHANGHAI).date()}）")
+        print(f"{reason}，正在刷新证券名单（来源：交易所）…", flush=True)
+        try:
+            from trading_companion.security_directory_refresh import refresh_security_directory
+            refresh_security_directory(path, reference_date=reference_date)
+            directory = load_security_directory(path)
+            directory.assert_usable(datetime.now(_SHANGHAI).date(), development=False)
+        except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+            raise _StartupError("directory_refresh_failed",
+                "自动刷新证券名单失败（网络、交易所页面或本地文件不可用），请稍后重试；"
+                + _DIRECTORY_REFRESH_HINT) from None
+        print(f"证券名单刷新成功：{len(directory.securities)} 条，取于 "
+              f"{directory.retrieved_at.astimezone(_SHANGHAI).date()}。", flush=True)
 
 
 def _run_browser_server(app, *, port: int) -> None:
@@ -50,6 +111,8 @@ def main(argv=None) -> int:
     parser.add_argument("--data", choices=DATA_MODES,
                         help="Normal source (default: tencent); AKShare requires python -m pip install -e '.[data]'")
     parser.add_argument("--directory", help="Existing local security snapshot; Tencent/AKShare modes only")
+    parser.add_argument("--refresh-stale-directory", action="store_true",
+                        help="Refresh missing/stale default directory at startup only (enabled by start.cmd)")
     parser.add_argument("--market-context", help="Optional trusted local market-context JSON; never refreshed online")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--open-browser", action=argparse.BooleanOptionalAction, default=False,
@@ -92,19 +155,17 @@ def main(argv=None) -> int:
         else:
             from trading_companion.model_registry import configured_models
             from trading_companion.security_directory import load_security_directory
-            from datetime import datetime
             if args.data == "synthetic":
                 source, _ = load_development_fixtures()
                 loader = lambda _: load_development_fixtures()[1]
             else:
                 source = None
-                directory_path = Path(args.directory) if args.directory else ROOT / "data/security_directory_live.json"
+                directory_path = Path(args.directory) if args.directory is not None else ROOT / "data/security_directory_live.json"
                 def loader(_):
                     # Routing may use stale names as a veto, never as research authority.
                     return load_security_directory(directory_path)
-                directory = loader(datetime.now(timezone.utc))
-                directory.assert_usable(datetime.now(timezone.utc).astimezone(
-                    timezone(timedelta(hours=8))).date(), development=False)
+                _prepare_startup_directory(directory_path,
+                    refresh_stale=args.refresh_stale_directory and args.directory is None)
             models = configured_models(default_provider=args.provider, loader=load_model_environment)
             if args.market_context:
                 context_path = Path(args.market_context)
@@ -124,7 +185,8 @@ def main(argv=None) -> int:
                 try:
                     snapshot_store = ResearchSnapshotStore(Path(args.snapshot_db))
                 except SnapshotStoreError:
-                    raise ModelConfigurationError("The selected local snapshot archive is unavailable") from None
+                    raise _StartupError("snapshot_store_unavailable",
+                        "本地证据快照库不可用，请检查 --snapshot-db 指定的文件及访问权限。") from None
             service = ResearchApiService(model_factory=models[args.provider], model_factories=models, directory_loader=loader,
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
@@ -140,13 +202,22 @@ def main(argv=None) -> int:
     except ImportError:
         print("Install API dependencies first: python -m pip install -e '.[api,model]'", file=sys.stderr)
         return 2
-    except (ModelConfigurationError, DataSourceError, DataValidationError, InvalidRequestError):
+    except (_StartupError, ModelConfigurationError, DataSourceError, DataValidationError, InvalidRequestError) as error:
         if service is not None:
             service.close()
+        if development_service is not None:
+            development_service.close()
         if snapshot_store is not None:
             snapshot_store.close()
-        print("[configuration_error] 服务端模型配置、本地目录或夹具不可用；不要发送密钥。", file=sys.stderr)
-        print("正常模式不会自动退回测试数据。请检查 .env 与证券目录；需要离线演示时显式使用 --demo。", file=sys.stderr)
+        if isinstance(error, _StartupError):
+            code, message = error.code, error.message
+        elif isinstance(error, ModelConfigurationError):
+            fields = "OPENAI_API_KEY 和 OPENAI_MODEL" if args.provider == "openai" else "DEEPSEEK_API_KEY 和 DEEPSEEK_MODEL"
+            code, message = "model_configuration_error", f"模型配置缺失或无效，请检查 .env 或环境变量中的 {fields}；不要发送密钥。"
+        else:
+            code, message = "configuration_error", "服务端本地配置或夹具不可用，请检查启动配置；不要发送密钥。"
+        print(f"[{code}] {message}", file=sys.stderr)
+        print("正常模式不会自动退回测试数据；需要离线演示时显式使用 --demo。", file=sys.stderr)
         return 2
     print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
     if trace_sink is not None:

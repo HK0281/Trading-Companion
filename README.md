@@ -72,7 +72,7 @@ Local offline evidence for this revision, dated 2026-10-28. Tests verify program
 
 | Fact | Reproduction / evidence |
 | --- | --- |
-| Offline Python tests | **2,315 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
+| Offline Python tests | **2,337 unittest + 244 pytest cases**, no skips or xfails; also 4 Agent scenarios, 90 MVP repeats, 5 company workflows and the API walkthrough. [Acceptance command](#full-acceptance-and-ci) |
 | Frontend tests, type checking and build | **633 Vitest tests across 20 files**, TypeScript `--noEmit` and Vite production build pass; the bundle gate confirms served and wheel assets. Vitest, tsc and Vite were invoked directly with Node because pnpm was unavailable; `verify.py web` requires pnpm. [Acceptance gates](docs/ci-design.md) |
 | Characterization baseline: 35 scenarios / 105 turns (routing v1/v2) | [Frozen observations and reviewed behavior changes](docs/request-routing-design.md) |
 | Windows CI configured | [One Windows Actions job](.github/workflows/ci.yml) runs the same Python, web and bundle gates; remote run status is separate from local results. |
@@ -145,7 +145,9 @@ The detailed startup, configuration, module commands and [documentation index](#
 
 For an already configured Windows checkout, double-click [`start.cmd`](start.cmd), or run `.\start.cmd` from PowerShell. It uses the project virtual environment and the existing root `.env` through the normal server entry point, then opens the frontend in your default browser after the server successfully binds its port (default: <http://127.0.0.1:8765/>). Press Ctrl+C in the server window to stop. Arguments are forwarded, for example `.\start.cmd --port 8767` or `.\start.cmd --demo` for the fixed offline demonstration; `--no-open-browser` suppresses browser launch. An occupied port or configuration failure does not open a page. The script does not terminate another process or change ports automatically. If browser launch fails, open the printed URL manually; the service keeps running. The Python server entry point also accepts `--open-browser` but does not open a browser by default.
 
-The script builds missing frontend assets using already installed local dependencies. It does not install packages, refresh the security directory or overwrite configuration. If assets already exist, it reuses them: after changing frontend source, run `pnpm.cmd --dir frontend build` before restarting. Startup errors keep the window open; automation can set `TRADING_COMPANION_NO_PAUSE=1` to suppress the pause. A fresh checkout still needs the preparation steps below.
+The script builds missing frontend assets using already installed local dependencies. It also enables `--refresh-stale-directory`: in normal real-data mode, a missing, expired or future-dated default `data/security_directory_live.json` is refreshed from the public SSE/SZSE lists before model configuration is read. A usable directory needs no refresh. The window shows progress, then the record count and retrieval date; refresh failure stops startup and preserves the old snapshot. `--demo`, `--data synthetic` and any explicit `--directory` skip automatic refresh. Refresh happens only during startup; if the directory expires while the server runs, the existing research checks still reject it until it is updated. Direct `python -m trading_companion.api_server` startup keeps strict local checks unless this flag is explicitly supplied.
+
+The script does not install packages or overwrite configuration. The API extra includes the Excel parser needed for directory refresh; existing environments can rerun the backend installation command below. If assets already exist, the script reuses them: after changing frontend source, run `pnpm.cmd --dir frontend build` before restarting. Startup errors keep the window open; automation can set `TRADING_COMPANION_NO_PAUSE=1` to suppress the pause. A fresh checkout still needs the preparation steps below.
 
 In Windows PowerShell, install the backend extras and build the frontend from the project root (Python 3.11+, Node 22.12+ and the project's pnpm version are required):
 
@@ -166,7 +168,7 @@ OPENAI_API_KEY=replace_with_your_openai_key
 OPENAI_MODEL=replace_with_your_openai_model_id
 ```
 
-The program reads the file at startup; no activation script or repeated terminal key assignment is needed. Existing terminal values take precedence, including empty values. Keep `.env` local. If the security directory is missing or expired, refresh it explicitly before starting:
+The program reads the file at startup, after the directory check and any enabled refresh; no activation script or repeated terminal key assignment is needed. Existing terminal values take precedence, including empty values. Keep `.env` local. `start.cmd` handles a missing or expired default directory automatically. For direct Python startup, or a custom directory (add `--output` with that path), refresh explicitly before starting:
 
 ```powershell
 .\.venv\Scripts\python.exe -m trading_companion.security_directory_refresh --live
@@ -178,7 +180,7 @@ That command reads public exchange lists; it does not call a model. Start normal
 .\.venv\Scripts\python.exe -m trading_companion.api_server
 ```
 
-Open <http://127.0.0.1:8765/> and send a message to start a chat. No arguments mean **DeepSeek + Tencent historical daily bars**, with public company/financial/news/announcement sources available for broader research. Startup checks local configuration, dependencies and the existing real security directory; it does not call a model, fetch market bars or refresh the directory. Missing/stale directories or invalid default-model configuration fail explicitly instead of silently switching to artificial data. Submitted questions can call the selected model and applicable public data sources.
+Open <http://127.0.0.1:8765/> and send a message to start a chat. No arguments mean **DeepSeek + Tencent historical daily bars**, with public company/financial/news/announcement sources available for broader research. Direct Python startup checks local configuration, dependencies and the existing real security directory; it does not call a model, fetch market bars or refresh the directory by default. `start.cmd` enables only the conditional directory refresh described above; neither entry calls a model or fetches market bars at startup. Startup errors distinguish missing/stale, invalid or unreadable directories, refresh failure, invalid model configuration and an unavailable snapshot archive, without printing configuration values or silently switching to artificial data. Submitted questions can call the selected model and applicable public data sources.
 
 To explicitly expand numeric screening beyond the standard sample (currently 50 IDs per covered board, usually 200 across the SSE/SZSE directory), start with:
 
@@ -645,7 +647,7 @@ $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -B -m trading_companion.security_directory_refresh --live --timeout 15
 ```
 
-Without `--live`, this command makes no requests or writes. A successful refresh saves `data/security_directory_live.json` (Git-ignored); all three required fragments must validate before replacement. Failures preserve an existing snapshot and its timestamp, without automatically authorizing stale data.
+Without `--live`, this command makes no requests or writes. A successful refresh saves `data/security_directory_live.json` (Git-ignored); all three required fragments must validate before replacement. Failures preserve an existing snapshot and its timestamp, without automatically authorizing stale data. `start.cmd` reuses this refresher only when the default real directory is missing, expired or future-dated; format/read errors and explicitly selected directories do not trigger refresh. It checks the fetched directory before replacement, reloads it afterward, and stops on failure before reading `.env`. No directory refresh runs during a research request or while the server is otherwise running.
 
 Load it with `load_security_directory("data/security_directory_live.json")` and inject it as `directory=` into `run_natural_research_turn()`. Normal name lookup does not download lists. The offline demo still uses its four-record fixture.
 
@@ -737,7 +739,7 @@ Only after explicitly deciding to request real historical prices, with a current
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_cli --provider deepseek --data tencent
 ```
 
-The default snapshot is `data/security_directory_live.json`; `--directory` may select another trusted local snapshot in either real-data mode. Use `--data akshare_eastmoney` after installing `.[data]` to explicitly select Eastmoney through AKShare. The entry re-reads and checks the directory before each question and stops if it becomes unusable. It never refreshes directories or switches sources automatically; changing sources requires restarting. The entry is verified offline with mocked provider/market paths, not a newly verified live conversational flow. See the [source selection design](docs/source-selection-design.md).
+The default snapshot is `data/security_directory_live.json`; `--directory` may select another trusted local snapshot in either real-data mode. Use `--data akshare_eastmoney` after installing `.[data]` to explicitly select Eastmoney through AKShare. This terminal entry re-reads and checks the directory before each question and stops if it becomes unusable. It never refreshes directories or switches sources automatically; changing sources requires restarting. The Windows Web launcher `start.cmd` separately enables conditional refresh of the default directory during startup, while direct `api_server` startup defaults to no refresh; neither refreshes it during operation. The terminal entry is verified offline with mocked provider/market paths, not a newly verified live conversational flow. See the [source selection design](docs/source-selection-design.md).
 
 ## Fixed-scenario Agent contract evaluation
 

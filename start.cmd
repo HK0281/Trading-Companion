@@ -23,7 +23,7 @@ if not exist "src\trading_companion\web_assets\index.html" goto build_error
 :run_server
 echo [Trading Companion] Starting the local server...
 echo Your browser will open when the server is ready. Press Ctrl+C to stop.
-".venv\Scripts\python.exe" -X utf8 -m trading_companion.api_server --open-browser %*
+".venv\Scripts\python.exe" -X utf8 -m trading_companion.api_server --open-browser --refresh-stale-directory %*
 set "TC_START_EXIT_CODE=%errorlevel%"
 if not "%TC_START_EXIT_CODE%"=="0" echo [ERROR] Startup failed. Check the server message above.
 goto finish

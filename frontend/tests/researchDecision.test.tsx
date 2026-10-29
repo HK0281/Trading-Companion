@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import fixture from "./decisionFixture.json";
+import legacy from "./decisionLegacyFixture.json";
 import { parseCompanyAnswer, CompanyParagraphs } from "../src/ProductResearch";
 
 const fresh = () => structuredClone(fixture);
@@ -15,7 +16,8 @@ describe("reference decisions", () => {
     expect(screen.getByText("买入")).toBeVisible();
     expect(screen.getByText("未来20个交易日")).toBeVisible();
     expect(screen.getByText(/模型自评，未经历史校准/)).toBeVisible();
-    expect(screen.getByRole("table")).toHaveAccessibleName(/ATR 参考计划.*2026-09-25/);
+    expect(screen.getByRole("table", { name: /ATR 参考计划.*2026-09-25/ })).toBeVisible();
+    expect(screen.getByRole("table", { name: /关键价位区间/ })).toBeVisible();
     expect(screen.getByText(/人工样例，非真实行情/)).toBeVisible();
     expect(screen.getByText(/止盈 2/)).toBeVisible();
     fireEvent.click(screen.getByText("研判依据"));
@@ -28,7 +30,7 @@ describe("reference decisions", () => {
     render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
     expect(screen.getByText(/本轮研判未形成/)).toBeVisible();
     expect(screen.queryByText("持有")).not.toBeInTheDocument();
-    expect(screen.getByRole("table")).toBeVisible();
+    expect(screen.getByRole("table", { name: /ATR 参考计划/ })).toBeVisible();
   });
 
   it("separates a hypothetical holding exit from an empty account", () => {
@@ -47,11 +49,13 @@ describe("reference decisions", () => {
     for (const p of payload.trade_plans) Object.assign(p, { status: "unavailable", code: "risk_atr_unavailable", values: null });
     render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
     expect(screen.getByText(/参考计划不可用/)).toBeVisible();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: /ATR 参考计划/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /关键价位区间/ })).toBeVisible();
   });
 
   it.each(["unknown-plan", "wrong-company", "wrong-purpose", "probability", "price-order", "missing-company"])("rejects %s", kind => {
-    const payload = fresh();
+    // v3 also serves ordinary research with no verdict; v2 always requires one per company.
+    const payload = kind === "missing-company" ? structuredClone(legacy) : fresh();
     if (kind === "unknown-plan") payload.decisions[0].plan_id = "not-supplied";
     if (kind === "wrong-company") payload.decisions[0].instrument_id = "600000.SH";
     if (kind === "wrong-purpose") payload.decisions[0].plan_id = payload.trade_plans[1].plan_id;
@@ -68,5 +72,12 @@ describe("reference decisions", () => {
     fireEvent.click(screen.getByText("研判依据"));
     expect(screen.getByText(/img src=x/)).toBeVisible();
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("keeps historical v2 decisions readable", () => {
+    expect(legacy.version).toBe("product-research-answer-v2");
+    render(<CompanyParagraphs data={parseCompanyAnswer(legacy)!} />);
+    expect(screen.getByText("买入")).toBeVisible();
+    expect(screen.getByRole("table", { name: /ATR 参考计划/ })).toBeVisible();
   });
 });

@@ -49,7 +49,7 @@ def _validate_batch(batch, request, kinds):
         raise ValueError("Company evidence belongs to another request or domain")
     identities = set()
     for section in batch.source_results:
-        if len(section.items) > request.limit:
+        if len(section.items) > (25 if section.kind == "financial" else request.limit):
             raise ValueError("Company evidence exceeds its requested bound")
         for item in section.items:
             if (item.instrument_id != request.instrument_id or item.section != section.kind
@@ -93,10 +93,15 @@ class ProductEvidence:
     retrieved_at: str | None = None
     raw_value: float | int | str | None = None
     unit: str | None = None
+    calculation_basis: tuple[tuple[str, str], ...] = ()
 
     def to_dict(self):
         from dataclasses import asdict
-        return {**asdict(self), "dependencies": list(self.dependencies)}
+        value = {**asdict(self), "dependencies": list(self.dependencies)}
+        value.pop("calculation_basis")
+        if self.calculation_basis:
+            value["calculation_basis"] = dict(self.calculation_basis)
+        return value
 
 
 @dataclass(frozen=True)
@@ -298,6 +303,11 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=candidate.data_authenticity,
                         temporal_scope="conditional_atr_reference_plan", dependencies=candidate.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
+        from trading_companion.financial_periods import quarterly_evidence
+        evidence.extend(quarterly_evidence(evidence))
+        if result is not None:
+            from trading_companion.research_price_context import price_context_evidence
+            evidence.extend(price_context_evidence(result))
         companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background, plans))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:
@@ -473,6 +483,10 @@ def model_research_context(bundle, *, limit=14500):
 
     def priority(record):
         scope = record.get("temporal_scope")
+        if re.search(r"周线|周均|日周", bundle.plan.user_question) and scope in ("cross_timeframe_derived", "completed_week_derived"):
+            return -4 if scope == "cross_timeframe_derived" else -3
+        if scope in ("daily_price_context", "financial_quarter_derived"):
+            return -2
         if scope == "historical_exposure_replay":
             return -1
         focus = next((item.rsplit(":", 1)[-1] for item in bundle.plan.applied_defaults

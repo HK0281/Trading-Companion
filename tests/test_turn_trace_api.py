@@ -310,6 +310,7 @@ class TurnTraceApiTests(unittest.TestCase):
     def test_all_105_routing_observations_match_frozen_targets_with_tracing_enabled(self):
         from tests.routing_baseline_support import compare_observations, read_baseline
         from tests.routing_targets_support import TARGET, observe_target_scenario, validate_contracts
+        from tests.routing_narrative_support import overlay
         def traced_service(**kwargs):
             return ResearchApiService(**kwargs, trace_sink=self.sink)
         with patch("tests.routing_baseline_support.ResearchApiService", side_effect=traced_service):
@@ -317,7 +318,7 @@ class TurnTraceApiTests(unittest.TestCase):
                 with self.subTest(scenario=scenario["id"]):
                     observed, decisions = observe_target_scenario(scenario)
                     validate_contracts(scenario, observed, decisions)
-                    compare_observations(scenario, observed)
+                    compare_observations({**scenario, "observed": overlay(scenario["id"], scenario["observed"])}, observed)
         records = read_records(self.path)
         self.assertEqual(len(records), 105)
         self.assertNotIn("other", {item["outcome"]["code"] for item in records})

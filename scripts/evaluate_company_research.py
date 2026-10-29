@@ -182,6 +182,13 @@ class _FixedModel:
                     {"text": "样例营业收入为" + revenue["display"] + "，归母净利润为" + profit["display"] + "。还应结合同比与现金流判断盈利质量。", "evidence_ids": [revenue["id"], profit["id"]]},
                 ]
             payload = {"version": PRODUCT_ANSWER_VERSION, "paragraphs": paragraphs}
+            if case.id == "two_stock_comparison":
+                # Current protocol keeps each company's interpretation with its own evidence.
+                payload = {"version": "product-research-answer-v3", "decisions": [], "narratives": [
+                    {"instrument_id": s["instrument_id"], "summary": {"text": s["name"] + "需分别核对经营与走势。"},
+                     "current": {"text": "样例营业收入为" + find("financial", instrument=s["instrument_id"], label="营业收入")["display"] + "。"},
+                     "drivers": [], "scenarios": {}, "levels": [], "stance": None}
+                    for s in context["securities"]]}
         return ToolModelResponse("complete", json.dumps(payload, ensure_ascii=False))
 
 

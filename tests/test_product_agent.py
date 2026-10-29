@@ -216,7 +216,7 @@ class ProductAgentTests(unittest.TestCase):
         model = ProductModelFixture(synthesis_response=proposal)
         result = self.run_turn(model=model)
         self.assertEqual((result.status, result.product_answer.status), ("limited", "fallback"))
-        self.assertEqual(result.product_answer.code, "product_answer_output_invalid")
+        self.assertEqual(result.product_answer.code, "answer_facts_only")
         self.assertEqual(len(model.calls), 2)
         self.assertEqual(model.calls[1][1], ())
         self.assertEqual(len(self.data.calls), 1)

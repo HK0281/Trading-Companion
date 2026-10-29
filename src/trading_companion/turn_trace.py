@@ -11,6 +11,7 @@ from math import isfinite
 from pathlib import Path
 import re
 import sys
+from trading_companion.answer_validation import CODES as _ANSWER_CODES, SECTIONS as _ANSWER_SECTIONS
 from threading import Lock
 from time import monotonic
 from uuid import uuid4
@@ -28,7 +29,7 @@ _STOPS = frozenset(("turn_cancelled", "turn_deadline_exceeded", "model_call_budg
 # Exact application codes, never arbitrary exception/response strings or a prefix match.
 # Source-code coverage and reasoned non-turn exclusions live in test_turn_trace.py.
 # Unknown external values still become "other"; source discovery never runs in production.
-_CODES = _STOPS | frozenset("""
+_CODES = _STOPS | _ANSWER_CODES | frozenset("""
 decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable
 decision_no_evidence decision_output_invalid decision_ready demo_domain_unavailable demo_evidence_missing
 demo_question_unsupported plan_price_grid_unavailable plan_ready plan_excluded
@@ -93,7 +94,7 @@ _PARENT = ContextVar("research_trace_parent", default=None)
 _TOOL = ContextVar("research_trace_tool", default=None)
 _KINDS = {"tool": "tools", "source": "sources", "check": "checks", "repair": "repairs"}
 _OPERATIONS = frozenset("""
-research workflow execute daily_bars company_section company_collect directory market_context_load market_background
+research workflow execute daily_bars company_section company_collect directory market_context_load market_background answer_validation
 screening_snapshot knowledge_search tool_history tool_request tool_scope research_response workflow_response
 indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule rewrite_decision model_rewrite
 daily_source daily_records
@@ -212,7 +213,7 @@ def _result_metadata(operation, result):
             return "failed", "other"
         return {"accepted": "ok", "rejected": "rejected", "not_performed": "skipped"}.get(result.status, "failed"), _event_code(result.code)
     if operation == "product_answer" and _known(result, "product_answer", "ProductAnswer"):
-        return "ok", _event_code(result.code)
+        return {"accepted": "ok", "limited": "limited", "fallback": "failed"}.get(result.status, "failed"), _event_code(result.code)
     return "ok", "ok"
 
 
@@ -614,6 +615,38 @@ def trace_replay(original_run_id, code=None):
 def trace_run_id():
     trace = _CURRENT.get()
     return trace.run_id if trace is not None else None
+
+
+def safe_answer_validation(value):
+    """Exact, versioned allowlist. Arbitrary strings and rejected sentences never survive."""
+    if type(value) is not dict:
+        value = {}
+    result = {"version": 1, "answer_version": "product-research-answer-v3",
+              "state": value.get("state") if value.get("state") in ("complete", "partial", "fallback") else "fallback",
+              "code": value.get("code") if type(value.get("code")) is str and value["code"] in _ANSWER_CODES else "other"}
+    for key in ("generated_sentences", "retained_sentences", "deleted_sentences", "retained_paragraphs", "repair_attempts", "structure_failures"):
+        number = value.get(key)
+        result[key] = min(number, 10000) if type(number) is int and number >= 0 else 0
+    result["reasons"] = []
+    reasons = value.get("reasons", [])
+    if type(reasons) is list:
+        for issue in reasons[:20]:
+            if type(issue) is not dict:
+                continue
+            code, section, index = issue.get("code"), issue.get("section"), issue.get("index")
+            result["reasons"].append({"code": code if type(code) is str and code in _ANSWER_CODES else "other",
+                "section": section if type(section) is str and section in _ANSWER_SECTIONS else "structure",
+                "index": min(index, 100) if type(index) is int and index >= 0 else 0})
+    return result
+
+
+def trace_answer_validation(value):
+    with trace_event("check", "answer_validation") as handle:
+        if handle.started is not None:
+            metadata = safe_answer_validation(value)
+            handle.started[0]["validation"] = metadata
+            handle.status = {"complete": "ok", "partial": "limited", "fallback": "failed"}[metadata["state"]]
+            handle.code = metadata["code"]
 
 
 class _EventHandle:

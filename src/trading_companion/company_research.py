@@ -377,7 +377,9 @@ class ResearchDataService:
         try:
             method = self._cninfo if source == "cninfo_announcements" else getattr(self, "_" + kind)
             items, skipped = method(request, deadline)
-            deduplicated = tuple({item.id: item for item in items}.values())[:request.limit]
+            # Financials are five fields over at most five already returned periods.
+            bound = 25 if kind == "financial" else request.limit
+            deduplicated = tuple({item.id: item for item in items}.values())[:bound]
             return ResearchDataSection(kind, source, "available" if deduplicated else "empty", deduplicated,
                 "bounded_evidence_available" if deduplicated else "no_eligible_evidence_in_bounded_response",
                 "已核对来源、证券及时间；仅为有界查询，不保证完整覆盖。" if deduplicated else
@@ -437,7 +439,7 @@ class ResearchDataService:
             "filter": f'(SECUCODE="{request.instrument_id}")', "p": "1", "ps": "5", "sr": "-1",
             "st": "REPORT_DATE", "source": "HSF10", "client": "PC"}, deadline)
         candidates, skipped = [], 0
-        for row in self._rows(payload):
+        for row in self._rows(payload)[:5]:
             try:
                 _identifier(row, request)
                 period = _date(row.get("REPORT_DATE"))
@@ -451,23 +453,23 @@ class ResearchDataService:
                 skipped += 1
         if not candidates:
             return (), skipped
-        period, row, publication, updated = max(candidates, key=lambda item: item[0])
         items, retrieved = [], self._now()
         fields = (("TOTALOPERATEREVE", "revenue", "cny"), ("PARENTNETPROFIT", "parent_net_profit", "cny"),
                   ("TOTALOPERATEREVETZ", "revenue_yoy", "percent"),
                   ("PARENTNETPROFITTZ", "parent_net_profit_yoy", "percent"), ("ROEJQ", "weighted_roe", "percent"))
-        for field, metric, unit in fields:
-            try:
-                if unit == "cny" and row.get("CURRENCY") not in ("CNY", "RMB", "人民币", "元"):
-                    raise _Rejected("financial_currency_unknown")
-                value = _number(row.get(field))
-            except _Rejected:
-                skipped += 1
-                continue
-            items.append(_evidence(request, "financial", _SOURCES["financial"], metric, value, unit,
-                self._page_url(request, "cwfx"), retrieved, publication=publication, report_period=period,
-                updated_date=updated, warnings=(_SNAPSHOT_WARNING,
-                    "Revenue and profit are cumulative report-period values; percentage values are not fractional ratios.")))
+        for period, row, publication, updated in sorted(candidates, key=lambda item: item[0], reverse=True):
+            for field, metric, unit in fields:
+                try:
+                    if unit == "cny" and row.get("CURRENCY") not in ("CNY", "RMB", "人民币", "元"):
+                        raise _Rejected("financial_currency_unknown")
+                    value = _number(row.get(field))
+                except _Rejected:
+                    skipped += 1
+                    continue
+                items.append(_evidence(request, "financial", _SOURCES["financial"], metric, value, unit,
+                    self._page_url(request, "cwfx"), retrieved, publication=publication, report_period=period,
+                    updated_date=updated, warnings=(_SNAPSHOT_WARNING,
+                        "Revenue and profit are cumulative report-period values; percentage values are not fractional ratios.")))
         return items, skipped
 
     def _news(self, request, deadline):

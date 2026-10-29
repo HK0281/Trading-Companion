@@ -3811,6 +3811,7 @@
           "fixture_script": {
             "phases": [
               "company_intent",
+              "company_bad_output",
               "company_bad_output"
             ],
             "mentions": [
@@ -3843,7 +3844,7 @@
                 "code": [
                   "company_research_partial"
                 ],
-                "reason": "重新研究时脚本返回不可修复的非结构化草稿，允许程序保留已核对财务并以application/fallback安全降级；本步质量目标就是验证降级生效，不能显示原始草稿（company-research-design.md：回答检查失败的应用兜底）。"
+                "reason": "重新研究时脚本返回非结构化草稿，一次结构修正仍失败，允许程序保留已核对财务并以application/fallback安全降级；本步质量目标就是验证降级生效，不能显示原始草稿（natural-research-narrative-design.md：一次修正与事实兜底）。"
               }
             ],
             "offline_expected": {

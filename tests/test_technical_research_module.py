@@ -260,13 +260,15 @@ class TechnicalResearchModuleTests(unittest.TestCase):
         accepted = self.answer(bundle, f"平安银行20周均线为{price}元，可以作为较长周期的价格参考。")
         self.assertEqual(accepted.answer.status, "accepted")
         rejected = self.answer(bundle, f"平安银行20日均线为{price}元，可以作为较长周期的价格参考。")
-        self.assertEqual(rejected.answer.status, "fallback")
+        self.assertEqual(rejected.answer.status, "limited")
+        self.assertNotIn("20日均线", rejected.answer.text)
 
     def test_derived_week_and_cross_timeframe_evidence_cannot_authorize_previous_day_claim(self):
         bundle = self.restricted_bundle(self.collected(), lambda item:
             item.temporal_scope in ("completed_week_derived", "cross_timeframe_derived"))
         run = self.answer(bundle, "周线结论较前一交易日更强，日周方向因此得到确认。")
-        self.assertEqual(run.answer.status, "fallback")
+        self.assertEqual(run.answer.status, "limited")
+        self.assertNotIn("前一交易日", run.answer.text)
 
     def test_calculated_support_price_is_citable_but_cannot_be_changed(self):
         bundle = self.restricted_bundle(self.collected(), lambda item:
@@ -276,9 +278,10 @@ class TechnicalResearchModuleTests(unittest.TestCase):
         price = format(item.raw_value, ".7g")
         valid = self.answer(bundle, f"平安银行历史支撑候选为{price}元，仍需观察实际价格反应。")
         self.assertEqual(valid.answer.status, "accepted")
-        altered = format(item.raw_value + 0.01, ".7g")
+        altered = format(item.raw_value + 1, ".7g")
         invalid = self.answer(bundle, f"平安银行历史支撑候选为{altered}元，仍需观察实际价格反应。")
-        self.assertEqual(invalid.answer.status, "fallback")
+        self.assertEqual(invalid.answer.status, "limited")
+        self.assertNotIn(altered + "元", invalid.answer.text)
 
     def test_snapshot_keeps_complete_derived_graph_and_omits_private_question(self):
         bundle = self.collected()

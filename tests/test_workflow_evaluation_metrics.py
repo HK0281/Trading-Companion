@@ -54,8 +54,8 @@ class MetricTests(unittest.TestCase):
         output = summarize_steps(self.steps("R01"))
         checks = output["joint_evidence_checks"]
         self.assertEqual((checks["applicable"], checks["passed"], checks["failed"]), (2, 1, 1))
-        self.assertEqual((checks["attempts"], checks["rejected_attempts"]), (3, 2))
-        self.assertEqual(output["repairs"]["model_rewrite"]["affected_steps"], 1)
+        self.assertEqual((checks["attempts"], checks["rejected_attempts"]), (4, 3))
+        self.assertEqual(output["repairs"]["model_rewrite"]["affected_steps"], 2)
         self.assertEqual(output["fallback"]["applicable"]["value"], 1/2)
         self.assertEqual(output["quality_requirement_failures"], 0)
 

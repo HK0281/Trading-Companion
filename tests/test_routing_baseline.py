@@ -19,6 +19,7 @@ from tests.routing_targets_support import (
     BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
     field_deltas, observe_target_scenario, validate_contracts,
 )
+from tests.routing_narrative_support import overlay
 
 
 class RoutingBaselineTests(unittest.TestCase):
@@ -80,7 +81,7 @@ class RoutingBaselineTests(unittest.TestCase):
                     if fields:
                         differences.add((new["id"], step))
                     expected_current.append(after if fields else before)
-                compare_observations({"id": new["id"], "observed": expected_current}, observed)
+                compare_observations({"id": new["id"], "observed": overlay(new["id"], expected_current)}, observed)
         self.assertEqual(differences, set(CHANGES))
 
     def test_v2_contracts_detect_mutated_indicator_knowledge_technical_owner_and_workflow_gate(self):

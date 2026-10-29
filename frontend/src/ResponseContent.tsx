@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PublicTurn } from "./api";
 import { formatNumber, parseConversation, parsePresentation, unavailableLabel, unitLabel } from "./presentation";
-import { CompanyParagraphs, parseCompanyAnswer } from "./ProductResearch";
+import { CompanyParagraphs, CompanyCoverageNote, parseCompanyAnswer } from "./ProductResearch";
 import { KnowledgeSources } from "./KnowledgeSources";
 import { parseScreeningResult, ScreeningResults } from "./ScreeningResults";
 
@@ -28,7 +28,10 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
     <ReadableText text={turn.answer ?? turn.message} />
     <KnowledgeSources value={turn.knowledge} answer={turn.answer} />
   </>;
-  if (company) return <CompanyParagraphs data={company} />;
+  if (company) return <>
+    {turn.status === "limited" && <CompanyCoverageNote data={company} />}
+    <CompanyParagraphs data={company} />
+  </>;
   if (turn.company_research != null) return <ReadableText text="本轮研究回答未能正常显示，请重新发送研究问题。" />;
   if (conversation) return <div className="conversation-response readable-text">
     {conversation.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}

@@ -22,7 +22,7 @@ from trading_companion.errors import DataSourceError
 from trading_companion.knowledge_retrieval import default_knowledge_retriever
 from trading_companion.model import ModelCallError, TokenUsage
 from trading_companion.open_knowledge import answer_general_knowledge
-from trading_companion.product_answer import synthesize_product_answer
+from trading_companion.product_answer import synthesize_legacy_product_answer as synthesize_product_answer
 from trading_companion.research_intent import prepare_research_question
 from trading_companion.research_tool import TOOL_NAME
 from trading_companion.tool_model import FakeToolModel, ToolModelResponse

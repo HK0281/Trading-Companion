@@ -7,7 +7,7 @@ from trading_companion.trace_cli import TraceReader, TraceSummary
 
 CATEGORIES = ("completed", "clarification", "rejected", "error")
 ANSWER_CHECKS = frozenset(("knowledge_answer", "product_answer", "research_response", "workflow_response"))
-PASS_CODES = frozenset(("ok", "product_research_answered", "response_evidence_checked", "workflow_response_evidence_checked"))
+PASS_CODES = frozenset(("ok", "answer_ready", "product_research_answered", "response_evidence_checked", "workflow_response_evidence_checked"))
 
 
 def ratio(numerator, denominator, *, unknown=0):

@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from trading_companion.decision_demo import scripted_decision
-from trading_companion.product_answer import synthesize_product_answer
+from trading_companion.product_answer import synthesize_legacy_product_answer as synthesize_product_answer
 from trading_companion.product_research import collect_product_research, model_research_context
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.snapshot_store import ResearchSnapshotStore, SnapshotStoreError

@@ -4,7 +4,7 @@
 
 ## 开启与关闭
 
-JSONL 是每行一条 JSON 的文本文件。本功能默认关闭；只有服务端启动参数 `--trace-dir` 可以开启，不读取追踪环境变量，聊天输入、模型和 HTTP 客户端不能改变目录或开关。
+JSONL 是每行一条 JSON 的文本文件。直接启动 Python 服务默认关闭；`start.cmd` 默认传入 `--trace-dir data\traces`，可用 `start.cmd --no-trace` 关闭，或 `--trace-dir PATH` 覆盖目录。`--no-trace` 优先于目录参数。不读取追踪环境变量，聊天输入、模型和 HTTP 客户端不能改变目录或开关。
 
 ```powershell
 .\.venv\Scripts\python.exe -m trading_companion.api_server --trace-dir .\data\traces
@@ -16,7 +16,9 @@ JSONL 是每行一条 JSON 的文本文件。本功能默认关闭；只有服�
 .\.venv\Scripts\python.exe -m trading_companion.api_server --demo --trace-dir .\data\traces
 ```
 
-`data/traces/` 已加入 Git 忽略规则。自选目录应在仓库外或自行忽略，不把诊断记录提交到版本库。不传参数时不创建目录、文件或后台线程；开启后第一次处理消息才尝试建目录。写盘不可用时研究照常返回，启动器最多输出一次固定提示，不打印路径、异常或凭据。
+`data/traces/` 已加入 Git 忽略规则。自选目录应在仓库外或自行忽略，不把诊断记录提交到版本库。关闭时不创建目录、文件或后台线程；开启后第一次处理消息才尝试建目录。写盘不可用时研究照常返回，启动器最多输出一次固定提示，不打印路径、异常或凭据。
+
+2026-10-29 A 批新增 `answer_validation` 事件：trace-v2 内固定 version=1 的白名单，只含回答版本、完整/部分/兜底状态、原因码/section/句序号、保留/删除/修正及结构失败计数。无问题、答案、错误原句。`product_answer` 仍逐草稿记录通过或拒绝，兼容评估工具。`trace_cli --run-id <32位运行号>` 定位该运行的校验元数据；旧 trace-v1/v2 无该字段也能读取。详见[当前回答设计](natural-research-narrative-design.md)。
 
 ## 边界与职责
 

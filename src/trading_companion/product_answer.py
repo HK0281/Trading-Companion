@@ -145,20 +145,27 @@ class ProductAnswer:
     decisions: tuple = ()
     trade_plans: tuple = ()
     decision_mode: bool = False
+    narratives: tuple = ()
+    quality: dict = field(default_factory=dict)
 
     @property
     def text(self) -> str:
         return "\n\n".join(self.paragraphs)
 
     def to_dict(self):
+        from copy import deepcopy
         result = {"version": PRODUCT_ANSWER_VERSION, "status": self.status, "code": self.code,
                 "origin": self.origin, "paragraphs": list(self.paragraphs), "text": self.text,
                 "evidence": [item.to_dict() for item in self.evidence],
                 "paragraph_evidence": [list(items) for items in self.paragraph_evidence],
                 "validation_scope": PRODUCT_ANSWER_SCOPE, "trading_enabled": False}
         if self.decision_mode:
-            result.update(version="product-research-answer-v2", decisions=list(self.decisions),
+            result.update(version="product-research-answer-v2", decisions=deepcopy(list(self.decisions)),
                           trade_plans=[p.to_dict() for p in self.trade_plans])
+        if self.quality:
+            result.update(version="product-research-answer-v3", narratives=deepcopy(list(self.narratives)),
+                          quality=deepcopy(self.quality),
+                          validation_scope="typed_numeric_provenance_and_local_safety_not_full_prose_semantics")
         return result
 
 
@@ -552,7 +559,7 @@ def _checked_answer(text, *, bundle, context, trade_plans=None):
                          "model", tuple(paragraph_evidence))
 
 
-def synthesize_product_answer(question: str, bundle: ProductResearchBundle, *,
+def synthesize_legacy_product_answer(question: str, bundle: ProductResearchBundle, *,
                               model: ToolCapableModel, repair_invalid: bool = False) -> ProductAnswerRun:
     """Make one request, optionally one checked rewrite; outer control owns all budgets.
 
@@ -608,3 +615,9 @@ def synthesize_product_answer(question: str, bundle: ProductResearchBundle, *,
         code = "product_answer_model_unavailable"
     return ProductAnswerRun(_fallback(bundle, code), calls,
         response if type(response) is ToolModelResponse else None, code, tuple(responses))
+
+
+def synthesize_product_answer(question, bundle, *, model, repair_invalid=False):
+    """Current company and decision answers share local sentence validation."""
+    from trading_companion.product_narrative_answer import synthesize_narrative_answer
+    return synthesize_narrative_answer(question, bundle, model=model, repair_invalid=repair_invalid)

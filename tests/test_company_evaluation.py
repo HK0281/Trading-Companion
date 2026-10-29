@@ -12,7 +12,7 @@ from scripts import evaluate_company_research as evaluation
 from scripts.verify import offline_network
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.model import ModelCallError, TokenUsage
-from trading_companion.product_answer import PRODUCT_ANSWER_INSTRUCTION
+from trading_companion.product_narrative_answer import INSTRUCTION as PRODUCT_ANSWER_INSTRUCTION
 from trading_companion.tool_model import ToolModelResponse
 
 

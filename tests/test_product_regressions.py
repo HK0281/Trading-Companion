@@ -224,7 +224,8 @@ class ProductRegressions(unittest.TestCase):
         with patch("requests.post", side_effect=[first, second]) as post:
             turn = self.run_turn("分析平安银行的基本面", model=model)
         self.assertEqual((turn.status, turn.product_answer.status), ("limited", "fallback"))
-        self.assertEqual(turn.failure_code, "product_answer_model_unavailable")
+        self.assertEqual(turn.failure_code, "answer_facts_only")
+        self.assertIn("answer_model_unavailable", str(turn.product_answer.quality["reasons"]))
         self.assertIn("1.23亿元", turn.display_answer)
         self.assertNotIn("private-provider-error", turn.display_answer)
         self.assertEqual((post.call_count, turn.model_calls_attempted, turn.analyses_used), (2, 2, 0))

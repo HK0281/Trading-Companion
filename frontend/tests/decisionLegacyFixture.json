@@ -1,0 +1,312 @@
+{
+  "version": "product-research-answer-v2",
+  "status": "accepted",
+  "code": "product_research_answered",
+  "origin": "model",
+  "paragraphs": [
+    "平安银行的本轮结论为固定人工示意。参考计划只展示应用计算方式，不构成真实行情研判。",
+    "实际使用应核对行情日期、相反证据与计划失效条件，不能仅凭波动幅度确定未来方向。"
+  ],
+  "text": "平安银行的本轮结论为固定人工示意。参考计划只展示应用计算方式，不构成真实行情研判。\n\n实际使用应核对行情日期、相反证据与计划失效条件，不能仅凭波动幅度确定未来方向。",
+  "evidence": [
+    {
+      "id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry",
+      "instrument_id": "000001.SZ",
+      "kind": "risk",
+      "label": "ATR参考计划",
+      "display": "入场参考10.40元；止损9.19元；止盈112.21元；止盈213.42元；盈亏比11.495867倍；盈亏比22.495867倍；ATR0.8102元；ATR倍数1.5倍",
+      "source": "csv",
+      "date": "2026-09-25",
+      "url": null,
+      "content_kind": "trade_plan",
+      "published_at": null,
+      "publication_precision": "date",
+      "report_period": null,
+      "data_authenticity": "synthetic",
+      "temporal_scope": "conditional_atr_reference_plan",
+      "dependencies": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "retrieved_at": "2026-10-29T08:18:39.279298+00:00",
+      "raw_value": null,
+      "unit": null
+    },
+    {
+      "id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:holding_exit",
+      "instrument_id": "000001.SZ",
+      "kind": "risk",
+      "label": "ATR参考计划",
+      "display": "收盘参考10.40元；退出观察位9.19元",
+      "source": "csv",
+      "date": "2026-09-25",
+      "url": null,
+      "content_kind": "trade_plan",
+      "published_at": null,
+      "publication_precision": "date",
+      "report_period": null,
+      "data_authenticity": "synthetic",
+      "temporal_scope": "conditional_atr_reference_plan",
+      "dependencies": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "retrieved_at": "2026-10-29T08:18:39.279298+00:00",
+      "raw_value": null,
+      "unit": null
+    },
+    {
+      "id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:wait",
+      "instrument_id": "000001.SZ",
+      "kind": "risk",
+      "label": "ATR参考计划",
+      "display": "下方观察位9.19元；上方观察位12.21元",
+      "source": "csv",
+      "date": "2026-09-25",
+      "url": null,
+      "content_kind": "trade_plan",
+      "published_at": null,
+      "publication_precision": "date",
+      "report_period": null,
+      "data_authenticity": "synthetic",
+      "temporal_scope": "conditional_atr_reference_plan",
+      "dependencies": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "retrieved_at": "2026-10-29T08:18:39.279298+00:00",
+      "raw_value": null,
+      "unit": null
+    }
+  ],
+  "paragraph_evidence": [
+    [
+      "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry"
+    ],
+    [
+      "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry"
+    ]
+  ],
+  "validation_scope": "citation_membership_and_lexical_numbers_not_arbitrary_prose_semantics",
+  "trading_enabled": false,
+  "decisions": [
+    {
+      "instrument_id": "000001.SZ",
+      "status": "available",
+      "rating": "买入",
+      "direction": "偏多",
+      "horizon": "未来20个交易日",
+      "conviction": "低",
+      "reasons": [
+        {
+          "text": "人工演示固定采用偏多研判，仅用于展示参考结论和计划。",
+          "evidence_ids": [
+            "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry"
+          ]
+        },
+        {
+          "text": "观察与计划均基于本轮资料，波动数据本身不能证明未来上涨。",
+          "evidence_ids": [
+            "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry"
+          ]
+        }
+      ],
+      "invalidation": {
+        "text": "后续价格若不支持本轮观察，或补充证据与其冲突，应重新研究。",
+        "evidence_ids": [
+          "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry"
+        ]
+      },
+      "plan_id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry",
+      "code": "decision_ready",
+      "condition": {
+        "field": "daily_close",
+        "operator": "<=",
+        "price": "9.19",
+        "effect": "invalidate_and_review"
+      },
+      "conviction_scope": "model_self_assessed_not_historically_calibrated"
+    }
+  ],
+  "trade_plans": [
+    {
+      "plan_id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:conditional_entry",
+      "instrument_id": "000001.SZ",
+      "purpose": "conditional_entry",
+      "status": "available",
+      "code": "plan_ready",
+      "request_id": "a4ae5467b753498aa216f835ef1ea8bf",
+      "source_date": "2026-09-25",
+      "source": "csv",
+      "price_adjustment": "unknown",
+      "data_authenticity": "synthetic",
+      "atr_indicator_id": "atr(window=14)",
+      "values": {
+        "reference_entry": "10.40",
+        "reference_stop": "9.19",
+        "target_1": "12.21",
+        "target_2": "13.42",
+        "reward_risk_1": "1.495867",
+        "reward_risk_2": "2.495867",
+        "atr": "0.8102",
+        "atr_multiple": "1.5"
+      },
+      "evidence_ids": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "version": "trade-plan-v1",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "execution_allowed": false,
+      "condition": {
+        "field": "daily_close",
+        "operator": "<=",
+        "price": "9.19",
+        "effect": "invalidate_and_review"
+      },
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ]
+    },
+    {
+      "plan_id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:holding_exit",
+      "instrument_id": "000001.SZ",
+      "purpose": "holding_exit",
+      "status": "available",
+      "code": "plan_ready",
+      "request_id": "a4ae5467b753498aa216f835ef1ea8bf",
+      "source_date": "2026-09-25",
+      "source": "csv",
+      "price_adjustment": "unknown",
+      "data_authenticity": "synthetic",
+      "atr_indicator_id": "atr(window=14)",
+      "values": {
+        "reference_close": "10.40",
+        "exit_below": "9.19"
+      },
+      "evidence_ids": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "version": "trade-plan-v1",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "execution_allowed": false,
+      "condition": {
+        "field": "daily_close",
+        "operator": "<",
+        "price": "9.19",
+        "effect": "review"
+      },
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ]
+    },
+    {
+      "plan_id": "a4ae5467b753498aa216f835ef1ea8bf|atr_reference_plan_v1:wait",
+      "instrument_id": "000001.SZ",
+      "purpose": "wait",
+      "status": "available",
+      "code": "plan_ready",
+      "request_id": "a4ae5467b753498aa216f835ef1ea8bf",
+      "source_date": "2026-09-25",
+      "source": "csv",
+      "price_adjustment": "unknown",
+      "data_authenticity": "synthetic",
+      "atr_indicator_id": "atr(window=14)",
+      "values": {
+        "observe_below": "9.19",
+        "observe_above": "12.21"
+      },
+      "evidence_ids": [
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|daily_bar|close_price",
+        "a4ae5467b753498aa216f835ef1ea8bf|000001.SZ|2026-09-25|atr(window=14)|value"
+      ],
+      "version": "trade-plan-v1",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "execution_allowed": false,
+      "condition": {
+        "any": [
+          {
+            "field": "daily_close",
+            "operator": "<=",
+            "price": "9.19"
+          },
+          {
+            "field": "daily_close",
+            "operator": ">=",
+            "price": "12.21"
+          }
+        ],
+        "effect": "review"
+      },
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ]
+    }
+  ],
+  "securities": [
+    {
+      "instrument_id": "000001.SZ",
+      "name": "平安银行"
+    }
+  ],
+  "coverage": [
+    {
+      "instrument_id": "000001.SZ",
+      "name": "平安银行",
+      "sections": [
+        {
+          "kind": "profile",
+          "status": "unavailable",
+          "code": "demo_domain_unavailable",
+          "message": "固定离线演示未提供此领域资料。",
+          "source": "synthetic_company_demo",
+          "retrieved_at": "2026-09-26T12:00:00+08:00"
+        },
+        {
+          "kind": "financial",
+          "status": "unavailable",
+          "code": "demo_domain_unavailable",
+          "message": "固定离线演示未提供此领域资料。",
+          "source": "synthetic_company_demo",
+          "retrieved_at": "2026-09-26T12:00:00+08:00"
+        },
+        {
+          "kind": "news",
+          "status": "unavailable",
+          "code": "demo_domain_unavailable",
+          "message": "固定离线演示未提供此领域资料。",
+          "source": "synthetic_company_demo",
+          "retrieved_at": "2026-09-26T12:00:00+08:00"
+        },
+        {
+          "kind": "announcements",
+          "status": "unavailable",
+          "code": "demo_domain_unavailable",
+          "message": "固定离线演示未提供此领域资料。",
+          "source": "synthetic_company_demo",
+          "retrieved_at": "2026-09-26T12:00:00+08:00"
+        },
+        {
+          "kind": "technical",
+          "status": "available",
+          "code": "deterministic_facts",
+          "message": "多指标事实计算完成。",
+          "source": "csv",
+          "retrieved_at": "2026-10-29T08:18:39.279298+00:00"
+        }
+      ]
+    }
+  ],
+  "daily_cutoff": "2026-09-25",
+  "explicit_historical": false,
+  "risk_scenarios": [],
+  "comparison": null,
+  "market_backgrounds": []
+}

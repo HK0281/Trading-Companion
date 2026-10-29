@@ -19,8 +19,10 @@ from tests.test_product_research import NOW, directory, CompanyDataFixture, Memo
 
 class RoutingDecisionModel(ProductModelFixture):
     def complete(self, messages, tools):
-        if not tools and "product-research-answer-v2" in messages[0].content:
-            return DecisionModel().complete(messages, tools=tools)
+        if not tools and "product-research-answer-v3" in messages[0].content:
+            context = json.loads(messages[2].content.split("\n", 1)[1])
+            if context.get("objective", {}).get("kind") == "decision":
+                return DecisionModel().complete(messages, tools=tools)
         return super().complete(messages, tools)
 
 
@@ -51,7 +53,7 @@ class DecisionRoutingApiTests(unittest.TestCase):
             with self.subTest(question=question):
                 reply = self.send(question)["result"]
                 company = reply["company_research"]
-                self.assertEqual(company["version"], "product-research-answer-v2")
+                self.assertEqual(company["version"], "product-research-answer-v3")
                 self.assertEqual(company["decisions"][0]["status"], "available")
                 self.assertEqual(company["decisions"][0]["horizon"], "未来20个交易日")
                 self.assertEqual(reply["analyses_used"], 1)

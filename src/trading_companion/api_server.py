@@ -119,6 +119,8 @@ def main(argv=None) -> int:
                         help="Open the local UI after successful startup (enabled by start.cmd)")
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
+    parser.add_argument("--no-trace", action="store_true",
+                        help="Disable metadata tracing, including the default enabled by start.cmd")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
                         help="Company/Tencent quote I/O width sharing three slots; Eastmoney stays serial (default: 3)")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
@@ -126,6 +128,8 @@ def main(argv=None) -> int:
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
                         help="Expanded quote sample: up to 1000 records, more requests, same deadline")
     args = parser.parse_args(argv)
+    if args.no_trace:
+        args.trace_dir = None
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
     if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db):

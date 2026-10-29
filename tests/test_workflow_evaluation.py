@@ -41,7 +41,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
                     "not_run": 0, "hard_requirement_violations": 0, "outside_acceptable": 0,
                     "quality_requirement_failures": 0, "trace_missing": 0})
                 self.assertEqual(report["model_call_limit"], 354)
-                self.assertEqual(report["accounting"]["forwarded"], 69)
+                self.assertEqual(report["accounting"]["forwarded"], 70)
                 self.assertEqual(len({s["trace"]["run_id"] for s in report["steps"]}), 59)
                 self.assertTrue(all(c["transport"]["maximum_in_flight"] <= width and c["transport"]["responses_closed"]
                                     and c["transport"]["requests"] == c["transport"]["closed_clients"] for c in report["cases"]))
@@ -71,7 +71,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertGreater(expected["categories"]["error"], 0)
         self.assertEqual(expected["overall"]["total_elapsed_ms"]["n"], 59)
         self.assertEqual(expected["models"]["provider_requests_started"], 0)
-        self.assertEqual(expected["models"]["attempted"], 69)
+        self.assertEqual(expected["models"]["attempted"], 70)
         self.assertIsNone(report["accounting"]["token_usage"]["reported_total_tokens"])
 
     def test_deadline_partial_full_missing_and_complete_are_distinct(self):

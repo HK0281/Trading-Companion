@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
 from trading_companion.product_answer import (
-    PRODUCT_ANSWER_REPAIR_INSTRUCTION, ProductAnswerRun, synthesize_product_answer,
+    PRODUCT_ANSWER_REPAIR_INSTRUCTION, ProductAnswerRun,
+    synthesize_legacy_product_answer as synthesize_product_answer,
 )
 from trading_companion.product_research import ProductCompany
 from trading_companion.tool_model import (

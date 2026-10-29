@@ -254,10 +254,10 @@ def check_company_evaluation(report):
                 and item.get("fallback") is False and item.get("answer_origin") == "model"
                 and type(item.get("answer")) is str and bool(item["answer"].strip())
                 and item.get("code") == ("general_knowledge_answered" if item["case"] == "pe_knowledge"
-                                          else "product_research_answered")
+                                          else "answer_ready")
                 and item.get("answer_validation_scope") == (
                     "format_scope_and_citation_membership_not_prose_semantics" if item["case"] == "pe_knowledge" else
-                    "citation_membership_and_lexical_numbers_not_arbitrary_prose_semantics")
+                    "typed_numeric_provenance_and_local_safety_not_full_prose_semantics")
                 and type(checks) is dict and COMPANY_REQUIRED_CHECKS <= checks.keys()
                 and all(value is True for value in checks.values()),
                 "Every company workflow must accept its checked model answer with synthetic evidence and no fallback")

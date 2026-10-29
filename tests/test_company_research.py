@@ -70,6 +70,15 @@ def news(rows=None):
 
 
 class CompanyResearchTests(unittest.TestCase):
+    def test_financial_response_keeps_five_eligible_periods_without_extra_request(self):
+        rows = [financial_row(REPORT_DATE=period + " 00:00:00") for period in
+                ("2026-06-30", "2026-03-31", "2025-12-31", "2025-09-30", "2025-06-30")]
+        section = self.fetch("financial", financial(rows))
+        self.assertEqual(len(section.items), 25)
+        self.assertEqual(len({item.id for item in section.items}), 25)
+        self.assertEqual(len({item.report_period for item in section.items}), 5)
+        self.assertEqual(self.session.request.call_count, 1)
+
     def setUp(self):
         self.session = Mock()
         self.service = ResearchDataService(session=self.session, clock=lambda: NOW, news_provider="eastmoney")

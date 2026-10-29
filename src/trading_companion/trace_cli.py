@@ -17,6 +17,7 @@ from trading_companion.request_routing import IntentKind
 from trading_companion.turn_trace import (
     _CODES, _EVENT_STATUSES, _KINDS, _OPERATIONS, _PHASES, _PROVIDERS, _SAFE_EVENT_CODES,
     _STOPS, _TOOLS, _USAGE_KEYS, _WORKFLOW_REASONS,
+    safe_answer_validation,
 )
 
 
@@ -302,6 +303,10 @@ def _v2(raw):
                          "code": _safe_code(event["code"], event=True), "status": event["status"],
                          "entered": event["entered"], "event_id": event["event_id"],
                          "parent_event_id": event["parent_event_id"], "elapsed_ms": event["elapsed_ms"]})
+        if operation == "answer_validation" and "validation" in event:
+            if type(event["validation"]) is not dict or event["validation"].get("version") != 1:
+                raise InvalidTrace()
+            metadata[-1]["validation"] = safe_answer_validation(event["validation"])
     identifiers = {identifier for identifier, _ in links}
     if len(identifiers) != len(links) or any(parent is not None and parent >= identifier for identifier, parent in links):
         raise InvalidTrace()
@@ -659,6 +664,8 @@ def format_table(report):
     if any(diagnostics.values()):
         lines.append("读取不完整: " + counts({key: value for key, value in diagnostics.items() if value}))
     lines.append("本次为读取时可用的记录；活动文件可能轮换。demo/开发样本不能代表线上耗时；子调用耗时可能重叠。")
+    for item in report.get("answer_validation", []):
+        lines.append("回答校验元数据（不含原句）：" + json.dumps(item, ensure_ascii=False))
     return "\n".join(lines)
 
 
@@ -681,8 +688,11 @@ def main(argv=None):
     parser.add_argument("--executed-only", action="store_true", help="只统计 execution_started=true，仍保留执行失败")
     parser.add_argument("--list", type=int, default=0, dest="list_limit", help="列出最近 N 个运行号，0 到 1000，默认0")
     parser.add_argument("--format", choices=("table", "json"), default="table")
+    parser.add_argument("--run-id", help="定位一个运行号的回答校验元数据，不显示问题或回答")
     try:
         args = parser.parse_args(argv)
+        if args.run_id is not None:
+            _identifier(args.run_id)
         if (args.file and len(args.file) > MAX_FILES) or not 0 <= args.list_limit <= 1000:
             raise InvalidInput()
         if args.code and any(value not in _CODES for value in args.code):
@@ -698,10 +708,15 @@ def main(argv=None):
         return 2
     reader, summary = TraceReader(), TraceSummary(list_limit=args.list_limit)
     paths = reader.directory(args.trace_dir) if args.trace_dir is not None else args.file
+    validation = []
     for row in reader.read(paths):
-        if _matches(row, args):
+        if _matches(row, args) and (args.run_id is None or row["run_id"] == args.run_id):
             summary.add(row)
+            if args.run_id is not None:
+                validation.extend(e["validation"] for e in row.get("event_records", []) if "validation" in e)
     report = summary.report(reader)
+    if args.run_id is not None:
+        report["answer_validation"] = validation
     print(json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2) if args.format == "json" else format_table(report))
     return 1 if report["status"] == "partial" else 0
 

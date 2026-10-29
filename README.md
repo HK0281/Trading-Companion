@@ -56,7 +56,8 @@ For a fresh checkout, follow [Setup](#setup-windows-powershell--vs-code) and the
 - **Model proposals pass application gates.** The program checks identity, dates, parameters and tool permissions before execution. [Controlled tools](docs/research-tool-design.md) · [Research loop](docs/bounded-research-workflow-design.md)
 - **Answers carry checked evidence.** Paths check citations, numeric claims and company attribution, with explicit missing data and fallbacks. These checks do not prove all prose correct. [Company answers](docs/company-research-design.md) · [Indicator claims](docs/grounded-explanation-design.md)
 - **Intent and clarification have explicit owners.** A read-only priority table chooses among existing handlers; routing v1/v2 records protect 35 scenarios and 105 turns. [Routing and characterization tests](docs/request-routing-design.md)
-- **Each turn can be inspected.** Opt-in trace-v2 records routing, model attempts, tools, sources, checks and repairs; a read-only CLI reports coverage and timing. [Tracing and viewer](docs/turn-tracing-design.md)
+- **Each turn can be inspected.** Trace-v2 records routing, model attempts, tools, sources, checks and repairs; `start.cmd` enables it by default, and a read-only CLI reports coverage and timing. [Tracing and viewer](docs/turn-tracing-design.md)
+- **Company answers retain useful analysis.** The v3 view shows a conclusion, supporting evidence, program price ranges and conditional scenarios. Invalid sentences and verdicts are handled separately, with one bounded repair and factual fallback. [Natural narratives (Chinese)](docs/natural-research-narrative-design.md)
 - **Collection has shared capacity and separate budgets.** Company evidence and Tencent batches share at most three unfinished tasks; request and byte ledgers enforce business limits. [Concurrent collection](docs/collection-concurrency-design.md)
 - **Retries and cancellation preserve session boundaries.** Idempotent request IDs prevent repeated execution; cancelled or late work cannot publish new results. [Local API](docs/local-api-design.md) · [Turn control](docs/turn-control-design.md)
 - **Tool calls use a project-owned protocol.** DeepSeek and OpenAI adapters share message and result contracts, without an Agent orchestration framework. [Tool protocol](docs/tool-model-design.md) · [Provider selection](docs/company-research-design.md)
@@ -224,7 +225,7 @@ To explicitly enable local run metadata for Web/API messages:
 .\.venv\Scripts\python.exe -m trading_companion.api_server --trace-dir ".\data\traces"
 ```
 
-Tracing is off by default. The ignored `data/traces/` directory holds bounded JSONL records of routing, model attempts, HTTP send attempts, valid responses, reported tokens, stop reasons and timing. It excludes questions, prompts, answers, raw tool data and credentials; write failures preserve research replies. Limits are 64 detailed events and 64 KiB per turn, and four files of at most 5 MiB each. Normal mode and its isolated Dev Mode share only the writer; offline `--demo --trace-dir ".\data\traces"` is also supported. New `trace-v2` records also include tool/source calls, checks and bounded repairs; model and other details share the same 64-event limit. See the [tracing design and actual offline examples](docs/turn-tracing-design.md) for coverage, unknown usage and retention limits.
+Direct Python startup leaves tracing off by default. `start.cmd` enables `data/traces/`; use `start.cmd --no-trace` to disable it or `--trace-dir PATH` to change the directory. The ignored directory holds bounded JSONL metadata for routing, model attempts, HTTP sends, usage, timing and answer validation. It excludes questions, prompts, answers, rejected sentences, raw tool data and credentials; write failures preserve research replies. Limits remain 64 events and 64 KiB per turn, and four files of at most 5 MiB each. Normal mode, isolated Dev Mode and offline demo can use the same writer. See the [tracing design](docs/turn-tracing-design.md) for retention and unknown usage.
 
 Inspect existing traces without starting a service, reading `.env`, or requesting a model or market data:
 
@@ -328,7 +329,7 @@ For decision questions, the application provides a reference model verdict and a
 
 The application does not connect to brokerage accounts, place/modify/cancel orders, manage funds, recommend position sizes, or guarantee returns. Bearish plans describe hypothetical existing-position exits and observation while uninvested; they do not authorize short selling. Users decide whether to trade. See [decision contracts and calculation limits](docs/research-decision-plan-design.md).
 
-In offline `--demo` or Dev Mode, ask **平安银行现在能买吗** to see the verdict card and ATR table without credentials. Both the bullish verdict and market data in this example are artificial; the verdict is a fixed demonstration, not evidence of prediction quality.
+In offline `--demo` or Dev Mode, ask **平安银行现在能买吗** to see a complete narrative, three price levels and conditional scenarios alongside the verdict card and ATR table, without credentials. The answer passes the production checks; “部分可用” identifies the unavailable company, financial, news and announcement data. Both the bullish verdict and market data in this example are artificial; the verdict is a fixed demonstration, not evidence of prediction quality. See [demo fixture maintenance](docs/natural-research-narrative-design.md#验收范围).
 
 ## Setup: Windows PowerShell / VS Code
 

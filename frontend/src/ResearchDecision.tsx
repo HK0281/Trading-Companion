@@ -48,8 +48,8 @@ export function parseDecision(value: Record<string, unknown>, securities: Set<st
       || !["available", "unavailable"].includes(String(d.status)) || !txt(d.code, 100) || !txt(d.horizon, 80)
       || !Array.isArray(d.reasons) || d.reasons.length > 4 || !nullable(d.plan_id)
       || d.conviction_scope !== "model_self_assessed_not_historically_calibrated") return null;
-    const claim = (c: unknown) => obj(c) && txt(c.text) && Array.isArray(c.evidence_ids) && c.evidence_ids.length > 0
-      && c.evidence_ids.length <= 20 && new Set(c.evidence_ids).size === c.evidence_ids.length
+    const claim = (c: unknown) => obj(c) && txt(c.text, value.version === "product-research-answer-v3" ? 1800 : 600) && Array.isArray(c.evidence_ids) && c.evidence_ids.length > 0
+      && c.evidence_ids.length <= (value.version === "product-research-answer-v3" ? 240 : 20) && new Set(c.evidence_ids).size === c.evidence_ids.length
       && c.evidence_ids.every(id => typeof id === "string" && evidence.get(id) === d.instrument_id);
     if (!d.reasons.every(claim) || !(d.invalidation === null || claim(d.invalidation))) return null;
     if (d.status === "available") {

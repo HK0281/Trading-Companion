@@ -154,7 +154,7 @@ class ProductModulesApiTests(unittest.TestCase):
         self.assertEqual(len(self.transport.calls), 1)
         self.assertEqual(self.quotes.calls, [])
         company = turn["company_research"]
-        self.assertEqual(company["version"], "product-research-answer-v1")
+        self.assertEqual(company["version"], "product-research-answer-v3")
         self.assertFalse(company["trading_enabled"])
         self.assertEqual(len(company["market_backgrounds"]), 1)
         background = company["market_backgrounds"][0]

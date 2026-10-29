@@ -13,7 +13,8 @@ from trading_companion.daily_bar import DailyBar
 from trading_companion.multi_analysis import analyze_indicators
 from trading_companion.multi_contracts import MultiIndicatorRequest
 from trading_companion.product_answer import (
-    PRODUCT_ANSWER_INSTRUCTION, PRODUCT_ANSWER_SCOPE, PRODUCT_ANSWER_VERSION, synthesize_product_answer,
+    PRODUCT_ANSWER_INSTRUCTION, PRODUCT_ANSWER_SCOPE, PRODUCT_ANSWER_VERSION,
+    synthesize_legacy_product_answer as synthesize_product_answer,
 )
 from trading_companion.product_plan import ProductPlan
 from trading_companion.product_research import ProductCompany, ProductEvidence, ProductResearchBundle

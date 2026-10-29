@@ -21,9 +21,11 @@ if errorlevel 1 goto build_error
 if not exist "src\trading_companion\web_assets\index.html" goto build_error
 
 :run_server
+if "%~1"=="--help" echo [Trading Companion] Metadata trace defaults to data\traces; use --no-trace to disable or --trace-dir PATH to override.
+if "%~1"=="-h" echo [Trading Companion] Metadata trace defaults to data\traces; use --no-trace to disable or --trace-dir PATH to override.
 echo [Trading Companion] Starting the local server...
 echo Your browser will open when the server is ready. Press Ctrl+C to stop.
-".venv\Scripts\python.exe" -X utf8 -m trading_companion.api_server --open-browser --refresh-stale-directory %*
+".venv\Scripts\python.exe" -X utf8 -m trading_companion.api_server --open-browser --refresh-stale-directory --trace-dir "data\traces" %*
 set "TC_START_EXIT_CODE=%errorlevel%"
 if not "%TC_START_EXIT_CODE%"=="0" echo [ERROR] Startup failed. Check the server message above.
 goto finish

@@ -126,7 +126,7 @@ API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与�
 
 ## 7. 价格、计划与真实模式
 
-[evaluation_pricing.py](../src/trading_companion/evaluation_pricing.py) 校验 [model-prices.json](../data/evaluation/model-prices.json)。仓库没有已核对报价；新闻分诊实验另加了 TypeSafe/Jev 的空价格模板，不改变本工作流的提供方和计费约定。每项使用以下字段，精确选择提供方和模型，不模糊匹配、不混加币种：
+[evaluation_pricing.py](../src/trading_companion/evaluation_pricing.py) 校验 [model-prices.json](../data/evaluation/model-prices.json)。Claude于2026-10-28核对并通过消息 #133 提供TypeSafe/Jev和DeepSeek报价，仓库已记录这两项，不改变本工作流的提供方和模型身份检查约定。每项使用以下字段，精确选择提供方和模型，不模糊匹配、不混加币种：
 
 ```json
 {
@@ -143,6 +143,8 @@ API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与�
 
 这是结构示例，单价单位为每百万 token；token 是供应商的文本用量单位。填价格时还须给币种（支持 USD/CNY/EUR/GBP/JPY/HKD）、不晚于今天的核对日期和不含凭据的 HTTPS 依据链接。拒绝重复键/条目、未知字段、负数、非有限单价和不完整的核对元数据。Decimal 十进制数用于计算，展示时才保留六位小数。
 
+默认核对价：typesafe/jev-latest为USD输入0.042、输出0（[官网](https://typesafe.ai)，输出目前免费）；deepseek/deepseek-flash为CNY输入2、输出8（[官方中文价格页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)）。DeepSeek实际有峰谷和缓存价：缓存未命中输入谷/峰为1/2元、缓存命中输入为0.02/0.04元、输出为4/8元；峰时为北京时间工作日9–12点及14–18点。现有价格格式不表达这两种分档，因此以uniform记录最高单价；**费用按峰时、缓存未命中计算，是对应已报告token用量的上限，而不是账单**。不猜缓存命中或根据时钟下调，缺用量/请求记录仍未知，预览token假设也不是整次账单硬上限。
+
 `input_pricing=cache_split` 表示输入涉及缓存分档；现有公开用量无法可靠拆分时输入费用未知，已知输出费用可作小计。缺价格、部分或不一致用量、超出有界计量范围、模型身份不匹配也单列未知。`known_subtotal` 不等于完整的 `estimated_total`；请求数和用量完整性均保留，零尝试不是零 token。
 
 以下只预览，不读密钥、不联网：
@@ -157,7 +159,7 @@ API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与�
 
 live-model 使用同一固定资料接线，资料侧 DNS/外连被封锁；只有所选模型端点的同步 POST 通道可联网。被捕获的禁止访问仍记录并使整次失败。live 使用真实日期、可信本地目录和实际资料/报价采集器；`--data-source tencent/akshare_eastmoney` 选择日线来源，报价仍用实际腾讯来源，公司/报价共享实际并发池。可用 `--directory` 指定本地目录；只校验和使用，不刷新。目录的摘要、时间与元数据写入计划，运行时变更或过期会失败。真实证据保持产品原有真实性标记，不改标为固定数据。没有模型/来源回退、传输自动重试或额外放宽预算；所有资源在退出时关闭。
 
-本次真实模式只以模拟传输自测。最终付费评估仍由 Claude 核对官方价格、向用户说明并取得费用同意后另行执行。
+本次真实模式只以模拟传输自测，官方报价已按上述日期记录。最终付费评估仍由Claude确认价格适用于请求和实际模型，向用户说明并取得费用同意后另行执行。
 
 ## 8. 报告、人工清单与并排比较
 

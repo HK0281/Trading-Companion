@@ -4,11 +4,21 @@
     {
       "provider": "typesafe",
       "model": "jev-latest",
-      "currency": null,
-      "verified_at": null,
-      "source_url": null,
-      "input_per_million": null,
-      "output_per_million": null,
+      "currency": "USD",
+      "verified_at": "2026-10-28",
+      "source_url": "https://typesafe.ai",
+      "input_per_million": "0.042",
+      "output_per_million": "0",
+      "input_pricing": "uniform"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "currency": "CNY",
+      "verified_at": "2026-10-28",
+      "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "input_per_million": "2",
+      "output_per_million": "8",
       "input_pricing": "uniform"
     }
   ]

@@ -192,3 +192,45 @@ class EvaluationTests(unittest.TestCase):
                 self.assertEqual(main(['--item','N001']),0)
                 self.assertEqual(main(['--item','N001','--call-limit','1']),1)
                 self.assertEqual(main(['--call-limit','0']),2)
+
+    def test_live_plan_only_uses_verified_prices_and_explicit_token_assumptions_without_credentials(self):
+        with patch('trading_companion.news_triage_evaluation.build_models',side_effect=AssertionError('No clients')), \
+             patch('trading_companion.local_env._read_local_values',side_effect=AssertionError('No .env')), \
+             patch('requests.post',side_effect=AssertionError('No requests')), \
+             patch('socket.getaddrinfo',side_effect=AssertionError('No DNS')), redirect_stdout(io.StringIO()) as output:
+            code=main(['--mode','live','--classifier','jev','--classifier','deepseek','--deepseek-model','deepseek-flash',
+                       '--call-limit','144','--prices','data/evaluation/model-prices.json',
+                       '--assumed-input-tokens','1000','--assumed-output-tokens','100','--plan-only'])
+        self.assertEqual(code,0)
+        plan=json.loads(output.getvalue())
+        self.assertEqual(plan['cost_preview']['jev']['amount'],'0.003024')
+        self.assertEqual(plan['cost_preview']['jev']['currency'],'USD')
+        self.assertEqual(plan['cost_preview']['deepseek']['amount'],'0.201600')
+        self.assertEqual(plan['cost_preview']['deepseek']['currency'],'CNY')
+        self.assertEqual(plan['cost_preview']['deepseek']['assumptions']['calls'],72)
+        self.assertIsNone(plan['cost_preview']['deepseek']['unknown_reason'])
+
+    def test_model_identity_mismatch_stays_unknown_and_is_visible_before_raw_report(self):
+        rows, manifest=load_corpus()
+        reviewed={**manifest,'annotation_status':'reviewed','reviewer':'claude'}
+        def post(url,**kwargs):
+            response=fixture_post('jev')(url,**kwargs)
+            payload=json.loads(response.raw)
+            payload['model']='jev-served-20261028'
+            response.raw=json.dumps(payload).encode('utf-8')
+            return response
+        with patch('trading_companion.news_triage_evaluation.load_corpus',return_value=(rows,reviewed)), \
+             patch.dict(os.environ,{'TYPESAFE_API_KEY':'synthetic-test-key'},clear=True), \
+             patch('requests.post',side_effect=post), redirect_stderr(io.StringIO()):
+            report=evaluate(mode='live',classifiers=['jev'],selected_items=['N001'],call_limit=1,
+                            prices='data/evaluation/model-prices.json')
+        self.assertEqual(report['status'],'completed')
+        cost=report['metrics']['providers']['jev']['cost']
+        self.assertIsNone(cost['estimated_total'])
+        self.assertIsNone(cost['known_subtotal'])
+        self.assertEqual(cost['unknown_reasons'],{'model_identity_unknown_or_mismatch':1})
+        visible=format_report(report).split('## 完整指标与逐条结果')[0]
+        self.assertIn('## 费用估算与模型名称',visible)
+        self.assertIn('model_identity_unknown_or_mismatch',visible)
+        self.assertIn('| jev | jev-latest | jev-served-20261028 | 1 | {} |',visible)
+        self.assertIn('费用上限',visible)

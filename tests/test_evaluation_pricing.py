@@ -1,4 +1,4 @@
-"""Test-only prices exercise known subtotals, missing metadata and non-additive currencies."""
+"""Verified repository prices and test-only fixtures preserve strict accounting boundaries."""
 
 from copy import deepcopy
 from datetime import date
@@ -31,16 +31,25 @@ class PricingTests(unittest.TestCase):
         self.path.write_text(json.dumps(value), encoding="utf-8")
         return load_prices(self.path)[0]
 
-    def test_repository_prices_are_unknown_and_no_matching_is_fuzzy(self):
+    def test_repository_prices_are_verified_and_no_matching_is_fuzzy(self):
         data, digest = load_prices()
-        self.assertEqual([(entry["provider"], entry["model"]) for entry in data["entries"]], [("typesafe", "jev-latest")])
-        self.assertTrue(all(entry[field] is None for entry in data["entries"]
-                            for field in ("verified_at", "currency", "source_url", "input_per_million", "output_per_million")))
+        self.assertEqual(data["entries"], [
+            {"provider":"typesafe", "model":"jev-latest", "currency":"USD", "verified_at":"2026-10-28",
+             "source_url":"https://typesafe.ai", "input_per_million":"0.042", "output_per_million":"0", "input_pricing":"uniform"},
+            {"provider":"deepseek", "model":"deepseek-flash", "currency":"CNY", "verified_at":"2026-10-28",
+             "source_url":"https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+             "input_per_million":"2", "output_per_million":"8", "input_pricing":"uniform"},
+        ])
         self.assertEqual(len(digest), 64)
         self.assertIsNone(estimate_cost(data, "deepseek", "test-model", 5, 100, 100)["amount"])
         self.assertIsNone(price_for(price_fixture(), "deepseek", "test-model-latest"))
         self.assertIsNone(actual_cost(data, "deepseek", "test-model", [record()])["known_subtotal"])
-        self.assertIsNone(estimate_cost(data, "typesafe", "jev-latest", 72, 120, 12)["amount"])
+        jev = estimate_cost(data, "typesafe", "jev-latest", 72, 1000, 100)
+        deepseek = estimate_cost(data, "deepseek", "deepseek-flash", 72, 1000, 100)
+        self.assertEqual((jev["currency"], jev["amount"]), ("USD", "0.003024"))
+        self.assertEqual((deepseek["currency"], deepseek["amount"]), ("CNY", "0.201600"))
+        ledger = record(provider="deepseek", requested_model="deepseek-flash", model="deepseek-flash")
+        self.assertEqual(actual_cost(data, "deepseek", "deepseek-flash", [ledger])["estimated_total"], "6.000000")
 
     def test_typesafe_verified_prices_use_the_same_exact_identity_accounting(self):
         data = price_fixture()

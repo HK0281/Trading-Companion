@@ -46,6 +46,20 @@ def format_report(report):
             f"{calibration['ece']} / {rate(calibration['coverage'])}" if calibration else None,
             f"{latency['p50_ms']}/{latency['p95_ms']} (n={latency['n']})",
             f"{cost.get('estimated_total')} / {cost.get('currency')}；未知请求 {cost.get('unknown_requests')}" if c != "rules" else "无供应商调用费用")) + " |")
+    lines += ["", "## 费用估算与模型名称", "",
+              "费用按所选价格表与已报告用量估算，不是账单。仓库默认 DeepSeek 价格按峰时、缓存未命中的最高单价记录；"
+              "使用该默认报价时，完整用量的估算是对应 token 费用上限，不是整次账单硬上限。USD/CNY 分列，不合加。",
+              "模型名不一致或缺失时费用保持未知（model_identity_unknown_or_mismatch），不把请求别名视为实际版本。",
+              "", "| 分类器 | 请求模型 | 实际作答模型 | 模型名不一致或缺失的未知请求数 | 其他费用未知原因/次数 |",
+              "| --- | --- | --- | ---: | --- |"]
+    for c, values in providers.items():
+        if c == "rules":
+            continue
+        reasons = values["cost"]["unknown_reasons"]
+        other = {k: v for k, v in reasons.items() if k != "model_identity_unknown_or_mismatch"}
+        lines.append("| " + " | ".join(cell(v) for v in (
+            c, plan["models"][c], ", ".join(values["actual_models"]) or None,
+            reasons.get("model_identity_unknown_or_mismatch", 0), json.dumps(other, ensure_ascii=False))) + " |")
     for c, values in providers.items():
         lines += ["", f"## {c} 分题", "", "| 问题 | 准确率 | 有效覆盖 | macro-F1 |", "| --- | --- | --- | --- |"]
         for q, v in values["questions"].items():

@@ -163,6 +163,36 @@ class DecisionEvaluationTests(unittest.TestCase):
             if change=='rating': company['decisions'][0]['status']='unavailable'
             self.assertFalse(evaluation.grade_case(case,result)['formed'],change)
 
+    def test_acceptance_version_single_reason_and_two_reason_comparison_are_distinct(self):
+        self.assertEqual(self.report['acceptance_version'],'decision-acceptance-v2')
+        self.assertEqual(self.report['plan']['acceptance_version'],'decision-acceptance-v2')
+        case=self.report['cases'][0]
+        result=dict(status='completed',company_research=deepcopy(case['company_research']))
+        result['company_research']['decisions'][0]['reasons']=result['company_research']['decisions'][0]['reasons'][:1]
+        grade=evaluation.grade_case(case,result)
+        self.assertTrue(grade['formed'])
+        self.assertFalse(grade['formed_two_reasons'])
+        rows=deepcopy(self.report['cases'])
+        rows[0].update(grade)
+        metrics=evaluation.summarize(rows)
+        self.assertEqual(metrics['formation_rate']['numerator'],18)
+        self.assertEqual(metrics['two_reason_comparison_rate']['numerator'],17)
+
+    def test_repair_rates_separate_all_passed_rating_and_content_with_old_metadata_unknown(self):
+        rows=deepcopy(self.report['cases'])
+        for c in rows:
+            c['quality']=None
+        for row,state,rating,content in zip(rows,('complete','partial','partial'),(True,True,False),(True,False,True)):
+            row['quality']=dict(state=state,repair_attempts=1,reasons=[],repair_all_passed=state=='complete',
+                repair_rating_restored=rating,repair_content_added=content)
+        metrics=evaluation.summarize(rows)
+        for field,numerator in (('repair_all_passed_rate',1),('repair_rating_restored_rate',2),('repair_content_added_rate',2)):
+            self.assertEqual(metrics[field]['numerator'],numerator)
+            self.assertEqual(metrics[field]['denominator'],3)
+        self.assertEqual(metrics['repair_success_rate'],metrics['repair_all_passed_rate'])
+        del rows[0]['quality']['repair_rating_restored']
+        self.assertEqual(evaluation.summarize(rows)['repair_rating_restored_rate']['unknown'],1)
+
     def test_structure_failure_repairs_once_and_never_exports_raw_draft(self):
         class BrokenFirst(evaluation.DecisionContractModel):
             def __init__(self):

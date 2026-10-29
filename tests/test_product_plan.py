@@ -112,12 +112,13 @@ class ProductPlanTests(unittest.TestCase):
         self.assertEqual((plan.status, plan.code), ("needs_clarification", "ungrounded_product_intent"))
         self.assertEqual(plan.securities, ())
 
-    def test_model_cannot_omit_explicit_codes_or_known_second_names(self):
+    def test_application_completes_explicit_codes_and_known_second_names(self):
         for question in ("比较平安银行和贵州茅台的基本面", "平安银行和600519.SH的新闻"):
             with self.subTest(question=question):
                 kinds = ["news"] if "新闻" in question else ["profile", "financial"]
                 plan, _ = self.prepare(question, _arguments(kinds=kinds))
-                self.assertEqual(plan.code, "product_instrument_not_grounded")
+                self.assertEqual(plan.code, "product_plan_ready")
+                self.assertEqual([s.instrument_id for s in plan.securities],['000001.SZ','600519.SH'])
 
     def test_known_name_and_explicit_equivalent_code_deduplicate_the_identity(self):
         plan, _ = self.prepare("分析平安银行000001.SZ的基本面", _arguments(["平安银行", "000001.SZ"]))

@@ -16,6 +16,9 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from trading_companion.answer_validation import normalize_horizon
+from trading_companion.answer_diagnostics import (
+    AnswerDiagnostics, bind_diagnostics, check_diagnostics_root, diagnostic_location,
+)
 from trading_companion.api_service import ResearchApiService, ensure_data_mode_dependencies
 from trading_companion.decision_demo import scripted_narrative
 from trading_companion.evaluation_common import EvaluationModelMeter, reported_usage
@@ -39,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / 'data/evaluation/decision-answer-v1.jsonl'
 MANIFEST = CORPUS.with_suffix('.manifest.json')
 VERSION = 'decision-answer-evaluation-v1'
+ACCEPTANCE_VERSION = 'decision-acceptance-v2'
 GROUPS = ('buy', 'sell', 'outlook', 'stop')
 CASE_KEYS = {'id', 'group', 'security_name', 'instrument_id', 'industry', 'question', 'expected_horizon',
              'setup_questions', 'requires_batch_b', 'review_tags', 'intent_note'}
@@ -89,7 +93,7 @@ def _decision_fixture_manifest(cases):
 
 def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=None, prices=None,
               directory=None, data_source='tencent', collection_workers=3,
-              assumed_input_tokens=None, assumed_output_tokens=None, trace_dir=None):
+              assumed_input_tokens=None, assumed_output_tokens=None, trace_dir=None, diagnostics_dir=None):
     require(mode in ('offline','live-model','live'), code='decision_mode_invalid', detail='请选择offline、live-model或live。')
     cases, manifest = load_corpus()
     require(type(collection_workers) is int and 1 <= collection_workers <= 3,
@@ -98,6 +102,7 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
     require(type(allowance) is int and 1 <= allowance <= 120, code='decision_budget_invalid', detail='总调用额度必须是1..120。')
     require(data_source in ('tencent','akshare_eastmoney'), code='decision_source_invalid', detail='请选择已支持的行情来源。')
     check_output_root(trace_dir)
+    diagnostics_root = check_diagnostics_root(diagnostics_dir)
     if mode == 'offline':
         require(provider is None and model is None and directory is None and data_source == 'tencent',
                 code='decision_offline_options_invalid', detail='离线模式不接受真实模型或来源配置。')
@@ -113,6 +118,7 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
     plan = dict(version='decision-answer-plan-v1', status='planned', mode=mode,
         provider='fake' if mode == 'offline' else provider, model='decision-contract-fake-v1' if mode == 'offline' else model,
         corpus_version=manifest['corpus_version'], corpus_sha256=manifest['corpus_sha256_lf'], questions=deepcopy(cases),
+        acceptance_version=ACCEPTANCE_VERSION, diagnostics_enabled=diagnostics_root is not None,
         main_denominator=20, minimum_formed=18, maximum_calls_per_question=6, model_call_limit=allowance,
         worst_case_model_calls=120, planned_setup_turns=sum(len(c['setup_questions']) for c in cases),
         typical_calls_with_one_answer_repair=3*sum(1+len(c['setup_questions']) for c in cases),
@@ -235,9 +241,10 @@ def grade_case(case, result):
         horizon=normalize_horizon(d.get('horizon'))==normalize_horizon(case['expected_horizon']),
         accepted_rating=d.get('status')=='available' and d.get('code')=='decision_ready'
                         and bool(rating) and d.get('direction') in (rating[1] if rating else ()),
-        usable_reasons=2 <= len(d.get('reasons', [])) <= 4 and all(claim(c) for c in d.get('reasons', []))
+        usable_reasons=1 <= len(d.get('reasons', [])) <= 4 and all(claim(c) for c in d.get('reasons', []))
                        and claim(d.get('invalidation')))
-    return dict(formed=all(checks.values()), checks=checks)
+    formed = all(checks.values())
+    return dict(formed=formed, formed_two_reasons=formed and len(d.get('reasons',[]))>=2, checks=checks)
 
 
 def _latency(values):
@@ -264,6 +271,8 @@ def summarize(cases):
     count_fields = ('retained_paragraphs','generated_sentences','retained_sentences','deleted_sentences')
     counts = {k:sum(q[k] for q in quality if type(q.get(k)) is int) for k in count_fields}
     result = dict(**group(cases), target_minimum=18, target_met=formed>=18,
+        acceptance_version=ACCEPTANCE_VERSION,
+        two_reason_comparison_rate=ratio(sum(c.get('formed_two_reasons',False) for c in cases),20),
         groups={g:group([c for c in cases if c['group']==g]) for g in GROUPS},
         batch_b_groups={str(value).lower():group([c for c in cases if c['requires_batch_b']==value]) for value in (False,True)},
         generated_paragraphs=sum(c.get('generated_paragraphs',0) for c in cases),
@@ -273,6 +282,14 @@ def summarize(cases):
         sentence_deletion_rate=ratio(counts['deleted_sentences'],counts['generated_sentences']),
         repair_attempts=sum(q['repair_attempts'] for q in quality),
         repair_success_rate=ratio(sum(q['state']=='complete' for q in repairs), len(repairs)),
+        repair_all_passed_rate=ratio(sum(q['state']=='complete' for q in repairs),len(repairs)),
+        repair_rating_restored_rate=ratio(sum(q.get('repair_rating_restored',False) for q in repairs),len(repairs),
+            unknown=sum('repair_rating_restored' not in q for q in repairs)),
+        repair_content_added_rate=ratio(sum(q.get('repair_content_added',False) for q in repairs),len(repairs),
+            unknown=sum('repair_content_added' not in q for q in repairs)),
+        local_structure_recoveries=sum(q.get('local_structure_recoveries',0) for q in quality),
+        partial_structure_recoveries=sum(q.get('partial_structure_recoveries',0) for q in quality),
+        unrecovered_structure_failures=sum(max(0,q.get('structure_failures',0)-q.get('local_structure_recoveries',0)) for q in quality),
         partial_rate=ratio(sum(q['state']=='partial' for q in quality),20),
         turn_limited_rate=ratio(sum(c.get('turn_status')=='limited' for c in cases),20),
         fallback_rate=ratio(sum(q['state']=='fallback' for q in quality),20),
@@ -291,7 +308,8 @@ def summarize(cases):
 def _send(service, credentials, question, directory, seen):
     start = perf_counter()
     try:
-        result = service.message(credentials['session_id'], credentials['access_token'], uuid4().hex, question)['result']
+        with diagnostic_location(turn='message'):
+            result = service.message(credentials['session_id'], credentials['access_token'], uuid4().hex, question)['result']
     except Exception as error:
         code = getattr(error,'code',None)
         result = dict(status='failed', code=code if code in _SAFE_EVENT_CODES else 'evaluation_message_failed')
@@ -305,7 +323,7 @@ def _send(service, credentials, question, directory, seen):
 
 
 def _empty(case, code):
-    return dict(**deepcopy(case), status='not_run', code=code, formed=False, quality=None, answer_attempts=0,
+    return dict(**deepcopy(case), status='not_run', code=code, formed=False, formed_two_reasons=False, quality=None, answer_attempts=0,
                 generated_paragraphs=0, setup=[], calls=[], elapsed_ms=None)
 
 
@@ -335,7 +353,8 @@ def _run(cases, plan, meter, delegate, trace_root):
                         if plan['mode']=='offline':
                             delegate.start(case, seed=True)
                         setup_before = meter.forwarded
-                        result, elapsed, trace = _send(service,credentials,question,path,seen)
+                        with diagnostic_location(case_id=case['id'],phase='setup'):
+                            result, elapsed, trace = _send(service,credentials,question,path,seen)
                         row['setup'].append(dict(question=question,status=result['status'],code=result['code'],
                             elapsed_ms=elapsed, model_calls=meter.forwarded-setup_before,
                             identity=(result.get('parameters') or {}).get('instrument_id'),
@@ -345,7 +364,8 @@ def _run(cases, plan, meter, delegate, trace_root):
                         if plan['mode']=='offline':
                             delegate.start(case)
                         target_before = meter.forwarded
-                        result, elapsed, trace = _send(service,credentials,case['question'],path,seen)
+                        with diagnostic_location(case_id=case['id'],phase='target'):
+                            result, elapsed, trace = _send(service,credentials,case['question'],path,seen)
                         company = result.get('company_research') or {}
                         calls = meter.calls[target_before:]
                         quality = deepcopy(company.get('quality'))
@@ -365,6 +385,7 @@ def _run(cases, plan, meter, delegate, trace_root):
                                             for s in row['setup'])
                         row['checks']['setup_context'] = context_ready
                         row['formed'] &= context_ready
+                        row['formed_two_reasons'] &= context_ready
                 finally:
                     service.close()
         except Exception:
@@ -376,7 +397,7 @@ def _run(cases, plan, meter, delegate, trace_root):
 
 
 def evaluate(**kwargs):
-    base = dict(version=VERSION,cases=[],language_quality='requires_manual_review')
+    base = dict(version=VERSION,acceptance_version=ACCEPTANCE_VERSION,cases=[],language_quality='requires_manual_review')
     try:
         plan,cases,prices = make_plan(**kwargs)
     except PlanError as error:
@@ -390,9 +411,12 @@ def evaluate(**kwargs):
         evaluation_scope='offline_contracts_not_model_quality' if plan['mode']=='offline' else 'real_model_answers_not_investment_performance',
         real_model_requested=plan['mode']!='offline',real_data_requested=plan['mode']=='live')
     meter, error_code, denied_network, credential_attempts = None, None, [], []
+    diagnostics = AnswerDiagnostics(kwargs['diagnostics_dir']) if kwargs.get('diagnostics_dir') is not None else None
     try:
         from scripts.verify import clean_environment, offline_network
         with ExitStack() as stack:
+            if diagnostics is not None:
+                stack.enter_context(bind_diagnostics(diagnostics))
             if plan['mode']=='offline':
                 stack.enter_context(clean_environment())
                 stack.enter_context(offline_network())
@@ -431,6 +455,10 @@ def evaluate(**kwargs):
     output['quality_target_claim'] = 'not_evaluated_offline' if plan['mode']=='offline' else 'mechanical_target_requires_manual_review'
     output['offline_credential_attempts'] = len(credential_attempts)
     output['blocked_source_network_attempts'] = len(denied_network)
+    if diagnostics is not None:
+        output['diagnostics'] = diagnostics.summary()
+        if not output['diagnostics']['complete']:
+            output.update(status='failed',code='evaluation_diagnostics_incomplete')
     return output
 
 
@@ -441,7 +469,9 @@ def write_report(report,root):
     (destination/'report.json').write_text(json.dumps(report,ensure_ascii=False,allow_nan=False,indent=2)+'\n',encoding='utf-8')
     def cell(value):
         return html.escape(str(value)).replace('|','&#124;').replace('\n','<br>')
-    lines = ['# 决策回答20题评估','',f"模式：{report['plan']['mode']}；主分母固定20；形成 {report['metrics']['formed']}/20，目标至少18。",
+    lines = ['# 决策回答20题评估','',f"规则版本：{report.get('acceptance_version','decision-acceptance-v1')}。",
+             f"模式：{report['plan']['mode']}；主分母固定20；形成 {report['metrics']['formed']}/20，目标至少18。",
+             '两条理由对照仅使用本次公开回答重新计数，不是对旧规则整套执行的重放。',
              '离线脚本不代表真实模型质量；自动通过仍需人工核对证据关联、措辞和条件。','',
              '| 题号 | 组别 | 依赖B | 状态/结果码 | 有效结论 | 问题 |','| --- | --- | --- | --- | --- | --- |']
     for c in report['cases']:

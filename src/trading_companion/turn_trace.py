@@ -627,6 +627,12 @@ def safe_answer_validation(value):
     for key in ("generated_sentences", "retained_sentences", "deleted_sentences", "retained_paragraphs", "repair_attempts", "structure_failures"):
         number = value.get(key)
         result[key] = min(number, 10000) if type(number) is int and number >= 0 else 0
+    for key in ('local_structure_recoveries','partial_structure_recoveries'):
+        if type(value.get(key)) is int and value[key]>=0:
+            result[key] = min(value[key],10000)
+    for key in ('repair_all_passed','repair_rating_restored','repair_content_added'):
+        if type(value.get(key)) is bool:
+            result[key] = value[key]
     result["reasons"] = []
     reasons = value.get("reasons", [])
     if type(reasons) is list:

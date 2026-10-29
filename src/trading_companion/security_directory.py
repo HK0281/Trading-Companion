@@ -106,13 +106,26 @@ class SecurityDirectory:
         return SecurityMatch("needs_confirmation" if candidates else "not_found", "partial", candidates)
 
     def mentioned_spans(self, question: str) -> tuple[tuple[int, int], ...]:
-        """Find known literal identities independently of the model's extraction."""
+        """Use lookup normalization, retaining offsets into the original question."""
         spans = {(match.start(), match.end()) for match in re.finditer(
             r"(?<![0-9])[0-9]{6}(?:\.(?:SH|SZ|BJ))?(?![0-9])", question, re.IGNORECASE)}
+        normalized_question, offsets = '', []
+        for index, character in enumerate(question):
+            normalized = _normalized(question[:index+1])
+            shared = len(normalized_question)
+            if normalized.startswith(normalized_question):
+                offsets.extend([(index,index+1)]*(len(normalized)-shared))
+            else:
+                # Composition can rewrite the previous character (e + accent -> é).
+                while not normalized.startswith(normalized_question[:shared]):
+                    shared -= 1
+                start = offsets[shared][0]
+                offsets[shared:] = [(start,index+1)]*(len(normalized)-shared)
+            normalized_question = normalized
         for item in self.securities:
             for name in (item.name, *item.aliases):
-                spans.update((match.start(), match.end()) for match in re.finditer(
-                    re.escape(name), question, re.IGNORECASE))
+                spans.update((offsets[match.start()][0], offsets[match.end()-1][1]) for match in re.finditer(
+                    re.escape(_normalized(name)), normalized_question))
         # Prefer full names/codes over aliases contained inside those same mentions.
         return tuple(sorted(span for span in spans if not any(
             other != span and other[0] <= span[0] and span[1] <= other[1] for other in spans)))

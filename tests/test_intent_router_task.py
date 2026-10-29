@@ -5,13 +5,25 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from trading_companion.intent_router_task import (CORPUS, load_corpus, definition_digest, input_state, LABELS,
-    CRITERIA, digest, row_digest, read_json, MANIFEST)
+    CRITERIA, digest, row_digest, read_json, MANIFEST, sources_match, frozen_sources, SOURCE_REVISIONS)
 from trading_companion.typesafe_jev import ClassifierError
 
 
 class IntentTaskTests(unittest.TestCase):
+    def test_a2_source_revision_is_exact_and_preserves_historical_corpus(self):
+        historical=read_json(MANIFEST)['frozen_sources']
+        self.assertTrue(sources_match(historical))
+        current=frozen_sources()
+        for name,pair in SOURCE_REVISIONS.items():
+            self.assertEqual((historical[name],current[name]),pair)
+        for name in current:
+            with self.subTest(name=name),patch('trading_companion.intent_router_task.frozen_sources',
+                    return_value={**current,name:'0'*64}):
+                self.assertFalse(sources_match(historical))
+
     def test_authored_distributions_pairs_and_unreviewed_status(self):
         rows,manifest=load_corpus()
         self.assertEqual(len(rows),304)

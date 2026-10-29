@@ -97,7 +97,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             stage="clarification", input_mode="natural", message="会话已清空。" if reset else "已取消待澄清的研究。")
     saved = saved_product(session, directory=directory, now=now, source=source,
                           development=development_source is not None)
-    if (wants_decision(question) and not directory.mentioned_spans(question)
+    from trading_companion.research_instruments import research_spans
+    if (wants_decision(question) and not research_spans(question, directory)
             and not _execution_requested(question) and not _INJECTION.search(question)):
         new_question = re.match(r"\s*新问题\s*[:：]", question)
         ambiguous = saved is not None and len(saved.plan.securities) > 1 and not re.search(r"两只|三只|分别|各自|它们|这几只", question)

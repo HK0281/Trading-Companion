@@ -23,6 +23,7 @@ def main(argv=None):
     parser.add_argument('--assumed-input-tokens',type=int)
     parser.add_argument('--assumed-output-tokens',type=int)
     parser.add_argument('--trace-dir')
+    parser.add_argument('--diagnostics-dir',help='显式本地诊断，只可在.agentbus/tmp/下；默认关闭')
     parser.add_argument('--report-dir')
     parser.add_argument('--plan-only',action='store_true')
     options=vars(parser.parse_args(argv))

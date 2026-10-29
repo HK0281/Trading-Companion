@@ -1,0 +1,682 @@
+{
+  "version": "request-routing-a2-deltas-v1",
+  "base_revision": "858a063ed948a5f75dc21cd422c2ba6c944d6cab",
+  "parent_v4_sha256_lf": "3e8a639a9c36659069eb3d08273aaea8f1e1e9a311c7ef6574e382c558e12061",
+  "source_changes": {
+    "src/trading_companion/product_plan.py": {
+      "historical_v3_sha256_lf": "4797df77052d5be5af352cb5a81643bc2c5b4f0a79b090a2d950da4fd8feca0d",
+      "current_sha256_lf": "6ee1dde2cb1e852b3787a9f74dda9d2ceef2897346c11b39bedcca4a73095d99",
+      "reason": "A2：统一原文名称扫描、补全及语法消歧；不修改原路由观察器。"
+    },
+    "src/trading_companion/product_agent.py": {
+      "historical_v3_sha256_lf": "0cf7f429414ae531aaeca7a9a6717248c149aecc4afeaba1206f3238b8e84860",
+      "current_sha256_lf": "2b2449f674fe12ff8e7fc5f2040fa8a54e6beef27d5610be554d2a4153a7e4f4",
+      "reason": "A2：统一原文名称扫描、补全及语法消歧；不修改原路由观察器。"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "knowledge-ready",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "knowledge-directory-missing",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "knowledge-stale",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "workflow-off",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "workflow-off-fixed",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "fixed-knowledge",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "fixed-knowledge-directory-gate",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "mixed-named-directory-gate",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "screen-new-and-replace",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "screen-explicit-interval",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "screen-no-source",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "edits-no-list",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "edits-refresh-sample",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "edits-empty-list",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "edit-company-lookalikes",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "ordinal-no-list",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "ordinal-selections",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "named-time-ordinals",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        },
+        {
+          "index": 5,
+          "fields": []
+        },
+        {
+          "index": 6,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "company-pending-owns-replies",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        },
+        {
+          "index": 5,
+          "fields": []
+        },
+        {
+          "index": 6,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "technical-pending",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        },
+        {
+          "index": 5,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "indicator-pending",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "company-technical-capabilities",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "company-disabled",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "knowledge-does-not-renew-list",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "current-pronoun-versus-list",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "company-followups-and-history",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        },
+        {
+          "index": 5,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "technical-edit-and-commands",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        },
+        {
+          "index": 5,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "replay-and-isolation",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "source-change",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "lazy-clock-explicit-ordinal",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "lazy-clock-named-member",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "selected-technical-followup",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "failed-research-consumes-current",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "cancelled-selection",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "development-mode",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "decision-direct-and-history",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "decision-paraphrases",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        },
+        {
+          "index": 4,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "decision-identity-boundary",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "decision-domain-limits",
+      "turns": [
+        {
+          "index": 1,
+          "fields": []
+        },
+        {
+          "index": 2,
+          "fields": []
+        },
+        {
+          "index": 3,
+          "fields": []
+        }
+      ]
+    }
+  ]
+}

@@ -15,7 +15,7 @@ from trading_companion.evaluation_pricing import DEFAULT_PRICES, MODEL_ID, load_
 from trading_companion.local_env import load_evaluation_key_environment
 from trading_companion.news_triage_evaluation import network_boundary, TIMEOUT_SCOPE
 from trading_companion.typesafe_jev import JevConfig, ClassifierError, require
-from trading_companion.intent_router_task import load_corpus, input_state, digest, read_json, definition_digest, LABELS
+from trading_companion.intent_router_task import load_corpus, input_state, digest, read_json, definition_digest, frozen_sources, LABELS
 from trading_companion.intent_router_baseline import rule_classify, protected_reason
 from trading_companion.intent_router_models import JevIntent, DeepSeekIntent, fixture_post, TEMPLATE
 from trading_companion.intent_router_metrics import metrics, choose_threshold, cutover, scores, ratio, paired
@@ -45,6 +45,7 @@ def compatible(reference, plan):
     return (reference["version"] == "intent-router-evaluation-v1" and reference["status"] == "completed"
         and other["suite"] == "paraphrase" and other["repeat"] == 1
         and all(other[k] == plan[k] for k in ("mode", "models", "classifiers", "timeout_seconds", "definition_sha256", "implementation_sha256", "prices_sha256"))
+        and other.get('actual_rule_source_sha256_lf') == plan['actual_rule_source_sha256_lf']
         and other["corpus"]["corpus_sha256"] == plan["corpus"]["corpus_sha256"]
         and other["corpus"]["split_sha256"] == plan["corpus"]["split_sha256"])
 
@@ -152,6 +153,7 @@ def make_plan(*, mode="offline", classifiers=None, split="dev", suite="paraphras
     plan = {"version": "intent-router-plan-v1", "status": "planned", "mode":mode, "suite":suite, "split":split,
         "classifiers":chosen, "models":models, "repeat":repeat, "seed":42, "corpus":manifest,
         "definition_sha256":definition_digest(), "implementation_sha256":implementation_digest(), "deepseek_template":TEMPLATE,
+        "actual_rule_source_sha256_lf":frozen_sources(),
         "prices_sha256":price_sha, "price_entries":{c:price_for(price_data,"typesafe" if c=="jev" else c,models[c]) for c in chosen},
         "planned_questions":len(selected)*repeat, "unique_questions":len(selected), "worst_case_requests":total,"call_limit":limit,
         "suite_preview":suites, "all_suites_requests_upper_bound":sum(v["requests_upper_bound"] for v in suites.values()),

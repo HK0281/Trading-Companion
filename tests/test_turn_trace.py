@@ -22,6 +22,7 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "evaluation_diagnostics_incomplete": "独立决策评估显式开启的本地诊断写入失败或达到限额，不是产品轮次结果。",
     "decision_budget_invalid": "独立决策评估的每题或整套调用预算无效，尚未运行产品消息。",
     "decision_corpus_invalid": "独立决策评估的固定题库校验失败，尚未进入产品消息入口。",
     "decision_directory_missing_security": "独立决策评估的本地目录不能唯一解析预设证券，尚未构造客户端。",

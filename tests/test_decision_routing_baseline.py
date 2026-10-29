@@ -18,10 +18,25 @@ class DecisionRoutingBaselineTests(unittest.TestCase):
         frozen = [name for name in SOURCES if name not in {
             "src/trading_companion/product_research.py", "src/trading_companion/product_answer.py",
             "src/trading_companion/decision_demo.py",  # A review #168: complete demo; legacy script unchanged.
+            "src/trading_companion/product_plan.py",  # A2 #176: literal identity completion; historical hash checked below.
+            "src/trading_companion/product_agent.py",  # A2 #176: same normalized name scan at the admission gate.
             "tests/test_decision_routing_api.py", "tests/test_product_decision_answer.py", "tests/test_product_agent.py"}]
         for name in frozen:
             self.assertEqual(corpus["metadata"]["source_sha256_lf"][name],
                              sha256((ROOT/name).read_bytes().replace(b"\r\n", b"\n")).hexdigest(), name)
+        a2 = json.loads((ROOT/'tests/fixtures/request-routing-a2-deltas.json').read_text(encoding='utf-8'))
+        self.assertEqual(a2['parent_v4_sha256_lf'],baseline_digest((ROOT/'tests/fixtures/request-routing-v4.json').read_bytes()))
+        for name,record in a2['source_changes'].items():
+            self.assertEqual(corpus['metadata']['source_sha256_lf'][name],record['historical_v3_sha256_lf'])
+            self.assertEqual(sha256((ROOT/name).read_bytes().replace(b'\r\n',b'\n')).hexdigest(),record['current_sha256_lf'])
+        self.assertEqual(set(a2['source_changes']),{'src/trading_companion/product_plan.py','src/trading_companion/product_agent.py'})
+        self.assertEqual(a2['version'],'request-routing-a2-deltas-v1')
+        old = json.loads((ROOT/'tests/fixtures/request-routing-v2.json').read_text(encoding='utf-8'))
+        from tests.routing_baseline_support import expand_observations
+        expected = [{'id':s['id'],'turns':[{'index':i,'fields':[]} for i in range(1,len(expand_observations(s['observed']))+1)]}
+                    for s in old['scenarios']+corpus['scenarios']]
+        self.assertEqual(a2['scenarios'],expected)
+        self.assertEqual(sum(len(s['turns']) for s in expected),117)
         targets = authored_scenarios()
         self.assertEqual([{k:v for k,v in s.items() if k != "observed"} for s in corpus["scenarios"]], targets)
         for scenario in corpus["scenarios"]:

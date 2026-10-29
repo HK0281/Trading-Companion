@@ -80,4 +80,32 @@ describe("reference decisions", () => {
     expect(screen.getByText("买入")).toBeVisible();
     expect(screen.getByRole("table", { name: /ATR 参考计划/ })).toBeVisible();
   });
+
+  it("retains a v3 verdict with one reason and shows deletion counts and program condition origin", () => {
+    const payload = fresh();
+    payload.decisions[0].reasons = payload.decisions[0].reasons.slice(0, 1);
+    Object.assign(payload.decisions[0], {
+      reason_review: { retained: 1, deleted: 1, codes: ["answer_numeric_unmatched"] },
+      invalidation_origin: "application",
+    });
+    const data = parseCompanyAnswer(payload);
+    expect(data).not.toBeNull();
+    render(<CompanyParagraphs data={data!} />);
+    expect(screen.getByText("买入")).toBeVisible();
+    expect(screen.getByText(/已保留 1 条依据，删除 1 条/)).toBeVisible();
+    expect(screen.getByText(/研判失效或重评条件 · 程序参考计划/)).toBeVisible();
+    expect(screen.queryByText(/999999/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the historical v2 minimum and rejects dishonest deletion metadata", () => {
+    const old = structuredClone(legacy);
+    old.decisions[0].reasons = old.decisions[0].reasons.slice(0, 1);
+    expect(parseCompanyAnswer(old)).toBeNull();
+    const payload = fresh();
+    Object.assign(payload.decisions[0], { reason_review: { retained: 99, deleted: 1, codes: ["answer_numeric_unmatched"] } });
+    expect(parseCompanyAnswer(payload)).toBeNull();
+    const missing = fresh();
+    Object.assign(missing.decisions[0], { invalidation_origin: "application", invalidation: null });
+    expect(parseCompanyAnswer(missing)).toBeNull();
+  });
 });

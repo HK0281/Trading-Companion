@@ -2,7 +2,9 @@
 type Claim = { text: string; evidence_ids: string[] };
 type Verdict = { instrument_id: string; status: string; code: string; rating: string | null;
   direction: string | null; horizon: string; conviction: string | null; reasons: Claim[];
-  invalidation: Claim | null; plan_id: string | null };
+  invalidation: Claim | null; plan_id: string | null;
+  invalidation_origin?: "application";
+  reason_review?: { retained: number; deleted: number; codes: string[] } };
 type Plan = { plan_id: string; instrument_id: string; purpose: string; status: string; code: string;
   source_date: string | null; data_authenticity: string | null; source: string | null;
   price_adjustment: string | null; values: Record<string, string> | null };
@@ -52,10 +54,19 @@ export function parseDecision(value: Record<string, unknown>, securities: Set<st
       && c.evidence_ids.length <= (value.version === "product-research-answer-v3" ? 240 : 20) && new Set(c.evidence_ids).size === c.evidence_ids.length
       && c.evidence_ids.every(id => typeof id === "string" && evidence.get(id) === d.instrument_id);
     if (!d.reasons.every(claim) || !(d.invalidation === null || claim(d.invalidation))) return null;
+    if (d.invalidation_origin !== undefined && (value.version !== "product-research-answer-v3" || d.invalidation_origin !== "application"
+      || d.status !== "available" || d.plan_id === null || d.invalidation === null)) return null;
+    if (d.reason_review !== undefined) {
+      const r = d.reason_review;
+      if (value.version !== "product-research-answer-v3" || !obj(r) || !Number.isInteger(r.retained) || !Number.isInteger(r.deleted)
+        || r.retained !== d.reasons.length || Number(r.deleted) < 1 || Number(r.retained) + Number(r.deleted) > 4
+        || !Array.isArray(r.codes) || r.codes.length < 1 || r.codes.length > 4
+        || !r.codes.every(c => ["answer_structure_invalid", "answer_hard_content", "answer_numeric_unmatched", "answer_horizon_mismatch"].includes(String(c)))) return null;
+    }
     if (d.status === "available") {
       const rating = typeof d.rating === "string" && Object.hasOwn(ratings, d.rating) ? ratings[d.rating] : null;
       if (!rating || !rating[1].includes(String(d.direction)) || !["高", "中", "低"].includes(String(d.conviction))
-        || d.reasons.length < 2 || d.invalidation === null) return null;
+        || d.reasons.length < (value.version === "product-research-answer-v3" ? 1 : 2) || d.invalidation === null) return null;
       if (d.plan_id !== null) {
         const p = plans.get(String(d.plan_id));
         if (!p || p.instrument_id !== d.instrument_id || p.purpose !== rating[0] || p.status !== "available") return null;
@@ -103,7 +114,8 @@ export function ResearchDecision({ data, securities, renderEvidence }: { data: D
         <small>模型自评，未经历史校准；持有、增持或减持均以假如已有仓位为条件。</small>
       </> : <p className="data-note">本轮研判未形成；下方仅为程序计算的参考价位。期限：{d.horizon}</p>}
       {d.reasons.length > 0 && <details><summary>研判依据</summary>{d.reasons.map((r, i) => <div key={i}><p>{r.text}</p>{renderEvidence?.(r.evidence_ids)}</div>)}</details>}
-      {d.invalidation && <details><summary>研判失效或重评条件</summary><p>{d.invalidation.text}</p>{renderEvidence?.(d.invalidation.evidence_ids)}</details>}
+      {d.reason_review && <p className="data-note" role="status">已保留 {d.reason_review.retained} 条依据，删除 {d.reason_review.deleted} 条未通过核对的依据（{d.reason_review.codes.join("、")}）。</p>}
+      {d.invalidation && <details><summary>研判失效或重评条件{d.invalidation_origin === "application" ? " · 程序参考计划" : ""}</summary><p>{d.invalidation.text}</p>{renderEvidence?.(d.invalidation.evidence_ids)}</details>}
       {selected && <PlanTable plan={selected} />}
       {d.status === "available" && ["减持", "卖出"].includes(d.rating ?? "") && !selected?.values && <p>如已持有：当前缺少有效退出价位。<br />空仓：观望。</p>}
     </section>;

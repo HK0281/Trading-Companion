@@ -198,3 +198,112 @@ class NarrativeTests(unittest.TestCase):
         self.assertIn("current", model.calls[1][-1].content)
         self.assertIsNotNone(run.answer.narratives[0]["current"])
 
+    def test_one_valid_reason_survives_and_reports_only_deleted_count_and_codes(self):
+        def change(p,n,c): p['decisions'][0]['reasons'][0]={'text':'收盘999999元。'}
+        run,_=self.run_answer(change)
+        decision=run.answer.decisions[0]
+        self.assertEqual(decision['status'],'available')
+        self.assertEqual(len(decision['reasons']),1)
+        self.assertEqual(decision['reason_review'],dict(retained=1,deleted=1,codes=['answer_numeric_unmatched']))
+        self.assertNotIn('999999',json.dumps(run.answer.to_dict()))
+
+    def test_invalid_invalidation_uses_matching_program_plan_and_evidence(self):
+        def change(p,n,c): p['decisions'][0]['invalidation']={'text':'止损999999元。'}
+        run,_=self.run_answer(change)
+        d=run.answer.decisions[0]
+        self.assertEqual(d['status'],'available')
+        self.assertEqual(d['invalidation_origin'],'application')
+        selected=next(p for p in run.answer.trade_plans if p.plan_id==d['plan_id'])
+        self.assertIn(dict(selected.values)['reference_stop'],d['invalidation']['text'])
+        ids={e.id for e in run.answer.evidence}
+        self.assertTrue(set(d['invalidation']['evidence_ids'])<=ids)
+
+    def test_program_invalidation_needs_usable_same_purpose_plan(self):
+        for rating,direction,purpose,field in (('持有','震荡','wait','observe_below'),('卖出','偏空','holding_exit','exit_below')):
+            def change(p,n,c):
+                p['decisions'][0].update(rating=rating,direction=direction,
+                    plan_id=next(x['plan_id'] for x in c['trade_plans'] if x['purpose']==purpose),invalidation={'text':'止损999999元。'})
+                p['narratives'][0].update(summary={'text':'条件性参考。'},stance={'text':'条件性参考。'})
+            with self.subTest(purpose=purpose):
+                run,_=self.run_answer(change)
+                d=run.answer.decisions[0]
+                selected=next(p for p in run.answer.trade_plans if p.plan_id==d['plan_id'])
+                self.assertEqual(d['invalidation_origin'],'application')
+                self.assertIn(dict(selected.values)[field],d['invalidation']['text'])
+        from trading_companion.product_narrative_answer import _Checker, _context
+        bundle=decision_bundle()
+        context=_context(bundle)
+        context['evidence']=[e for e in context['evidence'] if not e.get('plan_id')]
+        bundle=replace(bundle,companies=tuple(replace(c,trade_plans=()) for c in bundle.companies))
+        checker=_Checker(bundle,context)
+        # Valid prose without a usable program plan may not acquire a condition.
+        raw=dict(status='formed',rating='买入',direction='偏多',horizon=bundle.plan.objective.horizon,
+                 conviction='低',reasons=[{'text':'条件性参考。'}],invalidation=None,plan_id=None)
+        self.assertEqual(checker.decision(raw,'000001.SZ')['status'],'unavailable')
+
+    def test_repair_content_rejected_after_merge_does_not_count_as_added(self):
+        def change(p,n,c):
+            p['narratives'][0]['current']={'text':'收盘999999元。'}
+            if n==1:
+                p['narratives'][0]['summary']={'text':'收盘999999元。'}
+            else:
+                p['decisions'][0].update(rating='卖出',direction='偏空',
+                    plan_id=next(x['plan_id'] for x in c['trade_plans'] if x['purpose']=='holding_exit'))
+                p['narratives'][0].update(summary={'text':'建议卖出。'},stance={'text':'建议卖出。'})
+        run,_=self.run_answer(change)
+        self.assertEqual(run.answer.decisions[0]['rating'],'买入')
+        self.assertIsNone(run.answer.narratives[0]['summary'])
+        self.assertFalse(run.answer.quality['repair_content_added'])
+
+    def test_action_synonyms_negation_and_conditional_exits(self):
+        variants=(('持有','震荡','wait',('持有观察。','观望。','继续持有。','等待确认。')),
+                  ('增持','偏多','conditional_entry',('分批买入。','小仓位参与。','不建议卖出。','如果跌破止损则卖出。','如果证据转弱，应考虑卖出。')),
+                  ('减持','偏空','holding_exit',('逢高减仓。','降低仓位。','不要买入。')))
+        for rating,direction,purpose,texts in variants:
+            for text in texts:
+                def change(p,n,c):
+                    p['decisions'][0].update(rating=rating,direction=direction,plan_id=next(x['plan_id'] for x in c['trade_plans'] if x['purpose']==purpose))
+                    p['narratives'][0]['summary']={'text':'本次提供条件性参考。'}
+                    p['narratives'][0]['stance']={'text':text}
+                with self.subTest(text=text):
+                    run,_=self.run_answer(change)
+                    self.assertEqual(run.answer.decisions[0]['status'],'available')
+                    self.assertIsNotNone(run.answer.narratives[0]['stance'])
+        run,_=self.run_answer(lambda p,n,c:p['narratives'][0].update(stance={'text':'建议卖出。'}))
+        self.assertEqual(run.answer.decisions[0]['rating'],'买入')
+        self.assertIsNone(run.answer.narratives[0]['stance'])
+
+    def test_valid_decision_survives_bad_narrative_type_and_wrappers_are_locally_recovered(self):
+        run,_=self.run_answer(lambda p,n,c:p.update(narratives='wrong-type'))
+        self.assertEqual(run.answer.decisions[0]['status'],'available')
+        self.assertEqual(run.answer.quality['state'],'partial')
+        run,model=self.run_answer(lambda p,n,c:'以下为结果：\n```json\n'+json.dumps(p,ensure_ascii=False)+'\n```')
+        self.assertEqual(len(model.calls),1)
+        self.assertEqual(run.answer.status,'accepted')
+        self.assertEqual(run.answer.quality['local_structure_recoveries'],1)
+        self.assertEqual(run.answer.quality['structure_failures'],1)
+
+    def test_repair_outcomes_separate_full_success_rating_restoration_and_added_content(self):
+        def change(p,n,c):
+            if n==1:
+                p['decisions'][0]['horizon']='未来2个月'
+            else:
+                p['narratives'][0]['current']={'text':'收盘999999元。'}
+        run,model=self.run_answer(change)
+        self.assertEqual(run.answer.quality['state'],'partial')
+        self.assertTrue(run.answer.quality['repair_rating_restored'])
+        self.assertTrue(run.answer.quality['repair_content_added'])
+        self.assertFalse(run.answer.quality['repair_all_passed'])
+        feedback=json.loads(model.calls[1][-1].content.split('保留其他合法分析：',1)[1])
+        self.assertEqual(feedback[0]['section'],'decision')
+        self.assertTrue(feedback[0]['instrument_id'])
+        self.assertEqual(feedback[0]['path'],'decisions[0].horizon')
+        def repaired_reason(p,n,c):
+            if n==1: p['decisions'][0]['reasons'][0]={'text':'收盘999999元。'}
+        run,_=self.run_answer(repaired_reason)
+        self.assertEqual(len(run.answer.decisions[0]['reasons']),2)
+        self.assertNotIn('reason_review',run.answer.decisions[0])
+        self.assertTrue(run.answer.quality['repair_content_added'])
+        self.assertFalse(run.answer.quality['repair_rating_restored'])
+        self.assertTrue(run.answer.quality['repair_all_passed'])
+

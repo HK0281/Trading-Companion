@@ -251,7 +251,7 @@ def _required_kinds(question: str) -> tuple[str, ...]:
     return tuple(kind for kind in RESEARCH_KINDS if kind in kinds and kind not in excluded)
 
 
-def _candidate(response, question):
+def _candidate(response, question, directory=None):
     if (type(response) is not ToolModelResponse or response.status != "tool_calls"
             or len(response.tool_calls) != 1 or response.tool_calls[0].name != PRODUCT_INTENT_TOOL_NAME):
         raise InputIssue("failed", "invalid_product_intent", "模型没有返回可校验的研究计划，未查询数据。")
@@ -273,7 +273,9 @@ def _candidate(response, question):
     if any(value is not None and (type(value) is not str or not value.strip() or len(value) > 120)
            for value in expressions):
         raise InputIssue("failed", "invalid_product_intent", "研究日期字段无效，未查询数据。")
-    if any(item not in question for item in (*mentions, *(value for value in expressions if value is not None))):
+    from trading_companion.research_instruments import grounded_mention
+    if (any(item not in question and (directory is None or not grounded_mention(item, question, directory)) for item in mentions)
+            or any(value not in question for value in expressions if value is not None)):
         raise InputIssue("needs_clarification", "ungrounded_product_intent",
                          "模型提取了问题中没有的名称、代码或日期，请重述研究对象；未使用模型记忆补码。")
     # An optional model hint cannot grant a risk calculation. Derive it from the
@@ -290,9 +292,10 @@ def _mask_mentions(question, mentions):
 
 
 def _ensure_mentions_complete(question, mentions, directory):
+    from trading_companion.research_instruments import research_spans
     _, spans = _mask_mentions(question, mentions)
     if any(not any(start <= known_start and known_end <= end for start, end in spans)
-           for known_start, known_end in directory.mentioned_spans(question)):
+             for known_start, known_end in research_spans(question, directory)):
         raise InputIssue("needs_clarification", "product_instrument_not_grounded",
                          "问题中还有未被完整识别的名称或代码，请明确全部研究对象；没有只分析其中一部分。")
     for mention in mentions:
@@ -458,7 +461,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
                         + ",".join(_required_kinds(question)) + ". Shanghai reference date: " + reference_date.isoformat()),
             ToolMessage("user", question)], tools=(PRODUCT_INTENT_TOOL,))
         base = replace(base, model_response=response)
-        draft = _candidate(response, question)
+        draft = _candidate(response, question, directory)
         if (draft["intent"] == "unsupported" or re.search(r"全市场|组合管理|仓位分配", question)
                 or re.search(r"选股|筛选股票|推荐股票|选出|挑选", question) and len(draft["instrument_mentions"]) < 2):
             return replace(base, status="out_of_scope", code="product_request_out_of_scope",
@@ -466,7 +469,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         selected_sources = re.findall(r"(?:数据源\s*(?:为|是|[:：])?|使用|采用|用)\s*(腾讯|东方财富|东财|AKShare)", question, re.I)
         if any(_SOURCE_NAMES[name.casefold()] != source for name in selected_sources):
             raise InputIssue("needs_clarification", "product_source_mismatch", "指定行情来源与当前入口不同，请重新启动选择来源。")
-        mentions = tuple(dict.fromkeys(draft["instrument_mentions"]))
+        from trading_companion.research_instruments import complete_mentions
+        mentions = complete_mentions(question, draft["instrument_mentions"], directory)
         _ensure_mentions_complete(question, mentions, directory)
         remaining, _ = _mask_mentions(question, mentions)
         positive, excluded_indicators = _positive_scope(remaining)

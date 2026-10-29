@@ -18,6 +18,15 @@ def prices():
 
 
 class MetricTests(unittest.TestCase):
+    def test_shared_helpers_preserve_original_news_outputs(self):
+        from trading_companion import classification_metrics as shared
+        from trading_companion import news_triage_metrics as news
+        self.assertIs(news.ratio,shared.ratio)
+        self.assertIs(news.percentiles,shared.percentiles)
+        self.assertEqual(news.ratio(3,4),{'numerator':3,'denominator':4,'value':.75})
+        self.assertEqual(news.percentiles([40,10,30,20]),{'n':4,'p50_ms':20,'p95_ms':40})
+        self.assertEqual(news.percentiles([]),{'n':0,'p50_ms':None,'p95_ms':None})
+
     def test_hand_calculated_f1_missing_and_combined_denominators(self):
         a,b,c,d=observation(),observation(),observation("mentioned"),observation("mentioned",good=False)
         b['answers']['relevance']['choice']='mentioned'

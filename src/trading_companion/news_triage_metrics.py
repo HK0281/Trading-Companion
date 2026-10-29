@@ -1,19 +1,10 @@
 """Planned denominators, per-class F1, observed calibration and request-level cascades."""
 
-from math import ceil
+from trading_companion.classification_metrics import ratio, percentiles
 from trading_companion.news_triage import OPTIONS
 from trading_companion.evaluation_pricing import actual_cost
 
 THRESHOLDS = tuple(i / 100 for i in range(50, 100, 5))
-
-
-def ratio(a, b):
-    return {"numerator": a, "denominator": b, "value": a / b if b else None}
-
-
-def percentiles(values):
-    values = sorted(values)
-    return {"n": len(values), **{f"p{p}_ms": values[ceil(p / 100 * len(values)) - 1] if values else None for p in (50, 95)}}
 
 
 def _pred(row, question):

@@ -132,6 +132,20 @@ The labels and the keyword rules share an author, so the rule score may be optim
 
 A live run reads only the selected `TYPESAFE_API_KEY` / `DEEPSEEK_API_KEY`, and only after the plan is printed and the label review check passes. See the [design, metrics and authorization rules](docs/news-triage-design.md).
 
+### Intent paraphrases: offline evaluation
+
+An independent [intent evaluation](docs/intent-router-evaluation-design.md) compares the frozen product router, Jev and optional DeepSeek on 240 synthetic semantic questions, plus 64 protected requests that never enter a model. Eight labels include an explicit clarification option; reports show both the full set and the seven-class subset excluding clarification gold labels, since the product router delegates clarification to its executors.
+
+The 144-question development set selects a confidence threshold, which is exported and reviewed before the 96-question holdout run. A preselected 48-case ablation separates six pairs whose labels depend on the latest research category from 18 pairs whose labels should stay unchanged. Trading decisions and future direction always belong to company research; ambiguous issuer names go to its identity clarification. **Labels are draft, pending individual review; only simulated transports have run for this task.** Product routing is unchanged. The older 59-step / 105-turn agreement suite is deferred and explicitly unavailable.
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_intent_router.py --plan-only
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_intent_router.py --split dev --report-dir .agentbus/tmp/intent-dev
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_intent_router.py --annotation-review
+```
+
+Offline runs and previews read no credentials and make no network requests. Live evaluation requires reviewed labels, explicit classifiers, a call limit and a price file; holdout also requires a reviewed development threshold lock. Live calls require separate user authorization and are run by Claude. See the design for lock export, holdout, ablation, cost assumptions and the fixed evidence gates for proposing a future product integration.
+
 ## Scope & limits
 
 - No brokerage connection, orders or fund management. Trading remains with the user.

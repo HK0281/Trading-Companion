@@ -67,7 +67,7 @@ def make_plan(*, mode="offline", classifiers=None, selected_items=None, repeat=1
     price_data, price_sha = load_prices(DEFAULT_PRICES if prices is None else prices)
     models = {"jev": "jev-latest", "deepseek": deepseek_model or "offline-deepseek-v1"}
     implementation = ("typesafe_jev.py", "news_triage.py", "news_triage_models.py", "news_triage_evaluation.py",
-                      "news_triage_metrics.py", "news_triage_reporting.py", "evaluation_pricing.py", "local_env.py")
+                      "news_triage_metrics.py", "classification_metrics.py", "news_triage_reporting.py", "evaluation_pricing.py", "local_env.py")
     plan = {"version": "news-triage-plan-v1", "status": "planned", "mode": mode, "classifiers": chosen,
             "models": {c: models[c] for c in chosen}, "corpus": manifest, "task_version": TASK_VERSION,
             "definition_sha256": definition_digest(), "rule_version": RULE_VERSION,

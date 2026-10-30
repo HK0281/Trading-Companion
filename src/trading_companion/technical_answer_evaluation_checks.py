@@ -48,6 +48,23 @@ def _negative_mention(text, match):
                 or re.match(r'\s*(?:未请求|未计算|不可用|未提供)', after))
 
 
+def plan_price_claim(text):
+    """Require an affirmative numerical plan claim, including structured level text."""
+    text = unicodedata.normalize('NFKC', text)
+    for sentence in re.split(r'[。！？!?\n；;]', text):
+        for price in _PLAN_PRICE.finditer(sentence):
+            labels = list(re.finditer(r'止损|止盈|目标价?|退出价', sentence[price.start():price.end()]))
+            for label in labels:
+                start, end = price.start() + label.start(), price.start() + label.end()
+                before = sentence[max(0, start - 16):start]
+                after = sentence[end:end + 12]
+                if (re.search(r'(?:不提供|未提供|未计算|没有|无法提供|不能提供|不设定|不设置|不设)\s*$', before)
+                        or re.match(r'\s*(?:不可用|未提供|无法给出|不能给出)', after)):
+                    continue
+                return True
+    return False
+
+
 def unexpected_indicators(text, allowed, *, prose=False):
     text = unicodedata.normalize('NFKC', text)
     kinds = {value.split('(', 1)[0] for value in allowed}
@@ -81,7 +98,8 @@ def unexpected_indicators(text, allowed, *, prose=False):
 def quality_metrics(quality):
     quality = quality or {}
     counts = {key: quality.get(key) if type(quality.get(key)) is int and quality[key] >= 0 else None
-              for key in ('generated_sentences', 'deleted_sentences', 'deduplicated_drivers', 'deduplicated_sentences')}
+              for key in ('generated_sentences', 'deleted_sentences', 'deduplicated_drivers', 'deduplicated_sentences',
+                          'inline_binding_recoveries')}
     known = counts['generated_sentences'] is not None and counts['deleted_sentences'] is not None
     counts['sentence_deletion_rate'] = (ratio(counts['deleted_sentences'], counts['generated_sentences'])
                                        if known else None)
@@ -171,11 +189,14 @@ def grade_turn(case, expected, result, observation=None, source_calls=None):
                          for e in evidence)]
     if not available:
         for index, text in enumerate(prose):
-            if _PLAN_PRICE.search(unicodedata.normalize('NFKC', text)):
+            if plan_price_claim(text):
                 violations.append(dict(code='scope_plan_price_without_atr', block=index))
         for narrative in narratives:
             for level in narrative.get('levels', []):
-                if re.search(r'止损|止盈|目标价', ' '.join(str(level.get(k, '')) for k in ('text', 'lower_label', 'upper_label'))):
+                declarations = [str(level.get('text', '')) + ' ' + str(level.get('lower', '')) + '元']
+                declarations += [str(level.get(side + '_label', '')) + ' ' + str(level.get(side, '')) + '元'
+                                 for side in ('lower', 'upper')]
+                if any(plan_price_claim(text) for text in declarations):
                     violations.append(dict(code='scope_structured_plan_without_atr'))
     plan_explanation = None
     if expected['requires_decision']:

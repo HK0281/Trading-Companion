@@ -102,6 +102,10 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         return "", [], [Issue(STRUCTURE, section, index, "本股没有送入模型的可用证据")], 1, 0
     ids = item.get("evidence_ids", [])
     try:
+        from trading_companion.answer_claim_recovery import prepare_claim
+        text, numbers, inline_ids, recoveries = prepare_claim(text, item.get('numbers', []), context, instrument)
+        if recoveries and stats is not None:
+            stats['inline_binding_recoveries'] = stats.get('inline_binding_recoveries', 0) + recoveries
         if type(ids) is not list or len(ids) > 20:
             raise InvalidBinding('invalid_citations', STRUCTURE)
         expanded = []
@@ -109,19 +113,21 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
             _, used = resolve_ref(ref, context, instrument)
             expanded.extend(used)
         ids = list(dict.fromkeys(expanded))
-        spans = bindings_for(item["text"], item.get('numbers', []))
+        spans = bindings_for(text, numbers)
     except InvalidBinding as error:
         code = HARD if unsafe(text) else error.code
         rejected(code, text)
         return "", [], [Issue(code, section, index, "" if code == HARD else text)], 1, 0
     records = own
-    used_ids = list(ids)
+    used_ids = list(ids) + inline_ids
     safe, issues, generated = [], [], 0
     for position, sentence_match in enumerate(re.finditer(r"[^。！？!?\n]+[。！？!?]?", text)):
         sentence = sentence_match[0]
         before = len(issues)
         numeric = []
         generated += 1
+        if not any(ch.isalnum() for ch in sentence):
+            continue
         wrong_company = any(s["instrument_id"] != instrument and (s["name"] in sentence or s["instrument_id"] in sentence)
                             for s in context["securities"])
         codes = re.findall(r"(?<!\d)\d{6}\.(?:SH|SZ|BJ)\b", sentence, re.I)
@@ -145,7 +151,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
                 issues.append(Issue(code, section, position, "" if code == HARD else sentence, instrument=instrument,
                     path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]', details=tuple(numeric)))
             else:
-                safe.append(sentence.strip())
+                safe.append(re.sub(r'\s+([，。！？；：])', r'\1', sentence).strip())
                 used_ids.extend(matched_ids)
         if len(issues)>before and diagnostics_enabled():
             diagnostic_event('rejected_sentence',instrument_id=instrument,section=section,item_index=index,

@@ -42,6 +42,7 @@ def implementation_fingerprint():
              'technical_answer_evaluation_fixtures.py', 'decision_answer_evaluation.py', 'workflow_evaluation_fixtures.py',
              'product_narrative_answer.py', 'product_indicator_edit.py', 'product_agent.py', 'product_plan.py',
              'product_scope.py', 'product_research.py', 'answer_validation.py', 'answer_numeric_bindings.py',
+             'answer_claim_recovery.py', 'answer_technical_validation.py', 'research_intent.py',
              'deepseek_model.py', 'deepseek_tool_model.py', 'turn_trace.py')
     digest = sha256()
     for name in names:
@@ -271,7 +272,7 @@ def _run(cases, plan, meter, delegate, trace_root):
                         validation = next((e.get('validation', {}) for e in reversed((trace or {}).get('event_records', []))
                                            if e['kind'] == 'check' and e['operation'] == 'answer_validation'), {})
                         for key in ('output_truncation_version', 'output_truncations', 'issue_count_version', 'draft_issue_counts',
-                                    'deduplicated_drivers', 'deduplicated_sentences'):
+                                    'deduplicated_drivers', 'deduplicated_sentences', 'inline_binding_recoveries'):
                             if key in validation:
                                 quality[key] = validation[key]
                         graded_result = deepcopy(result)
@@ -319,7 +320,7 @@ def aggregate_turns(selected):
         issue_counts_unknown_turns=sum(not t.get('issue_counts_known') for t in selected),
         output_truncations=sum(t['output_truncations'] for t in selected) if all(type(t.get('output_truncations')) is int for t in selected) else None,
         **{key: sum(t[key] for t in selected) if all(type(t.get(key)) is int for t in selected) else None
-           for key in ('deduplicated_drivers', 'deduplicated_sentences')})
+            for key in ('deduplicated_drivers', 'deduplicated_sentences', 'inline_binding_recoveries')})
 
 
 def summarize(rows):

@@ -59,8 +59,8 @@ _LOCAL_DATE = re.compile(
 _DATE_SUFFIX = re.compile(r"\s*(?:半|多|左右|以内|以上|以下|底|末|初|上旬|中旬|下旬|"
                           r"(?:之|以)?(?:前|后|内|外)|起|至|到|~|～)")
 _INDICATOR_CUE = re.compile(
-    r"[+＋－-]?(?:[0-9]+(?:\.[0-9]+)?|[零一二两三四五六七八九十百]+)\s*(?:日|天)\s*"
-    r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)|"
+    r"(?<![0-9.+＋－-])[+＋－-]?(?:[0-9]+(?:\.[0-9]+)?|[零一二两三四五六七八九十百]+)\s*(?:日|天)\s*"
+    r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)(?!\s*(?:[（(]|[+＋－-]?[0-9]))|"
     r"(?<![A-Za-z])(?:MACD|BOLL|SMA|EMA|RSI|ATR|ADX|VWMA|OBV|VOLUME)(?![A-Za-z])"
     r"(?:\s*(?:[（(][^）)]*(?:[）)]|$)|[+＋－-]?[0-9]+(?:\.[0-9]+)?))?|"
     r"KDJ|指数移动平均线|简单移动平均线|布林带|布林线|均线|量能|成交量", re.IGNORECASE)
@@ -319,10 +319,30 @@ def _indicator(phrase: str) -> tuple[IndicatorSpec, ...]:
     return parse_indicator_specs(text)
 
 
+def indicator_text(question):
+    """Relative day ranges belong to dates, not an adjacent indicator window."""
+    return re.sub(r'(?:最近|近|过去)\s*' + _COUNT + r'\s*(?:个)?\s*(?:自然日|天|日)',
+                  lambda m: ' ' * len(m[0]), question)
+
+
+def _ground_indicator_mentions(question, phrases):
+    """Recover only overlapping indicator spans affected by a relative day boundary."""
+    local = list(_INDICATOR_CUE.finditer(indicator_text(question)))
+    dates = list(_DATE_RELATIVE.finditer(question))
+    result = []
+    for phrase in phrases:
+        spans = _spans(question, [phrase])
+        replacements = [m[0] for m in local for start, end in spans
+                        if m.start() < end and m.end() > start
+                        and any(d.start() < end and d.end() > start for d in dates)]
+        result.extend(replacements or [phrase])
+    return list(dict.fromkeys(result))
+
+
 def _indicators(phrases: list[str], remaining_question: str) -> tuple[tuple[IndicatorSpec, ...], tuple[str, ...]]:
     spans = _spans(remaining_question, phrases)
     if any(not any(start <= match.start() and match.end() <= end for start, end in spans)
-           for match in _INDICATOR_CUE.finditer(remaining_question)):
+           for match in _INDICATOR_CUE.finditer(indicator_text(remaining_question))):
         raise InputIssue("needs_clarification", "indicator_not_grounded",
                          "原问题中的指标或周期未被完整识别，不能静默忽略；请明确所需指标。")
     if not phrases:
@@ -361,6 +381,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         response = model.complete(messages, tools=(INTENT_TOOL,))
         result = replace(result, model_response=response)
         draft = _candidate(response, question)
+        draft = {**draft, 'indicator_mentions': _ground_indicator_mentions(question, draft['indicator_mentions'])}
         result = replace(result, intent=draft["intent"])
         if _UNSUPPORTED_CAPABILITY.search(question):
             return replace(result, status="out_of_scope", code="unsupported_intent",

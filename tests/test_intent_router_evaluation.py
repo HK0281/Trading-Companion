@@ -188,7 +188,7 @@ class IntentEvaluationTests(unittest.TestCase):
             self.assertEqual(report['metrics']['providers']['jev']['cost']['unknown_requests'],1)
 
     def test_rule_versions_reject_old_locks_and_cross_rule_references(self):
-        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'technical-shared-narrative-v1')
+        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'technical-parameter-grounding-v1')
         with tempfile.TemporaryDirectory() as root:
             root=Path(root)
             source=save(self.dev,root/'dev.json')
@@ -201,11 +201,11 @@ class IntentEvaluationTests(unittest.TestCase):
             save(old,path)
             self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_invalid')
             old=deepcopy(lock)
-            old['rule_baseline_version']='contextual-routing-b-v1'
+            old['rule_baseline_version']='technical-shared-narrative-v1'
             save(old,path)
             self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_incompatible')
             old_report=deepcopy(self.dev)
-            old_report['plan']['rule_baseline_version']='contextual-routing-b-v1'
+            old_report['plan']['rule_baseline_version']='technical-shared-narrative-v1'
             self.assertEqual(evaluation.build_plan(suite='context-ablation',
                 reference_report=save(old_report,root/'old.json'))['code'],'intent_reference_incompatible')
             with self.assertRaises(ValueError):

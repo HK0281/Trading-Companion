@@ -634,7 +634,7 @@ def safe_answer_validation(value):
     for key in ('local_structure_recoveries','partial_structure_recoveries','punctuation_structure_recoveries',
                 'output_truncations','initial_output_truncations','repair_output_truncations', 'numeric_tokens',
                 'bound_numbers','bound_matched','bound_rejected','unbound_matched','unbound_rejected','unbound_ambiguous',
-                'deduplicated_drivers','deduplicated_sentences'):
+                'deduplicated_drivers','deduplicated_sentences','inline_binding_recoveries'):
         if type(value.get(key)) is int and value[key]>=0:
             result[key] = min(value[key],10000)
     if value.get('numeric_validation_version') == 'source-bindings-v1':

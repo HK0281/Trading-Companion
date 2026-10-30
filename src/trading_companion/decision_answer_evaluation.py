@@ -53,7 +53,8 @@ def _implementation_fingerprint():
     """Cover the evaluator, transport, synthesis, checks and workflow being measured."""
     names = ('decision_answer_evaluation.py', 'deepseek_model.py', 'deepseek_tool_model.py',
              'model_registry.py', 'tool_model.py', 'product_narrative_answer.py', 'narrative_answer_parser.py',
-             'answer_validation.py', 'answer_numeric_bindings.py', 'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
+             'answer_validation.py', 'answer_numeric_bindings.py', 'answer_claim_recovery.py',
+             'answer_technical_validation.py', 'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii')+b'\0')
@@ -304,6 +305,7 @@ def summarize(cases):
         repair_content_added_rate=ratio(sum(q.get('repair_content_added',False) for q in repairs),len(repairs),
             unknown=sum('repair_content_added' not in q for q in repairs)),
         local_structure_recoveries=sum(q.get('local_structure_recoveries',0) for q in quality),
+        inline_binding_recoveries=sum(q.get('inline_binding_recoveries',0) for q in quality),
         punctuation_structure_recoveries=sum(q.get('punctuation_structure_recoveries',0) for q in quality),
         partial_structure_recoveries=sum(q.get('partial_structure_recoveries',0) for q in quality),
         unrecovered_structure_failures=sum(max(0,q.get('structure_failures',0)-q.get('local_structure_recoveries',0)) for q in quality),
@@ -410,6 +412,8 @@ def _run(cases, plan, meter, delegate, trace_root):
                             for key in ('output_truncation_version','output_truncations',
                                         'initial_output_truncations','repair_output_truncations'):
                                 quality[key] = validation[key]
+                        if quality is not None and 'inline_binding_recoveries' in validation:
+                            quality['inline_binding_recoveries'] = validation['inline_binding_recoveries']
                         row.update(status='executed', code=result['code'], turn_status=result['status'],
                             **grade_case(case,result), quality=quality, elapsed_ms=elapsed,
                             answer_stage_reached=bool(quality) or any(c['answer'] for c in calls),

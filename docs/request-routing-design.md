@@ -1,5 +1,7 @@
 # 请求路由：明确意图、优先级与澄清所有权
 
+2026-10-29 参数边界更新：当前2a规则为`technical-parameter-grounding-v1`。带“近/最近/过去”的日数归日期，后置显式参数归指标；旧研究路径与产品共用，其他路由选择不变。[取舍及验证说明](technical-numeric-grounding-design.md)记录“近20日均线”和“20日均线”的区别。以下为历史父版本记录。
+
 2026-10-29 技术共用更新：当前规则为 `technical-shared-narrative-v1`。自然技术保留技术意图，使用共用执行器及v3正文；最近主体、名单单只、指标编辑与历史按实际保存载体续接。旧任务及禁用能力保留原分工。[范围与保存设计](technical-shared-narrative-design.md)、[v6差异](request-routing-technical-deltas.md)记录117轮中的31轮、382字段变化，其余86轮不变。v1～v5和原观察器冻结，下述B/B2为历史父版本。
 
 2026-10-29 B2更新：当前规则为 `contextual-routing-b2-dates-v1`，承接已提交的B规则。本次补认模型漏填/截短的唯一原文历史日期，多个时间或不支持的表达继续澄清；未来期限独立处理。[B2差异记录](request-routing-b2-dates-deltas.md)核对以v5为父的117轮，全部零差异；下文B的7轮变化属于上一版本。没有接入模型分类器或扩大预算。

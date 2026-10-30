@@ -4,7 +4,9 @@ import re
 
 from trading_companion.agent_input import InputIssue
 from trading_companion.errors import InvalidRequestError
-from trading_companion.research_intent import _INDICATOR_CUE as _DAILY_INDICATOR_CUE, _indicator as _daily_indicator
+from trading_companion.research_intent import (
+    _INDICATOR_CUE as _DAILY_INDICATOR_CUE, _indicator as _daily_indicator, indicator_text,
+)
 
 _WEEKLY_INDICATOR = r"[0-9零一二两三四五六七八九十百]+\s*周\s*(?:指数移动平均线|简单移动平均线|均线|SMA|EMA|RSI)"
 _INDICATOR_CUE = re.compile(_WEEKLY_INDICATOR + "|" + _DAILY_INDICATOR_CUE.pattern, re.I)

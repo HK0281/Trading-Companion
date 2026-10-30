@@ -11,7 +11,7 @@ from trading_companion.multi_contracts import DEFAULT_INDICATORS, IndicatorSpec,
 from trading_companion.technical_selection import select_complementary_indicators
 from trading_companion.research_intent import _dates
 from trading_companion.product_scope import (
-    ProductScope, _WEEKLY_INDICATOR, _INDICATOR_CUE, _indicator, _EXPLICIT_TECHNICAL,
+    ProductScope, _WEEKLY_INDICATOR, _INDICATOR_CUE, _indicator, _EXPLICIT_TECHNICAL, indicator_text,
     _positive_scope, _broadens_only, _ONLY, is_natural_technical_request,
 )
 from trading_companion.research_objective import (
@@ -460,7 +460,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         _ensure_mentions_complete(question, mentions, directory)
         remaining, _ = _mask_mentions(question, mentions)
         positive, excluded_indicators = _positive_scope(remaining)
-        indicator_phrases = tuple(match.group() for match in _INDICATOR_CUE.finditer(positive))
+        indicator_phrases = tuple(match.group() for match in _INDICATOR_CUE.finditer(indicator_text(positive)))
         selection = select_complementary_indicators(positive)
         indicators = (tuple(spec for phrase in indicator_phrases for spec in _indicator(phrase))
                       if indicator_phrases else tuple(spec for spec in selection.indicators

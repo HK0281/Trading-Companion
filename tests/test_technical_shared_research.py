@@ -55,10 +55,110 @@ class SharedTechnicalTests(unittest.TestCase):
                 self.assertEqual(result.product_plan.kinds, ('technical',))
                 self.assertEqual(self.data.calls, [])
 
+    def test_numeric_check_sidecar_uses_supplied_latest_facts_and_completed_weeks(self):
+        from trading_companion.product_narrative_answer import _context
+        from trading_companion.answer_validation import check_claim
+        result = self.turn('分析平安银行最近的走势，只看RSI2和SMA3')
+        ctx = _context(result.product_bundle)
+        sidecar = ctx['_technical_validation']['000001.SZ']
+        rsi = [v for v in sidecar['values'] if v['indicator_id'] == 'rsi(window=2)']
+        self.assertEqual({v['timeframe'] for v in rsi}, {'daily', 'weekly'})
+        for value in rsi:
+            title = '日线' if value['timeframe'] == 'daily' else '周线'
+            relation = ('处于30至70区间' if float(value['value']) == 50 else
+                        ('高于' if float(value['value']) > 50 else '低于') + '50中轴')
+            text = title + 'RSI(2)' + relation + '。'
+            kept, ids, *_ = check_claim(text, instrument='000001.SZ', context=ctx, section='current', index=0)
+            self.assertEqual(kept, text)
+            self.assertIn(value['ref'], ids)
+        daily = next(v for v in rsi if v['timeframe'] == 'daily')
+        ctx['evidence'] = [v for v in ctx['evidence'] if v['id'] != daily['ref']]
+        self.assertFalse(check_claim('日线RSI(2)高于50中线。', instrument='000001.SZ', context=ctx,
+                                     section='current', index=0)[0])
+
     def test_not_only_correction_broadens_domains(self):
         result = self.turn('分析平安银行，不是只看技术面，还要基本面')
         self.assertIn('financial', result.product_plan.kinds)
         self.assertTrue(self.data.calls)
+
+    def test_background_ma60_is_allowed_only_while_own_daily_evidence_is_supplied(self):
+        from copy import deepcopy
+        from trading_companion.product_narrative_answer import _context
+        from trading_companion.answer_validation import check_claim
+        result = self.turn('分析平安银行最近的技术面动量')
+        self.assertNotIn('sma(window=60)', [s.indicator_id for s in result.product_plan.indicators])
+        self.assertFalse(result.product_plan.indicators_explicit)
+        ctx = _context(result.product_bundle)
+        mean = next(e for e in ctx['evidence'] if e['label'] == 'MA60')
+        price = str(mean['raw_value'])
+        def checked(text, context=ctx):
+            return check_claim(text, instrument='000001.SZ', context=context, section='current', index=0)
+        for notation in ('MA60', 'SMA(60)', '60日均线'):
+            text = f'收盘价高于{notation}（{price}元）。'
+            self.assertEqual(checked(text)[0], text)
+            self.assertIn(mean['id'], checked(text)[1])
+        self.assertFalse(checked('收盘价高于MA60（999元）。')[0])
+        for notation in ('周线MA60', '周线60日均线', '60周均线'):
+            self.assertFalse(checked(f'{notation}（{price}元）。')[0])
+        for change in ('removed', 'foreign', 'wrong_value'):
+            trimmed = deepcopy(ctx)
+            record = next(e for e in trimmed['evidence'] if e['id'] == mean['id'])
+            if change == 'removed':
+                trimmed['evidence'].remove(record)
+            elif change == 'foreign':
+                record['instrument_id'] = '600000.SH'
+            else:
+                record['raw_value'] = '999'
+            self.assertFalse(checked(f'收盘价高于MA60（{price}元）。', trimmed)[0])
+        trimmed_bundle = replace(result.product_bundle, companies=tuple(replace(c, evidence=tuple(
+            e for e in c.evidence if not e.id.endswith('|price_context:ma60'))) for c in result.product_bundle.companies))
+        self.assertFalse(checked(f'收盘价高于MA60（{price}元）。', _context(trimmed_bundle))[0])
+
+    def test_strict_sma3_cannot_adopt_a_missing_background_ma60(self):
+        from trading_companion.product_narrative_answer import _context
+        from trading_companion.answer_validation import check_claim
+        result = self.turn('分析平安银行最近的走势，只看SMA3')
+        ctx = _context(result.product_bundle)
+        self.assertFalse(any(e['label'] == 'MA60' for e in ctx['evidence']))
+        for text in ('高于MA60（10元）。', '高于60日均线10元。'):
+            self.assertFalse(check_claim(text, instrument='000001.SZ', context=ctx, section='current', index=0)[0])
+
+    def test_shared_daily_weekly_mean_uses_recomputed_supplied_alignment(self):
+        from copy import deepcopy
+        from tests.test_product_research import MemoryDailySource
+        from trading_companion.product_narrative_answer import _context
+        from trading_companion.answer_validation import check_claim
+        original_read = MemoryDailySource.read_daily_bars
+        def rising(source):
+            return [replace(bar, open_price=10.0+i, high_price=11.0+i, low_price=9.0+i, close_price=10.0+i)
+                    for i, bar in enumerate(original_read(source))]
+        with patch.object(MemoryDailySource, 'read_daily_bars', rising):
+            result = self.turn('平安银行只看EMA3')
+        ctx = _context(result.product_bundle)
+        alignment = next(v for v in ctx['_technical_validation']['000001.SZ']['values']
+                         if v['field'] == 'alignment')
+        self.assertEqual(alignment['value'], 'aligned_above')
+        for text in ('日线与最近完整周线均在EMA3上方，方向一致。',
+                     '日线与最近完整周线均位于同参数EMA3上方，方向一致。'):
+            kept, ids, *_ = check_claim(text, instrument='000001.SZ', context=ctx, section='current', index=0)
+            self.assertEqual(kept, text)
+            self.assertIn(alignment['ref'], ids)
+        text = '日线与最近完整周线均在EMA3上方，方向一致。'
+        for change in ('removed', 'foreign', 'wrong_value', 'old'):
+            trimmed = deepcopy(ctx)
+            record = next(e for e in trimmed['evidence'] if e['id'] == alignment['ref'])
+            if change == 'removed':
+                trimmed['evidence'].remove(record)
+            elif change == 'foreign':
+                record['instrument_id'] = '600000.SH'
+            elif change == 'old':
+                record['date'] = '2025-01-01'
+            else:
+                record['raw_value'] = 'aligned_below'
+            self.assertFalse(check_claim(text, instrument='000001.SZ', context=trimmed, section='current', index=0)[0])
+        trimmed_bundle = replace(result.product_bundle, companies=tuple(replace(c, evidence=tuple(
+            e for e in c.evidence if not e.id.endswith('|timeframes:alignment'))) for c in result.product_bundle.companies))
+        self.assertFalse(check_claim(text, instrument='000001.SZ', context=_context(trimmed_bundle), section='current', index=0)[0])
 
     def test_add_replace_remove_preserve_dates_identity_scope_and_new_evidence(self):
         first = self.turn('分析平安银行近60日，只看SMA3')

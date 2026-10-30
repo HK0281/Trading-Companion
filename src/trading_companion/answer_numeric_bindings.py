@@ -12,7 +12,8 @@ BINDING_MISMATCH = 'answer_binding_value_mismatch'
 COUNTERS = ('numeric_tokens', 'bound_numbers', 'bound_matched', 'bound_rejected',
             'unbound_matched', 'unbound_rejected', 'unbound_ambiguous')
 UNITS = {'CNY/share': 'price', 'cny': 'amount', 'percent': 'percent',
-         'percentage_points': 'points', 'ratio': 'ratio', 'shares': 'shares', 'count': 'count'}
+         'percentage_points': 'points', 'ratio': 'ratio', 'shares': 'shares', 'count': 'count',
+         'index_points': 'index'}
 PLAN_UNITS = {key: 'CNY/share' for key in ('reference_entry', 'reference_stop', 'target_1', 'target_2',
               'reference_close', 'exit_below', 'observe_below', 'observe_above', 'atr')}
 PLAN_UNITS.update(reward_risk_1='ratio', reward_risk_2='ratio', atr_multiple='ratio')
@@ -160,7 +161,6 @@ def _masked(text, context, records):
             raise InvalidBinding('date_outside_evidence', NUMERIC)
     patterns = (DATE.pattern, r'(?<!\d)\d{4}\s*年',
                 r'(?<!\d)(?:1\s*[-—至]\s*(?:3|6|9|12)|[1-9]|1[0-2])\s*月(?!\s*元)',
-                r'(?:MA|SMA|EMA|RSI|ATR|ADX|BOLL|VWMA)\s*\(?\d+(?:[,，]\d+(?:\.\d+)?)*\)?(?![\d.元])',
                 r'\d+\s*(?:个交易日|交易日|日|天|周|个月|月|年)(?![\u4e00-\u9fff]*元)',
                 r'(?<=止盈)[12](?!\d)', r'(?<=盈亏比)[12](?!\d)', r'(?<=第)[1234](?=季度)')
     for pattern in patterns:
@@ -225,10 +225,16 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         return code, []
     if re.search(r'(?<![\d.])[零〇一二两三四五六七八九十百千万亿]+(?:亿元|万元|元|个百分点|倍|成)|百分之|美元|港元|欧元|USD|HKD', sentence, re.I):
         return reject('unsupported_number_representation_or_currency')
+    from trading_companion.answer_technical_validation import mask_technical, InvalidTechnical
     try:
         normalized, masked = _masked(sentence, context, records)
+        technical_mask, technical_ids = mask_technical(normalized, context, instrument, records)
+        masked = ''.join(' ' if technical == ' ' else original
+                         for original, technical in zip(masked, technical_mask, strict=True))
     except InvalidBinding as error:
         return reject(error.reason, error.code)
+    except InvalidTechnical as error:
+        return reject(str(error))
     local_spans = []
     for start, end, binding, bad in spans:
         if start < offset+len(sentence) and end > offset:
@@ -241,7 +247,7 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         if bad or not any(start <= m.start() and m.start()+len(m[0].rstrip()) <= end for m in tokens):
             return reject('ambiguous_overlapping_or_nonnumeric_binding', BINDING_INVALID)
     all_atoms = [a for record in records for a in atoms(record)]
-    used, code = [], None
+    used, code = list(technical_ids), None
     for match in tokens:
         count('numeric_tokens')
         binding = next((b for s, e, b, _ in local_spans

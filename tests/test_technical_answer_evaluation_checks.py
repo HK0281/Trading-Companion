@@ -62,6 +62,22 @@ class TechnicalCheckTests(unittest.TestCase):
         self.assertFalse(grade_turn(case, expected, result, observation, calls)['scope']['passed'])
         self.assertTrue(all(e['kind'] == 'technical' for e in result['company_research']['evidence']))
 
+    def test_negative_target_statement_is_not_a_structured_plan_claim(self):
+        for text in ('SMA5本身不提供目标价', '没有止损价，支撑参考25元', '目标价无法给出'):
+            with self.subTest(text=text):
+                case, expected, result, observation, calls = self.inputs(4)
+                result['company_research']['narratives'][0]['levels'][0]['text'] = text
+                result['answer'] = text
+                grade = grade_turn(case, expected, result, observation, calls)
+                self.assertEqual(grade['scope']['violations'], [])
+        case, expected, result, observation, calls = self.inputs(4)
+        result['company_research']['narratives'][0]['levels'][0]['text'] = '止损参考位'
+        self.assertIn('scope_structured_plan_without_atr', [v['code'] for v in
+            grade_turn(case, expected, result, observation, calls)['scope']['violations']])
+        result['answer'] = '不提供目标价，但止损20元'
+        self.assertIn('scope_plan_price_without_atr', [v['code'] for v in
+            grade_turn(case, expected, result, observation, calls)['scope']['violations']])
+
     def test_absent_audit_or_wrong_identity_never_passes(self):
         case, expected, result, observation, calls = self.inputs()
         grade = grade_turn(case, expected, result, None, None)

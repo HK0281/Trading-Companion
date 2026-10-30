@@ -8,6 +8,7 @@ def context():
         return dict(id=identifier, instrument_id="000001.SZ", label=label, raw_value=value, unit=unit,
                     display=str(value), date=day, content_kind="fact")
     return dict(start_date="2026-01-01", daily_cutoff="2026-09-25",
+        _technical_validation={'000001.SZ': {'confirmed': ['sma(window=20)'], 'values': []}},
         securities=[dict(instrument_id="000001.SZ", name="平安银行"), dict(instrument_id="600000.SH", name="浦发银行")],
         evidence=[row("E1", "最新收盘价", 29.7, "CNY/share"), row("E2", "营业收入", 5346000000, "cny"),
                   row("E3", "MA20", 29.1, "CNY/share"), row("E4", "营收同比", -5.24, "percent"),

@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "technical-shared-narrative-v1"
+VERSION = "technical-parameter-grounding-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (

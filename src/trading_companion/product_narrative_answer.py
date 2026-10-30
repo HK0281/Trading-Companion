@@ -29,7 +29,7 @@ INSTRUCTION = """Answer the original question in natural Chinese, using only the
 No browsing, transactions, guaranteed returns, invented odds/probabilities, HTML or links. Numbers must come from supplied evidence; reasonable rounding/unit conversion is allowed. Latest price means a dated completed daily close.
 Return only JSON: {"version":"product-research-answer-v3","narratives":[{"instrument_id":"code","summary":{"text":"direct conclusion, horizon, uncertainty"},"current":{"text":"dated close and trend"},"drivers":[{"title":"short heading","text":"evidence and interpretation"}],"levels":[{"lower_id":"price_levels.id","upper_id":"price_levels.id","text":"conditional interpretation"}],"scenarios":{"base":{"text":"base case"},"better":{"text":"improving conditions"},"worse":{"text":"weakening conditions"}},"stance":{"text":"consistent action stance"}}],"decisions":[]}.
 One group per stock, never use another stock's data. Be concise: at most 4 drivers, 1-2 sentences each; each driver must explain a different factor, never repeat the same factor under another heading; each scenario one sentence; avoid repeating levels and reasons. text is plain Chinese with optional **bold**. evidence_ids are optional. levels: select supplied price_levels IDs only, never enter prices; same ID is a single level; prefer at most 3 rows.
-Every text block may add numbers: [{"text":"25.99元","ref":"L5","field":"reference_stop"}]. text must occur exactly once in that block. E=evidence ID, L=price level ID; field is optional, select only supplied fields. Bind key prices; other numbers must directly match supplied same-stock evidence, otherwise omit them or use the permitted derivation below. Write negative percentages with an explicit minus sign (e.g. -3.84%), including inside bold markup. Dates and periods need no binding. Example: {"text":"若跌破25.99元则重评。","numbers":[{"text":"25.99元","ref":"L5"}]}.
+Every text block may add a sibling numbers array: [{"text":"25.99元","ref":"L5","field":"reference_stop"}]. The block's text contains readable prose only: never embed JSON arrays, E/L IDs or binding objects inside text. A binding's text must occur exactly once in that block. E=evidence ID, L=price level ID; field is optional, select only supplied fields. Bind key prices; other numbers must directly match supplied same-stock evidence, otherwise omit them or use the permitted derivation below. Write negative percentages with an explicit minus sign (e.g. -3.84%), including inside bold markup. Dates and periods need no binding. Example: {"text":"若跌破25.99元则重评。","numbers":[{"text":"25.99元","ref":"L5"}]}.
 Only derived type: {"text":"约2.9%","derive":"distance","refs":["E8","L2"]}. refs[0] is base/denominator, refs[1] comparison: abs(second-first)/abs(first)*100%. Each ref must identify one price (use L for multi-price plans). Example IDs must be replaced with actual supplied IDs. Never swap stop and target fields.
 Do not confuse cumulative and quarterly financials, or infer missing cashflow, valuation, causality or complete article contents. Attribute title figures to the title, and describe contrary evidence and missing information.
 For objective.kind=decision, decisions has one item per stock: instrument_id,status,rating,direction,horizon,conviction,reasons,invalidation,plan_id. status=formed: rating=买入/增持/持有/减持/卖出, direction=偏多/震荡/偏空, conviction=高/中/低. horizon must mean objective.horizon. reasons is preferably 2-4 {text} blocks, at least 1; invalidation is {text}.
@@ -95,6 +95,8 @@ def _context(bundle):
                                "label": key, "price": value, "date": p.source_date,
                                "evidence_id": reference['id'], "field": key})
     context["price_levels"] = levels
+    from trading_companion.answer_technical_validation import technical_context
+    context['_technical_validation'] = technical_context(bundle, context)
     return context
 
 
@@ -128,7 +130,8 @@ def _messages(question, context, issues=()):
                 break
         feedback += introduction + json.dumps(entries, ensure_ascii=False)
     return (ToolMessage("system", INSTRUCTION), ToolMessage("user", question),
-            ToolMessage("assistant", "UNTRUSTED_RESEARCH_CONTEXT\n" + json.dumps(context, ensure_ascii=False, separators=(',', ':'))),
+            ToolMessage("assistant", "UNTRUSTED_RESEARCH_CONTEXT\n" + json.dumps(
+                {k: v for k, v in context.items() if not k.startswith('_')}, ensure_ascii=False, separators=(',', ':'))),
             ToolMessage("user", feedback))
 
 
@@ -620,7 +623,7 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
         if not context["evidence"]:
             raise ValueError("no_evidence")
         if diagnostics_enabled():
-            diagnostic_event('model_context', context=context)
+            diagnostic_event('model_context', context={k: v for k, v in context.items() if not k.startswith('_')})
         for attempt in range(2 if repair_invalid else 1):
             checkpoint()
             feedback = [i for i in issues if not i.hard and not unsafe(i.text)]
@@ -725,6 +728,7 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
     # Always retain known zero counters in versioned trace metadata, while
     # leaving ordinary public answers and frozen routing observations unchanged.
     output_quality.update(issue_count_version='answer-issues-v1', draft_issue_counts=draft_issue_counts,
+        inline_binding_recoveries=numeric_stats.get('inline_binding_recoveries', 0),
         deduplicated_drivers=answer.quality.get('deduplicated_drivers', 0),
         deduplicated_sentences=answer.quality.get('deduplicated_sentences', 0))
     if local_recoveries:

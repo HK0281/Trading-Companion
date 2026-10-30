@@ -1,5 +1,7 @@
 # 自然技术研究共用自然语言回答流程
 
+后续数字核对与日期参数修复见[边界设计](technical-numeric-grounding-design.md)：当前2a规则版本为`technical-parameter-grounding-v1`，下述`technical-shared-narrative-v1`是共用流程落地时的父版本。
+
 本批承接用户同意的定稿 #214、方案 #215 与批准 #216。规则版本为 `technical-shared-narrative-v1`。自然技术问题使用已有公司研究执行器的取数、证据与 v3 自然语言正文；用户意图仍记为 `technical_research`。真实模型技术回答质量尚未在新增10题上评估。
 
 ## 入口与保存

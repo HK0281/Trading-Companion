@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataclasses import replace
 import json
 import unittest
+from unittest.mock import patch
 
 from trading_companion.product_answer import synthesize_product_answer
 from trading_companion.tool_model import ToolModelResponse, validate_tool_messages
@@ -85,6 +86,54 @@ class NarrativeTests(unittest.TestCase):
         self.assertEqual(run.answer.status, "limited")
         self.assertIsNone(run.answer.decisions[0]["rating"])
         self.assertIn("历史波动", run.answer.text)
+
+    def test_duplicate_drivers_are_removed_after_checks_without_repair(self):
+        def change(payload, attempt, context):
+            driver = payload['narratives'][0]['drivers'][0]
+            driver['evidence_ids'] = [context['evidence'][0]['id']]
+            payload['narratives'][0]['drivers'] += [deepcopy(driver),
+                {**deepcopy(driver), 'text': '同一因素的另一种表述。'}]
+        run, model = self.run_answer(change)
+        self.assertEqual(run.answer.status, 'accepted')
+        self.assertEqual(len(model.calls), 1)
+        self.assertEqual(len(run.answer.narratives[0]['drivers']), 2)
+        quality = run.answer.quality
+        self.assertEqual(quality['deduplicated_drivers'], 2)
+        self.assertEqual(quality['deleted_sentences'], quality['deduplicated_sentences'])
+        self.assertEqual(quality['reasons'], [])
+
+    def test_driver_dedupe_preserves_distinct_factors_and_stocks(self):
+        from trading_companion.product_narrative_answer import _deduplicate_drivers
+        drivers = [dict(title='走势', text='收盘需要观察。', evidence_ids=['E1']),
+                   dict(title='量能', text='成交需要观察。', evidence_ids=['E1']),
+                   dict(title='走势', text='周线需要观察。', evidence_ids=['E2']),
+                   dict(title='主要依据', text='另一种因素。', evidence_ids=['E1'])]
+        groups = [dict(drivers=deepcopy(drivers)), dict(drivers=deepcopy(drivers))]
+        self.assertEqual(_deduplicate_drivers(groups), (0, 0))
+        self.assertEqual([len(g['drivers']) for g in groups], [4, 4])
+
+    def test_per_draft_issue_counts_keep_all_errors_after_successful_repair(self):
+        def change(payload, attempt, context):
+            if attempt == 1:
+                payload['narratives'][0]['current']['text'] = '收盘999元。涨幅999%。'
+                payload['narratives'][0]['stance']['text'] = '倾向卖出。'
+        with patch('trading_companion.turn_trace.trace_answer_validation') as record:
+            run, model = self.run_answer(change)
+        self.assertEqual(run.answer.status, 'accepted')
+        self.assertEqual(len(model.calls), 2)
+        metadata = record.call_args.args[0]
+        counts = metadata['draft_issue_counts']
+        self.assertEqual(metadata['issue_count_version'], 'answer-issues-v1')
+        self.assertGreaterEqual(counts[0]['answer_numeric_unmatched'], 2)
+        self.assertGreaterEqual(counts[0]['answer_stance_mismatch'], 1)
+        self.assertEqual(counts[1], {})
+
+    def test_driver_normalization_preserves_numeric_sign_and_decimal_point(self):
+        from trading_companion.product_narrative_answer import _deduplicate_drivers
+        groups = [dict(drivers=[dict(title='观察依据', text=text, evidence_ids=['E1'])
+                               for text in ('涨幅-1%。', '涨幅1%。', '价格1.2元。', '价格12元。')])]
+        self.assertEqual(_deduplicate_drivers(groups), (0, 0))
+        self.assertEqual(len(groups[0]['drivers']), 4)
 
     def test_one_structure_repair_and_complete_failure_have_facts(self):
         run, model = self.run_answer(lambda p,n,c: "not json" if n == 1 else None)

@@ -633,13 +633,21 @@ def safe_answer_validation(value):
         result[key] = min(number, 10000) if type(number) is int and number >= 0 else 0
     for key in ('local_structure_recoveries','partial_structure_recoveries','punctuation_structure_recoveries',
                 'output_truncations','initial_output_truncations','repair_output_truncations', 'numeric_tokens',
-                'bound_numbers','bound_matched','bound_rejected','unbound_matched','unbound_rejected','unbound_ambiguous'):
+                'bound_numbers','bound_matched','bound_rejected','unbound_matched','unbound_rejected','unbound_ambiguous',
+                'deduplicated_drivers','deduplicated_sentences'):
         if type(value.get(key)) is int and value[key]>=0:
             result[key] = min(value[key],10000)
     if value.get('numeric_validation_version') == 'source-bindings-v1':
         result['numeric_validation_version'] = 'source-bindings-v1'
     if value.get('output_truncation_version') == 'answer-output-v1':
         result['output_truncation_version'] = 'answer-output-v1'
+    if value.get('issue_count_version') == 'answer-issues-v1':
+        drafts = value.get('draft_issue_counts')
+        if (type(drafts) is list and len(drafts) <= 2
+                and all(type(draft) is dict and all(type(code) is str and code in _ANSWER_CODES
+                        and type(count) is int and 0 <= count <= 10000 for code, count in draft.items())
+                        for draft in drafts)):
+            result.update(issue_count_version='answer-issues-v1', draft_issue_counts=[dict(d) for d in drafts])
     for key in ('repair_all_passed','repair_rating_restored','repair_content_added'):
         if type(value.get(key)) is bool:
             result[key] = value[key]

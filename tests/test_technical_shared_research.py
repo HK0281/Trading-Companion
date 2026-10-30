@@ -130,6 +130,65 @@ class SharedTechnicalTests(unittest.TestCase):
         self.assertEqual([s.kind for s in result.product_plan.indicators], ['sma'])
         self.assertEqual(result.product_plan.scope.indicator_ids, ('sma(window=3)',))
 
+    def test_indicator_edit_drops_only_dependency_atr_and_decision_can_restore_it(self):
+        first = self.turn('平安银行近60日，SMA3，现在能买吗')
+        self.assertIn('indicator_dependency:atr14_for_risk', first.product_plan.applied_defaults)
+        edited = self.turn('再加RSI6')
+        self.assertEqual([s.kind for s in edited.product_plan.indicators], ['sma', 'rsi'])
+        self.assertNotIn('indicator_dependency:atr14_for_risk', edited.product_plan.applied_defaults)
+        self.assertNotIn('indicator:atr', edited.product_plan.scope.excluded)
+        decision = self.turn('那现在能买吗')
+        self.assertIn('atr', [s.kind for s in decision.product_plan.indicators])
+        self.assertTrue(all(p.status == 'available' for p in decision.product_bundle.companies[0].trade_plans))
+
+    def test_strict_indicator_edit_followed_by_decision_does_not_restore_atr(self):
+        self.turn('平安银行近60日只看SMA3')
+        self.turn('再加RSI6')
+        decision = self.turn('那现在能买吗')
+        self.assertEqual([s.kind for s in decision.product_plan.indicators], ['sma', 'rsi'])
+        self.assertTrue(all(p.code == 'risk_atr_not_requested' for p in decision.product_bundle.companies[0].trade_plans))
+
+    def test_explicit_atr_survives_edits_and_implicit_atr_can_be_explicitly_adopted(self):
+        for original, edit in (('平安银行近60日，SMA3和ATR14，现在能买吗', '再加RSI6'),
+                               ('平安银行近60日，SMA3，现在能买吗', '再加ATR14'),
+                               ('平安银行近60日，SMA3，现在能买吗', '再加ATR7'),
+                               ('平安银行近60日，SMA3，现在能买吗', '把ATR14改成ATR7')):
+            with self.subTest(edit=edit):
+                self.session = ResearchSession()
+                self.turn(original)
+                result = self.turn(edit)
+                self.assertEqual(result.status, 'completed')
+                self.assertIn('atr', [s.kind for s in result.product_plan.indicators])
+                if 'ATR7' in edit:
+                    self.assertEqual([s.indicator_id for s in result.product_plan.indicators if s.kind == 'atr'], ['atr(window=7)'])
+                self.assertNotIn('indicator_dependency:atr14_for_risk', result.product_plan.applied_defaults)
+
+    def test_removing_or_replacing_other_indicator_does_not_promote_dependency(self):
+        for edit in ('把SMA3改成SMA5', '删除SMA3'):
+            with self.subTest(edit=edit):
+                self.session = ResearchSession()
+                self.turn('平安银行近60日，SMA3和RSI6，现在能买吗')
+                result = self.turn(edit)
+                self.assertEqual(result.status, 'completed')
+                self.assertNotIn('atr', [s.kind for s in result.product_plan.indicators])
+
+    def test_ambiguous_edit_finish_drops_dependency_and_identity_change_has_message(self):
+        from trading_companion.product_indicator_edit import resume_edit
+        from trading_companion.security_directory import Security, SecurityDirectory
+        self.turn('平安银行近60日，SMA3和SMA5，现在能买吗')
+        self.turn('把均线改成10日')
+        pending = self.session.product_pending
+        count = len(self.factory.reads)
+        changed = SecurityDirectory((Security('000001.SZ', '变更名称'),), 'changed', NOW, False)
+        rejected = resume_edit(pending, 'SMA3', directory=changed, reference_date=NOW.date(), now=NOW)
+        self.assertEqual(rejected.code, 'product_identity_changed')
+        self.assertIn('重新明确研究对象', rejected.message)
+        self.assertIsNone(rejected.context)
+        self.assertEqual(len(self.factory.reads), count)
+        result = self.turn('SMA3')
+        self.assertEqual(result.status, 'completed')
+        self.assertNotIn('atr', [s.kind for s in result.product_plan.indicators])
+
     def test_expired_result_researches_with_checked_scope_not_old_values(self):
         first = self.turn('平安银行近60日只看SMA3')
         self.now += timedelta(minutes=16)

@@ -42,10 +42,10 @@
       "open_knowledge.py": "3821092b801c27f5b85af913a5f271f1cb64c49715e4e4402e86a76422dadc60",
       "intent_router_baseline.py": "8d6bab64805335cda9ecd5caadb274cf89f50d987e4b0bd7bdacc671b757aa92",
       "product_scope.py": "d781031dd4777144db1e74eb273272fe292445a245901e04050eaeca98a23c82",
-      "product_indicator_edit.py": "c8344be851817d3f7fb70a7dabb45e10431f72d64991690baeb7bdf6bcd31832"
+      "product_indicator_edit.py": "6b0391942f0baa26b83db55b361f704dd1a03cb642d0e8b1e605eeff7e8e9d8d"
     },
-    "source_digest": "ae2afd4f6a175fae6f00ab9e745b31cb08719a02539e0104a681bd0b9dde991e",
-    "note": "自然技术意图与共用执行分开，严格范围随计划继承；旧题库与标签不改。"
+    "source_digest": "413a964c8dd6c671398fb7cbfc453ecbca8d008a5a9555a4e672ea2d99211b7a",
+    "note": "自然技术意图与共用执行分开，严格范围随计划继承；旧题库与标签不改。第二批仅更新指标编辑修复的源码摘要，分类及路由规则版本不变；旧锁仍按源码总摘要拒绝复用。"
   },
   "previous_rules": [
     {

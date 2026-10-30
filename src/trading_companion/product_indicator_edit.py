@@ -34,10 +34,14 @@ def _request(plan):
                                  indicators=plan.indicators, source=plan.source)
 
 
-def _finish(plan, indicators, question):
-    indicators = validate_research_conditions(plan.start_date, plan.end_date, indicators)
+def _finish(plan, indicators, question, *, explicit_atr=False):
+    # Only the user's removal is an exclusion. Dropping a temporary dependency
+    # must still allow a later decision question to request a fresh ATR plan.
     removed = ({spec.kind for spec in plan.indicators} - {spec.kind for spec in indicators}
                if 'technical' in plan.kinds else set())
+    if 'indicator_dependency:atr14_for_risk' in plan.applied_defaults and not explicit_atr:
+        indicators = tuple(spec for spec in indicators if spec != IndicatorSpec('atr', window=14))
+    indicators = validate_research_conditions(plan.start_date, plan.end_date, indicators)
     scope = plan.scope.edited(indicators, removed=removed)
     kinds = tuple(dict.fromkeys((*plan.kinds, 'technical')))
     if scope.domains and 'technical' not in scope.domains:
@@ -63,7 +67,8 @@ def _replace(plan, target, replacement, question):
         _issue('indicator_edit_unchanged', '参数没有变化，未重复查询。')
     if replacement in plan.indicators:
         _issue('indicator_edit_duplicate', '修改后会与已有指标重复，未查询。')
-    return _finish(plan, tuple(replacement if spec == target else spec for spec in plan.indicators), question)
+    return _finish(plan, tuple(replacement if spec == target else spec for spec in plan.indicators), question,
+                   explicit_atr=replacement == IndicatorSpec('atr', window=14))
 
 
 def _pending(plan, candidates, replacement, question, now, reference_date, development):
@@ -91,7 +96,8 @@ def edit_product_plan(plan, question, *, now, reference_date, development):
             update = parse_condition_update(text)
             if update.kind != 'add':
                 _issue('indicator_edit_target_missing', '上一轮未研究技术指标，请先明确增加的指标。')
-            return _finish(plan, (parse_indicator_instance(update.value),), question)
+            addition = parse_indicator_instance(update.value)
+            return _finish(plan, (addition,), question, explicit_atr=addition.kind == 'atr')
         request = _request(plan)
         window = window_edit_candidates(request, text)
         if window is not None:
@@ -112,10 +118,14 @@ def edit_product_plan(plan, question, *, now, reference_date, development):
         update = parse_condition_update(text)
         if update.kind not in ('add', 'remove'):
             _issue('condition_update_not_supported', '本次仅修改指标；请明确增加、删除或替换的指标。')
+        explicit_atr = update.kind == 'add' and parse_indicator_instance(update.value) == IndicatorSpec('atr', window=14)
+        if (explicit_atr
+                and 'indicator_dependency:atr14_for_risk' in plan.applied_defaults):
+            return _finish(plan, plan.indicators, question, explicit_atr=True)
         conditions = ResearchConditions(plan.start_date, plan.end_date, plan.indicators, plan.source,
                                         reference_date, plan.applied_defaults, plan.objective)
         updated = update_conditions(conditions, update, instrument_id=request.instrument_id, reference_date=reference_date)
-        return _finish(plan, updated.indicators, question)
+        return _finish(plan, updated.indicators, question, explicit_atr=explicit_atr)
     except (InputIssue, InvalidRequestError, ValueError, OverflowError) as issue:
         return replace(plan, status='needs_clarification', code=getattr(issue, 'code', 'invalid_indicator_edit'),
             message=str(issue) if isinstance(issue, InputIssue) else '指标参数无效，未修改或查询。',
@@ -130,7 +140,9 @@ def resume_edit(context, question, *, directory, reference_date, now):
     for security in edit.plan.securities:
         match = directory.lookup(security.instrument_id)
         if match.status != 'resolved' or match.candidates[0] != security:
-            return replace(edit.plan, status='needs_clarification', code='product_identity_changed', context=None)
+            return replace(edit.plan, status='needs_clarification', code='product_identity_changed',
+                           message='目录中的证券匹配已变化，请重新明确研究对象。', context=None,
+                           model_calls_attempted=0, model_response=None)
     target = indicator_selection(question)
     if target not in edit.candidates:
         return replace(edit.plan, status='needs_clarification', code='indicator_edit_reply_not_specific',

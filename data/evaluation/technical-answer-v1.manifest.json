@@ -1,0 +1,15 @@
+{
+  "version": "technical-answer-manifest-v1",
+  "corpus_version": "technical-answer-v1",
+  "corpus_sha256_lf": "793f2c20bdcb7d4c740c9b8d6304bc64378d3ecf6078085458c09af46a87eee2",
+  "review_status": "draft_requires_manual_review",
+  "questions": 10,
+  "turns": 14,
+  "main_denominator": 10,
+  "minimum_formed": 9,
+  "maximum_scope_violations": 0,
+  "maximum_calls_per_turn": 6,
+  "maximum_total_calls": 84,
+  "multi_turn_cases": ["T06", "T07", "T08", "T10"],
+  "policy": "草稿题库、需人工复核。题目和门槛在真实运行前固定；不预设评级，不因失败删题。预算按每轮6次、每题6乘轮数计，14轮最多84次；准备轮也计入。"
+}

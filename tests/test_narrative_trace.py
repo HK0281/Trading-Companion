@@ -66,3 +66,16 @@ class NarrativeTraceTests(unittest.TestCase):
             path = Path(temporary) / "disabled"
             self.assertEqual(server(["--demo", "--trace-dir", str(path), "--no-trace"]), 0)
             self.assertFalse(path.exists())
+
+    def test_issue_and_deduplication_counts_are_versioned_bounded_metadata(self):
+        from trading_companion.turn_trace import safe_answer_validation
+        value = safe_answer_validation(dict(issue_count_version='answer-issues-v1',
+            draft_issue_counts=[{'answer_stance_mismatch': 2, 'answer_numeric_unmatched': 3}, {}],
+            deduplicated_drivers=1, deduplicated_sentences=2))
+        self.assertEqual(value['draft_issue_counts'][0]['answer_stance_mismatch'], 2)
+        self.assertEqual(value['deduplicated_drivers'], 1)
+        for drafts in ([{'PRIVATE': 1}], [{'answer_numeric_unmatched': True}],
+                       [{'answer_numeric_unmatched': -1}], [{}] * 3):
+            value = safe_answer_validation(dict(issue_count_version='answer-issues-v1', draft_issue_counts=drafts))
+            self.assertNotIn('draft_issue_counts', value)
+            self.assertNotIn('PRIVATE', json.dumps(value))

@@ -17,7 +17,7 @@ from trading_companion.product_scope import (
 from trading_companion.research_objective import (
     ResearchObjective, extract_outlook, mask_outlook_expressions,
 )
-from trading_companion.research_decision import wants_decision, excludes_plan
+from trading_companion.research_decision import wants_decision, excludes_plan, wants_prices
 from trading_companion.security_directory import Security, SecurityDirectory
 from trading_companion.tool_model import MAX_USER_CHARACTERS, ToolDefinition, ToolMessage, ToolModelResponse
 
@@ -108,6 +108,8 @@ class ProductPlanContext:
     indicators_explicit: bool = False
     scope: ProductScope = ProductScope()
     edit: object | None = field(default=None, repr=False)
+    stage: str = "identity"
+    securities: tuple[Security, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,9 @@ class ProductPlan:
     indicators_explicit: bool = False
     scope: ProductScope = ProductScope()
 
+    context_created_at: datetime | None = field(default=None, repr=False)
+    context_expires_at: datetime | None = field(default=None, repr=False)
+
     def to_dict(self) -> dict[str, object]:
         result = {
             "version": "product-plan-v1", "status": self.status, "code": self.code,
@@ -154,6 +159,10 @@ class ProductPlan:
         }
         if self.scope.constrained:
             result["scope"] = self.scope.to_dict()
+        if self.context is not None and self.context.stage == "horizon":
+            from trading_companion.decision_horizon import OPTIONS
+            result["clarification_options"] = [{"value": value, "label": label, "reply": reply}
+                                               for value, label, reply in OPTIONS]
         return result
 
 
@@ -331,7 +340,8 @@ def _resolved_plan(base, *, directory, mentions, bindings, now, created_at=None,
             MultiIndicatorRequest(item.instrument_id, base.start_date, base.end_date,
                                   indicators=base.indicators, source=base.source)
     return replace(base, status="ready", code="product_plan_ready", message="研究对象、领域和日期已核实。",
-                   securities=tuple(resolved.values()), candidates=(), context=None)
+                   securities=tuple(resolved.values()), candidates=(), context=None,
+                   context_created_at=created_at, context_expires_at=expires_at)
 
 
 def _resume(context, question, *, directory, reference_date, now, source, development):
@@ -344,7 +354,8 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
         return ProductPlan("needs_clarification", "product_clarification_expired",
                            "原研究澄清已过期或配置已变化，请重新提出完整问题。")
     if (type(context.mentions) is not tuple or len(context.mentions) > 12
-            or (context.pending_mention not in context.mentions if context.mentions else context.pending_mention != "")
+            or context.stage not in ("identity", "horizon")
+            or context.stage == "identity" and (context.pending_mention not in context.mentions if context.mentions else context.pending_mention != "")
             or any(type(item) is not str or not item or len(item) > 80 for item in context.mentions)
             or not set(context.kinds) <= set(RESEARCH_KINDS)
             or type(context.start_date) is not date or type(context.end_date) is not date
@@ -363,6 +374,9 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
         return resume_edit(context, question, directory=directory, reference_date=reference_date, now=now)
     if _CANCEL.fullmatch(question):
         return replace(base, status="out_of_scope", code="product_plan_cancelled", message="已取消待确认的研究。")
+    if context.stage == "horizon":
+        from trading_companion.decision_horizon import resume
+        return resume(context, base, question, directory=directory)
     from trading_companion.routing_context import selection_reply, selection_conditions
     by_id = {item.instrument_id: item for item in directory.securities}
     if any(key not in by_id for key in context.candidate_ids):
@@ -484,15 +498,15 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         objective = outlook or ResearchObjective()
         decision = wants_decision(positive)
         if decision:
-            objective = ResearchObjective("decision", objective.horizon or "未来20个交易日")
+            objective = ResearchObjective("decision", objective.horizon)
         date_text = re.sub(vague_period, "", mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
-        defaults = (*normalization_defaults, *defaults)
-        if decision and (outlook is None or outlook.horizon is None):
-            defaults += ("horizon:20_trading_sessions",)
+        defaults = (*normalization_defaults, *defaults, 'plan_method:atr_reference_plan_v2')
+        if objective.horizon is not None:
+            defaults += ('horizon_source:explicit',)
         if not indicator_phrases and selection.profile != "balanced":
             defaults += ("indicators:profile:" + selection.profile,)
-        needs_risk = (_PRICE_SCENARIO.search(positive) is not None or decision) and not excludes_plan(question)
+        needs_risk = wants_prices(positive) and not excludes_plan(question)
         strict_indicators = _ONLY.search(positive) is not None and bool(indicator_phrases)
         if (needs_risk and not strict_indicators and not any(spec.kind == "atr" for spec in indicators)
                 and "indicator:atr" not in excluded_indicators):
@@ -518,7 +532,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         base = replace(base, kinds=kinds, start_date=start, end_date=end, as_of=end,
                        explicit_historical=bool(re.search(r"[0-9]{4}-[0-9]{2}-[0-9]{2}",
                            date_text if "date_expression:local_recognition" in defaults else historical_expression or "")),
-                       wants_risk=not decision and _PRICE_SCENARIO.search(question) is not None and "risk" not in excluded,
+                       wants_risk=not decision and _PRICE_SCENARIO.search(question) is not None and "risk" not in excluded
+                           and not excludes_plan(question),
                        objective=objective, applied_defaults=defaults)
         base = replace(base, scope=ProductScope.from_question(question, kinds, indicators),
                        indicators=indicators, indicators_explicit=bool(indicator_phrases)

@@ -85,7 +85,7 @@ class ProductAgentTests(unittest.TestCase):
         self.assertEqual(result.product_plan.kinds, ("profile", "financial", "news", "announcements", "technical"))
         self.assertEqual((result.status, result.model_calls_attempted, result.analyses_used), ("completed", 2, 1))
         self.assertEqual(len(self.factory.reads), 1)
-        self.assertEqual({item.kind for item in result.product_bundle.evidence}, set(result.product_plan.kinds) | {"risk"})
+        self.assertEqual({item.kind for item in result.product_bundle.evidence}, set(result.product_plan.kinds))
         self.assertEqual(self.model.calls[1][1], ())
 
     def test_answer_timeout_retries_with_the_same_evidence_without_fetching_again(self):
@@ -144,14 +144,14 @@ class ProductAgentTests(unittest.TestCase):
         self.assertNotIn("profile", {item["kind"] for item in model.contexts[0]["evidence"]})
 
     def test_requested_risk_scenario_is_computed_before_tool_free_model_answer(self):
-        result = self.run_turn("分析平安银行的止盈止损风险情景")
+        result = self.run_turn("分析平安银行的止盈止损风险情景，短线")
         self.assertEqual((result.status, result.model_calls_attempted, result.analyses_used), ("completed", 2, 1))
         risk = result.product_bundle.companies[0].risk
-        self.assertEqual((risk.values.reference_stop, risk.values.reference_target), ("7.00", "16.00"))
+        self.assertEqual((risk.values.reference_stop, risk.values.reference_target), ("7.00", "14.50"))
         scenarios = [item for item in self.model.contexts[0]["evidence"] if item["content_kind"] == "scenario"]
         self.assertEqual(len(scenarios), 1)
         self.assertIn("参考止损7.00元", scenarios[0]["display"])
-        self.assertIn("参考目标16.00元", scenarios[0]["display"])
+        self.assertIn("参考目标14.50元", scenarios[0]["display"])
         self.assertEqual(self.data.calls, [])
         self.assertEqual(self.model.calls[1][1], ())
 

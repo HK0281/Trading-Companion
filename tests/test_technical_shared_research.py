@@ -231,7 +231,7 @@ class SharedTechnicalTests(unittest.TestCase):
         self.assertEqual(result.product_plan.scope.indicator_ids, ('sma(window=3)',))
 
     def test_indicator_edit_drops_only_dependency_atr_and_decision_can_restore_it(self):
-        first = self.turn('平安银行近60日，SMA3，现在能买吗')
+        first = self.turn('平安银行近60日，SMA3，现在能买吗，中线')
         self.assertIn('indicator_dependency:atr14_for_risk', first.product_plan.applied_defaults)
         edited = self.turn('再加RSI6')
         self.assertEqual([s.kind for s in edited.product_plan.indicators], ['sma', 'rsi'])
@@ -249,10 +249,10 @@ class SharedTechnicalTests(unittest.TestCase):
         self.assertTrue(all(p.code == 'risk_atr_not_requested' for p in decision.product_bundle.companies[0].trade_plans))
 
     def test_explicit_atr_survives_edits_and_implicit_atr_can_be_explicitly_adopted(self):
-        for original, edit in (('平安银行近60日，SMA3和ATR14，现在能买吗', '再加RSI6'),
-                               ('平安银行近60日，SMA3，现在能买吗', '再加ATR14'),
-                               ('平安银行近60日，SMA3，现在能买吗', '再加ATR7'),
-                               ('平安银行近60日，SMA3，现在能买吗', '把ATR14改成ATR7')):
+        for original, edit in (('平安银行近60日，SMA3和ATR14，现在能买吗，中线', '再加RSI6'),
+                               ('平安银行近60日，SMA3，现在能买吗，中线', '再加ATR14'),
+                               ('平安银行近60日，SMA3，现在能买吗，中线', '再加ATR7'),
+                               ('平安银行近60日，SMA3，现在能买吗，中线', '把ATR14改成ATR7')):
             with self.subTest(edit=edit):
                 self.session = ResearchSession()
                 self.turn(original)
@@ -267,7 +267,7 @@ class SharedTechnicalTests(unittest.TestCase):
         for edit in ('把SMA3改成SMA5', '删除SMA3'):
             with self.subTest(edit=edit):
                 self.session = ResearchSession()
-                self.turn('平安银行近60日，SMA3和RSI6，现在能买吗')
+                self.turn('平安银行近60日，SMA3和RSI6，现在能买吗，中线')
                 result = self.turn(edit)
                 self.assertEqual(result.status, 'completed')
                 self.assertNotIn('atr', [s.kind for s in result.product_plan.indicators])
@@ -275,7 +275,7 @@ class SharedTechnicalTests(unittest.TestCase):
     def test_ambiguous_edit_finish_drops_dependency_and_identity_change_has_message(self):
         from trading_companion.product_indicator_edit import resume_edit
         from trading_companion.security_directory import Security, SecurityDirectory
-        self.turn('平安银行近60日，SMA3和SMA5，现在能买吗')
+        self.turn('平安银行近60日，SMA3和SMA5，现在能买吗，中线')
         self.turn('把均线改成10日')
         pending = self.session.product_pending
         count = len(self.factory.reads)

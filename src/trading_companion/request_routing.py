@@ -51,6 +51,7 @@ class RoutingSessionView:
     """Presence markers preserve legacy `is None` checks without exposing mutation."""
 
     product_pending: bool | None = None
+    product_horizon_pending: bool = False
     pending: bool | None = None
     pending_edit: bool | None = None
     product_saved: bool | None = None
@@ -67,6 +68,7 @@ class RoutingSessionView:
     @classmethod
     def capture(cls, session: ResearchSession) -> "RoutingSessionView":
         return cls(product_pending=True if session.product_pending is not None else None,
+            product_horizon_pending=getattr(session.product_pending, 'stage', None) == 'horizon',
             pending=True if session.pending is not None else None,
             pending_edit=True if session.pending_edit is not None else None,
             product_saved=True if session.product_saved is not None else None,
@@ -121,13 +123,17 @@ class RouteSpec:
 def probe_general_knowledge(question: str, *, workflow: bool, history: bool,
                             session: RoutingSessionView | None = None) -> bool:
     """Whether the API should attempt the optional local identity hint first."""
-    return (workflow and not history
+    from trading_companion.decision_horizon import is_horizon_reply
+    return (workflow and not history and not (session and session.product_horizon_pending and is_horizon_reply(question))
             and parse_knowledge_question(question) is None
             and is_general_knowledge_question(question))
 
 
 def _knowledge(value: _MatchInput) -> bool:
     directory = value.context.directory if value.context is not None else value.directory
+    from trading_companion.decision_horizon import is_horizon_reply
+    if value.context is not None and value.context.session.product_horizon_pending and is_horizon_reply(value.question, directory):
+        return False
     return is_general_knowledge_question(value.question, directory=directory)
 
 

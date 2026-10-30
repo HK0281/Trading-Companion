@@ -1,0 +1,99 @@
+{
+  "version": "decision-answer-horizon-delta-v1",
+  "rule_baseline_version": "decision-horizon-v1",
+  "parent_sha256_lf": "b8279ffd09d0b03dfb00518d545b1ac9c7447765c305ef1733f662f243b46e12",
+  "reply": "中线",
+  "clarification_cases": [
+    "D01",
+    "D03",
+    "D04",
+    "D06",
+    "D08",
+    "D09",
+    "D10",
+    "D16",
+    "D18",
+    "D19"
+  ],
+  "expectation_changes": [
+    {
+      "id": "D01",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D03",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D04",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D06",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D08",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D09",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D10",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D16",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D18",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D19",
+      "before": "未来20个交易日",
+      "after": "未来40个交易日",
+      "reason": "缺期限的价位问题固定补充中线"
+    },
+    {
+      "id": "D05",
+      "before": "未来20个交易日",
+      "after": null,
+      "reason": "无价位或纯走势不追问期限"
+    },
+    {
+      "id": "D15",
+      "before": "未来20个交易日",
+      "after": null,
+      "reason": "无价位或纯走势不追问期限"
+    },
+    {
+      "id": "D20",
+      "before": "未来20个交易日",
+      "after": null,
+      "reason": "无价位或纯走势不追问期限"
+    }
+  ],
+  "policy": "one_reply_only_on_decision_horizon_required; preserve_original_questions_denominators_limits_and_all_actual_turns"
+}

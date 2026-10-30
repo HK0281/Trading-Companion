@@ -40,6 +40,16 @@ export function chartReply(id = ID): MessageResponse {
   value.result.report!.fields[0] = { ...value.result.report!.fields[0], indicator_id: "sma(window=3)", value: 10.316667 };
   return value;
 }
+export function horizonReply(id = ID, expires = new Date(Date.now() + 900000).toISOString()): MessageResponse {
+  const value = reply(id);
+  Object.assign(value.result, { status: "needs_clarification", code: "decision_horizon_required", stage: "clarification",
+    answer: null, message: "你打算短线（1-2周）、中线（1-3个月）还是长线（半年以上）？", candidates: [],
+    clarification_options: [
+      { value: "short", label: "短线（1-2周）", reply: "短线" },
+      { value: "medium", label: "中线（1-3个月）", reply: "中线" },
+      { value: "long", label: "长线（半年以上）", reply: "长线" }], clarification_expires_at: expires });
+  return value;
+}
 export function marketContextReply(id = ID): MessageResponse {
   const value = chartReply(id);
   value.result.market_context = {

@@ -59,6 +59,15 @@ def technical_context(bundle, context):
             # requested indicators. Recompute their provenance, then require that
             # the exact record was actually supplied to this answer.
             if report.status in ('complete', 'limited'):
+                from trading_companion.horizon_trade_plan import weekly_atr_evidence
+                weekly, _ = weekly_atr_evidence(result, expected_request=result.request)
+                row = by_original.get(weekly.id) if weekly else None
+                if (weekly and row and row.get('raw_value') == weekly.raw_value
+                        and row.get('date') == weekly.date and row.get('unit') == weekly.unit
+                        and row.get('temporal_scope') == weekly.temporal_scope
+                        and row.get('instrument_id') == company.instrument_id):
+                    values.append(dict(indicator_id='atr(window=14)', timeframe='weekly', field='value',
+                        value=str(weekly.raw_value), date=weekly.date, ref=row['id']))
                 for mean in price_context_evidence(result, allow_extra_means=not bundle.plan.indicators_explicit):
                     match = re.fullmatch(re.escape(result.request.request_id) + r'\|price_context:ma(20|60)', mean.id)
                     row = by_original.get(mean.id)

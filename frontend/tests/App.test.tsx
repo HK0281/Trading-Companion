@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import App from "../src/App";
 import { ApiError, ConnectionError, type Health, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
-import { chartReply, credentials, deferred, health, marketContextReply, mockApi, reply } from "./fixtures";
+import { chartReply, credentials, deferred, health, horizonReply, marketContextReply, mockApi, reply } from "./fixtures";
 
 const ANSWER = "人工样例 / 非真实行情。收盘价高于SMA(3)。";
 
@@ -21,6 +21,31 @@ function send(question = "分析平安银行") {
 }
 
 describe("research workspace", () => {
+  it.each(["短线", "中线", "长线"])("automatically sends a fixed %s choice and disables old choices", async choice => {
+    const { api } = await workspace();
+    api.send.mockImplementationOnce(async (_session, id) => horizonReply(id));
+    send("平安银行现在能买吗");
+    const button = await screen.findByRole("button", { name: new RegExp(`^${choice}（`) });
+    expect(screen.queryByLabelText("候选股票")).not.toBeInTheDocument();
+    const pending = deferred<MessageResponse>();
+    api.send.mockImplementationOnce(() => pending.promise);
+    fireEvent.click(button);
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(2));
+    expect(api.send.mock.calls[1][2]).toBe(choice);
+    expect(button).toBeDisabled();
+    await act(async () => pending.resolve(reply(api.send.mock.calls[1][1])));
+    expect(button).toBeDisabled();
+  });
+  it("disables expired horizon choices and hides choices in saved history", async () => {
+    const { api, controller } = await workspace();
+    api.send.mockImplementationOnce(async (_session, id) => horizonReply(id, "2000-01-01T00:00:00Z"));
+    send("平安银行现在能买吗");
+    expect(await screen.findByRole("button", { name: "中线（1-3个月）" })).toBeDisabled();
+    expect(screen.getByText(/原期限选择已过期/)).toBeVisible();
+    api.history.mockResolvedValueOnce(horizonReply());
+    await act(async () => controller.history());
+    expect(screen.getAllByRole("button", { name: "中线（1-3个月）" })).toHaveLength(1);
+  });
   it("shows read-only synthetic boundaries without creating a session on load", async () => {
     const { api } = await workspace();
     expect(screen.getAllByText("人工行情 · 非真实").length).toBeGreaterThan(0);

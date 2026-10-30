@@ -13,7 +13,7 @@ from trading_companion.product_scope import (
     ProductScope, _positive_scope, _ONLY, has_company_domain, is_product_indicator_edit,
 )
 from trading_companion.product_research import collect_product_research
-from trading_companion.research_decision import wants_decision, excludes_plan
+from trading_companion.research_decision import wants_decision, excludes_plan, wants_prices
 from trading_companion.turn_control import checkpoint, company_turn_control
 from trading_companion.routing_context import (
     checked_subject, continuation_question, latest_subject, new_question, plural_subject, replaces_pending,
@@ -50,10 +50,12 @@ def _inherit_scope(plan, saved_plan, question):
                        as_of=saved_plan.as_of, explicit_historical=saved_plan.explicit_historical,
                        applied_defaults=("scope:previous_research", *(
                            item for item in plan.applied_defaults if item not in date_defaults)))
-    if plan.objective.horizon is None or (plan.objective.kind == "decision"
-            and "horizon:20_trading_sessions" in plan.applied_defaults and saved_plan.objective.horizon is not None):
+    if (plan.objective.horizon is None and saved_plan.objective.horizon is not None
+            and any(item.startswith('horizon_source:') for item in saved_plan.applied_defaults)):
         updates["objective"] = (saved_plan.objective if plan.objective.kind == "analysis"
                                 else replace(plan.objective, horizon=saved_plan.objective.horizon))
+        if any(item.startswith('horizon_source:') for item in saved_plan.applied_defaults):
+            updates['applied_defaults'] = (*updates.get('applied_defaults', plan.applied_defaults), 'horizon_source:inherited')
     selected_profile = any(item.startswith("indicators:profile:") for item in plan.applied_defaults)
     if not plan.indicators_explicit and (saved_plan.indicators_explicit or not selected_profile):
         updates.update(indicators=saved_plan.indicators, indicators_explicit=saved_plan.indicators_explicit)
@@ -68,7 +70,7 @@ def _inherit_scope(plan, saved_plan, question):
         exclusions.difference_update('indicator:' + spec.kind for spec in indicators)
     scope = ProductScope(domains, tuple(spec.indicator_id for spec in indicators)
         if saved_plan.scope.indicator_ids or plan.scope.indicator_ids else (), tuple(sorted(exclusions)))
-    if ((plan.wants_risk or plan.objective.kind == 'decision') and not excludes_plan(question)
+    if ((plan.wants_risk or wants_prices(plan.user_question)) and not excludes_plan(plan.user_question)
             and scope.permits_atr_dependency and not any(spec.kind == 'atr' for spec in indicators)):
         indicators += (IndicatorSpec('atr', window=14),)
         defaults = updates.get('applied_defaults', plan.applied_defaults)
@@ -175,6 +177,9 @@ def _execute(question, *, session, model, directory, now, reference_date, source
                 and subject.source == ("csv" if development_source is not None else source)
                 and subject.development == (development_source is not None)):
             continuation = subject.scope
+            if not subject.published_at <= now < subject.published_at + timedelta(minutes=15):
+                continuation = replace(continuation, objective=replace(continuation.objective, horizon=None),
+                    applied_defaults=tuple(v for v in continuation.applied_defaults if not v.startswith('horizon_source:')))
         if re.search(r"还会涨|还会跌|会上涨|会下跌", question) and not re.search(r"未来|后续|接下来", question):
             effective_question += "，讨论后续走势的条件情景"
     if session.product_pending is None and is_product_indicator_edit(question):
@@ -190,6 +195,15 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             development=development_source is not None, context=session.product_pending,
             allow_context_research=bool(directory.mentioned_spans(effective_question)))
         plan = _inherit_scope(plan, continuation, question)
+    from trading_companion.decision_horizon import gate
+    if selected_securities and plan.status == 'ready' and plan.securities == selected_securities:
+        plan = replace(plan, user_question=original_question)
+    if (plan.status == 'ready' and plan.objective.horizon is None and saved is not None
+            and plan.securities == saved.plan.securities
+            and any(v.startswith('horizon_source:') for v in saved.plan.applied_defaults)):
+        plan = replace(plan, objective=replace(plan.objective, kind='outlook' if plan.objective.kind == 'analysis' else plan.objective.kind,
+            horizon=saved.plan.objective.horizon), applied_defaults=(*plan.applied_defaults, 'horizon_source:inherited'))
+    plan = gate(plan, now=now, reference_date=reference, development=development_source is not None)
     responses = (plan.model_response,) if plan.model_response is not None else ()
     if selected_securities:
         if plan.status == "ready" and plan.securities != selected_securities:
@@ -200,7 +214,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         if plan.status == "ready":
             plan = replace(plan, user_question=original_question)
     if plan.status != "ready":
-        session.product_pending = None if selected_securities else plan.context
+        session.product_pending = (plan.context if not selected_securities
+            or plan.context is not None and plan.context.stage == 'horizon' else None)
         return AgentTurnResult(status="needs_clarification" if plan.status in ("needs_clarification", "not_applicable")
             else "failed", code=plan.code, message=plan.message, stage="clarification", input_mode="natural",
             model_calls_attempted=plan.model_calls_attempted, model_responses=responses, product_plan=plan,

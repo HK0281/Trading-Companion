@@ -144,7 +144,7 @@ class ProductRegressions(unittest.TestCase):
                              model=ScopeAwareModel(on_synthesis=unavailable_model))
         self.assertEqual((turn.status, turn.product_answer.status), ("limited", "fallback"))
         self.assertTrue(any(item.kind == "technical" for item in turn.product_bundle.evidence))
-        self.assertTrue(any(item.content_kind == "trade_plan" for item in turn.product_answer.evidence))
+        self.assertTrue(all(not plan.values for plan in turn.product_answer.trade_plans))
         self.assertIsNone(turn.product_answer.decisions[0]["rating"])
 
     def api_turn(self, question, *, model=None):
@@ -158,7 +158,7 @@ class ProductRegressions(unittest.TestCase):
             return service.message(credentials["session_id"], credentials["access_token"], "a" * 32, question)["result"]
 
     def test_common_named_stock_questions_reach_multidomain_product_route(self):
-        for question in ("平安银行值得买吗", "帮我看看平安银行", "平安银行现在处于什么位置",
+        for question in ("平安银行值得买吗，中线", "帮我看看平安银行", "平安银行现在处于什么位置",
                          "平安银行有什么利好利空", "平安银行为什么涨了"):
             with self.subTest(question=question):
                 model = ScopeAwareModel()

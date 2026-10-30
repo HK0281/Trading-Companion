@@ -44,7 +44,8 @@ def implementation_fingerprint():
              'product_scope.py', 'product_research.py', 'answer_validation.py', 'answer_numeric_bindings.py',
              'answer_claim_recovery.py', 'answer_technical_validation.py', 'answer_clauses.py',
              'answer_validation_metrics.py', 'research_intent.py',
-             'deepseek_model.py', 'deepseek_tool_model.py', 'turn_trace.py')
+             'deepseek_model.py', 'deepseek_tool_model.py', 'turn_trace.py', 'decision_horizon.py',
+             'horizon_trade_plan.py', 'trade_plan.py', 'evaluation_horizon.py')
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii') + b'\0')
@@ -147,6 +148,9 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
             if mode == 'live' else ['artificial_directory_company_transport_400_weekday_bars'],
         fixture=None if mode == 'live' else dict(version='technical-fixed-data-v1', reference_time=NOW.isoformat(),
             bars=400, authenticity='fixed_synthetic', implementation_sha256=implementation_fingerprint()))
+    from trading_companion.evaluation_horizon import descriptor
+    plan.update(horizon_delta=descriptor('technical'), planned_original_turns=14, maximum_supplemental_turns=2,
+                fixed_horizon_reply='中线')
     if mode == 'live':
         ensure_data_mode_dependencies(data_source)
         path = Path(directory) if directory else ROOT / 'data/security_directory_live.json'
@@ -269,6 +273,15 @@ def _run(cases, plan, meter, delegate, trace_root):
                         forwarded, blocked = meter.forwarded, meter.blocked
                         with CollectionAudit(sources) as audit, diagnostic_location(case_id=case['id'], phase=row['turns'][index]['phase']):
                             result, elapsed, trace = _send(service, credentials, expected['question'], path, seen)
+                            from trading_companion.evaluation_horizon import turn_record, complete_horizon
+                            row['turns'][index]['original_turn'] = turn_record(result, expected['question'], elapsed, trace)
+                            result, elapsed, trace, extras = complete_horizon(
+                                lambda question: _send(service, credentials, question, path, seen), result, elapsed, trace,
+                                case_id=case['id'], kind='technical',
+                                can_send=lambda: meter.forwarded < meter.limit and per_case.forwarded < per_case.limit
+                                    and per_turn.forwarded < per_turn.limit
+                                    and not any(t.get('clarification_turns') for t in row['turns']))
+                            row['turns'][index]['clarification_turns'] = extras
                         quality = deepcopy((result.get('company_research') or {}).get('quality') or {})
                         validation = next((e.get('validation', {}) for e in reversed((trace or {}).get('event_records', []))
                                            if e['kind'] == 'check' and e['operation'] == 'answer_validation'), {})
@@ -333,7 +346,11 @@ def summarize(rows):
     violations = sum(len(t['scope']['violations']) for t in turns)
     unknown = sum(bool(t['scope']['unknown']) for t in turns)
     formed = sum(r['formed'] for r in rows)
-    return dict(questions=10, turns=14, formed=formed, formation_rate=ratio(formed, 10), minimum_formed=9,
+    supplemental = sum(len(t.get('clarification_turns', [])) for t in turns)
+    originals = sum('original_turn' in t for t in turns)
+    return dict(questions=10, turns=14, original_turns=originals, actual_turns=originals+supplemental, supplemental_turns=supplemental,
+        horizon_clarifications=sum((t.get('original_turn') or {}).get('code') == 'decision_horizon_required' for t in turns),
+        formed=formed, formation_rate=ratio(formed, 10), minimum_formed=9,
         formation_target_met=formed >= 9, scope_violations=violations, scope_unknown_turns=unknown,
         scope_target_met=violations == 0 and unknown == 0,
         decision_checks_passed=all(t.get('checks', {}).get('rating_direction') and t.get('checks', {}).get('reference_plan')
@@ -424,6 +441,9 @@ def write_report(report, root):
     for row in report['cases']:
         lines.append(f"| {row['id']} | {row['formed']} | {sum(len(t['scope']['violations']) for t in row['turns'])} | "
                      f"{any(t['budget_exhausted'] for t in row['turns'])} | {row['model_calls']} |")
+        for turn in row['turns']:
+            if (turn.get('original_turn') or {}).get('code') == 'decision_horizon_required':
+                lines.append(f"| {row['id']} 澄清轮 | 不计形成率 | 未取数 | False | {turn['original_turn']['model_calls']} |")
     lines += ['', '| 范围 | 整句删除率（v2） | 分句删除率 | 部分保留句数 |', '| --- | --- | --- | --- |']
     for key in ('target', 'setup', 'all_turns'):
         metrics = report['metrics'][key]

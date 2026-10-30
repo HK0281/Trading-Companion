@@ -10,7 +10,7 @@ from trading_companion.errors import InvalidRequestError
 
 MAX_OUTLOOK_DAYS = 366
 _COUNT = r"[+\-]?(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百]+|半)"
-_PREFIX = r"(?:未来|接下来|今后|往后|后续)\s*(?:的)?\s*"
+_PREFIX = r"(?:未来|接下来|今后|往后|后续|持有|拿)\s*(?:的)?\s*"
 _UNIT = r"(?:个?交易日|自然日|天|日|个?星期|个?礼拜|周|个月|月|年)"
 _DYNAMIC = _PREFIX + _COUNT + r"\s*" + _UNIT
 _DYNAMIC_FULL = re.compile(_PREFIX + r"(" + _COUNT + r")\s*(" + _UNIT + r")")
@@ -19,9 +19,12 @@ _FIXED = {
     "下个月": "下个月", "下月": "下个月", "下一个月": "下个月",
     "明天": "明天", "明日": "明天", "后天": "后天",
     "短线": "短线", "短期": "短线", "中线": "中线", "中期": "中线",
+    "长线": "长线", "长期": "长线", "半年以上": "未来120个交易日",
+    "1-2周": "未来10个交易日", "1～2周": "未来10个交易日",
+    "1-3个月": "未来40个交易日", "1～3个月": "未来40个交易日",
 }
 _GENERIC = ("接下来一段时间", "未来一段时间", "接下来", "未来", "今后", "往后", "后续", "后市")
-_UNSUPPORTED = ("明后年", "明年", "后年", "下个季度", "下季度", "下半年", "长期", "长线")
+_UNSUPPORTED = ("明后年", "明年", "后年", "下个季度", "下季度", "下半年")
 # Include range/qualifier tails so an unsupported suffix cannot be silently discarded.
 _TAIL = (r"(?:\s*(?:至|到|[-~～])\s*" + _COUNT + r"\s*" + _UNIT + r")?"
          r"(?:半|多|左右|以内|以上|以下)?")
@@ -107,8 +110,6 @@ class ResearchObjective:
     def __post_init__(self):
         if self.kind not in ("analysis", "outlook", "decision") or (self.kind == "analysis" and self.horizon is not None):
             raise InvalidRequestError("Invalid research objective")
-        if self.kind == "decision" and self.horizon is None:
-            raise InvalidRequestError("Decision objective requires an explicit canonical horizon")
         if self.horizon is not None:
             try:
                 canonical = _canonical_horizon(self.horizon)

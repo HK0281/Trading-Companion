@@ -310,7 +310,7 @@ class TurnTraceApiTests(unittest.TestCase):
     def test_all_105_routing_observations_match_frozen_targets_with_tracing_enabled(self):
         from tests.routing_baseline_support import compare_observations, read_baseline
         from tests.routing_targets_support import TARGET, observe_target_scenario, validate_contracts
-        from tests.routing_relaxed_support import overlay
+        from tests.routing_horizon_support import overlay
         from tests.routing_technical_support import validate_current_contracts
         def traced_service(**kwargs):
             return ResearchApiService(**kwargs, trace_sink=self.sink)

@@ -27,7 +27,7 @@ FIELDS = {'营业收入': 'revenue', '归母净利润': 'parent_net_profit', '�
           '归母净利润同比': 'parent_net_profit_yoy', '加权净资产收益率': 'weighted_roe',
           '单季营业收入': 'quarter_revenue', '单季归母净利润': 'quarter_parent_net_profit',
           '单季营业收入同比': 'quarter_revenue_yoy', '单季归母净利润同比': 'quarter_parent_net_profit_yoy',
-          '最新收盘价': 'latest_close', 'MA20': 'ma20', 'MA60': 'ma60'}
+          '最新收盘价': 'latest_close', '收盘价': 'close_price', 'MA20': 'ma20', 'MA60': 'ma60'}
 for _window in (5, 20, 60):
     FIELDS[f'{_window}日前收盘价'] = f'close_{_window}d_ago'
     FIELDS[f'近{_window}日涨跌幅'] = f'return_{_window}d'
@@ -43,7 +43,7 @@ PLAN_LABELS = {'止损': 'reference_stop', '止盈1': 'target_1', '止盈2': 'ta
 _LABEL = '|'.join(map(re.escape, sorted(PLAN_LABELS, key=len, reverse=True)))
 PLAN_PREFIX = re.compile(r'(' + _LABEL + r')\s*(?:价(?:格|位)?|为|是|约|在|[:：]|\*\*)*\s*$')
 PLAN_LANGUAGE = re.compile(r'止损|止盈|目标价|参考目标|买入价|入场价|入场位|入场参考|退出价|退出观察位|[上下]方观察位')
-PLAN_SUFFIX = re.compile(r'^\s*(?:附近|一带)?\s*(?:是|为|的)?\s*(?:计划|参考)?(' + _LABEL + r')')
+PLAN_SUFFIX = re.compile(r'^\s*(?:附近|一带)?\s*(?:是|为|的|作为|作)?\s*(?:计划|参考)?(' + _LABEL + r')')
 
 
 @dataclass(frozen=True)
@@ -334,6 +334,22 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                     detail['reason'] = error.reason
                     detail['ordinary_numeric'] = False
             restriction = restrictions.get(match.start())
+            # A dated close can stand for an entry only when it is EXACTLY this
+            # stock's supplied reference_entry. Stops/targets retain their roles.
+            if plan_field == 'reference_entry':
+                entries = [a for a in all_atoms if a.plan_id is not None and a.field == 'reference_entry'
+                           and a.value == value and (expected_plan is None or a.plan_id == expected_plan)]
+                evidence = {r['id']: r for r in context['evidence'] if r['instrument_id'] == instrument}
+                expanded = []
+                for atom in candidates:
+                    expanded.append(atom)
+                    if (atom.plan_id is None and atom.kind == 'price' and atom.field in ('latest_close', 'close_price')
+                            and atom.value == value and evidence.get(atom.evidence_id, {}).get('content_kind') == 'fact'):
+                        for entry in entries:
+                            if evidence[atom.evidence_id].get('date') == evidence.get(entry.evidence_id, {}).get('date'):
+                                expanded.append(Atom(atom.value, atom.kind, atom.evidence_id, 'reference_entry', entry.plan_id,
+                                                     source='close_equal_reference_entry'))
+                candidates = expanded
             if restriction is not None:
                 daily, weekly = restriction
                 allowed = daily if any(a.evidence_id in daily and _rounded(value, a.value, shown, price=a.kind == 'price')

@@ -74,7 +74,7 @@ class ProductIndicatorScopeTests(unittest.TestCase):
         self.assertFalse(any(spec.kind == "rsi" for spec in result.product_plan.indicators))
 
     def test_risk_scenario_includes_required_atr_without_replacing_requested_rsi(self):
-        result = self.run_turn("分析平安银行基本面和RSI7，并计算止盈止损")
+        result = self.run_turn("分析平安银行基本面和RSI7，并计算止盈止损，中线")
         self.assertIn(result.status, ("completed", "limited"))
         self.assertEqual([spec.indicator_id for spec in result.product_plan.indicators], ["rsi(window=7)", "atr(window=14)"])
         self.assertIn("indicator_dependency:atr14_for_risk", result.product_plan.applied_defaults)
@@ -82,7 +82,7 @@ class ProductIndicatorScopeTests(unittest.TestCase):
 
     def test_risk_followup_adds_dependency_to_previous_custom_indicator_scope(self):
         self.run_turn("分析平安银行基本面和RSI7")
-        result = self.run_turn("那止盈止损呢")
+        result = self.run_turn("那止盈止损呢，中线")
         self.assertIn(result.status, ("completed", "limited"))
         self.assertEqual([spec.indicator_id for spec in result.product_plan.indicators], ["rsi(window=7)", "atr(window=14)"])
         self.assertEqual(result.product_bundle.companies[0].risk.status, "available")

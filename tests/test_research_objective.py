@@ -66,14 +66,14 @@ class ObjectiveTests(unittest.TestCase):
     def test_unsupported_counts_and_calendar_requirements_are_rejected(self):
         for expression in ("未来0天", "未来-3天", "未来+3天", "未来3.5天", "未来367天",
                 "未来53周", "未来13个月", "未来两年", "未来一百二天", "未来一两个月",
-                "未来367个交易日", "未来半个月", "下个季度", "明年", "长期", "今天"):
+                "未来367个交易日", "未来半个月", "下个季度", "明年", "今天"):
             with self.subTest(expression=expression), self.assertRaises(InputIssue):
                 parse_outlook_expression(expression)
 
     def test_mixed_or_partial_horizons_cannot_be_shortened_silently(self):
         for question in ("预测下周和下个月的走势", "预测未来一年半的走势", "预测未来几天的走势",
                 "预测未来若干周的走势", "预测未来3天到5天的走势", "预测未来3天左右的走势",
-                "预测未来1000天的走势", "预测长期走势"):
+                "预测未来1000天的走势",):
             with self.subTest(question=question), self.assertRaises(InputIssue):
                 extract_outlook(question)
 

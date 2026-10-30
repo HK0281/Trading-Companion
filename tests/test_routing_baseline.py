@@ -19,11 +19,26 @@ from tests.routing_targets_support import (
     BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
     field_deltas, observe_target_scenario, validate_contracts,
 )
-from tests.routing_relaxed_support import overlay
+from tests.routing_horizon_support import overlay
 from tests.routing_technical_support import validate_current_contracts
 
 
 class RoutingBaselineTests(unittest.TestCase):
+    def test_v7_preserves_all_original_messages_and_exact_parent_field_changes(self):
+        from tests.routing_horizon_support import corpus, overlay
+        from tests.routing_relaxed_support import overlay as parent_overlay
+        originals = read_baseline(TARGET)['scenarios'] + read_baseline(ROOT/'tests/fixtures/request-routing-v3.json')['scenarios']
+        delta = corpus()
+        self.assertEqual([s['id'] for s in delta['scenarios']], [s['id'] for s in originals])
+        self.assertEqual(sum(len(s['turns']) for s in delta['scenarios']),117)
+        for scenario, changes in zip(originals,delta['scenarios'],strict=True):
+            before = parent_overlay(scenario['id'],scenario['observed'])
+            after = overlay(scenario['id'],scenario['observed'])
+            self.assertEqual(len(after),len(scenario['steps']))
+            for index,(old,new,turn) in enumerate(zip(before,after,changes['turns'],strict=True),1):
+                self.assertEqual(turn['index'],index)
+                self.assertEqual(turn['fields'],field_deltas(old,new))
+
     def test_v6_seals_all_parents_and_every_field_delta_across_117_original_turns(self):
         from tests.routing_technical_support import overlay
         from tests.routing_technical_support import corpus as technical_corpus
@@ -43,7 +58,7 @@ class RoutingBaselineTests(unittest.TestCase):
                 self.assertEqual(turn['fields'], field_deltas(a, b))
 
     def test_validation_layer_seals_all_117_turns_without_changing_routes_or_budgets(self):
-        from tests.routing_relaxed_support import corpus
+        from tests.routing_relaxed_support import corpus, overlay
         from tests.routing_technical_support import overlay as parent_overlay
         originals = read_baseline(TARGET)['scenarios'] + read_baseline(ROOT/'tests/fixtures/request-routing-v3.json')['scenarios']
         changes = corpus()['scenarios']

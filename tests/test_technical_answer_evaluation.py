@@ -18,6 +18,16 @@ from trading_companion.tool_model import ToolModelResponse
 
 
 class TechnicalEvaluationTests(unittest.TestCase):
+    def test_horizon_clarifications_are_separate_and_strict_sma_never_supplements(self):
+        metrics = self.report['metrics']
+        self.assertEqual((metrics['original_turns'], metrics['supplemental_turns'], metrics['actual_turns']), (14,1,15))
+        t06 = next(r for r in self.report['cases'] if r['id'] == 'T06')['turns'][-1]
+        t07 = next(r for r in self.report['cases'] if r['id'] == 'T07')['turns'][-1]
+        self.assertEqual(t06['original_turn']['code'], 'decision_horizon_required')
+        self.assertEqual(t06['clarification_turns'][0]['question'], '中线')
+        self.assertEqual(t07['clarification_turns'], [])
+        self.assertNotEqual(t07['original_turn']['code'], 'decision_horizon_required')
+
     @classmethod
     def setUpClass(cls):
         cls.report = evaluation.evaluate()

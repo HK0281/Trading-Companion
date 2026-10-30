@@ -14,6 +14,23 @@ from trading_companion.product_narrative_answer import _context, _checked, synth
 
 
 class BindingTests(unittest.TestCase):
+    def test_close_is_an_entry_only_when_exactly_equal_to_this_stock_plan_and_date(self):
+        ctx = context()
+        ctx['evidence'].append(dict(id='E6', instrument_id='000001.SZ', content_kind='trade_plan', date='2026-09-25',
+            plan_id='same-stock-entry', values={'reference_entry':'29.7', 'reference_stop':'28.00', 'target_1':'32.25'}))
+        for text, token, expected in [('入场价29.7元。', '29.7元', True), ('以29.7元作为入场价。', '29.7元', True),
+                                     ('入场价29.8元。', '29.8元', False), ('止损29.7元。', '29.7元', False), ('目标价29.7元。', '29.7元', False)]:
+            with self.subTest(text=text):
+                result, _ = self.check(text, [{'text':token, 'ref':'E1'}], ctx)
+                self.assertEqual(bool(result[0]), expected)
+        for change in ({'date':'2026-09-24'}, {'instrument_id':'600000.SH'}):
+            wrong = deepcopy(ctx)
+            wrong['evidence'][-1].update(change)
+            self.assertFalse(self.check('入场价29.7元。', [{'text':'29.7元','ref':'E1'}], wrong)[0][0])
+        wrong = deepcopy(ctx)
+        wrong['evidence'][-1]['values']['reference_entry'] = '29.8'
+        self.assertFalse(self.check('入场价29.7元。', [{'text':'29.7元','ref':'E1'}], wrong)[0][0])
+
     def check(self, text, numbers=None, ctx=None, **extra):
         stats = {key: 0 for key in COUNTERS}
         result = check_claim(dict(text=text, **({'numbers': numbers} if numbers is not None else {}), **extra),

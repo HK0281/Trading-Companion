@@ -215,7 +215,7 @@ class CrossSubjectApiTests(unittest.TestCase):
                 for case, kind in zip(cases[:2], kinds):
                     model.start(case, seed=kind == 'technical')
                     with patch.object(service, '_product_data_service', None if kind == 'technical' else sources.company):
-                        result = send(case['security_name'] + ('最近只看SMA3' if kind == 'technical' else '现在能买吗'))
+                        result = send(case['security_name'] + ('最近只看SMA3' if kind == 'technical' else '现在能买吗，中线'))
                     self.assertIn(result['status'], ('completed', 'limited'), (kind, result['code'], result['message']))
                 session = service._entries[credentials['session_id']].session
                 subject = session.latest_research
@@ -225,7 +225,7 @@ class CrossSubjectApiTests(unittest.TestCase):
                     session._last_result = replace(session._last_result, saved_at=API_NOW-timedelta(minutes=16))
                 reads = sources.daily_reads
                 model.start(cases[1])
-                result = send('那现在能买吗')
+                result = send('那现在能买吗，中线')
                 self.assertEqual(result['code'], 'company_research_completed')
                 self.assertEqual(result['company_research']['securities'][0]['instrument_id'], cases[1]['instrument_id'])
                 self.assertEqual(session.latest_research.sequence, 3)

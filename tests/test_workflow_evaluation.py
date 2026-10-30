@@ -42,7 +42,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
                     "not_run": 0, "hard_requirement_violations": 0, "outside_acceptable": 0,
                     "quality_requirement_failures": 0, "trace_missing": 0})
                 self.assertEqual(report["model_call_limit"], 354)
-                self.assertEqual(report["accounting"]["forwarded"], 68)
+                self.assertEqual(report["accounting"]["forwarded"], 67)
                 self.assertEqual(len({s["trace"]["run_id"] for s in report["steps"]}), 59)
                 self.assertTrue(all(c["transport"]["maximum_in_flight"] <= width and c["transport"]["responses_closed"]
                                     and c["transport"]["requests"] == c["transport"]["closed_clients"] for c in report["cases"]))
@@ -72,7 +72,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertGreater(expected["categories"]["error"], 0)
         self.assertEqual(expected["overall"]["total_elapsed_ms"]["n"], 59)
         self.assertEqual(expected["models"]["provider_requests_started"], 0)
-        self.assertEqual(expected["models"]["attempted"], 68)
+        self.assertEqual(expected["models"]["attempted"], 67)
         self.assertIsNone(report["accounting"]["token_usage"]["reported_total_tokens"])
 
     def test_deadline_partial_full_missing_and_complete_are_distinct(self):
@@ -152,7 +152,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
                 self.assertEqual(change['old']['expectation'][key], change['new']['expectation'][key])
         from trading_companion.workflow_evaluation_runtime import make_plan
         plan, _, _ = make_plan(selected_cases=['C02'])
-        self.assertEqual(plan['corpus']['rule_baseline_version'], 'technical-shared-narrative-v1')
+        self.assertEqual(plan['corpus']['rule_baseline_version'], 'decision-horizon-v1')
         self.assertEqual(plan['corpus']['technical_delta'], evaluation.technical_delta_descriptor())
         broken = deepcopy(delta)
         broken['changes'][0]['new']['question'] = 'tampered'
@@ -160,6 +160,20 @@ class WorkflowBoundaryTests(unittest.TestCase):
         path.write_text(json.dumps(broken), encoding='utf-8')
         with patch.object(evaluation, 'TECHNICAL_DELTA', path), self.assertRaises(ValueError):
             evaluation.load_corpus()
+
+    def test_horizon_delta_keeps_original_question_and_exposes_parent_chain(self):
+        delta = json.loads(evaluation.HORIZON_DELTA.read_text(encoding='utf-8'))
+        self.assertEqual([(c['case_id'],c['step']) for c in delta['changes']], [('S05',1)])
+        change = delta['changes'][0]
+        self.assertEqual(change['old']['question'], change['new']['question'])
+        self.assertEqual(change['new']['fixture_script']['phases'], ['company_intent'])
+        self.assertEqual(change['new']['expectation']['offline_expected']['code'], 'decision_horizon_required')
+        from trading_companion.workflow_evaluation_runtime import make_plan
+        plan, _, _ = make_plan(selected_cases=['S05'])
+        self.assertEqual(plan['corpus']['horizon_delta'], evaluation.horizon_delta_descriptor())
+        self.assertEqual(plan['scripted_model_calls'],1)
+        self.assertEqual(set(plan['corpus']['horizon_delta']['parents_sha256_lf']),
+            {'research-api-v1.json','research-api-b-delta-v1.json','research-api-technical-delta-v1.json'})
 
     def test_repeat_uses_distinct_sessions_and_ids_and_one_whole_run_allowance(self):
         original, calls = ResearchApiService.message, []

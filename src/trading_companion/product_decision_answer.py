@@ -14,7 +14,7 @@ from trading_companion.product_research import model_research_context
 from trading_companion.research_decision import RATINGS
 from trading_companion.model import ModelRequestError
 from trading_companion.research_decision import excludes_plan
-from trading_companion.trade_plan import build_trade_plans, plan_display
+from trading_companion.trade_plan import build_trade_plans, plan_display, method_for_plan, unavailable_code_for_plan
 from trading_companion.tool_model import ToolMessage, ToolModelResponse, MAX_USER_CHARACTERS, validate_tool_messages
 from trading_companion.turn_control import checkpoint, TurnStopped
 from trading_companion.turn_trace import trace_event
@@ -70,12 +70,17 @@ def _context(bundle):
                 or technical.request.start_date != bundle.plan.start_date or technical.request.as_of_date != bundle.plan.end_date
                 or technical.request.source != bundle.plan.source or technical.request.indicators != bundle.plan.indicators):
             raise ValueError("decision_snapshot_mismatch")
-        blocked = excludes_plan(bundle.plan.user_question) or "technical" not in bundle.plan.kinds
         rebuilt = build_trade_plans(technical if technical is not None else company.instrument_id,
             expected_request=technical.request if technical is not None else None,
-            unavailable_code="plan_excluded" if blocked else None)
+            unavailable_code=unavailable_code_for_plan(bundle.plan),
+            horizon=bundle.plan.objective.horizon, method=method_for_plan(bundle.plan))
         if rebuilt != company.trade_plans:
             raise ValueError("decision_plan_mismatch")
+        if any(p.status == 'available' and p.atr_timeframe == 'weekly' for p in rebuilt):
+            from trading_companion.horizon_trade_plan import weekly_atr_evidence
+            weekly, _ = weekly_atr_evidence(technical, expected_request=technical.request)
+            if weekly is None or [e for e in company.evidence if e.id == weekly.id] != [weekly]:
+                raise ValueError('decision_weekly_atr_evidence_mismatch')
         for p in rebuilt:
             if p.status == "available":
                 records = [e for e in company.evidence if e.id == p.plan_id]
@@ -224,7 +229,8 @@ def _fallback(bundle, code):
         evidence = tuple(e for e in bundle.evidence if e.content_kind == "trade_plan")
     except (ValueError, TypeError, AttributeError, KeyError):
         plans = tuple(p for c in bundle.companies for p in build_trade_plans(c.instrument_id,
-            expected_request=None, unavailable_code="decision_context_unusable"))
+            expected_request=None, unavailable_code="decision_context_unusable",
+            method=method_for_plan(bundle.plan), horizon=bundle.plan.objective.horizon))
         evidence = ()
     return ProductAnswer("fallback", code, ("本轮模型研判未形成。以下仅为按规则计算的参考价位；计划不可用时请查看具体缺失原因。",),
                          evidence=evidence, decisions=decisions, trade_plans=plans, decision_mode=True)

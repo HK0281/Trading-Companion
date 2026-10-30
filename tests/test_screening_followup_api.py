@@ -107,6 +107,16 @@ class ScreeningJourneyFixture:
 
 
 class ScreeningFollowupApiTests(ScreeningJourneyFixture, unittest.TestCase):
+    def test_selected_stock_price_request_keeps_horizon_pending(self):
+        self.screen()
+        result = self.send('第5只现在能买吗')['result']
+        self.assertEqual(result['code'], 'decision_horizon_required')
+        self.assertIsNotNone(self.session.product_pending)
+        self.assertEqual(len(self.daily.reads), 0)
+        result = self.send('中线')['result']
+        self.assertEqual(result['company_research']['securities'][0]['instrument_id'], '000001.SZ')
+        self.assertEqual(result['company_research']['decisions'][0]['horizon'], '未来40个交易日')
+
     def test_no_list_ordinal_never_calls_model_or_research_sources(self):
         turn = self.send("分析第一只的基本面")["result"]
         self.assertEqual((turn["status"], turn["code"]), ("needs_clarification", "screening_list_unavailable"))

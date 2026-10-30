@@ -1,11 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, ConnectionError, createApi } from "../src/api";
-import { credentials, health, ID, idle, reply } from "./fixtures";
+import { credentials, health, horizonReply, ID, idle, reply } from "./fixtures";
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status,
   headers: { "Content-Type": "application/json" } });
 
 describe("same-origin HTTP client", () => {
+  it("accepts horizon choices and old responses without choices", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(horizonReply()))
+      .mockResolvedValueOnce(response(reply()));
+    const api = createApi(fetcher);
+    expect((await api.send(credentials, ID, "问题")).result.clarification_options).toHaveLength(3);
+    expect((await api.send(credentials, ID, "问题")).result.clarification_options).toBeUndefined();
+  });
+  it.each(["reply", "order", "expiry", "extra"])("rejects malformed horizon %s", async kind => {
+    const payload = horizonReply();
+    if (kind === "reply") payload.result.clarification_options![0].reply = "任意消息";
+    if (kind === "order") payload.result.clarification_options!.reverse();
+    if (kind === "expiry") payload.result.clarification_expires_at = "invalid";
+    if (kind === "extra") Object.assign(payload.result.clarification_options![0], { arbitrary: true });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(payload));
+    await expect(createApi(fetcher).send(credentials, ID, "问题")).rejects.toThrow(ConnectionError);
+  });
   it("loads only a research-bound chart using bearer auth and forwards cancellation", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ version: "research-chart-interval-v1", status: "unavailable", code: "chart_timeout" }));
     const abort = new AbortController();

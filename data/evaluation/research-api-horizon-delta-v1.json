@@ -1,0 +1,124 @@
+{
+  "version": "research-api-horizon-delta-v1",
+  "rule_baseline_version": "decision-horizon-v1",
+  "parents_sha256_lf": {
+    "research-api-v1.json": "24b988ecdd4f18b4de5ad740bd657869c43975414b5b4df23e3b06aeac25419f",
+    "research-api-b-delta-v1.json": "1e7a0fc71d60c1cfcec631d2f997479e50eb412c3ed9f0241dc82eac55238805",
+    "research-api-technical-delta-v1.json": "d9c02c31352a422a5ddfc4702bd51b418a6094c2a024de6fe38a944d590d5325"
+  },
+  "changes": [
+    {
+      "case_id": "S05",
+      "step": 1,
+      "old": {
+        "question": "分析平安银行的止盈止损风险情景",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent",
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_research"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "止盈止损风险情景可以用已核对历史日线及ATR计算参考水平；允许返回带历史假设的研究，不授予下单或保证收益权限（company-research-design.md：历史风险情景）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_research",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model",
+            "answer_status_if_answered": "accepted"
+          }
+        }
+      },
+      "new": {
+        "question": "分析平安银行的止盈止损风险情景",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent"
+          ],
+          "mentions": [
+            "平安银行"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ],
+            "no_collection": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_research"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "decision_horizon_required"
+              ],
+              "reason": "缺少持有期限时先确认期限，原消息不插入补充轮。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_research",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "decision_horizon_required"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model",
+            "answer_status_if_answered": "accepted"
+          }
+        }
+      },
+      "reason": "风险价位请求缺期限，在取数前澄清。"
+    }
+  ]
+}

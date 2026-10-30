@@ -17,6 +17,12 @@ def capture_demo_turn():
             headers={"Authorization": "Bearer " + credentials["access_token"]},
             json={"request_id": "d" * 32, "question": QUESTION})
         response.raise_for_status()
+        if response.json()['result']['code'] != 'decision_horizon_required':
+            raise ValueError('Demo must first ask for the holding horizon')
+        response = client.post(f'/v1/sessions/{credentials["session_id"]}/messages',
+            headers={"Authorization": "Bearer " + credentials["access_token"]},
+            json={"request_id": "e" * 32, "question": "中线"})
+        response.raise_for_status()
         return response.json()["result"]
 
 

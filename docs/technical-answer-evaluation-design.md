@@ -1,5 +1,7 @@
 # 技术回答评估：technical-answer-v1
 
+2026-10-30 持有期限版本：原10题/14轮字节不变，`technical-answer-horizon-delta-v1.json`绑定父摘要。仅声明题目正式返回`decision_horizon_required`且预算足够时，每题最多补一次固定“中线”。逐条保留`original_turn`及`clarification_turns`，澄清轮单列、不混入形成率；计入全部消息、调用、耗时、费用。离线实际14原轮+1补充轮、26次调用；T06先问期限，T07严格SMA3无ATR，实际不追问、不补充。固定分母10、每题每原轮6次、全套84次预算不增。详见[期限规则](holding-horizon-design.md)。
+
 2026-10-30用户授权#243 / 批准#247更新：使用source-bindings-v2和sentence-counts-v2。整句完全消失才计deleted_sentences，保留部分独立分句另计partially_retained_sentences，并同报generated_clauses、retained_clauses、deleted_clauses和分句删除率。目标、准备、全部轮次分别汇总，去重仍单列。缺少新版本/计数字段的旧报告为未知，不补零。**历史v1的17.5%、26.9%与v2整句率不可直接比较**，也不把数字计数当句子计数。
 
 普通标注可恢复、同轮最新本地RSI关系可核对；数字容差、严格只看范围、计划价位及跨股等底线保留。技术题库10题/14轮和调用上限不变。新脚本`scripts/replay_answer_validation.py`在固定旧版b5d77eb与工作区间比较同一历史草稿，不新增模型或行情调用；输入/逐字段/逐稿统计留在忽略目录，上下文不足列未知。回放不能替代合入后的真实重跑，也不证明完整评级形成。规则详见[边界设计](technical-numeric-grounding-design.md)。

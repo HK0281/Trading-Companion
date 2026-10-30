@@ -229,7 +229,7 @@ def public_product_turn(result):
             company['scope'] = plan.scope.to_dict()
             company['excluded_domains'] = [kind for kind in RESEARCH_KINDS
                 if kind in plan.scope.excluded or plan.scope.domains and kind not in plan.scope.domains]
-    return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
+    output = {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "conversation": None, "presentation": None,
         "report": report.to_dict() if report is not None else None,
         "parameters": {**request_arguments(request), "source": request.source} if request else None,
@@ -239,6 +239,10 @@ def public_product_turn(result):
         "model_calls_attempted": result.model_calls_attempted, "analyses_used": result.analyses_used,
         "runtime": deepcopy(result.runtime), "research_workflow": None,
         "validation_scope": "citation_membership_and_numeric_surface_checks_not_full_prose_semantics"}
+    if plan is not None and plan.context is not None and plan.context.stage == 'horizon':
+        output['clarification_options'] = plan.to_dict()['clarification_options']
+        output['clarification_expires_at'] = plan.context.expires_at.isoformat()
+    return output
 
 
 class ResearchApiService:

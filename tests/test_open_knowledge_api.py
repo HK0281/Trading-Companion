@@ -152,7 +152,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         from tests.test_product_agent import ProductModelFixture
         from tests.test_product_research import CompanyDataFixture, MemorySourceFactory, NOW as COMPANY_NOW, directory
 
-        for question in ("ROE如何判断平安银行估值", "PE低的平安银行值得买吗", "什么是PE，平安银行能买吗"):
+        for question in ("ROE如何判断平安银行估值", "PE低的平安银行值得买吗，中线", "什么是PE，平安银行能买吗，中线"):
             with self.subTest(question=question):
                 model, data = ProductModelFixture(), CompanyDataFixture()
                 loader = Mock(return_value=directory())
@@ -181,7 +181,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.install(model_factory=lambda: model, directory_loader=loader,
             development_source=None, data_mode="tencent", product_data_service=data,
             reference_date=COMPANY_NOW.date(), wall_clock=lambda: COMPANY_NOW)
-        turn = self.send("PE低的平安银行值得买吗")["result"]
+        turn = self.send("PE低的平安银行值得买吗，中线")["result"]
         self.assertEqual(turn["code"], "product_directory_unusable")
         self.assertEqual(model.calls, [])
         self.assertEqual(data.calls, [])

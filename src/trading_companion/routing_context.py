@@ -29,6 +29,9 @@ def independent_task(question, directory=None):
         return False
     if new_question(question):
         return True
+    from trading_companion.decision_horizon import is_horizon_reply
+    if is_horizon_reply(question, directory):
+        return False
     from trading_companion.indicator_knowledge import parse_knowledge_question
     from trading_companion.open_knowledge import is_general_knowledge_question
     from trading_companion.screening_intent import is_screening_request
@@ -137,6 +140,15 @@ def selection_reply(question, candidates, directory):
 
 def selection_conditions(conditions, suffix, *, reference_date, instrument_id):
     """Apply one supported whole condition update after selecting a candidate."""
+    from trading_companion.decision_horizon import is_horizon_reply, canonical
+    if is_horizon_reply(suffix):
+        from dataclasses import replace
+        from trading_companion.research_objective import extract_outlook, ResearchObjective
+        horizon = canonical(extract_outlook(suffix).horizon)
+        defaults = tuple(v for v in conditions.applied_defaults if not v.startswith('horizon_source:'))
+        return replace(conditions, objective=ResearchObjective(
+            'outlook' if conditions.objective.kind == 'analysis' else conditions.objective.kind, horizon),
+            applied_defaults=(*defaults, 'horizon_source:explicit'))
     from trading_companion.research_update import parse_condition_update, update_conditions
     from trading_companion.agent_input import InputIssue
     text = re.sub(r"^改看\s*((?:近|最近|过去).+)$", r"改成\1", suffix)

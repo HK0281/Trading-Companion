@@ -21,6 +21,18 @@ PRIVATE = 'private-evaluation-error-and-draft-never-export'
 
 
 class DecisionEvaluationTests(unittest.TestCase):
+    def test_horizon_supplements_keep_original_results_and_fixed_budget(self):
+        report = self.report
+        self.assertEqual(report['metrics']['supplemental_turns'], 10)
+        self.assertEqual(report['metrics']['original_turns'], 22)
+        self.assertEqual(report['metrics']['actual_turns'], 32)
+        self.assertEqual(report['plan']['model_call_limit'], 120)
+        row = next(c for c in report['cases'] if c['id'] == 'D01')
+        self.assertEqual(row['original_target']['code'], 'decision_horizon_required')
+        self.assertIsNone(row['original_target']['result']['company_research'])
+        self.assertEqual(row['clarification_turns'][0]['question'], '中线')
+        self.assertEqual(row['clarification_turns'][0]['code'], 'company_research_completed')
+
     @classmethod
     def setUpClass(cls):
         cls.report = evaluation.evaluate()
@@ -333,8 +345,9 @@ class DecisionEvaluationTests(unittest.TestCase):
             delegate=factory.return_value
             original=evaluation._send
             def send(service,credentials,question,directory,seen):
-                case=next(c for c in evaluation.load_corpus()[0] if question==c['question'] or question in c['setup_questions'])
-                delegate.start(case,seed=question in case['setup_questions'])
+                if question != '中线':
+                    case=next(c for c in evaluation.load_corpus()[0] if question==c['question'] or question in c['setup_questions'])
+                    delegate.start(case,seed=question in case['setup_questions'])
                 return original(service,credentials,question,directory,seen)
             with patch.object(evaluation,'_send',side_effect=send):
                 report=evaluation.evaluate(mode='live-model',provider='deepseek',model='deepseek-flash',

@@ -50,6 +50,13 @@ class ChartQuery(EmptyRequest):
     interval: Literal["1w", "60m", "120m"]
 
 
+class ClarificationOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: Literal['short', 'medium', 'long']
+    label: Literal['短线（1-2周）', '中线（1-3个月）', '长线（半年以上）']
+    reply: Literal['短线', '中线', '长线']
+
+
 class PublicTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str
@@ -69,11 +76,22 @@ class PublicTurn(BaseModel):
     chart_capabilities: dict | None = None
     market_context: dict | None
     candidates: list[dict]
+    clarification_options: list[ClarificationOption] | None = None
+    clarification_expires_at: str | None = None
     applied_defaults: list[str]
     model_calls_attempted: int
     analyses_used: int
     runtime: dict | None
     validation_scope: str
+
+    @field_validator('clarification_options')
+    @classmethod
+    def checked_horizon_options(cls, value):
+        if value is not None:
+            from trading_companion.decision_horizon import OPTIONS
+            if [(v.value, v.label, v.reply) for v in value] != list(OPTIONS):
+                raise ValueError('Invalid holding horizon choices')
+        return value
 
 
 class MessageResponse(BaseModel):

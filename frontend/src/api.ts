@@ -60,6 +60,8 @@ export interface PublicTurn {
   chart_capabilities?: unknown;
   market_context?: unknown;
   candidates: { name: string; instrument_id: string }[];
+  clarification_options?: { value: "short" | "medium" | "long"; label: string; reply: string }[] | null;
+  clarification_expires_at?: string | null;
   applied_defaults: string[];
   model_calls_attempted: number;
   analyses_used: number;
@@ -133,6 +135,14 @@ const message = (value: unknown): value is MessageResponse => {
   return [result.status, result.code, result.message, result.stage].every(text)
     && (result.answer === null || text(result.answer)) && count(result.model_calls_attempted) && count(result.analyses_used)
     && strings(result.applied_defaults)
+    && (result.clarification_options == null || result.status === "needs_clarification"
+      && Array.isArray(result.clarification_options) && result.clarification_options.length === 3
+      && result.clarification_options.every((option, index) => record(option)
+        && Object.keys(option).sort().join() === "label,reply,value"
+        && option.value === ["short", "medium", "long"][index]
+        && option.label === ["短线（1-2周）", "中线（1-3个月）", "长线（半年以上）"][index]
+        && option.reply === ["短线", "中线", "长线"][index])
+      && typeof result.clarification_expires_at === "string" && Number.isFinite(Date.parse(result.clarification_expires_at)))
     && Array.isArray(result.candidates) && result.candidates.length <= 5
     && result.candidates.every((item) => record(item) && text(item.name) && text(item.instrument_id))
     && (result.parameters === null || record(result.parameters)

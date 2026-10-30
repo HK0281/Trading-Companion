@@ -50,7 +50,7 @@ def check_output_root(path):
 def make_plan(*, mode="offline", selected_cases=None, repeat=1, collection_workers=3, model_call_limit=None,
               provider=None, model=None, prices=None, directory=None, data_source="tencent",
               assumed_input_tokens=None, assumed_output_tokens=None, trace_dir=None):
-    from trading_companion.workflow_evaluation import load_corpus, b_delta_descriptor, technical_delta_descriptor
+    from trading_companion.workflow_evaluation import load_corpus, b_delta_descriptor, technical_delta_descriptor, horizon_delta_descriptor
     require(type(mode) is str and mode in MODES, code="evaluation_mode_invalid",
             detail="mode 必须是 offline、live-model 或 live。")
     require(type(repeat) is int and 1 <= repeat <= 3, code="evaluation_repeat_out_of_range",
@@ -106,8 +106,8 @@ def make_plan(*, mode="offline", selected_cases=None, repeat=1, collection_worke
                         "prices 文件无法读取或价格配置无效；请检查 evaluation-prices-v1 结构、单价及核对元数据。") from None
     plan = {"version": "workflow-evaluation-plan-v1", "status": "planned", "mode": mode,
             "corpus": {"version": corpus["version"], "sha256": digest, **b_delta_descriptor(),
-                       'rule_baseline_version': technical_delta_descriptor()['rule_baseline_version'],
-                       'technical_delta': technical_delta_descriptor()},
+                       'rule_baseline_version': horizon_delta_descriptor()['rule_baseline_version'],
+                       'technical_delta': technical_delta_descriptor(), 'horizon_delta': horizon_delta_descriptor()},
             "selected_cases": [case["id"] for case in selected], "selected_scenarios": len(selected),
             "planned_steps": total, "repeat": repeat, "collection_workers": collection_workers,
             "excluded_cases": excluded, "not_applicable_to_mode": len(excluded),

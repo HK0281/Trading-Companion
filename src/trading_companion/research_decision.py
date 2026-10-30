@@ -9,7 +9,8 @@ _DECISION = re.compile(
     r"(?:后面|后续|接下来|未来|后市).*(?:怎么走|走势|方向|涨|跌)|"
     r"预测.*(?:走势|股价|方向)|还会[涨跌]|会不会[涨跌]|(?:(?<!止盈)止损|止盈(?!止损)|目标价).*(?:怎么|多少|如何)|"
     r"(?:(?<!止盈)止损|止盈(?!止损)|目标价)(?:呢|是多少)|后面怎么走")
-_NO_PLAN = re.compile(r"(?:不要|不用|无需|不需要)(?:再)?(?:交易计划|参考计划|止盈止损|风险计划)")
+_NO_PLAN = re.compile(r"(?:不要|不用|无需|不需要|排除|禁用)(?:再|给|提供|计算)?(?:交易计划|参考计划|止盈止损|风险计划|计划|价位|价格计划|目标价)")
+_PRICE_INTENT = re.compile(r"买|卖|上车|追(?:吗|么)|交易计划|参考计划|止盈|止损|目标价|入场价|退出价|价位")
 
 
 def wants_decision(question):
@@ -21,6 +22,11 @@ def wants_decision(question):
 
 def excludes_plan(question):
     return bool(_NO_PLAN.search(question))
+
+
+def wants_prices(question):
+    """A directional opinion alone does not authorize application price plans."""
+    return type(question) is str and bool(_PRICE_INTENT.search(_NO_PLAN.sub('', question)))
 
 
 RATINGS = {

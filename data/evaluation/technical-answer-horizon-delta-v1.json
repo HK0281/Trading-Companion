@@ -1,0 +1,12 @@
+{
+  "version": "technical-answer-horizon-delta-v1",
+  "rule_baseline_version": "decision-horizon-v1",
+  "parent_sha256_lf": "793f2c20bdcb7d4c740c9b8d6304bc64378d3ecf6078085458c09af46a87eee2",
+  "reply": "中线",
+  "clarification_cases": [
+    "T06",
+    "T07"
+  ],
+  "expectation_changes": [],
+  "policy": "one_reply_only_on_decision_horizon_required; preserve_original_questions_denominators_limits_and_all_actual_turns"
+}

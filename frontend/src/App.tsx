@@ -29,9 +29,17 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.chart} /></svg>;
 }
 
-function Answer({ entry, choose, canChoose, elementRef, loadChart }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement>;
+function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart }: { entry: Entry; choose: (text: string) => void;
+  chooseHorizon: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement>;
   loadChart: ResearchController["loadChart"] }) {
   const response = entry.response, turn = response?.result;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!turn?.clarification_options || entry.history) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [turn, entry.history]);
+  const horizonExpired = !!turn?.clarification_expires_at && Date.parse(turn.clarification_expires_at) <= now;
   const structured = turn && parsePresentation(turn);
   return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
@@ -52,6 +60,11 @@ function Answer({ entry, choose, canChoose, elementRef, loadChart }: { entry: En
           {turn.candidates.map((candidate) => <button className="candidate" type="button" disabled={!canChoose}
             key={candidate.instrument_id} onClick={() => choose(candidate.instrument_id)}>
             {candidate.name} <span>{candidate.instrument_id}</span></button>)}
+        </div>}
+        {turn.status === "needs_clarification" && !entry.history && turn.clarification_options && <div className="candidates" aria-label="持有期限">
+          <p>{horizonExpired ? "原期限选择已过期，请重新提出完整问题。" : "选择持有期限后自动继续研究。"}</p>
+          {turn.clarification_options.map(option => <button className="candidate" type="button" disabled={!canChoose || horizonExpired}
+            key={option.value} onClick={() => chooseHorizon(option.reply)}>{option.label}</button>)}
         </div>}
         {turn.chart != null && <div className="answer-attachments">
           <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history}
@@ -119,6 +132,14 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     }
   };
   const choose = (value: string) => { editQuestion(value); setNavigationOpen(false); textarea.current?.focus(); };
+  const chooseHorizon = (value: string) => {
+    if (!canSend || !session) return;
+    const revision = ++draftRevision.current;
+    setQuestion(""); setNavigationOpen(false); followBottom.current = true;
+    void controller.send(value).then(accepted => {
+      if (!accepted && draftRevision.current === revision) setQuestion(value);
+    });
+  };
   const sendQuestion = () => {
     const original = question;
     const revision = ++draftRevision.current;
@@ -221,8 +242,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             {health?.provider === "fake" && <details className="demo-guide" aria-label="演示说明"><summary>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"} · 查看使用方式</summary>
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
-          </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} loadChart={controller.loadChart}
-            elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && index === state.entries.length - 1} />)}
+          </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} chooseHorizon={chooseHorizon} loadChart={controller.loadChart}
+            elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && index === state.entries.length - 1} />)}
         </section>
       </div>
 

@@ -13,7 +13,7 @@ from trading_companion.research_report import build_research_report, FIELD_LABEL
 from trading_companion.research_synthesis import build_research_synthesis
 from trading_companion.research_tool import _build_source
 from trading_companion.risk_research import build_risk_scenario
-from trading_companion.trade_plan import build_trade_plans, plan_display
+from trading_companion.trade_plan import build_trade_plans, plan_display, method_for_plan, HORIZON_METHOD, unavailable_code_for_plan
 from trading_companion.research_decision import excludes_plan
 from trading_companion.technical_insights import TechnicalInsights, build_technical_insights
 from trading_companion.turn_control import checkpoint, reserve_analysis
@@ -152,6 +152,10 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     if plan.status != "ready" or not plan.securities or len(plan.securities) > 3:
         raise ValueError("A checked company research plan is required")
     plan.scope.validate(plan.kinds, plan.indicators)
+    from trading_companion.decision_horizon import requires_prices, permits_prices
+    if (method_for_plan(plan) == HORIZON_METHOD and requires_prices(plan) and permits_prices(plan)
+            and plan.objective.horizon is None):
+        raise ValueError('A confirmed price horizon is required before collection')
     companies = []
     factory = source_factory or _build_source
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
@@ -276,7 +280,11 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                             temporal_scope="daily_date_filtered_not_versioned_pit", dependencies=item.dependencies,
                             retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
             if plan.wants_risk:
-                risk = build_risk_scenario(result, expected_request=request)
+                if method_for_plan(plan) == HORIZON_METHOD:
+                    from trading_companion.horizon_trade_plan import build_horizon_risk_scenario
+                    risk = build_horizon_risk_scenario(result, expected_request=request, horizon=plan.objective.horizon)
+                else:
+                    risk = build_risk_scenario(result, expected_request=request)
                 coverage.append({"kind": "risk", "status": risk.status, "code": risk.code,
                                  "message": "以历史收盘价为起点的ATR做多观察情景", "source": request.source,
                                  "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None})
@@ -286,7 +294,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                             f"波幅倍数{values.atr_multiple}倍；参考止损{values.reference_stop}元；"
                             f"参考目标{values.reference_target}元；每股风险{values.risk_per_share}元；"
                             f"舍入后收益风险比{_number(float(values.effective_reward_risk))}。"
-                            "假设以最新历史收盘价做多、默认目标距离为风险距离两倍；未计费用、滑点或跳空。")
+                            "假设以最新历史收盘价做多，目标使用本轮已选参数；未计费用、滑点或跳空。")
                     evidence.append(ProductEvidence(f"risk:{request.request_id}", security.instrument_id,
                         "risk", "ATR风险情景", text, request.source, risk.source_date, content_kind="scenario",
                         publication_precision="date", data_authenticity=result.data_authenticity,
@@ -294,10 +302,10 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
         plans = ()
         if plan.objective.kind == "decision":
-            blocked = excludes_plan(plan.user_question) or "technical" not in plan.kinds
             plans = build_trade_plans(result if result is not None else security.instrument_id,
                 expected_request=result.request if result is not None else None,
-                unavailable_code="plan_excluded" if blocked else None)
+                unavailable_code=unavailable_code_for_plan(plan),
+                horizon=plan.objective.horizon, method=method_for_plan(plan))
             for candidate in plans:
                 if candidate.status == "available":
                     evidence.append(ProductEvidence(candidate.plan_id, security.instrument_id, "risk", "ATR参考计划",
@@ -305,6 +313,13 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=candidate.data_authenticity,
                         temporal_scope="conditional_atr_reference_plan", dependencies=candidate.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
+        if (result is not None and method_for_plan(plan) == HORIZON_METHOD
+                and (any(p.status == 'available' and p.atr_timeframe == 'weekly' for p in plans)
+                     or risk is not None and risk.status == 'available' and risk.atr_timeframe == 'weekly')):
+            from trading_companion.horizon_trade_plan import weekly_atr_evidence
+            weekly, _ = weekly_atr_evidence(result, expected_request=result.request)
+            if weekly is not None:
+                evidence.append(weekly)
         from trading_companion.financial_periods import quarterly_evidence
         evidence.extend(quarterly_evidence(evidence))
         if result is not None:
@@ -476,7 +491,8 @@ def model_research_context(bundle, *, limit=14500):
              "purpose": p.purpose, "status": p.status, "code": p.code}
             for c in bundle.companies for p in c.trade_plans]
         pinned = [r for r in records if r["content_kind"] == "trade_plan"
-                  or r["label"] in ("营收同比", "归母净利润同比")]
+                  or r["label"] in ("营收同比", "归母净利润同比")
+                  or r.get('temporal_scope') == 'completed_week_atr_derived']
         if len(json.dumps({**payload, "evidence": pinned}, ensure_ascii=False)) > limit:
             raise ValueError("decision_context_too_large")
     # Reserve opportunities across both companies and domains; scenario data must survive later trimming.

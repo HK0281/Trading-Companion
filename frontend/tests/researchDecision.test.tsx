@@ -7,6 +7,36 @@ import { parseCompanyAnswer, CompanyParagraphs } from "../src/ProductResearch";
 const fresh = () => structuredClone(fixture);
 
 describe("reference decisions", () => {
+  it.each(["profile", "multiple", "timeframe", "horizon"])("rejects inconsistent horizon %s", kind => {
+    const payload = fresh();
+    const plan = payload.trade_plans[0];
+    if (kind === "profile") plan.horizon_profile = "short";
+    if (kind === "multiple") plan.values!.atr_multiple = "9";
+    if (kind === "timeframe") plan.atr_timeframe = "weekly";
+    if (kind === "horizon") plan.horizon = "未来120个交易日";
+    expect(parseCompanyAnswer(payload)).toBeNull();
+  });
+  it("retains an explicit four-month horizon while showing medium parameters", () => {
+    const payload = fresh();
+    payload.decisions[0].horizon = "未来4个月";
+    for (const p of payload.trade_plans) p.horizon = "未来4个月";
+    render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
+    expect(screen.getAllByText(/未来4个月/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/使用中线（1-3个月）参数/)).toBeVisible();
+  });
+  it("shows the weekly volatility date separately from the daily entry date", () => {
+    const payload = fresh();
+    payload.decisions[0].horizon = "未来120个交易日";
+    for (const p of payload.trade_plans) {
+      Object.assign(p, { horizon: "未来120个交易日", horizon_profile: "long", atr_timeframe: "weekly",
+        atr_source_date: "2026-09-20", atr_multiple: "2", target_multiples: ["2", "3.5"] });
+    }
+    payload.trade_plans[0].values!.atr_multiple = "2";
+    render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
+    expect(screen.getByText(/完整周线 ATR14.*波动日期 2026-09-20/)).toBeVisible();
+    expect(screen.getByRole("table", { name: /ATR 参考计划.*行情 2026-09-25/ })).toBeVisible();
+    expect(screen.getByText(/止盈 2（3.5R）/)).toBeVisible();
+  });
   it.each(["answer_binding_invalid", "answer_binding_value_mismatch"])("keeps a surviving verdict after %s", code => {
     const payload = fresh();
     payload.decisions[0].reasons = payload.decisions[0].reasons.slice(0, 1);
@@ -20,7 +50,7 @@ describe("reference decisions", () => {
     expect(data).not.toBeNull();
     render(<CompanyParagraphs data={data} />);
     expect(screen.getByText("买入")).toBeVisible();
-    expect(screen.getByText("未来20个交易日")).toBeVisible();
+    expect(screen.getAllByText(/未来40个交易日/)[0]).toBeVisible();
     expect(screen.getByText(/模型自评，未经历史校准/)).toBeVisible();
     expect(screen.getByRole("table", { name: /ATR 参考计划 · 仅供参考.*2026-09-25/ })).toBeVisible();
     expect(screen.getByRole("table", { name: /关键价位区间/ })).toBeVisible();

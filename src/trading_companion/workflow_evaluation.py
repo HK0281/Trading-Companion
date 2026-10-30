@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "data/evaluation/research-api-v1.json"
 B_DELTA = ROOT / "data/evaluation/research-api-b-delta-v1.json"
 TECHNICAL_DELTA = ROOT / "data/evaluation/research-api-technical-delta-v1.json"
+HORIZON_DELTA = ROOT / "data/evaluation/research-api-horizon-delta-v1.json"
 VERSION = "research-workflow-evaluation-v2"
 OUTCOME_KEYS = frozenset(("route", "intent", "status", "category", "code"))
 REQUIRED_KEYS = frozenset(("forbid_codes", "require_codes", "securities_if_answered", "no_collection", "no_model",
@@ -69,6 +70,7 @@ def load_corpus(path=CORPUS):
     if path.resolve() == CORPUS.resolve():
         data = _apply_b_delta(data, raw)
         data = _apply_technical_delta(data)
+        data = _apply_horizon_delta(data)
     _require(type(data) is dict and data.keys() == {"schema_version", "version", "annotation_policy", "data_authenticity", "cases"}
              and data["schema_version"] == "research-api-corpus-v2" and data["version"] == "research-api-v1"
              and data["data_authenticity"] == "fixed_synthetic" and type(data["annotation_policy"]) is str
@@ -211,6 +213,30 @@ def _apply_technical_delta(data):
                  and old['expectation']['required'] == new['expectation']['required']
                  and old['expectation']['quality'] == new['expectation']['quality'])
         case['steps'][change['step'] - 1] = deepcopy(new)
+    return data
+
+
+def horizon_delta_descriptor():
+    raw = HORIZON_DELTA.read_bytes().replace(b'\r\n', b'\n')
+    delta = json.loads(raw)
+    return {'delta_version': delta['version'], 'delta_sha256': sha256(raw).hexdigest(),
+            'rule_baseline_version': delta['rule_baseline_version'], 'parents_sha256_lf': delta['parents_sha256_lf']}
+
+
+def _apply_horizon_delta(data):
+    delta = json.loads(HORIZON_DELTA.read_text(encoding='utf-8'))
+    _require(delta.keys() == {'version', 'rule_baseline_version', 'parents_sha256_lf', 'changes'}
+             and delta['version'] == 'research-api-horizon-delta-v1'
+             and delta['rule_baseline_version'] == 'decision-horizon-v1'
+             and delta['parents_sha256_lf'] == {path.name: sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+                                              for path in (CORPUS, B_DELTA, TECHNICAL_DELTA)})
+    _require([(c['case_id'], c['step']) for c in delta['changes']] == [('S05', 1)])
+    change = delta['changes'][0]
+    case = next(case for case in data['cases'] if case['id'] == 'S05')
+    old, new = case['steps'][0], change['new']
+    _require(old == change['old'] and old['question'] == new['question'] and old['history'] == new['history']
+             and old['expectation']['quality'] == new['expectation']['quality'])
+    case['steps'][0] = deepcopy(new)
     return data
 
 

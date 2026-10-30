@@ -129,15 +129,30 @@ def _public_data(bundle):
                     or build_research_report(technical, expected_request=technical.request).status == "blocked"):
                 raise SnapshotStoreError("invalid_snapshot_bundle")
         payload = company.to_dict()
+        if company.risk is not None and company.risk.method == 'atr_multiple_horizon_long_v2':
+            from trading_companion.horizon_trade_plan import build_horizon_risk_scenario, weekly_atr_evidence
+            if (technical is None or company.risk.horizon != bundle.plan.objective.horizon
+                    or company.risk != build_horizon_risk_scenario(technical, expected_request=technical.request,
+                        horizon=bundle.plan.objective.horizon)):
+                raise SnapshotStoreError('invalid_snapshot_bundle')
+            if company.risk.status == 'available' and company.risk.atr_timeframe == 'weekly':
+                weekly, _ = weekly_atr_evidence(technical, expected_request=technical.request)
+                if weekly is None or [e for e in company.evidence if e.id == weekly.id] != [weekly]:
+                    raise SnapshotStoreError('invalid_snapshot_bundle')
         if company.trade_plans:
-            from trading_companion.trade_plan import build_trade_plans
+            from trading_companion.trade_plan import build_trade_plans, method_for_plan, unavailable_code_for_plan
             from trading_companion.research_decision import excludes_plan
-            blocked = excludes_plan(bundle.plan.user_question) or "technical" not in bundle.plan.kinds
             expected = build_trade_plans(technical if technical is not None else company.instrument_id,
                 expected_request=technical.request if technical is not None else None,
-                unavailable_code="plan_excluded" if blocked else None)
+                unavailable_code=unavailable_code_for_plan(bundle.plan),
+                horizon=bundle.plan.objective.horizon, method=method_for_plan(bundle.plan))
             if company.trade_plans != expected:
                 raise SnapshotStoreError("invalid_snapshot_bundle")
+            if any(p.status == 'available' and p.atr_timeframe == 'weekly' for p in expected):
+                from trading_companion.horizon_trade_plan import weekly_atr_evidence
+                weekly, _ = weekly_atr_evidence(technical, expected_request=technical.request)
+                if weekly is None or [e for e in company.evidence if e.id == weekly.id] != [weekly]:
+                    raise SnapshotStoreError('invalid_snapshot_bundle')
         payload["technical"] = technical.to_dict() if technical is not None else None
         if company.technical_insights is not None:
             from trading_companion.technical_insights import TechnicalInsights, build_technical_insights

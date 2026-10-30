@@ -47,10 +47,13 @@ class RiskScenario:
     evidence_ids: tuple[str, ...] = ()
     assumptions: tuple[str, ...] = ()
     method: str = METHOD
+    horizon: str | None = None
+    atr_source_date: str | None = None
+    atr_timeframe: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "version": "risk-scenario-v1", "origin": "application",
+        result = {
+            "version": "risk-scenario-v1" if self.method == METHOD else "risk-scenario-v2", "origin": "application",
             "validation_scope": "historical_long_scenario_not_execution_or_forecast",
             "execution_allowed": False,
             "status": self.status, "code": self.code, "method": self.method,
@@ -62,6 +65,9 @@ class RiskScenario:
             "values": asdict(self.values) if self.values is not None else None,
             "evidence_ids": list(self.evidence_ids), "assumptions": list(self.assumptions),
         }
+        if self.method != METHOD:
+            result.update(horizon=self.horizon, atr_source_date=self.atr_source_date, atr_timeframe=self.atr_timeframe)
+        return result
 
 
 def _parameter(value: object, maximum: Decimal) -> Decimal:

@@ -32,7 +32,7 @@ One group per stock, never use another stock's data. Be concise: at most 4 drive
 Every text block may have sibling numbers:[{text,ref,field?}]. text is readable Chinese, no IDs or JSON. Copy ONE exact supplied evidence or price_levels ID per ref, no added prefixes or combined IDs. Bind plan prices to their exact fields. Other numbers must match same-stock evidence. Write negative percentages with a minus sign (e.g. -3.84%), also in bold. Dates and periods need no binding.
 Only derived type: {"text":"约2.9%","derive":"distance","refs":["E8","L2"]}. refs[0] is base/denominator, refs[1] comparison: abs(second-first)/abs(first)*100%. Each ref must identify one price (use L for multi-price plans). Example IDs must be replaced with actual supplied IDs. Never swap stop and target fields.
 Do not confuse cumulative and quarterly financials, or infer missing cashflow, valuation, causality or complete article contents. Attribute title figures to the title, and describe contrary evidence and missing information.
-For objective.kind=decision, decisions has one item per stock: instrument_id,status,rating,direction,horizon,conviction,reasons,invalidation,plan_id. status=formed: rating=买入/增持/持有/减持/卖出, direction=偏多/震荡/偏空, conviction=高/中/低. horizon must mean objective.horizon. reasons is preferably 2-4 {text} blocks, at least 1; invalidation is {text}.
+For objective.kind=decision, decisions has one item per stock: instrument_id,status,rating,direction,horizon,conviction,reasons,invalidation,plan_id. status=formed: rating=买入/增持/持有/减持/卖出, direction=偏多/震荡/偏空, conviction=高/中/低. horizon must mean objective.horizon; when it is null, return null without inventing a period. Plan atr_timeframe and atr_source_date distinguish daily and complete-week volatility. reasons is preferably 2-4 {text} blocks, at least 1; invalidation is {text}.
 买入/增持: direction 偏多, plan purpose conditional_entry. 持有: 偏多/震荡, wait. 减持/卖出: 偏空/震荡, holding_exit. plan_id selects an available same-stock same-purpose trade_plans item, otherwise null. Plan prices are application calculations, not forecasts.
 Valid same-stock price REQUIRES a formed rating even for SMA3-only research. Limited evidence: conviction=低, reasons state limits; never demand excluded fundamentals or ATR. No ATR: null plan_id, no invented prices. insufficient_evidence only if no valid price, never default hold. Ratings/plans are references, not advice or guarantees. Nondecision: decisions=[]. Respect permitted scope and cutoff.
 """
@@ -64,6 +64,10 @@ def _context(bundle):
             if plan:
                 r['plan_id'] = plan.plan_id
                 r['values'] = dict(plan.values)
+                if plan.method == 'atr_reference_plan_v2':
+                    r.update(horizon=plan.horizon, atr_timeframe=plan.atr_timeframe,
+                        atr_source_date=plan.atr_source_date, atr_multiple=plan.atr_multiple,
+                        target_multiples=list(plan.target_multiples))
                 # Structured values replace a repeated, ambiguous display string
                 # and keep three-company requests inside both protocol budgets.
                 r['display'] = plan.purpose + '; prices=CNY/share; atr_multiple,reward_risk_1,reward_risk_2=ratio'
@@ -243,7 +247,10 @@ class _Checker:
         if type(raw) is not dict:
             self.issues.append(Issue(STRUCTURE, "decision", 0, "缺少本股评级"))
             return unavailable
-        if normalize_horizon(raw.get("horizon")) != normalize_horizon(horizon):
+        raw_horizon = raw.get('horizon')
+        if ('horizon' not in raw or horizon is None and raw_horizon is not None
+                or horizon is not None and type(raw_horizon) is not str
+                or normalize_horizon(raw_horizon) != normalize_horizon(horizon)):
             self.issues.append(Issue(HORIZON, "decision", 0, str(raw.get("horizon", "")),path=f'{self.prefix}.horizon'))
             return unavailable
         reasons = raw.get("reasons", [])

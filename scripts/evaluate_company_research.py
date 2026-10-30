@@ -44,7 +44,7 @@ CASES = (
     EvaluationCase("two_stock_comparison", "比较平安银行与浦发银行的基本面和技术面", 2, 2,
                    ("平安银行", "浦发银行"), ("profile", "financial", "technical")),
     EvaluationCase("announcements_news", "分析平安银行最近的公告和新闻", 2, 0, ("平安银行",), ("news", "announcements")),
-    EvaluationCase("risk_scenario", "分析平安银行的止盈止损风险情景", 2, 1, ("平安银行",), ("technical",)),
+    EvaluationCase("risk_scenario", "分析平安银行的止盈止损风险情景，中线", 2, 1, ("平安银行",), ("technical",)),
 )
 
 

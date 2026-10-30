@@ -254,7 +254,7 @@ def _allowed_numbers(records, names, horizon):
             for value in (record.get("label"), display):
                 if type(value) is str:
                     for window in re.finditer(r"(?:SMA|EMA|RSI|ATR|ADX|VWMA|BOLL|VOLUME|量能)\(([1-9][0-9]{0,3})(?:,|\))", value):
-                        allowed.update((window[1] + "周",) if record.get("temporal_scope") == "completed_week_derived"
+                        allowed.update((window[1] + "周",) if record.get("temporal_scope") in ("completed_week_derived", "completed_week_atr_derived")
                                        else (window[1] + "日", window[1] + "个交易日"))
         # A typed listing-date display can be written naturally as 年/月/日 as well.
         if type(display) is str and _DATE.fullmatch(display):
@@ -293,8 +293,12 @@ def _risk_fallback(company):
     if type(scenario) is not RiskScenario or scenario.status != "available" or scenario.values is None or company.technical is None:
         return None
     try:
-        checked = build_risk_scenario(company.technical, expected_request=company.technical.request,
-            atr_multiple=Decimal(scenario.values.atr_multiple), reward_risk=Decimal(scenario.values.reward_risk))
+        if scenario.method == 'atr_multiple_horizon_long_v2':
+            from trading_companion.horizon_trade_plan import build_horizon_risk_scenario
+            checked = build_horizon_risk_scenario(company.technical, expected_request=company.technical.request, horizon=scenario.horizon)
+        else:
+            checked = build_risk_scenario(company.technical, expected_request=company.technical.request,
+                atr_multiple=Decimal(scenario.values.atr_multiple), reward_risk=Decimal(scenario.values.reward_risk))
         if checked != scenario or checked.instrument_id != company.instrument_id:
             return None
         record = next((item for item in company.evidence if item.kind == "risk" and item.content_kind == "scenario"

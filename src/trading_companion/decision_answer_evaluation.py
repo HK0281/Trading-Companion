@@ -55,7 +55,8 @@ def _implementation_fingerprint():
              'model_registry.py', 'tool_model.py', 'product_narrative_answer.py', 'narrative_answer_parser.py',
              'answer_validation.py', 'answer_numeric_bindings.py', 'answer_claim_recovery.py',
              'answer_technical_validation.py', 'answer_clauses.py', 'answer_validation_metrics.py',
-             'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
+             'research_workflow.py', 'workflow_tools.py', 'turn_trace.py', 'decision_horizon.py',
+             'horizon_trade_plan.py', 'trade_plan.py', 'evaluation_horizon.py', 'product_plan.py', 'product_agent.py')
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii')+b'\0')
@@ -92,7 +93,8 @@ def load_corpus(path=CORPUS, manifest_path=MANIFEST):
     require(dict(Counter(c['group'] for c in cases)) == manifest.get('groups') == dict.fromkeys(GROUPS, 5)
             and [c['id'] for c in cases if c['requires_batch_b']] == manifest.get('requires_batch_b'),
             code='decision_corpus_invalid', detail='分组或B批依赖标记与冻结题库不符。')
-    return cases, manifest
+    from trading_companion.evaluation_horizon import project_cases
+    return project_cases(cases, 'decision'), manifest
 
 
 def _decision_fixture_manifest(cases):
@@ -159,6 +161,9 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
                 code='decision_directory_missing_security', detail='真实目录必须将20题的名称或已知别名唯一解析到预设证券代码。')
         plan.update(directory=str(path.absolute()), directory_sha256=sha256(path.read_bytes()).hexdigest(),
                     directory_metadata=snapshot.metadata())
+    from trading_companion.evaluation_horizon import descriptor
+    plan.update(horizon_delta=descriptor('decision'), planned_original_turns=sum(1+len(c['setup_questions']) for c in cases),
+                maximum_supplemental_turns=len(descriptor('decision')['clarification_cases']), fixed_horizon_reply='中线')
     return plan, cases, price_data
 
 
@@ -349,6 +354,11 @@ def summarize(cases):
     setup_quality = [s.get('quality') or {} for c in cases for s in c.get('setup', [])]
     result['sentence_counts'] = {key:deletion_metrics(values) for key, values in (
         ('target', target_quality), ('setup', setup_quality), ('all_turns', setup_quality+target_quality))}
+    result['planned_original_turns'] = 20 + sum(len(c.get('setup_questions', [])) for c in cases)
+    result['original_turns'] = sum('original_target' in c for c in cases) + sum(len(c.get('setup', [])) for c in cases)
+    result['supplemental_turns'] = sum(len(c.get('clarification_turns', [])) for c in cases)
+    result['actual_turns'] = result['original_turns'] + result['supplemental_turns']
+    result['horizon_clarifications'] = sum((c.get('original_target') or {}).get('code') == 'decision_horizon_required' for c in cases)
     return result
 
 
@@ -371,7 +381,7 @@ def _send(service, credentials, question, directory, seen):
 
 def _empty(case, code):
     return dict(**deepcopy(case), status='not_run', code=code, formed=False, formed_two_reasons=False, quality=None, answer_attempts=0,
-                generated_paragraphs=0, setup=[], calls=[], elapsed_ms=None)
+                generated_paragraphs=0, setup=[], calls=[], elapsed_ms=None, clarification_turns=[])
 
 
 def _run(cases, plan, meter, delegate, trace_root):
@@ -414,6 +424,12 @@ def _run(cases, plan, meter, delegate, trace_root):
                         target_before = meter.forwarded
                         with diagnostic_location(case_id=case['id'],phase='target'):
                             result, elapsed, trace = _send(service,credentials,case['question'],path,seen)
+                            from trading_companion.evaluation_horizon import turn_record, complete_horizon
+                            row['original_target'] = turn_record(result, case['question'], elapsed, trace)
+                            result, elapsed, trace, row['clarification_turns'] = complete_horizon(
+                                lambda question: _send(service, credentials, question, path, seen), result, elapsed, trace,
+                                case_id=case['id'], kind='decision',
+                                can_send=lambda: meter.forwarded < meter.limit and per_case.forwarded < per_case.limit)
                         company = result.get('company_research') or {}
                         calls = meter.calls[target_before:]
                         quality = deepcopy(company.get('quality'))
@@ -540,6 +556,9 @@ def write_report(report,root):
         lines += [f"{scope}：整句删除率 {shown('sentence_deletion_rate')}；分句删除率 {shown('clause_deletion_rate')}；部分保留句 {shown('partially_retained_sentences')}。", '']
     for c in report['cases']:
         lines.append('| '+' | '.join(cell(v) for v in (c['id'],c['group'],c['requires_batch_b'],c['status']+'/'+c['code'],c['formed'],c['question']))+' |')
+        if (c.get('original_target') or {}).get('code') == 'decision_horizon_required':
+            lines.append('| '+' | '.join(cell(v) for v in (c['id']+' 澄清轮', c['group'], c['requires_batch_b'],
+                'needs_clarification/decision_horizon_required', '不计形成率', c['question']))+' |')
     lines += ['', '## 指标', '', '```json',json.dumps(report['metrics'],ensure_ascii=False,indent=2),'```','',
               '## 人工复核','', '每题检查结论是否回应问题、证据是否相关、是否过度断言、条件能否理解。未运行和失败题保留。','']
     review = []

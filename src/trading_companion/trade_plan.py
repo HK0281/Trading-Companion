@@ -6,8 +6,27 @@ from decimal import Decimal, DecimalException, ROUND_FLOOR, ROUND_HALF_UP, local
 from trading_companion.risk_research import build_risk_scenario, PRICE_GRID
 
 METHOD = "atr_reference_plan_v1"
+HORIZON_METHOD = "atr_reference_plan_v2"
 PURPOSES = ("conditional_entry", "holding_exit", "wait")
 ATR_DISPLAY_GRID = Decimal("0.0001")
+
+
+def method_for_plan(plan):
+    """Old trusted snapshots retain v1; newly interpreted plans explicitly declare v2."""
+    return HORIZON_METHOD if 'plan_method:' + HORIZON_METHOD in plan.applied_defaults else METHOD
+
+
+def unavailable_code_for_plan(plan):
+    from trading_companion.decision_horizon import requires_prices
+    from trading_companion.research_decision import excludes_plan
+    if excludes_plan(plan.user_question) or 'technical' not in plan.kinds or 'risk' in plan.scope.excluded:
+        return 'plan_excluded'
+    if method_for_plan(plan) == HORIZON_METHOD:
+        if not requires_prices(plan):
+            return 'plan_not_requested'
+        if not any(s.kind == 'atr' and s.parameters['window'] == 14 for s in plan.indicators):
+            return 'risk_atr_not_requested'
+    return None
 
 
 @dataclass(frozen=True)
@@ -25,10 +44,22 @@ class TradePlan:
     atr_indicator_id: str | None = None
     values: tuple[tuple[str, str], ...] = ()
     evidence_ids: tuple[str, ...] = ()
+    method: str = METHOD
+    horizon: str | None = None
+    horizon_profile: str | None = None
+    atr_timeframe: str | None = None
+    atr_source_date: str | None = None
+    atr_multiple: str | None = None
+    target_multiples: tuple[str, ...] = ()
 
     def to_dict(self):
         result = asdict(self)
-        result.update(version="trade-plan-v1", method=METHOD, origin="application",
+        if self.method == METHOD:
+            for key in ('horizon', 'horizon_profile', 'atr_timeframe', 'atr_source_date', 'atr_multiple', 'target_multiples'):
+                result.pop(key)
+        else:
+            result['target_multiples'] = list(self.target_multiples)
+        result.update(version="trade-plan-v1" if self.method == METHOD else "trade-plan-v2", method=self.method, origin="application",
                       execution_allowed=False, values=dict(self.values) if self.values else None,
                       evidence_ids=list(self.evidence_ids), condition=self.condition,
                       assumptions=["历史收盘参考；条件价位由规则计算，不是预测目标。",
@@ -49,7 +80,12 @@ class TradePlan:
                         {"field": "daily_close", "operator": ">=", "price": value["observe_above"]}], "effect": "review"}
 
 
-def build_trade_plans(result, *, expected_request, unavailable_code=None):
+def build_trade_plans(result, *, expected_request, unavailable_code=None, horizon=None, method=METHOD):
+    if method == HORIZON_METHOD:
+        from trading_companion.horizon_trade_plan import build_horizon_plans
+        return build_horizon_plans(result, expected_request=expected_request, horizon=horizon, unavailable_code=unavailable_code)
+    if method != METHOD:
+        raise ValueError('Unknown reference plan method')
     instrument = expected_request.instrument_id if expected_request is not None else result
     request_id = expected_request.request_id if expected_request is not None else None
     common = dict(instrument_id=instrument, request_id=request_id)

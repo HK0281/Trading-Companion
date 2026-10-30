@@ -294,7 +294,7 @@ class NarrativeTests(unittest.TestCase):
         self.assertTrue(run.answer.quality['repair_rating_restored'])
         self.assertTrue(run.answer.quality['repair_content_added'])
         self.assertFalse(run.answer.quality['repair_all_passed'])
-        feedback=json.loads(model.calls[1][-1].content.split('保留其他合法分析：',1)[1])
+        feedback=json.loads(model.calls[1][-1].content.split('程序会保留已通过检查的内容：',1)[1])
         self.assertEqual(feedback[0]['section'],'decision')
         self.assertTrue(feedback[0]['instrument_id'])
         self.assertEqual(feedback[0]['path'],'decisions[0].horizon')

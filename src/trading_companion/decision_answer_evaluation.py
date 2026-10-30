@@ -16,6 +16,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from trading_companion.answer_validation import normalize_horizon
+from trading_companion.deepseek_model import ANSWER_OUTPUT_TOKENS, TOOL_OUTPUT_TOKENS
 from trading_companion.answer_diagnostics import (
     AnswerDiagnostics, bind_diagnostics, check_diagnostics_root, diagnostic_location,
 )
@@ -46,6 +47,18 @@ ACCEPTANCE_VERSION = 'decision-acceptance-v2'
 GROUPS = ('buy', 'sell', 'outlook', 'stop')
 CASE_KEYS = {'id', 'group', 'security_name', 'instrument_id', 'industry', 'question', 'expected_horizon',
              'setup_questions', 'requires_batch_b', 'review_tags', 'intent_note'}
+
+
+def _implementation_fingerprint():
+    """Cover the evaluator, transport, synthesis, checks and workflow being measured."""
+    names = ('decision_answer_evaluation.py', 'deepseek_model.py', 'deepseek_tool_model.py',
+             'model_registry.py', 'tool_model.py', 'product_narrative_answer.py', 'narrative_answer_parser.py',
+             'answer_validation.py', 'answer_numeric_bindings.py', 'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
+    digest = sha256()
+    for name in names:
+        digest.update(name.encode('ascii')+b'\0')
+        digest.update(Path(__file__).with_name(name).read_bytes().replace(b'\r\n', b'\n'))
+    return digest.hexdigest()
 
 
 def load_corpus(path=CORPUS, manifest_path=MANIFEST):
@@ -86,7 +99,7 @@ def _decision_fixture_manifest(cases):
     identities = {c['instrument_id']: Security(c['instrument_id'], c['security_name']) for c in cases}
     descriptor.update(version='decision-fixed-data-v1',
         securities=[s.to_dict() for s in identities.values()],
-        decision_implementation_sha256=sha256(Path(__file__).read_bytes().replace(b'\r\n', b'\n')).hexdigest())
+        decision_implementation_sha256=_implementation_fingerprint())
     descriptor['sha256'] = sha256(json.dumps(descriptor, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
     return descriptor
 
@@ -129,7 +142,9 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
         data_authenticity='live_sources' if mode == 'live' else 'fixed_synthetic',
         sources=['local_pinned_directory', data_source, 'eastmoney_company_financial_announcements', 'sina_news']
                 if mode == 'live' else ['artificial_directory_company_transport_daily_bars'],
-        max_output_tokens=1500, price_config_version=price_data['version'], price_config_sha256=price_digest, price=price_for(price_data, provider, model),
+        max_output_tokens=ANSWER_OUTPUT_TOKENS,
+        output_tokens_by_stage=dict(structured_answer=ANSWER_OUTPUT_TOKENS, tools=TOOL_OUTPUT_TOKENS),
+        price_config_version=price_data['version'], price_config_sha256=price_digest, price=price_for(price_data, provider, model),
         cost_preview=cost, directory=None, directory_sha256=None, directory_metadata=None)
     if mode == 'live':
         ensure_data_mode_dependencies(data_source)
@@ -288,6 +303,7 @@ def summarize(cases):
         repair_content_added_rate=ratio(sum(q.get('repair_content_added',False) for q in repairs),len(repairs),
             unknown=sum('repair_content_added' not in q for q in repairs)),
         local_structure_recoveries=sum(q.get('local_structure_recoveries',0) for q in quality),
+        punctuation_structure_recoveries=sum(q.get('punctuation_structure_recoveries',0) for q in quality),
         partial_structure_recoveries=sum(q.get('partial_structure_recoveries',0) for q in quality),
         unrecovered_structure_failures=sum(max(0,q.get('structure_failures',0)-q.get('local_structure_recoveries',0)) for q in quality),
         partial_rate=ratio(sum(q['state']=='partial' for q in quality),20),
@@ -309,6 +325,17 @@ def summarize(cases):
         unknown_questions=sum(q.get('numeric_validation_version') != 'source-bindings-v1' for q in quality),
         coverage=ratio(counts['bound_numbers'],counts['numeric_tokens']),
         bound_pass_rate=ratio(counts['bound_matched'],counts['bound_numbers']))
+    fields = ('output_truncations', 'initial_output_truncations', 'repair_output_truncations')
+    known = [c['quality'] for c in reached if (c.get('quality') or {}).get('output_truncation_version') == 'answer-output-v1'
+             and all(type(c['quality'].get(k)) is int and c['quality'][k]>=0 for k in fields)]
+    unknown = len(reached)-len(known)
+    totals = {k:sum(q[k] for q in known) for k in fields}
+    result['output_truncations'] = dict(version='answer-output-v1',
+        total=totals['output_truncations'] if not unknown else None,
+        first_draft=totals['initial_output_truncations'] if not unknown else None,
+        repair_draft=totals['repair_output_truncations'] if not unknown else None,
+        affected_questions=sum(q['output_truncations']>0 for q in known) if not unknown else None,
+        known_subtotals=totals, unknown_questions=unknown)
     return result
 
 
@@ -376,6 +403,12 @@ def _run(cases, plan, meter, delegate, trace_root):
                         company = result.get('company_research') or {}
                         calls = meter.calls[target_before:]
                         quality = deepcopy(company.get('quality'))
+                        validation = next((e.get('validation',{}) for e in reversed((trace or {}).get('event_records',[]))
+                                           if e['kind']=='check' and e['operation']=='answer_validation'),{})
+                        if quality is not None and validation.get('output_truncation_version') == 'answer-output-v1':
+                            for key in ('output_truncation_version','output_truncations',
+                                        'initial_output_truncations','repair_output_truncations'):
+                                quality[key] = validation[key]
                         row.update(status='executed', code=result['code'], turn_status=result['status'],
                             **grade_case(case,result), quality=quality, elapsed_ms=elapsed,
                             answer_stage_reached=bool(quality) or any(c['answer'] for c in calls),
@@ -413,7 +446,7 @@ def evaluate(**kwargs):
         return {**base,'status':'invalid_request','code':'decision_plan_invalid',
                 'detail':'题库、价格或本地目录配置无效；未加载密钥或联网。'}
     output = dict(**base,plan=plan,code_revision=_revision(),working_tree_dirty=_dirty(),
-        implementation_sha256=sha256(Path(__file__).read_bytes().replace(b'\r\n',b'\n')).hexdigest(),
+        implementation_sha256=_implementation_fingerprint(),
         evaluated_at=datetime.now(timezone.utc).isoformat(),
         evaluation_scope='offline_contracts_not_model_quality' if plan['mode']=='offline' else 'real_model_answers_not_investment_performance',
         real_model_requested=plan['mode']!='offline',real_data_requested=plan['mode']=='live')
@@ -481,6 +514,9 @@ def write_report(report,root):
              '两条理由对照仅使用本次公开回答重新计数，不是对旧规则整套执行的重放。',
              '离线脚本不代表真实模型质量；自动通过仍需人工核对证据关联、措辞和条件。','',
              '| 题号 | 组别 | 依赖B | 状态/结果码 | 有效结论 | 问题 |','| --- | --- | --- | --- | --- | --- |']
+    truncations = report['metrics'].get('output_truncations', {})
+    show = lambda key: '未知' if truncations.get(key) is None else truncations[key]
+    lines[5:5] = [f"输出截断：总计 {show('total')}；首稿 {show('first_draft')}；修复稿 {show('repair_draft')}；受影响题数 {show('affected_questions')}。", '']
     for c in report['cases']:
         lines.append('| '+' | '.join(cell(v) for v in (c['id'],c['group'],c['requires_batch_b'],c['status']+'/'+c['code'],c['formed'],c['question']))+' |')
     lines += ['', '## 指标', '', '```json',json.dumps(report['metrics'],ensure_ascii=False,indent=2),'```','',

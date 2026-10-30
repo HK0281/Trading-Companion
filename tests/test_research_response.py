@@ -289,7 +289,7 @@ class ResponseTests(unittest.TestCase):
         from fastapi.testclient import TestClient
         from trading_companion.api_server import main
         from trading_companion.deepseek_model import DeepSeekConfig
-        from trading_companion.research_response import RESPONSE_OUTPUT_TOKENS
+        from trading_companion.deepseek_model import ANSWER_OUTPUT_TOKENS
         from contextlib import redirect_stdout
         from io import StringIO
         configured = DeepSeekConfig("fixture-model", "artificial-test-key")
@@ -301,7 +301,7 @@ class ResponseTests(unittest.TestCase):
                 patch("trading_companion.model_registry.DeepSeekToolModel") as constructor, \
                 patch("uvicorn.run", side_effect=serve), redirect_stdout(StringIO()):
             self.assertEqual(main(["--provider", "deepseek", "--data", "synthetic"]), 0)
-        self.assertEqual(constructor.call_args.args[0].max_output_tokens, RESPONSE_OUTPUT_TOKENS)
+        self.assertEqual(constructor.call_args.args[0].max_output_tokens, ANSWER_OUTPUT_TOKENS)
         self.assertEqual(configured.max_output_tokens, 512)
 
 

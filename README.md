@@ -39,6 +39,8 @@ flowchart TD
 
 Executors use controlled models and read-only tools as needed. Dashed arrows show shared controls or optional facilities. The collection pool serves company evidence and Tencent screening batches; Eastmoney pagination stays sequential, as do technical calculations and model calls. Fixed knowledge answers can use zero model calls and zero data reads. The single model repair applies to company answers. Traces store bounded metadata; the optional archive stores evidence, without chat or model answers. Local clarification/conflict replies and the full flow are covered in the [current architecture](docs/architecture.md#2026-10-28当前已实现的处理链路) and [routing design](docs/request-routing-design.md).
 
+DeepSeek structured answers have a 4,096-token output allowance; requests declaring tools keep a 1,500-token cap. Length-limited answers get a distinct diagnostic and at most one concise rewrite. Small JSON punctuation errors can be repaired locally before the existing evidence checks. Technical research accepts multiple proposals in one response and executes them in order within the unchanged six-tool and six-model-attempt limits, recording rejected and unexecuted calls. [Answer boundaries](docs/natural-research-narrative-design.md) · [Batch execution](docs/bounded-research-workflow-design.md)
+
 ## Quick start
 
 Windows is the supported runtime and acceptance platform. From PowerShell in a checkout with local dependencies prepared:

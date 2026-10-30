@@ -10,7 +10,7 @@ HARD = "answer_hard_content"
 HORIZON = "answer_horizon_mismatch"
 STANCE = "answer_stance_mismatch"
 CODES = frozenset((STRUCTURE, NUMERIC, HARD, HORIZON, STANCE, "answer_binding_invalid", "answer_binding_value_mismatch", "answer_model_unavailable",
-                   "answer_context_unusable", "answer_partial", "answer_facts_only", "answer_ready"))
+                   "answer_context_unusable", "answer_partial", "answer_facts_only", "answer_ready", "answer_output_truncated"))
 SECTIONS = frozenset(("summary", "current", "drivers", "levels", "scenarios", "stance", "decision", "structure"))
 NUMBER = re.compile(r"(?<![0-9.])[-+]?\d+(?:\.\d+)?\s*(?:亿元|万元|元/股|元|%|％|个百分点|倍|亿股|万股|股)?")
 DATE = re.compile(r"(?<!\d)(\d{4})[-年](\d{1,2})[-月](\d{1,2})日?(?!\d)")

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 import json
 
-from trading_companion.deepseek_model import DeepSeekConfig, _post_chat
+from trading_companion.deepseek_model import TOOL_OUTPUT_TOKENS, DeepSeekConfig, _post_chat
 from trading_companion.model import (
     ModelCallError, ModelConfigurationError, ModelRequestError, TokenUsage,
 )
@@ -65,6 +65,8 @@ def _parse_response(payload: object, requested_model: str,
     metadata = {"provider": "deepseek", "requested_model": requested_model,
                 "model": payload.get("model"), "usage": usage, "is_mock": False}
     finish_reason = choice.get("finish_reason")
+    if finish_reason in ("stop", "tool_calls", "length", "content_filter", "insufficient_system_resource", "aborted"):
+        metadata["finish_reason"] = finish_reason
 
     # Never parse or forward actionable proposals from refused or interrupted output.
     if finish_reason == "content_filter" or (refusal is not None and refusal.strip()):
@@ -125,7 +127,7 @@ class DeepSeekToolModel:
         body = {
             "model": self.config.model,
             "messages": [_wire_message(message) for message in history],
-            "max_tokens": self.config.max_output_tokens,
+            "max_tokens": min(self.config.max_output_tokens, TOOL_OUTPUT_TOKENS) if definitions else self.config.max_output_tokens,
             "stream": False,
             # Thinking mode needs reasoning history absent from this protocol.
             "thinking": {"type": "disabled"},
@@ -133,6 +135,10 @@ class DeepSeekToolModel:
         if definitions:
             body["tools"] = [{"type": "function", "function": tool.to_dict()} for tool in definitions]
             body["tool_choice"] = "auto"
+        else:
+            # Every no-tool caller of this protocol requires a JSON object.
+            # Plain text callers use DeepSeekTextModel, which never enables JSON mode.
+            body["response_format"] = {"type": "json_object"}
         payload = _post_chat(self.config, body)
         return _parse_response(payload, self.config.model,
                                frozenset(tool.name for tool in definitions), seen_ids)

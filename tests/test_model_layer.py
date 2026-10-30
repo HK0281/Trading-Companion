@@ -111,7 +111,7 @@ class ModelLayerTests(unittest.TestCase):
             "model": (None, "", " ", "model name", "model\nname"),
             "api_key": (None, "", " ", "key value", "key\nvalue", "key\x00value", "key\x7fvalue", "密钥"),
             "timeout_seconds": (None, True, 0, -1, 121, 10**400, float("nan"), float("inf"), "30"),
-            "max_output_tokens": (None, True, 0, -1, 1501, 1.5, "512"),
+            "max_output_tokens": (None, True, 0, -1, 8193, 1.5, "512"),
         }
         for field, values in cases.items():
             for value in values:

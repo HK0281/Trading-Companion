@@ -46,7 +46,7 @@ class ModelRegistryTests(unittest.TestCase):
         model = models["deepseek"]()
         self.assertIs(type(model), DeepSeekToolModel)
         self.assertEqual(model.config.api_key, DEEPSEEK_KEY)
-        self.assertEqual(model.config.max_output_tokens, 1500)
+        self.assertEqual(model.config.max_output_tokens, 4096)
 
     def test_both_valid_providers_expose_fresh_stateless_factories_without_public_credentials(self):
         models = configured_models(loader=self.loader(deepseek=DEEPSEEK, openai=OPENAI))

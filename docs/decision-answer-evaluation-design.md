@@ -1,5 +1,9 @@
 # 决策回答20题评估
 
+2026-10-29 A4（#199/#200）：上一批 B 的真实重跑为17/20、61次调用，约¥0.69；这是本批修复前的历史结果。A4 将 DeepSeek 结构化回答输出额度提高到4096，有工具声明的阶段仍最多1500，计划以 `output_tokens_by_stage` 如实记录；不改变每题6次、全套120次和固定分母20。本批离线验证与合入后的真实重跑分别记录，不能把离线通过写成真实效果达标。
+
+A4 本地验证：`verify.py python` 通过2540项 unittest、244项 pytest及附带验收；固定离线20题形成20/20、46次模型转发，截断统计为首稿0/修复稿0、未知0题，凭据读取和外部资料网络尝试均为0。报告在 `.agentbus/tmp/decision-a4-offline/decision-a4caf89246794c18b144d678d69a80a4/report.json`（忽略的本地生成文件），可用本文命令重现。原冻结路由基线未改写。保存的 D16 第一稿、D20 第二稿均能只补括号恢复语法，但未据此重算真实形成率；合入后的真实评估仍由 Claude 执行。
+
 2026-10-29 B批更新：固定离线20题现为20/20，46次模型转发；D05/D20均经实际`ResearchApiService.message`入口先完成技术研究，再以省略股票的问句形成正确对象、期限和可用研判。题目、主分母20、每题6次/总120次上限及`requires_batch_b`历史标记原样保留。这是人工数据和固定脚本验证，不代表真实模型成绩；A3真实18/20及100/748删句为另一版本结果。B的真实重跑交由Claude审核提交后执行，文末18/20离线限制记录为B之前历史。
 
 2026-10-29，批次C，承接方案 #165、批准 #166 和任务 #170。A批已由 Claude 审核、提交及推送为 `08ab4d6`。本工具只评估当前正式聊天入口，不调整B批路由；机械形成率与人工质量复核分别报告。
@@ -44,6 +48,8 @@ D05、D20标为 `requires_batch_b=true`，先通过正式聊天入口研究中�
 
 ## 输出与指标定义
 
+`metrics.output_truncations` 单独统计 `total`、`first_draft`、`repair_draft`、`affected_questions`，并保存 `known_subtotals` 和 `unknown_questions`。已知 length 不再记为普通 JSON 结构解析失败；小标点修复仍记原始结构失败和本地恢复。旧数据缺少版本/计数时总数与拆分为 null（Markdown 显示“未知”），已知部分单列，不补零。实现指纹覆盖模型配置、传输、回答、数字检查和技术工作流的源文件，而非只散列评估器本身。
+
 JSON报告保留20题、准备步骤状态、当前轮路由和结果码、完整公开回答与证据、quality（程序生成的回答检查状态）、逐题调用用量、价格估算和复核项。仅保存正式发布的内容，不导出拒绝草稿、修正提示、密钥、会话token或原始异常。普通trace仍只有运行元数据；评估报告含这些固定问题和已发布回答，因此是单独的显式产物。
 
 - 形成率、到达回答阶段比率、partial/fallback率、整轮limited率均以20题为分母。到达回答阶段表示目标轮产生v3 quality或已转发回答请求；不能只在有资料的题中计算。各组和B依赖组另列分母。
@@ -81,7 +87,7 @@ JSON报告保留20题、准备步骤状态、当前轮路由和结果码、完�
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_decision_answers.py --mode live --provider deepseek --model deepseek-flash --prices data/evaluation/model-prices.json --model-call-limit 120 --directory data/security_directory_live.json --assumed-input-tokens 6000 --assumed-output-tokens 1500 --plan-only
 ```
 
-预览展示全部20题、准备题、provider/model、各来源、每题/总调用上限和价格元数据。在已核对的输入2元/百万、输出8元/百万价格下，假设每次6000输入和1500输出tokens、120次调用，估算为2.88元。这是显式假设场景，**不是硬账单上限**。缺假设、价格或usage时保持未知。
+预览展示全部20题、准备题、provider/model、各来源、每题/总调用上限和价格元数据。在已核对的输入2元/百万、输出8元/百万价格下，假设每次6000输入和1500输出tokens、120次调用，估算为2.88元。这里1500是用户指定的成本假设，不是A4回答阶段的4096输出上限。这是显式假设场景，**不是硬账单上限**。缺假设、价格或usage时保持未知。
 
 需要隔离模型时，选 `--mode live-model` 并去掉directory，仍保留显式provider/model/prices/model-call-limit。后续真实重跑由 Claude 在审核提交后依现有授权执行，使用同样参数去掉 `--plan-only`，添加新的报告、trace与显式diagnostics目录。本次Codex A3交付仅跑离线验证，不做真实调用，不声称真实18/20已经达成。重跑需同时观察标注覆盖、绑定通过/失败、未绑定兜底、删句率不高于15%的目标及人工语义复核。
 

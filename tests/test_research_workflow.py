@@ -364,11 +364,14 @@ class ResearchWorkflowIntegrationTests(unittest.TestCase):
                 self.assertEqual(result.analyses_used, 0)
                 self.source_mock.assert_not_called()
 
-    def test_batch_proposals_execute_neither_call(self):
+    def test_batch_executes_primary_once_and_rejects_only_duplicate_action(self):
         result = self.turn(WorkflowScriptModel(("batch",)))
-        self.assertEqual(result.code, "workflow_single_call_required")
-        self.assertEqual(result.analyses_used, 0)
-        self.source_mock.assert_not_called()
+        self.assertEqual(result.status, 'completed')
+        self.assertEqual(result.analyses_used, 1)
+        self.assertEqual(result.workflow_trace['tool_calls_used'], 2)
+        self.assertEqual([s['code'] for s in result.workflow_trace['steps']],
+                         ['primary_analysis_completed', 'duplicate_request'])
+        self.source_mock.assert_called_once()
 
     def test_unknown_order_tool_is_never_executed(self):
         result = self.turn(WorkflowScriptModel(("unknown",)))
@@ -476,11 +479,12 @@ class ResearchWorkflowIntegrationTests(unittest.TestCase):
         self.market.read_daily_bars.assert_called_once()
 
     def test_model_limit_includes_intent_and_blocks_tool_execution_on_final_opportunity(self):
-        model = WorkflowScriptModel(("knowledge", "overview", "availability", "knowledge", "primary"))
+        model = WorkflowScriptModel(("knowledge", "overview", "availability", "knowledge", "batch"))
         result = self.turn(model)
         self.assertEqual(result.code, "workflow_iteration_limit")
         self.assertEqual(result.model_calls_attempted, 6)
         self.assertIn("no further tool calls", model.calls[-1][0].content)
+        self.assertEqual([s['status'] for s in result.workflow_trace['steps'][-2:]],['not_executed']*2)
         self.source_mock.assert_not_called()
 
     def test_original_explicit_entry_stays_on_two_call_single_analysis_contract(self):

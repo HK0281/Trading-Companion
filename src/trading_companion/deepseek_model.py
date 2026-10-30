@@ -16,6 +16,8 @@ from trading_companion.turn_trace import trace_provider_request
 
 
 DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions"
+ANSWER_OUTPUT_TOKENS = 4096
+TOOL_OUTPUT_TOKENS = 1500
 
 
 @dataclass(frozen=True)
@@ -40,8 +42,8 @@ class DeepSeekConfig:
             or not 0 < self.timeout_seconds <= 120 or not isfinite(self.timeout_seconds)
         ):
             raise ModelConfigurationError("timeout_seconds must be finite and between 0 and 120 seconds")
-        if type(self.max_output_tokens) is not int or not 1 <= self.max_output_tokens <= 1500:
-            raise ModelConfigurationError("max_output_tokens must be an integer between 1 and 1500")
+        if type(self.max_output_tokens) is not int or not 1 <= self.max_output_tokens <= 8192:
+            raise ModelConfigurationError("max_output_tokens must be an integer between 1 and 8192")
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "DeepSeekConfig":

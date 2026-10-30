@@ -275,11 +275,21 @@ class ToolModelResponse:
     model: str = field(default="fake-tools-v1", repr=False)
     usage: TokenUsage | None = field(default=None, repr=False)
     is_mock: bool = True
+    finish_reason: str | None = None
 
     def __post_init__(self):
         try:
             if self.status not in ("complete", "tool_calls", "refused", "incomplete"):
                 raise ModelRequestError("Invalid response status")
+            if self.finish_reason is not None and (type(self.finish_reason) is not str or self.finish_reason not in (
+                    "stop", "tool_calls", "length", "content_filter", "insufficient_system_resource", "aborted")):
+                raise ModelRequestError("Invalid response finish reason")
+            if self.finish_reason in ("length", "insufficient_system_resource", "aborted") and self.status not in ("incomplete", "refused"):
+                raise ModelRequestError("Interrupted output cannot be a complete response")
+            if self.status == 'complete' and self.finish_reason not in (None, 'stop'):
+                raise ModelRequestError("Complete output requires a normal stop")
+            if self.status == 'tool_calls' and self.finish_reason not in (None, 'tool_calls'):
+                raise ModelRequestError("Tool proposals require a tool-call completion")
             calls = _calls(self.tool_calls)
             if self.status == "tool_calls":
                 if not calls:
@@ -314,7 +324,7 @@ class ToolModelResponse:
         return {"status": self.status, "text": self.text,
                 "tool_calls": [call.to_dict() for call in self.tool_calls],
                 "provider": self.provider, "requested_model": self.requested_model,
-                "model": self.model, "is_mock": self.is_mock,
+                "model": self.model, "is_mock": self.is_mock, "finish_reason": self.finish_reason,
                 "usage": ({"prompt_tokens": self.usage.prompt_tokens,
                            "completion_tokens": self.usage.completion_tokens,
                            "total_tokens": self.usage.total_tokens} if self.usage else None)}
@@ -418,7 +428,7 @@ class FakeToolModel:
             raise ModelCallError("invalid_response", "Fake script contains an invalid protocol response")
         response = ToolModelResponse(proposed.status, proposed.text, proposed.tool_calls,
                                      provider="fake", requested_model="fake-tools-v1",
-                                     model="fake-tools-v1", usage=None, is_mock=True)
+                                     model="fake-tools-v1", usage=None, is_mock=True, finish_reason=proposed.finish_reason)
         allowed = {tool.name for tool in definitions}
         if any(call.name not in allowed for call in response.tool_calls):
             raise ModelCallError("unknown_tool", "Model proposed a tool outside the declared set")

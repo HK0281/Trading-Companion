@@ -32,6 +32,8 @@
 - `refused`：未提供正常答案，保持拒绝状态。
 - `incomplete`：输出不完整，不能作为完成文本展示。
 
+2026-10-29 A4：`ToolModelResponse.finish_reason` 是可选的固定枚举，保留供应商的 stop/tool_calls/length/content_filter/insufficient_system_resource/aborted；旧 Fake 脚本可省略。长度或资源中断不能伪装成完成响应；供应商的拒绝优先于其他状态。`to_dict()` 与 Fake 透传该元数据。`complete(messages, tools=...)` 签名不变；没有工具声明的现有业务调用方均约定 JSON，对纯文本的需求使用独立文本模型接口。
+
 这些是内部协议状态，不宣称供应商HTTP字段或行为已验证。后续适配器需显式转换提供方消息、结束原因和错误。
 
 ## 一次往返

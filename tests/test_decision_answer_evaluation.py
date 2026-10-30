@@ -46,6 +46,24 @@ class DecisionEvaluationTests(unittest.TestCase):
             with self.assertRaises((ValueError,evaluation.PlanError)):
                 evaluation.load_corpus(corpus)
 
+    def test_truncation_statistics_distinguish_drafts_and_keep_old_reports_unknown(self):
+        rows = deepcopy(self.report['cases'])
+        rows[0]['quality'].update(output_truncations=2,initial_output_truncations=1,repair_output_truncations=1)
+        rows[1]['quality'].update(output_truncations=1,initial_output_truncations=0,repair_output_truncations=1)
+        stats = evaluation.summarize(rows)['output_truncations']
+        self.assertEqual((stats['total'],stats['first_draft'],stats['repair_draft'],stats['affected_questions']), (3,1,2,2))
+        self.assertEqual(stats['unknown_questions'],0)
+        rows[0]['quality'].pop('output_truncation_version')
+        stats = evaluation.summarize(rows)['output_truncations']
+        self.assertIsNone(stats['total'])
+        self.assertIsNone(stats['first_draft'])
+        self.assertEqual(stats['unknown_questions'],1)
+        old = deepcopy(self.report)
+        old['metrics'].pop('output_truncations')
+        with TemporaryDirectory() as folder:
+            destination = Path(evaluation.write_report(old,folder))
+            self.assertIn('首稿 未知；修复稿 未知',(destination/'report.md').read_text(encoding='utf-8'))
+
     def test_offline_uses_real_message_entry_and_forms_batch_b_verdicts(self):
         report=self.report
         self.assertEqual((report['status'],len(report['cases'])),('passed',20))
@@ -104,7 +122,8 @@ class DecisionEvaluationTests(unittest.TestCase):
         self.assertEqual(plan['worst_case_model_calls'],120)
         self.assertEqual(plan['maximum_calls_per_question'],6)
         self.assertEqual(plan['cost_preview']['amount'],'1.200000')
-        self.assertEqual(plan['max_output_tokens'],1500)
+        self.assertEqual(plan['max_output_tokens'],4096)
+        self.assertEqual(plan['output_tokens_by_stage'],dict(structured_answer=4096,tools=1500))
         self.assertEqual(plan['data_authenticity'],'fixed_synthetic')
 
     def test_invalid_config_is_rejected_before_credentials_or_model_creation(self):

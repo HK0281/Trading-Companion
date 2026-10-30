@@ -4,6 +4,12 @@
 
 ## 公开回答与展示
 
+2026-10-29 A4（方案 #199、批准 #200）：DeepSeek 无工具声明的结构化回答使用 4096 输出 tokens，上界配置允许到 8192；有工具声明的请求仍最多 1500。token 是模型计量文本长度的单位。无工具回答启用 JSON 对象模式，纯文本 CLI 仍用独立文本适配器。提示要求最多四条 drivers、每条一至两句，numbers 优先标注关键价位，负百分比显式写负号；数字容差、评级和价位公式不变。
+
+供应商返回 `finish_reason=length` 时，记录 `answer_output_truncated`，不解析或恢复任何前缀；有预算时仅使用原有一次精简重写机会。两稿均截断时回到程序事实；第二稿截断时保留首稿已核验的内容。发生截断的公开 `quality` 增加 `output_truncation_version=answer-output-v1`、`output_truncations`、`initial_output_truncations`、`repair_output_truncations`；无截断的正常回答保持原有形状。诊断和 trace 始终记录带版本的计数（含零），评估从 trace 取得零计数，不以旧答案缺字段推断为零；诊断保留结束原因，普通 trace 不保存正文。
+
+仅完整返回的草稿允许一次有界标点恢复：最多四处插入缺失的 `}`/`]` 或删除容器末尾逗号，包括内层右括号缺在外层结束符之前的情况。扫描识别字符串与转义，不补键、值、引号或词句；修复后仍严格拒绝重复键、NaN、多对象、不安全包装，并走完整结构和同股数字检查。`punctuation_structure_recoveries` 单独计数，也计入本地结构恢复；原有完整字段前缀恢复仅用于完整返回但结构受损的草稿，不能用于已知截断。
+
 公司研究与参考研判统一返回 `product-research-answer-v3`。每股一组 `narratives`：`summary` 直接结论、`current` 带日期的当前情况、`drivers` 主要依据、`levels` 关键价位、`scenarios` 基准/变好/变坏条件、`stance` 操作倾向。评级 `decisions` 与原 ATR 条件计划独立保留，普通基本面回答不强加评级。
 
 文字块是 `{text, evidence_ids}`；引用可省略，程序仍按本股实际发送给模型的资料核对数字。公开引用转换回完整证据 ID。价位输入只能选程序生成的 `price_levels` ID，不能让模型填入上下界；公开表格由程序填 `lower/upper/lower_label/upper_label`。计划端点也有独立引用，模型无法改公式。

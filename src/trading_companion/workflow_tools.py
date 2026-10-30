@@ -176,11 +176,82 @@ class WorkflowToolExecutor:
         with self._lock:
             return deepcopy(self._observations[0].execution) if self._observations else None
 
-    def _record(self, tool, status, code):
-        self._steps.append({"tool": tool, "status": status, "code": code})
+    def _record(self, tool, status, code, *, call_id=None):
+        self._steps.append({"tool": tool, "status": status, "code": code,
+                            **({"call_id": call_id} if call_id is not None else {})})
+
+    def execute_batch(self, response, *, messages, tool_limit=MAX_WORKFLOW_TOOL_CALLS,
+                      allow_execution=True, stop_after=None):
+        """Keep the original batch paired, reserving bounded results before every IO.
+
+        The executor still authorizes/counts each call independently. Reserved results
+        are internal capacity checks only; they are never supplied as observations.
+        """
+        with self._lock:
+            history, _, seen = validate_tool_messages(messages, tools=self.definitions)
+            calls = response.tool_calls
+            allowed = {d.name for d in self.definitions}
+            if any(c.name not in allowed for c in calls):
+                raise ToolExecutionError('unknown_tool')
+            if any(c.call_id in seen or c.call_id in self._seen_ids for c in calls):
+                raise ToolExecutionError('reused_call_id')
+            proposal = response.as_message()
+            reserved = [_message(c, 'not_executed', 'indicator_period_reduction_not_allowed',
+                                 snapshot_key='supplement', full_result_retained=True) for c in calls]
+            results, stop = [], None
+
+            def check(outputs):
+                validate_tool_messages([*history, proposal, *outputs], tools=self.definitions)
+
+            def skipped(call, code):
+                self._record(call.name, 'not_executed', code, call_id=call.call_id)
+                with trace_event('tool', 'workflow') as event:
+                    event.status, event.code = 'skipped', code
+                return _message(call, 'not_executed', code)
+
+            try:
+                check(reserved)
+            except ModelRequestError:
+                for call in calls:
+                    skipped(call, 'workflow_context_limit')
+                raise
+            for index, call in enumerate(calls):
+                if stop is not None:
+                    results.append(skipped(call, stop))
+                    continue
+                if not allow_execution:
+                    stop = 'workflow_iteration_limit'
+                    results.append(skipped(call, stop))
+                    continue
+                if self._used >= min(tool_limit, MAX_WORKFLOW_TOOL_CALLS):
+                    results.append(skipped(call, 'tool_call_budget_exhausted'))
+                    continue
+                used_before = self._used
+                try:
+                    checkpoint()
+                    output = self.execute(call, messages=history,
+                        _batch_check=lambda value: check([*results, value, *reserved[index+1:]]),
+                        _record_call_id=len(calls)>1)
+                except TurnStopped as error:
+                    self._record(call.name, 'interrupted' if self._used>used_before else 'not_executed',
+                                 error.code, call_id=call.call_id)
+                    for remaining in calls[index+1:]:
+                        skipped(remaining, error.code)
+                    raise
+                except ModelRequestError:
+                    stop = 'workflow_context_limit'
+                    results.append(skipped(call, stop))
+                    continue
+                results.append(output)
+                if output.result.get('code') == 'tool_result_too_large':
+                    stop = 'workflow_context_limit'
+                elif stop_after is not None:
+                    stop = stop_after()
+            check(results)
+            return tuple(results), stop
 
     @trace_call("tool", "workflow")
-    def execute(self, call: ToolCall, *, messages) -> ToolMessage:
+    def execute(self, call: ToolCall, *, messages, _batch_check=None, _record_call_id=False) -> ToolMessage:
         """Process one call; the runner owns batching, history and model-call limits."""
         with self._lock:
             checkpoint()
@@ -194,7 +265,10 @@ class WorkflowToolExecutor:
             proposal = ToolMessage("assistant", tool_calls=(call,))
 
             def check(output):
-                trace_call("check", "tool_history", validate_tool_messages, [*history, proposal, output], tools=self.definitions)
+                if _batch_check is not None:
+                    _batch_check(output)
+                else:
+                    trace_call("check", "tool_history", validate_tool_messages, [*history, proposal, output], tools=self.definitions)
 
             # Reserve a closed error and a transport-limit envelope before any IO or budget use.
             check(_message(call, "rejected", "indicator_period_reduction_not_allowed"))
@@ -203,7 +277,8 @@ class WorkflowToolExecutor:
             if self._used >= MAX_WORKFLOW_TOOL_CALLS:
                 output = _message(call, "rejected", "tool_call_budget_exhausted")
                 check(output)
-                self._record(call.name, "rejected", "tool_call_budget_exhausted")
+                self._record(call.name, "rejected", "tool_call_budget_exhausted",
+                             call_id=call.call_id if _record_call_id else None)
                 return output
             self._used += 1
             try:
@@ -235,7 +310,7 @@ class WorkflowToolExecutor:
                     observation.execution, messages=(output,),
                     status="limited" if status == "limited" else observation.execution.status))
                 self._observations.append(observation)
-            self._record(call.name, status, code)
+            self._record(call.name, status, code, call_id=call.call_id if _record_call_id else None)
             return output
 
     def _dispatch(self, call):

@@ -4,7 +4,7 @@ from dataclasses import replace
 from collections.abc import Callable, Mapping
 from functools import partial
 
-from trading_companion.deepseek_model import DeepSeekConfig
+from trading_companion.deepseek_model import ANSWER_OUTPUT_TOKENS, DeepSeekConfig
 from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.local_env import load_model_environment
 from trading_companion.model import ModelConfigurationError
@@ -19,7 +19,7 @@ def _factory(provider, values):
     if not isinstance(values, Mapping):
         raise ModelConfigurationError("Model configuration must use the documented settings mapping")
     if provider == "deepseek":
-        config = replace(DeepSeekConfig.from_env(values), max_output_tokens=1500)
+        config = replace(DeepSeekConfig.from_env(values), max_output_tokens=ANSWER_OUTPUT_TOKENS)
         factory = partial(DeepSeekToolModel, config)
     else:
         config = OpenAIConfig.from_env(values)

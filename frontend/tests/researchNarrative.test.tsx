@@ -18,6 +18,12 @@ function fresh() {
 }
 
 describe("natural research narratives", () => {
+  it.each(["answer_binding_invalid", "answer_binding_value_mismatch"])("explains local numeric binding failure %s", code => {
+    const payload = fresh();
+    payload.quality = { state: "partial", code: "answer_partial", reasons: [{ code, section: "current", index: 0 }] };
+    render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
+    expect(screen.getByRole("status")).toHaveTextContent("相关句子已移除");
+  });
   it("renders conclusion, finite bold, lists, price table and existing decision card", () => {
     const data = parseCompanyAnswer(fresh());
     expect(data).not.toBeNull();

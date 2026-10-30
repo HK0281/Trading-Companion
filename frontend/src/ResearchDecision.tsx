@@ -61,7 +61,8 @@ export function parseDecision(value: Record<string, unknown>, securities: Set<st
       if (value.version !== "product-research-answer-v3" || !obj(r) || !Number.isInteger(r.retained) || !Number.isInteger(r.deleted)
         || r.retained !== d.reasons.length || Number(r.deleted) < 1 || Number(r.retained) + Number(r.deleted) > 4
         || !Array.isArray(r.codes) || r.codes.length < 1 || r.codes.length > 4
-        || !r.codes.every(c => ["answer_structure_invalid", "answer_hard_content", "answer_numeric_unmatched", "answer_horizon_mismatch"].includes(String(c)))) return null;
+        || !r.codes.every(c => ["answer_structure_invalid", "answer_hard_content", "answer_numeric_unmatched", "answer_horizon_mismatch",
+          "answer_binding_invalid", "answer_binding_value_mismatch"].includes(String(c)))) return null;
     }
     if (d.status === "available") {
       const rating = typeof d.rating === "string" && Object.hasOwn(ratings, d.rating) ? ratings[d.rating] : null;

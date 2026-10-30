@@ -62,6 +62,33 @@ class AnswerDiagnosticTests(unittest.TestCase):
             collector.emit('bad',value=float('nan'))
             self.assertFalse(collector.summary()['complete'])
 
+    def test_supplied_context_and_plan_correction_stay_in_explicit_local_diagnostics(self):
+        bundle=decision_bundle()
+        exit_plan=next(p for p in bundle.companies[0].trade_plans if p.purpose=='holding_exit')
+        def change(payload,n,context):
+            payload['decisions'][0].update(rating='持有',direction='震荡',plan_id=exit_plan.plan_id,
+                invalidation=dict(text='退出观察位'+dict(exit_plan.values)['exit_below']+'元。'))
+        model=NarrativeModel(change)
+        ROOT.mkdir(parents=True,exist_ok=True)
+        with TemporaryDirectory(dir=ROOT) as folder,TemporaryDirectory() as trace:
+            collector=AnswerDiagnostics(folder)
+            with bind_diagnostics(collector),trace_message(JsonlTraceSink(trace),mode='demo',provider='fake',history=False):
+                answer=synthesize_product_answer('分析走势',bundle,model=model,repair_invalid=False).answer
+            records=[json.loads(s) for s in (collector.directory/'records.jsonl').read_text(encoding='utf-8').splitlines()]
+            snapshot=next(r['context'] for r in records if r['kind']=='model_context')
+            self.assertEqual(snapshot,json.loads(model.calls[0][2].content.split('\n',1)[1]))
+            correction=next(r for r in records if r['kind']=='plan_purpose_corrected')
+            self.assertEqual(correction['original_plan_id'],exit_plan.plan_id)
+            self.assertEqual(correction['selected_plan_id'],answer.decisions[0]['plan_id'])
+            self.assertEqual(answer.decisions[0]['rating'],'持有')
+            self.assertEqual(answer.decisions[0]['invalidation_origin'],'application')
+            public=json.dumps(answer.to_dict())
+            ordinary=''.join(p.read_text(encoding='utf-8') for p in Path(trace).glob('*.jsonl'))
+            for private_field in ('model_context','plan_purpose_corrected','original_plan_id','"numbers"'):
+                self.assertNotIn(private_field,public)
+                self.assertNotIn(private_field,ordinary)
+            self.assertTrue(collector.summary()['complete'])
+
     def test_resolved_links_cannot_escape_allowed_tree_and_bad_diagnostics_fail_evaluation(self):
         ROOT.mkdir(parents=True,exist_ok=True)
         with TemporaryDirectory() as outside,TemporaryDirectory(dir=ROOT) as folder:

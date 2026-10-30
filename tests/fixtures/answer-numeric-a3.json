@@ -1,0 +1,2705 @@
+{
+  "version": "answer-numeric-a3-v1",
+  "provenance": "A2真实36稿诊断；只替换证券身份和快照ID，数字与语句保持。距离补人工numbers标注，反例单独注明。",
+  "contexts": {
+    "D01": {
+      "securities": [
+        {
+          "instrument_id": "000001.SZ",
+          "name": "样本公司",
+          "coverage": [
+            {
+              "kind": "profile",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "financial",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "news",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "announcements",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "technical",
+              "status": "available",
+              "code": "deterministic_facts"
+            }
+          ]
+        }
+      ],
+      "objective": {
+        "kind": "decision",
+        "horizon": "未来20个交易日"
+      },
+      "daily_cutoff": "2026-10-29",
+      "explicit_historical": false,
+      "evidence": [
+        {
+          "id": "E8",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "2.415862%",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.415862041562,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E9",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "2.209239%",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.209238634289,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E13",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "1.7756%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 1.775599913526,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E14",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "3.321271%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.321270607157,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E18",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "4.651577%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 4.65157673025,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E19",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "3.029228%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.02922814983,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E23",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-10.39776%",
+          "date": "2026-03-21",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -10.397764068305,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E24",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-4.212726%",
+          "date": "2026-03-21",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -4.212725802103,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E28",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-9.781147%",
+          "date": "2025-10-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -9.781147496908,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E29",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-3.498704%",
+          "date": "2025-10-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -3.498703717687,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E90",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "入场参考11.54元；止损11.20元；止盈112.05元；止盈212.39元；盈亏比11.500000倍；盈亏比22.500000倍；ATR0.2281元；ATR倍数1.5倍",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "field": null,
+          "values": {
+            "reference_entry": "11.54",
+            "reference_stop": "11.20",
+            "target_1": "12.05",
+            "target_2": "12.39",
+            "reward_risk_1": "1.500000",
+            "reward_risk_2": "2.500000",
+            "atr": "0.2281",
+            "atr_multiple": "1.5"
+          }
+        },
+        {
+          "id": "E91",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "收盘参考11.54元；退出观察位11.20元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "field": null,
+          "values": {
+            "reference_close": "11.54",
+            "exit_below": "11.20"
+          }
+        },
+        {
+          "id": "E92",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "下方观察位11.20元；上方观察位12.05元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "field": null,
+          "values": {
+            "observe_below": "11.20",
+            "observe_above": "12.05"
+          }
+        },
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "最新收盘价",
+          "display": "11.54元/股",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.54",
+          "field": "latest_close"
+        },
+        {
+          "id": "E93",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "单季营业收入",
+          "display": "324.83亿元",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "financial_quarter_derived",
+          "unit": "cny",
+          "raw_value": "32483000000.0",
+          "field": "quarter_revenue"
+        },
+        {
+          "id": "E96",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近5日涨跌幅",
+          "display": "2.12%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "2.123893805309734513274336300",
+          "field": "return_5d"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "5日前收盘价",
+          "display": "11.30元/股",
+          "date": "2026-10-22",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.3",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E98",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近20日涨跌幅",
+          "display": "-0.52%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "-0.5172413793103448275862069000",
+          "field": "return_20d"
+        },
+        {
+          "id": "E99",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "20日前收盘价",
+          "display": "11.60元/股",
+          "date": "2026-09-23",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.6",
+          "field": "close_20d_ago"
+        }
+      ],
+      "omitted_from_model": 88,
+      "trade_plans": [
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "instrument_id": "000001.SZ",
+          "purpose": "conditional_entry",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "instrument_id": "000001.SZ",
+          "purpose": "holding_exit",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "instrument_id": "000001.SZ",
+          "purpose": "wait",
+          "status": "available",
+          "code": "plan_ready"
+        }
+      ],
+      "start_date": "2025-10-30",
+      "price_levels": [
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "label": "最新收盘价",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E95",
+          "field": "latest_close"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "label": "5日前收盘价",
+          "price": "11.3",
+          "date": "2026-10-22",
+          "evidence_id": "E97",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E99",
+          "instrument_id": "000001.SZ",
+          "label": "20日前收盘价",
+          "price": "11.6",
+          "date": "2026-09-23",
+          "evidence_id": "E99",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "L4",
+          "instrument_id": "000001.SZ",
+          "label": "reference_entry",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "reference_entry"
+        },
+        {
+          "id": "L5",
+          "instrument_id": "000001.SZ",
+          "label": "reference_stop",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "reference_stop"
+        },
+        {
+          "id": "L6",
+          "instrument_id": "000001.SZ",
+          "label": "target_1",
+          "price": "12.05",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "target_1"
+        },
+        {
+          "id": "L7",
+          "instrument_id": "000001.SZ",
+          "label": "target_2",
+          "price": "12.39",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "target_2"
+        },
+        {
+          "id": "L8",
+          "instrument_id": "000001.SZ",
+          "label": "reference_close",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E91",
+          "field": "reference_close"
+        },
+        {
+          "id": "L9",
+          "instrument_id": "000001.SZ",
+          "label": "exit_below",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E91",
+          "field": "exit_below"
+        },
+        {
+          "id": "L10",
+          "instrument_id": "000001.SZ",
+          "label": "observe_below",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E92",
+          "field": "observe_below"
+        },
+        {
+          "id": "L11",
+          "instrument_id": "000001.SZ",
+          "label": "observe_above",
+          "price": "12.05",
+          "date": "2026-10-29",
+          "evidence_id": "E92",
+          "field": "observe_above"
+        }
+      ]
+    },
+    "D02": {
+      "securities": [
+        {
+          "instrument_id": "000001.SZ",
+          "name": "样本公司",
+          "coverage": [
+            {
+              "kind": "profile",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "financial",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "news",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "announcements",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "technical",
+              "status": "available",
+              "code": "deterministic_facts"
+            }
+          ]
+        }
+      ],
+      "objective": {
+        "kind": "decision",
+        "horizon": "未来1个月"
+      },
+      "daily_cutoff": "2026-10-29",
+      "explicit_historical": false,
+      "evidence": [
+        {
+          "id": "E8",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "1.300099%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 1.300099475569,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E9",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-1.951595%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -1.951594855028,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E13",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "6.336009%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 6.336009277123,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E14",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "1.471418%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 1.471418294983,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E18",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-1.200097%",
+          "date": "2026-04-17",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -1.200097176919,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E19",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-4.532255%",
+          "date": "2026-04-17",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -4.532254817158,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E23",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "6.320002%",
+          "date": "2025-10-30",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 6.320001880648,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E24",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "6.245845%",
+          "date": "2025-10-30",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 6.245844952412,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E28",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "9.158168%",
+          "date": "2025-08-13",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 9.158168061298,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E29",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "8.891467%",
+          "date": "2025-08-13",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 8.891466577162,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E88",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "入场参考1354.00元；止损1317.35元；止盈11408.97元；止盈21445.62元；盈亏比11.499863倍；盈亏比22.499863倍；ATR24.4380元；ATR倍数1.5倍",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "field": null,
+          "values": {
+            "reference_entry": "1354.00",
+            "reference_stop": "1317.35",
+            "target_1": "1408.97",
+            "target_2": "1445.62",
+            "reward_risk_1": "1.499863",
+            "reward_risk_2": "2.499863",
+            "atr": "24.4380",
+            "atr_multiple": "1.5"
+          }
+        },
+        {
+          "id": "E89",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "收盘参考1354.00元；退出观察位1317.35元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "field": null,
+          "values": {
+            "reference_close": "1354.00",
+            "exit_below": "1317.35"
+          }
+        },
+        {
+          "id": "E90",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "下方观察位1317.35元；上方观察位1408.97元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "field": null,
+          "values": {
+            "observe_below": "1317.35",
+            "observe_above": "1408.97"
+          }
+        },
+        {
+          "id": "E93",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "最新收盘价",
+          "display": "1354.00元/股",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "1354.0",
+          "field": "latest_close"
+        },
+        {
+          "id": "E91",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "单季营业收入",
+          "display": "375.75亿元",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "financial_quarter_derived",
+          "unit": "cny",
+          "raw_value": "37575159697.98",
+          "field": "quarter_revenue"
+        },
+        {
+          "id": "E94",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近5日涨跌幅",
+          "display": "2.69%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "2.693232409802122124551570400",
+          "field": "return_5d"
+        },
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "5日前收盘价",
+          "display": "1318.49元/股",
+          "date": "2026-10-22",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "1318.49",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E96",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近20日涨跌幅",
+          "display": "8.21%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "8.212653048176209200473130700",
+          "field": "return_20d"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "20日前收盘价",
+          "display": "1251.24元/股",
+          "date": "2026-09-23",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "1251.24",
+          "field": "close_20d_ago"
+        }
+      ],
+      "omitted_from_model": 86,
+      "trade_plans": [
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "instrument_id": "000001.SZ",
+          "purpose": "conditional_entry",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "instrument_id": "000001.SZ",
+          "purpose": "holding_exit",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "instrument_id": "000001.SZ",
+          "purpose": "wait",
+          "status": "available",
+          "code": "plan_ready"
+        }
+      ],
+      "start_date": "2025-10-30",
+      "price_levels": [
+        {
+          "id": "E93",
+          "instrument_id": "000001.SZ",
+          "label": "最新收盘价",
+          "price": "1354.0",
+          "date": "2026-10-29",
+          "evidence_id": "E93",
+          "field": "latest_close"
+        },
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "label": "5日前收盘价",
+          "price": "1318.49",
+          "date": "2026-10-22",
+          "evidence_id": "E95",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "label": "20日前收盘价",
+          "price": "1251.24",
+          "date": "2026-09-23",
+          "evidence_id": "E97",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "L4",
+          "instrument_id": "000001.SZ",
+          "label": "reference_entry",
+          "price": "1354.00",
+          "date": "2026-10-29",
+          "evidence_id": "E88",
+          "field": "reference_entry"
+        },
+        {
+          "id": "L5",
+          "instrument_id": "000001.SZ",
+          "label": "reference_stop",
+          "price": "1317.35",
+          "date": "2026-10-29",
+          "evidence_id": "E88",
+          "field": "reference_stop"
+        },
+        {
+          "id": "L6",
+          "instrument_id": "000001.SZ",
+          "label": "target_1",
+          "price": "1408.97",
+          "date": "2026-10-29",
+          "evidence_id": "E88",
+          "field": "target_1"
+        },
+        {
+          "id": "L7",
+          "instrument_id": "000001.SZ",
+          "label": "target_2",
+          "price": "1445.62",
+          "date": "2026-10-29",
+          "evidence_id": "E88",
+          "field": "target_2"
+        },
+        {
+          "id": "L8",
+          "instrument_id": "000001.SZ",
+          "label": "reference_close",
+          "price": "1354.00",
+          "date": "2026-10-29",
+          "evidence_id": "E89",
+          "field": "reference_close"
+        },
+        {
+          "id": "L9",
+          "instrument_id": "000001.SZ",
+          "label": "exit_below",
+          "price": "1317.35",
+          "date": "2026-10-29",
+          "evidence_id": "E89",
+          "field": "exit_below"
+        },
+        {
+          "id": "L10",
+          "instrument_id": "000001.SZ",
+          "label": "observe_below",
+          "price": "1317.35",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "observe_below"
+        },
+        {
+          "id": "L11",
+          "instrument_id": "000001.SZ",
+          "label": "observe_above",
+          "price": "1408.97",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "observe_above"
+        }
+      ]
+    },
+    "D07": {
+      "securities": [
+        {
+          "instrument_id": "000001.SZ",
+          "name": "样本公司",
+          "coverage": [
+            {
+              "kind": "profile",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "financial",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "news",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "announcements",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "technical",
+              "status": "available",
+              "code": "deterministic_facts"
+            }
+          ]
+        }
+      ],
+      "objective": {
+        "kind": "decision",
+        "horizon": "未来1个月"
+      },
+      "daily_cutoff": "2026-10-29",
+      "explicit_historical": false,
+      "evidence": [
+        {
+          "id": "E8",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "3.456122%",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.456122286503,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E9",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "1.661998%",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 1.661997971068,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E13",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "2.454635%",
+          "date": "2026-04-30",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.454635021947,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E14",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "2.031221%",
+          "date": "2026-04-30",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.031220956812,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E18",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "12.08019%",
+          "date": "2026-03-31",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 12.080186188339,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E19",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "14.03363%",
+          "date": "2026-03-31",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 14.033631938896,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E80",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "入场参考87.48元；止损84.57元；止盈191.84元；止盈294.75元；盈亏比11.498281倍；盈亏比22.498281倍；ATR1.9406元；ATR倍数1.5倍",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "field": null,
+          "values": {
+            "reference_entry": "87.48",
+            "reference_stop": "84.57",
+            "target_1": "91.84",
+            "target_2": "94.75",
+            "reward_risk_1": "1.498281",
+            "reward_risk_2": "2.498281",
+            "atr": "1.9406",
+            "atr_multiple": "1.5"
+          }
+        },
+        {
+          "id": "E81",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "收盘参考87.48元；退出观察位84.57元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "field": null,
+          "values": {
+            "reference_close": "87.48",
+            "exit_below": "84.57"
+          }
+        },
+        {
+          "id": "E82",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "下方观察位84.57元；上方观察位91.84元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "field": null,
+          "values": {
+            "observe_below": "84.57",
+            "observe_above": "91.84"
+          }
+        },
+        {
+          "id": "E85",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "最新收盘价",
+          "display": "87.48元/股",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "87.48",
+          "field": "latest_close"
+        },
+        {
+          "id": "E83",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "单季营业收入",
+          "display": "1294.72亿元",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "financial_quarter_derived",
+          "unit": "cny",
+          "raw_value": "129471509000.0",
+          "field": "quarter_revenue"
+        },
+        {
+          "id": "E21",
+          "instrument_id": "000001.SZ",
+          "kind": "news",
+          "label": "news_title",
+          "display": "图解样本公司三季报：第三季度单季净利润同比增长25.93%",
+          "date": "2026-10-30",
+          "content_kind": "title",
+          "publication_precision": "datetime",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "text",
+          "raw_value": "图解样本公司三季报：第三季度单季净利润同比增长25.93%",
+          "field": null
+        },
+        {
+          "id": "E26",
+          "instrument_id": "000001.SZ",
+          "kind": "announcements",
+          "label": "公告标题",
+          "display": "样本公司:关于召开2026年第二次临时股东会的通知",
+          "date": "2026-10-29",
+          "content_kind": "title",
+          "publication_precision": "datetime",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "text",
+          "raw_value": "样本公司:关于召开2026年第二次临时股东会的通知",
+          "field": null
+        },
+        {
+          "id": "E1",
+          "instrument_id": "000001.SZ",
+          "kind": "profile",
+          "label": "公司名称",
+          "display": "样本公司股份有限公司",
+          "content_kind": "background",
+          "publication_precision": "unknown",
+          "temporal_scope": "current_context",
+          "unit": "text",
+          "raw_value": "样本公司股份有限公司",
+          "field": null
+        },
+        {
+          "id": "E86",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近5日涨跌幅",
+          "display": "2.57%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "2.567710165318325712275765000",
+          "field": "return_5d"
+        },
+        {
+          "id": "E87",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "5日前收盘价",
+          "display": "85.29元/股",
+          "date": "2026-10-22",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "85.29",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E88",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近20日涨跌幅",
+          "display": "6.07%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "6.074936340487449981811567800",
+          "field": "return_20d"
+        },
+        {
+          "id": "E89",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "20日前收盘价",
+          "display": "82.47元/股",
+          "date": "2026-09-23",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "82.47",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "E90",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近60日涨跌幅",
+          "display": "0.54%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "0.540167796804964946557866900",
+          "field": "return_60d"
+        }
+      ],
+      "omitted_from_model": 78,
+      "trade_plans": [
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "instrument_id": "000001.SZ",
+          "purpose": "conditional_entry",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "instrument_id": "000001.SZ",
+          "purpose": "holding_exit",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "instrument_id": "000001.SZ",
+          "purpose": "wait",
+          "status": "available",
+          "code": "plan_ready"
+        }
+      ],
+      "start_date": "2025-10-30",
+      "price_levels": [
+        {
+          "id": "E85",
+          "instrument_id": "000001.SZ",
+          "label": "最新收盘价",
+          "price": "87.48",
+          "date": "2026-10-29",
+          "evidence_id": "E85",
+          "field": "latest_close"
+        },
+        {
+          "id": "E87",
+          "instrument_id": "000001.SZ",
+          "label": "5日前收盘价",
+          "price": "85.29",
+          "date": "2026-10-22",
+          "evidence_id": "E87",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E89",
+          "instrument_id": "000001.SZ",
+          "label": "20日前收盘价",
+          "price": "82.47",
+          "date": "2026-09-23",
+          "evidence_id": "E89",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "L4",
+          "instrument_id": "000001.SZ",
+          "label": "reference_entry",
+          "price": "87.48",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "reference_entry"
+        },
+        {
+          "id": "L5",
+          "instrument_id": "000001.SZ",
+          "label": "reference_stop",
+          "price": "84.57",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "reference_stop"
+        },
+        {
+          "id": "L6",
+          "instrument_id": "000001.SZ",
+          "label": "target_1",
+          "price": "91.84",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "target_1"
+        },
+        {
+          "id": "L7",
+          "instrument_id": "000001.SZ",
+          "label": "target_2",
+          "price": "94.75",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "target_2"
+        },
+        {
+          "id": "L8",
+          "instrument_id": "000001.SZ",
+          "label": "reference_close",
+          "price": "87.48",
+          "date": "2026-10-29",
+          "evidence_id": "E81",
+          "field": "reference_close"
+        },
+        {
+          "id": "L9",
+          "instrument_id": "000001.SZ",
+          "label": "exit_below",
+          "price": "84.57",
+          "date": "2026-10-29",
+          "evidence_id": "E81",
+          "field": "exit_below"
+        },
+        {
+          "id": "L10",
+          "instrument_id": "000001.SZ",
+          "label": "observe_below",
+          "price": "84.57",
+          "date": "2026-10-29",
+          "evidence_id": "E82",
+          "field": "observe_below"
+        },
+        {
+          "id": "L11",
+          "instrument_id": "000001.SZ",
+          "label": "observe_above",
+          "price": "91.84",
+          "date": "2026-10-29",
+          "evidence_id": "E82",
+          "field": "observe_above"
+        }
+      ]
+    },
+    "D10": {
+      "securities": [
+        {
+          "instrument_id": "000001.SZ",
+          "name": "样本公司",
+          "coverage": [
+            {
+              "kind": "profile",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "financial",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "news",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "announcements",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "technical",
+              "status": "available",
+              "code": "deterministic_facts"
+            }
+          ]
+        }
+      ],
+      "objective": {
+        "kind": "decision",
+        "horizon": "未来20个交易日"
+      },
+      "daily_cutoff": "2026-10-29",
+      "explicit_historical": false,
+      "evidence": [
+        {
+          "id": "E8",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-7.128167%",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -7.128167265938,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E9",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-20.53524%",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -20.535238859941,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E13",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-11.81914%",
+          "date": "2026-04-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -11.819136563905,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E14",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-55.38441%",
+          "date": "2026-04-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -55.384405326715,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E18",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "3.456752%",
+          "date": "2026-03-28",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.456751786996,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E19",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-18.9677%",
+          "date": "2026-03-28",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -18.967701027859,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E80",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "入场参考82.50元；止损79.78元；止盈186.58元；止盈289.30元；盈亏比11.500000倍；盈亏比22.500000倍；ATR1.8143元；ATR倍数1.5倍",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "field": null,
+          "values": {
+            "reference_entry": "82.50",
+            "reference_stop": "79.78",
+            "target_1": "86.58",
+            "target_2": "89.30",
+            "reward_risk_1": "1.500000",
+            "reward_risk_2": "2.500000",
+            "atr": "1.8143",
+            "atr_multiple": "1.5"
+          }
+        },
+        {
+          "id": "E81",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "收盘参考82.50元；退出观察位79.78元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "field": null,
+          "values": {
+            "reference_close": "82.50",
+            "exit_below": "79.78"
+          }
+        },
+        {
+          "id": "E82",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "下方观察位79.78元；上方观察位86.58元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "field": null,
+          "values": {
+            "observe_below": "79.78",
+            "observe_above": "86.58"
+          }
+        },
+        {
+          "id": "E85",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "最新收盘价",
+          "display": "82.50元/股",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "82.5",
+          "field": "latest_close"
+        },
+        {
+          "id": "E83",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "单季营业收入",
+          "display": "1945.90亿元",
+          "date": "2026-08-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "financial_quarter_derived",
+          "unit": "cny",
+          "raw_value": "194590107000.0",
+          "field": "quarter_revenue"
+        },
+        {
+          "id": "E21",
+          "instrument_id": "000001.SZ",
+          "kind": "news",
+          "label": "news_title",
+          "display": "图解样本公司三季报：第三季度单季净利润同比增长28.08%",
+          "date": "2026-10-30",
+          "content_kind": "title",
+          "publication_precision": "datetime",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "text",
+          "raw_value": "图解样本公司三季报：第三季度单季净利润同比增长28.08%",
+          "field": null
+        },
+        {
+          "id": "E26",
+          "instrument_id": "000001.SZ",
+          "kind": "announcements",
+          "label": "公告标题",
+          "display": "样本公司:关于2026年1-9月计提信用及资产减值损失的公告",
+          "date": "2026-10-29",
+          "content_kind": "title",
+          "publication_precision": "datetime",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "text",
+          "raw_value": "样本公司:关于2026年1-9月计提信用及资产减值损失的公告",
+          "field": null
+        },
+        {
+          "id": "E1",
+          "instrument_id": "000001.SZ",
+          "kind": "profile",
+          "label": "公司名称",
+          "display": "样本公司股份有限公司",
+          "content_kind": "background",
+          "publication_precision": "unknown",
+          "temporal_scope": "current_context",
+          "unit": "text",
+          "raw_value": "样本公司股份有限公司",
+          "field": null
+        },
+        {
+          "id": "E86",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近5日涨跌幅",
+          "display": "3.10%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "3.099225193701574606348412900",
+          "field": "return_5d"
+        },
+        {
+          "id": "E87",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "5日前收盘价",
+          "display": "80.02元/股",
+          "date": "2026-10-22",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "80.02",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E88",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近20日涨跌幅",
+          "display": "-3.90%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "-3.902154921374490390215492140",
+          "field": "return_20d"
+        },
+        {
+          "id": "E89",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "20日前收盘价",
+          "display": "85.85元/股",
+          "date": "2026-09-23",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "85.85",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "E90",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近60日涨跌幅",
+          "display": "-13.02%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "-13.02055877701634159198734844",
+          "field": "return_60d"
+        }
+      ],
+      "omitted_from_model": 78,
+      "trade_plans": [
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "instrument_id": "000001.SZ",
+          "purpose": "conditional_entry",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "instrument_id": "000001.SZ",
+          "purpose": "holding_exit",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "instrument_id": "000001.SZ",
+          "purpose": "wait",
+          "status": "available",
+          "code": "plan_ready"
+        }
+      ],
+      "start_date": "2025-10-30",
+      "price_levels": [
+        {
+          "id": "E85",
+          "instrument_id": "000001.SZ",
+          "label": "最新收盘价",
+          "price": "82.5",
+          "date": "2026-10-29",
+          "evidence_id": "E85",
+          "field": "latest_close"
+        },
+        {
+          "id": "E87",
+          "instrument_id": "000001.SZ",
+          "label": "5日前收盘价",
+          "price": "80.02",
+          "date": "2026-10-22",
+          "evidence_id": "E87",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E89",
+          "instrument_id": "000001.SZ",
+          "label": "20日前收盘价",
+          "price": "85.85",
+          "date": "2026-09-23",
+          "evidence_id": "E89",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "L4",
+          "instrument_id": "000001.SZ",
+          "label": "reference_entry",
+          "price": "82.50",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "reference_entry"
+        },
+        {
+          "id": "L5",
+          "instrument_id": "000001.SZ",
+          "label": "reference_stop",
+          "price": "79.78",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "reference_stop"
+        },
+        {
+          "id": "L6",
+          "instrument_id": "000001.SZ",
+          "label": "target_1",
+          "price": "86.58",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "target_1"
+        },
+        {
+          "id": "L7",
+          "instrument_id": "000001.SZ",
+          "label": "target_2",
+          "price": "89.30",
+          "date": "2026-10-29",
+          "evidence_id": "E80",
+          "field": "target_2"
+        },
+        {
+          "id": "L8",
+          "instrument_id": "000001.SZ",
+          "label": "reference_close",
+          "price": "82.50",
+          "date": "2026-10-29",
+          "evidence_id": "E81",
+          "field": "reference_close"
+        },
+        {
+          "id": "L9",
+          "instrument_id": "000001.SZ",
+          "label": "exit_below",
+          "price": "79.78",
+          "date": "2026-10-29",
+          "evidence_id": "E81",
+          "field": "exit_below"
+        },
+        {
+          "id": "L10",
+          "instrument_id": "000001.SZ",
+          "label": "observe_below",
+          "price": "79.78",
+          "date": "2026-10-29",
+          "evidence_id": "E82",
+          "field": "observe_below"
+        },
+        {
+          "id": "L11",
+          "instrument_id": "000001.SZ",
+          "label": "observe_above",
+          "price": "86.58",
+          "date": "2026-10-29",
+          "evidence_id": "E82",
+          "field": "observe_above"
+        }
+      ]
+    },
+    "D16": {
+      "securities": [
+        {
+          "instrument_id": "000001.SZ",
+          "name": "样本公司",
+          "coverage": [
+            {
+              "kind": "profile",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "financial",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "news",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "announcements",
+              "status": "available",
+              "code": "bounded_evidence_available"
+            },
+            {
+              "kind": "technical",
+              "status": "available",
+              "code": "deterministic_facts"
+            }
+          ]
+        }
+      ],
+      "objective": {
+        "kind": "decision",
+        "horizon": "未来20个交易日"
+      },
+      "daily_cutoff": "2026-10-29",
+      "explicit_historical": false,
+      "evidence": [
+        {
+          "id": "E8",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "2.415862%",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.415862041562,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E9",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "2.209239%",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 2.209238634289,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E13",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "1.7756%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 1.775599913526,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E14",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "3.321271%",
+          "date": "2026-08-15",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-06-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.321270607157,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E18",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "4.651577%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 4.65157673025,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E19",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "3.029228%",
+          "date": "2026-04-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-03-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": 3.02922814983,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E23",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-10.39776%",
+          "date": "2026-03-21",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -10.397764068305,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E24",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-4.212726%",
+          "date": "2026-03-21",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-12-31",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -4.212725802103,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E28",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "营收同比",
+          "display": "-9.781147%",
+          "date": "2025-10-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -9.781147496908,
+          "field": "revenue_yoy"
+        },
+        {
+          "id": "E29",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "归母净利润同比",
+          "display": "-3.498704%",
+          "date": "2025-10-25",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2025-09-30",
+          "temporal_scope": "published_before_cutoff",
+          "unit": "percent",
+          "raw_value": -3.498703717687,
+          "field": "parent_net_profit_yoy"
+        },
+        {
+          "id": "E90",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "入场参考11.54元；止损11.20元；止盈112.05元；止盈212.39元；盈亏比11.500000倍；盈亏比22.500000倍；ATR0.2281元；ATR倍数1.5倍",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "field": null,
+          "values": {
+            "reference_entry": "11.54",
+            "reference_stop": "11.20",
+            "target_1": "12.05",
+            "target_2": "12.39",
+            "reward_risk_1": "1.500000",
+            "reward_risk_2": "2.500000",
+            "atr": "0.2281",
+            "atr_multiple": "1.5"
+          }
+        },
+        {
+          "id": "E91",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "收盘参考11.54元；退出观察位11.20元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "field": null,
+          "values": {
+            "reference_close": "11.54",
+            "exit_below": "11.20"
+          }
+        },
+        {
+          "id": "E92",
+          "instrument_id": "000001.SZ",
+          "kind": "risk",
+          "label": "ATR参考计划",
+          "display": "下方观察位11.20元；上方观察位12.05元",
+          "date": "2026-10-29",
+          "content_kind": "trade_plan",
+          "publication_precision": "date",
+          "temporal_scope": "conditional_atr_reference_plan",
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "field": null,
+          "values": {
+            "observe_below": "11.20",
+            "observe_above": "12.05"
+          }
+        },
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "最新收盘价",
+          "display": "11.54元/股",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.54",
+          "field": "latest_close"
+        },
+        {
+          "id": "E93",
+          "instrument_id": "000001.SZ",
+          "kind": "financial",
+          "label": "单季营业收入",
+          "display": "324.83亿元",
+          "date": "2026-10-24",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "report_period": "2026-09-30",
+          "temporal_scope": "financial_quarter_derived",
+          "unit": "cny",
+          "raw_value": "32483000000.0",
+          "field": "quarter_revenue"
+        },
+        {
+          "id": "E96",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近5日涨跌幅",
+          "display": "2.12%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "2.123893805309734513274336300",
+          "field": "return_5d"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "5日前收盘价",
+          "display": "11.30元/股",
+          "date": "2026-10-22",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.3",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E98",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "近20日涨跌幅",
+          "display": "-0.52%",
+          "date": "2026-10-29",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "percent",
+          "raw_value": "-0.5172413793103448275862069000",
+          "field": "return_20d"
+        },
+        {
+          "id": "E99",
+          "instrument_id": "000001.SZ",
+          "kind": "technical",
+          "label": "20日前收盘价",
+          "display": "11.60元/股",
+          "date": "2026-09-23",
+          "content_kind": "fact",
+          "publication_precision": "date",
+          "temporal_scope": "daily_price_context",
+          "unit": "CNY/share",
+          "raw_value": "11.6",
+          "field": "close_20d_ago"
+        }
+      ],
+      "omitted_from_model": 88,
+      "trade_plans": [
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:conditional_entry",
+          "instrument_id": "000001.SZ",
+          "purpose": "conditional_entry",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:holding_exit",
+          "instrument_id": "000001.SZ",
+          "purpose": "holding_exit",
+          "status": "available",
+          "code": "plan_ready"
+        },
+        {
+          "plan_id": "frozen-snapshot|atr_reference_plan_v1:wait",
+          "instrument_id": "000001.SZ",
+          "purpose": "wait",
+          "status": "available",
+          "code": "plan_ready"
+        }
+      ],
+      "start_date": "2025-10-30",
+      "price_levels": [
+        {
+          "id": "E95",
+          "instrument_id": "000001.SZ",
+          "label": "最新收盘价",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E95",
+          "field": "latest_close"
+        },
+        {
+          "id": "E97",
+          "instrument_id": "000001.SZ",
+          "label": "5日前收盘价",
+          "price": "11.3",
+          "date": "2026-10-22",
+          "evidence_id": "E97",
+          "field": "close_5d_ago"
+        },
+        {
+          "id": "E99",
+          "instrument_id": "000001.SZ",
+          "label": "20日前收盘价",
+          "price": "11.6",
+          "date": "2026-09-23",
+          "evidence_id": "E99",
+          "field": "close_20d_ago"
+        },
+        {
+          "id": "L4",
+          "instrument_id": "000001.SZ",
+          "label": "reference_entry",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "reference_entry"
+        },
+        {
+          "id": "L5",
+          "instrument_id": "000001.SZ",
+          "label": "reference_stop",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "reference_stop"
+        },
+        {
+          "id": "L6",
+          "instrument_id": "000001.SZ",
+          "label": "target_1",
+          "price": "12.05",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "target_1"
+        },
+        {
+          "id": "L7",
+          "instrument_id": "000001.SZ",
+          "label": "target_2",
+          "price": "12.39",
+          "date": "2026-10-29",
+          "evidence_id": "E90",
+          "field": "target_2"
+        },
+        {
+          "id": "L8",
+          "instrument_id": "000001.SZ",
+          "label": "reference_close",
+          "price": "11.54",
+          "date": "2026-10-29",
+          "evidence_id": "E91",
+          "field": "reference_close"
+        },
+        {
+          "id": "L9",
+          "instrument_id": "000001.SZ",
+          "label": "exit_below",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E91",
+          "field": "exit_below"
+        },
+        {
+          "id": "L10",
+          "instrument_id": "000001.SZ",
+          "label": "observe_below",
+          "price": "11.20",
+          "date": "2026-10-29",
+          "evidence_id": "E92",
+          "field": "observe_below"
+        },
+        {
+          "id": "L11",
+          "instrument_id": "000001.SZ",
+          "label": "observe_above",
+          "price": "12.05",
+          "date": "2026-10-29",
+          "evidence_id": "E92",
+          "field": "observe_above"
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "category": "role",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "2026年前三季度营收同比增**2.42%**、归母净利润同比增**2.21%**；上半年净利润同比增3.32%，一季度增3.03%。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "role",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "相较2025年全年营收同比-10.40%、净利润-4.21%的收缩，经营趋势已转为低速正增长，但改善力度有限。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "role",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "止损12.39元。"
+      },
+      "accepted": false
+    },
+    {
+      "category": "financial_period",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "2026年前三季度营收同比增**2.42%**、归母净利润同比增**2.21%**；上半年净利润同比增3.32%，一季度增3.03%。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "financial_period",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "相较2025年全年营收同比-10.40%、净利润-4.21%的收缩，经营趋势已转为低速正增长，但改善力度有限。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "financial_period",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "营收同比999%。"
+      },
+      "accepted": false
+    },
+    {
+      "category": "citation_scope",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].current.text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "最新收盘为2026-10-29的**11.54元**；近5日上涨2.12%，从11.30元回升，但近20日仍小幅下跌0.52%，20日前为11.60元，整体属窄幅震荡。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "citation_scope",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "相较2025年全年营收同比-10.40%、净利润-4.21%的收缩，经营趋势已转为低速正增长，但改善力度有限。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "citation_scope",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[1]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "观察读数11.54元。",
+        "numbers": [
+          {
+            "text": "11.54元",
+            "ref": "E404"
+          }
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "category": "historical_close",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "narratives[0].current.text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "最新收盘为2026-10-29的**11.54元**；近5日上涨2.12%，从11.30元回升，但近20日仍小幅下跌0.52%，20日前为11.60元，整体属窄幅震荡。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "historical_close",
+      "source": {
+        "case": "D01",
+        "draft": 2,
+        "path": "narratives[0].current.text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "**最新收盘11.54元**（2026-10-29），近5日涨2.12%，但近20日仍跌0.52%，20日前收盘为11.60元，整体处在小幅区间震荡。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "historical_close",
+      "source": {
+        "case": "D01",
+        "draft": 2,
+        "path": "narratives[0].current.text.sentence[0]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "20日前收盘999元。"
+      },
+      "accepted": false
+    },
+    {
+      "category": "window",
+      "source": {
+        "case": "D02",
+        "draft": 2,
+        "path": "narratives[0].current.text.sentence[0]"
+      },
+      "context_id": "D02",
+      "claim": {
+        "text": "**最新收盘1354.00元（2026-10-29）**；近5日上涨2.69%，近20日上涨8.21%，短期动能偏强。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "window",
+      "source": {
+        "case": "D02",
+        "draft": 2,
+        "path": "decisions[0].reasons[1].text.sentence[0]"
+      },
+      "context_id": "D02",
+      "claim": {
+        "text": "**近20日上涨8.21%、近5日上涨2.69%**，短期动能偏强，但反弹后追高的性价比下降。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "window",
+      "source": {
+        "case": "D02",
+        "draft": 2,
+        "path": "decisions[0].reasons[1].text.sentence[0]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D02",
+      "claim": {
+        "text": "近5日上涨99%。"
+      },
+      "accepted": false
+    },
+    {
+      "category": "direction",
+      "source": {
+        "case": "D01",
+        "draft": 1,
+        "path": "decisions[0].reasons[0].text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "营收与归母净利润同比均已转为低速正增长（2.42%、2.21%），基本面不再收缩，但改善幅度不足以构成强驱动。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "direction",
+      "source": {
+        "case": "D01",
+        "draft": 2,
+        "path": "decisions[0].reasons[1].text.sentence[0]"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "近5日涨2.12%而近20日仍跌0.52%，现价11.54元低于20日前的11.60元，属区间震荡而非趋势上行。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "direction",
+      "source": {
+        "case": "D01",
+        "draft": 2,
+        "path": "decisions[0].reasons[1].text.sentence[0]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D01",
+      "claim": {
+        "text": "近20日涨-0.52%。"
+      },
+      "accepted": false
+    },
+    {
+      "category": "title",
+      "source": {
+        "case": "D07",
+        "draft": 1,
+        "path": "narratives[0].summary.text.sentence[0]"
+      },
+      "context_id": "D07",
+      "claim": {
+        "text": "未来一个月没有足够证据支持\"应当卖出\"的结论：股价近期偏强（20日+6.07%），三季报单季净利润同比+25.93%的标题构成正面信息，但缺少估值、现金流与完整财报内容，无法判断高估或趋势反转。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "title",
+      "source": {
+        "case": "D07",
+        "draft": 1,
+        "path": "narratives[0].drivers[1].text.sentence[0]"
+      },
+      "context_id": "D07",
+      "claim": {
+        "text": "新闻标题显示2026年第三季度单季净利润同比增长25.93%，若属实是明显强于上半年的信号（上半年归母净利润同比仅+1.66%）。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "title",
+      "source": {
+        "case": "D07",
+        "draft": 1,
+        "path": "narratives[0].drivers[1].text.sentence[0]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D07",
+      "claim": {
+        "text": "新闻标题显示单季利润增长35.93%。",
+        "numbers": [
+          {
+            "text": "35.93%",
+            "ref": "E21"
+          }
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "category": "distance",
+      "source": {
+        "case": "D16",
+        "draft": 1,
+        "path": "narratives[0].drivers[0].text.sentence[0]"
+      },
+      "context_id": "D16",
+      "claim": {
+        "text": "ATR为0.2281元，参考计划按1.5倍ATR设置止损于11.20元，对应收盘价下方约2.9%；该距离较贴近日常波动，容易被正常回踩触及，属于紧止损。",
+        "numbers": [
+          {
+            "text": "约2.9%",
+            "derive": "distance",
+            "refs": [
+              "E95",
+              "L5"
+            ]
+          }
+        ]
+      },
+      "accepted": true
+    },
+    {
+      "category": "distance",
+      "source": {
+        "case": "D16",
+        "draft": 2,
+        "path": "decisions[0].reasons[2].text.sentence[0]"
+      },
+      "context_id": "D16",
+      "claim": {
+        "text": "参考止损位11.20元，按最新收盘计风险距离约2.9%，可作为机械执行参考，但该价位为模型参考计划，不是预测目标。",
+        "numbers": [
+          {
+            "text": "约2.9%",
+            "derive": "distance",
+            "refs": [
+              "E95",
+              "L5"
+            ]
+          }
+        ]
+      },
+      "accepted": true
+    },
+    {
+      "category": "distance",
+      "source": {
+        "case": "D16",
+        "draft": 2,
+        "path": "decisions[0].reasons[2].text.sentence[0]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D16",
+      "claim": {
+        "text": "风险距离约9.9%。",
+        "numbers": [
+          {
+            "text": "约9.9%",
+            "derive": "distance",
+            "refs": [
+              "E95",
+              "L5"
+            ]
+          }
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "category": "period",
+      "source": {
+        "case": "D10",
+        "draft": 1,
+        "path": "decisions[0].reasons[3].text.sentence[0]"
+      },
+      "context_id": "D10",
+      "claim": {
+        "text": "1-9月减值计提金额未披露，属关键缺项。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "period",
+      "source": {
+        "case": "D10",
+        "draft": 2,
+        "path": "narratives[0].drivers[1].text.sentence[1]"
+      },
+      "context_id": "D10",
+      "claim": {
+        "text": "同时公司披露1-9月计提信用及资产减值损失，标题未含金额，属关键缺项。"
+      },
+      "accepted": true
+    },
+    {
+      "category": "period",
+      "source": {
+        "case": "D10",
+        "draft": 2,
+        "path": "narratives[0].drivers[1].text.sentence[1]",
+        "kind": "人工真错反例（非模型原稿）"
+      },
+      "context_id": "D10",
+      "claim": {
+        "text": "1-9月计提金额999999亿元。"
+      },
+      "accepted": false
+    }
+  ]
+}

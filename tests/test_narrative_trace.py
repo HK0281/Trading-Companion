@@ -50,6 +50,16 @@ class NarrativeTraceTests(unittest.TestCase):
         self.assertFalse(value['repair_content_added'])
         self.assertNotIn('PRIVATE',json.dumps(value))
 
+    def test_numeric_metadata_is_bounded_and_keeps_no_bindings_or_raw_context(self):
+        from trading_companion.turn_trace import safe_answer_validation
+        value = safe_answer_validation(dict(numeric_validation_version='source-bindings-v1', numeric_tokens=10001,
+            bound_numbers=True, unbound_matched=3, numbers=[{'text':'PRIVATE'}], context='PRIVATE'))
+        self.assertEqual(value['numeric_validation_version'],'source-bindings-v1')
+        self.assertEqual(value['numeric_tokens'],10000)
+        self.assertEqual(value['unbound_matched'],3)
+        self.assertNotIn('bound_numbers',value)
+        self.assertNotIn('PRIVATE',json.dumps(value))
+
     def test_no_trace_overrides_trace_dir_and_help_documents_switch(self):
         from trading_companion.api_server import main as server
         with TemporaryDirectory() as temporary, patch("uvicorn.run"), redirect_stdout(StringIO()):

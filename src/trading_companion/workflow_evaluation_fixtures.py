@@ -347,7 +347,8 @@ class ScriptedWorkflowModel:
                 records = [item for item in context["evidence"] if item["kind"] == "financial"]
                 revenue, profit = records[:2]
                 paragraphs = [{"text": "样例营业收入为" + revenue["display"] + "，样例归母净利润为" + profit["display"] + "。",
-                               "evidence_ids": [revenue["id"]]}]
+                               "evidence_ids": [revenue["id"]],
+                               "numbers": [{"text":profit['display'], "ref":revenue['id']}]}]
             if len(paragraphs) == 1:
                 paragraphs.append({"text": "现有资料不保证未来方向，需要持续观察相反证据。", "evidence_ids": paragraphs[0]["evidence_ids"]})
             return self.payload({"version": PRODUCT_ANSWER_VERSION, "paragraphs": paragraphs})

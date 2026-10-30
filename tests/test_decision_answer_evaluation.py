@@ -77,6 +77,21 @@ class DecisionEvaluationTests(unittest.TestCase):
                 self.assertTrue(all(e['data_authenticity']=='fixed_synthetic'
                                     for e in c['company_research']['evidence']))
 
+    def test_binding_statistics_mark_historical_counts_unknown_instead_of_zero_coverage(self):
+        rows = deepcopy(self.report['cases'])
+        from trading_companion.answer_numeric_bindings import COUNTERS
+        for row in rows:
+            if row.get('quality'):
+                row['quality'].update(dict.fromkeys(COUNTERS,0))
+        rows[0]['quality'].update(numeric_tokens=4, bound_numbers=3, bound_matched=2,
+                                  bound_rejected=1, unbound_matched=1)
+        counts = evaluation.summarize(rows)['numeric_bindings']
+        self.assertEqual(counts['validation_version'],'source-bindings-v1')
+        self.assertEqual(counts['coverage']['numerator'],3)
+        self.assertEqual(counts['bound_pass_rate']['numerator'],2)
+        rows[0]['quality'].pop('numeric_validation_version')
+        self.assertEqual(evaluation.summarize(rows)['numeric_bindings']['unknown_questions'],1)
+
     def test_preview_has_all_questions_including_setup_with_absolute_120_cap(self):
         with patch.object(evaluation,'build_real_model',side_effect=AssertionError('No model')):
             plan=evaluation.build_plan(mode='live-model',provider='deepseek',model='deepseek-flash',

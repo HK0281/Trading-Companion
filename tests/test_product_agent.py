@@ -222,7 +222,7 @@ class ProductAgentTests(unittest.TestCase):
         self.assertEqual(len(self.data.calls), 1)
         self.assertEqual(self.factory.reads, [])
 
-    def test_benign_citation_rewrite_is_metered_and_never_repeats_data_collection(self):
+    def test_incomplete_optional_citation_uses_supplied_fallback_without_extra_collection(self):
         class CitationRewriteModel(ProductModelFixture):
             rewrites = 0
 
@@ -243,7 +243,7 @@ class ProductAgentTests(unittest.TestCase):
         model = CitationRewriteModel()
         result = self.run_turn(model=model)
         self.assertEqual((result.status, result.product_answer.status), ("completed", "accepted"))
-        self.assertEqual((result.model_calls_attempted, len(result.model_responses), len(model.calls)), (3, 3, 3))
+        self.assertEqual((result.model_calls_attempted, len(result.model_responses), len(model.calls)), (2, 2, 2))
         self.assertEqual(len(self.data.calls), 1)
         self.assertEqual(self.factory.reads, [])
         self.assertEqual(model.calls[-1][1], ())

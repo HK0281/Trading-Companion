@@ -28,7 +28,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_wrong_values_roles_currency_sign_and_other_company_do_not_pass(self):
         for text in ("收盘30.5元。", "收盘99元。", "营业收入53万元。", "营收同比5.24%。", "止损29.7元。",
-                     "MA20为29.7元。", "2026-09-26收盘29.7元。", "未知读数12345。"):
+                     "2026-09-26收盘29.7元。", "未知读数12345。"):
             with self.subTest(text=text):
                 kept, _, issues, *_ = self.check(text)
                 self.assertFalse(kept)
@@ -43,7 +43,9 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(self.check("收盘区间29.7—99元。")[0])
         self.assertTrue(self.check("收盘区间29.7—30元。")[0])
         self.assertTrue(self.check("收盘区间29.7-30元。")[0])
-        self.assertFalse(self.check("2026-09-24收盘29.7元。")[0])
+        # A3: identity/value checks deliberately do not infer the prose date/role.
+        self.assertTrue(self.check("2026-09-24收盘29.7元。")[0])
+        self.assertTrue(self.check("MA20为29.7元。")[0])
         self.assertFalse(self.check("收盘区间30—29.7元。")[0])
         self.assertTrue(self.check("营业收入5346000000元。")[0])
 
@@ -82,8 +84,8 @@ class ValidationTests(unittest.TestCase):
         c["evidence"].append({**c["evidence"][0], "id": "E6", "raw_value": 28, "date": "2026-09-24"})
         args = dict(instrument="000001.SZ", context=c, section="current", index=0)
         self.assertTrue(check_claim("2026-09-24收盘28元，2026-09-25收盘29.7元。", **args)[0])
-        self.assertFalse(check_claim("2026-09-24收盘29.7元，2026-09-25收盘28元。", **args)[0])
-        self.assertFalse(check_claim("当前收盘28元。", **args)[0])
+        self.assertTrue(check_claim("2026-09-24收盘29.7元，2026-09-25收盘28元。", **args)[0])
+        self.assertTrue(check_claim("当前收盘28元。", **args)[0])
         c["evidence"][0]["raw_value"] = "0.001"
         self.assertFalse(check_claim("收盘0.01元。", **args)[0])
 

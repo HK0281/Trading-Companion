@@ -302,6 +302,13 @@ def summarize(cases):
         end_to_end_latency=_latency([c.get('elapsed_ms') for c in cases]),
         target_turn_latency=_latency([c.get('target_elapsed_ms') for c in cases]),
         model_call_latency=_latency([call['elapsed_ms'] for c in cases for call in c.get('calls',[])]))
+    from trading_companion.answer_numeric_bindings import COUNTERS
+    counts = {key:sum(q[key] for q in quality if type(q.get(key)) is int) for key in COUNTERS}
+    result['numeric_bindings'] = dict(**counts,
+        validation_version='source-bindings-v1',
+        unknown_questions=sum(q.get('numeric_validation_version') != 'source-bindings-v1' for q in quality),
+        coverage=ratio(counts['bound_numbers'],counts['numeric_tokens']),
+        bound_pass_rate=ratio(counts['bound_matched'],counts['bound_numbers']))
     return result
 
 

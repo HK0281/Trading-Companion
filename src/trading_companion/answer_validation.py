@@ -1,7 +1,6 @@
 """Typed, company-scoped sentence checks, not proof of arbitrary prose entailment."""
 from dataclasses import dataclass, field
-from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import re
 import unicodedata
 
@@ -10,7 +9,7 @@ NUMERIC = "answer_numeric_unmatched"
 HARD = "answer_hard_content"
 HORIZON = "answer_horizon_mismatch"
 STANCE = "answer_stance_mismatch"
-CODES = frozenset((STRUCTURE, NUMERIC, HARD, HORIZON, STANCE, "answer_model_unavailable",
+CODES = frozenset((STRUCTURE, NUMERIC, HARD, HORIZON, STANCE, "answer_binding_invalid", "answer_binding_value_mismatch", "answer_model_unavailable",
                    "answer_context_unusable", "answer_partial", "answer_facts_only", "answer_ready"))
 SECTIONS = frozenset(("summary", "current", "drivers", "levels", "scenarios", "stance", "decision", "structure"))
 NUMBER = re.compile(r"(?<![0-9.])[-+]?\d+(?:\.\d+)?\s*(?:亿元|万元|元/股|元|%|％|个百分点|倍|亿股|万股|股)?")
@@ -62,52 +61,6 @@ def unsafe(text):
                 or _positive_claim(text) or re.search(r"(?:概率|胜率).{0,8}[一二三四五六七八九十百]+(?:成|%|％)|百分之[一二三四五六七八九十百]+.{0,8}(?:概率|胜率)", text))
 
 
-def _role(text):
-    if re.search(r"止损|失效价", text): return "stop"
-    if re.search(r"止盈\s*[1一]", text): return "target_1"
-    if re.search(r"止盈\s*[2二]", text): return "target_2"
-    if re.search(r"参考目标|目标价", text): return "target"
-    if re.search(r"退出观察", text): return "exit_below"
-    if re.search(r"下方观察", text): return "observe_below"
-    if re.search(r"上方观察", text): return "observe_above"
-    if re.search(r"入场|买入价|历史参考价", text): return "entry"
-    financial = list(re.finditer(r"营收|收入|利润", text))
-    if financial:
-        role = "profit" if financial[-1][0] == "利润" else "revenue"
-        return "quarter_" + role if "单季" in text else role
-    for n in (20, 60):
-        chinese = "二十" if n == 20 else "六十"
-        if re.search(rf"MA\s*{n}|(?:{n}|{chinese})\s*日(?:均线|均价)", text, re.I): return f"ma{n}"
-    if re.search(r"最高|高点", text): return "high"
-    if re.search(r"最低|低点", text): return "low"
-    if re.search(r"收盘|现价|当前价", text): return "close"
-    if re.search(r"涨跌幅|涨幅|跌幅|上涨|下跌|回落|涨了|跌了", text): return "return"
-    if "ATR" in text.upper(): return "atr"
-    return None
-
-
-def _atoms(record):
-    unit = record.get("unit")
-    raw = record.get("raw_value")
-    role = _role(record.get("label", ""))
-    try:
-        value = Decimal(str(raw))
-        if value.is_finite() and unit in ("CNY/share", "cny", "percent", "ratio", "shares"):
-            return [(value, {"CNY/share": "price", "cny": "amount", "percent": "percent",
-                             "ratio": "ratio", "shares": "shares"}[unit], role)]
-    except (InvalidOperation, ValueError):
-        pass
-    result = []
-    display = record.get("display", "")
-    for m in MONEY.finditer(display):
-        value, suffix = Decimal(m[1]), m[2]
-        kind = ("percent" if suffix in ("%", "％", "个百分点") else "amount" if suffix in ("亿元", "万元")
-                or unit == "cny" else "ratio" if suffix == "倍" else "shares" if "股" in suffix and suffix != "元/股" else "price")
-        local_role = _role(re.split(r"[；;，,]", display[:m.start()])[-1]) if record.get("content_kind") in ("trade_plan", "scenario") else role
-        result.append((value * FACTOR.get(suffix, 1), kind, local_role))
-    return result
-
-
 def _rounded(value, original, shown, *, price=False, diagnostic=None):
     quantum = Decimal(1).scaleb(-max(0, -shown.as_tuple().exponent)) / 2
     error = abs(value-original)
@@ -128,183 +81,10 @@ def _rounded(value, original, shown, *, price=False, diagnostic=None):
     return significant >= 2 and error <= quantum and error <= abs(original)*Decimal("0.02")
 
 
-def _numeric_match(sentence, records, context, diagnostic=None):
-    def failure(reason):
-        if diagnostic is not None:
-            diagnostic.append(dict(stage='sentence', reason=reason))
-        return False
-    normalized = unicodedata.normalize("NFKC", sentence).replace("−", "-")
-    # Unsupported representations are removed rather than silently treated as prose.
-    if re.search(r"(?<![\d.])[零〇一二两三四五六七八九十百千万亿]+(?:亿元|万元|元|个百分点|倍|成)|百分之|美元|港元|欧元|USD|HKD", normalized, re.I):
-        return failure('unsupported_number_representation_or_currency')
-    if records and all(r.get("temporal_scope") in ("completed_week_derived", "cross_timeframe_derived") for r in records):
-        if re.search(r"前一交易日|上一交易日|\d+日(?:均线|均价)", normalized):
-            return failure('timeframe_mismatch')
-    dated = []
-    for match in DATE.finditer(normalized):
-        try:
-            day = date(*(int(x) for x in match.groups())).isoformat()
-        except ValueError:
-            return failure('invalid_date')
-        if not context["start_date"] <= day <= context["daily_cutoff"] and not any(
-                day in (r.get("date"), r.get("report_period")) for r in records):
-            return failure('date_outside_evidence')
-        dated.append(day)
-    # Keep dates as opaque markers so each number binds to its nearest preceding date.
-    normalized = DATE.sub(lambda m: " DATE_" + str(dated.pop(0)) + " ", normalized)
-    date_markers = re.findall(r"DATE_(\d{4}-\d{2}-\d{2})", normalized)
-    if len(date_markers) > 26:
-        return failure('too_many_dates')
-    for i, day in enumerate(date_markers):
-        normalized = normalized.replace("DATE_" + day, "DATE" + chr(65+i), 1)
-    # A cycle is not a price. Instrument codes must still match this company's records.
-    for match in re.finditer(r"\b\d{6}(?:\.(?:SH|SZ|BJ))?\b", normalized, re.I):
-        if not any(str(r.get("instrument_id", "")).startswith(match[0].upper()) for r in records):
-            return failure('instrument_code_not_grounded')
-    normalized = re.sub(r"\b\d{6}(?:\.(?:SH|SZ|BJ))?\b", " 证券 ", normalized, flags=re.I)
-    normalized = re.sub(r"(?:S?MA)\s*\(?20\)?", "二十日均线", normalized, flags=re.I)
-    normalized = re.sub(r"(?:S?MA)\s*\(?60\)?", "六十日均线", normalized, flags=re.I)
-    normalized = re.sub(r"20\s*日(?:均线|均价)", "二十日均线", normalized)
-    normalized = re.sub(r"60\s*日(?:均线|均价)", "六十日均线", normalized)
-    normalized = re.sub(r"(?:MA|SMA|EMA|RSI|ATR|ADX|BOLL|VWMA)\s*\(?\d+(?:[,，]\d+(?:\.\d+)?)*\)?", " 指标 ", normalized, flags=re.I)
-    normalized = re.sub(r"\d+\s*(?:个交易日|交易日|日|天|周|个月|月|年)(?![\u4e00-\u9fff]*元)", " 周期 ", normalized)
-    normalized = re.sub(r"止盈\s*1(?!\d)", "止盈一", normalized)
-    normalized = re.sub(r"止盈\s*2(?!\d)", "止盈二", normalized)
-    normalized = re.sub(r"(?<=\d)\s*-\s*(?=\d)", "—", normalized)
-    for interval in re.finditer(r"(?<![\d.])([+-]?\d+(?:\.\d+)?)\s*(元|亿元|万元|%)?\s*(?:—|–|~|至|到)\s*([+-]?\d+(?:\.\d+)?)\s*(元|亿元|万元|%)", normalized):
-        left_unit, right_unit = interval[2] or interval[4], interval[4]
-        if Decimal(interval[1])*FACTOR.get(left_unit, 1) > Decimal(interval[3])*FACTOR.get(right_unit, 1):
-            return failure('reversed_interval')
-    atoms = [(value, kind, role, record) for record in records for value, kind, role in _atoms(record)]
-    for match in NUMBER.finditer(normalized):
-        token = match[0].strip()
-        m = re.fullmatch(r"([-+]?\d+(?:\.\d+)?)\s*(.*)", token)
-        shown, suffix = Decimal(m[1]), m[2]
-        token_diagnostic = dict(token=token, shown=str(shown), candidates=[]) if diagnostic is not None else None
-        if not suffix:
-            # In a range the first endpoint inherits the explicitly written unit.
-            tail = normalized[match.end():]
-            interval = re.match(r"\s*(?:—|–|~|至|到|-)\s*\d+(?:\.\d+)?\s*(元|%|亿元|万元)", tail)
-            suffix = interval[1] if interval else ""
-        kind = ("percent" if suffix in ("%", "个百分点") else "amount" if suffix in ("亿元", "万元")
-                else "ratio" if suffix == "倍" else "shares" if suffix in ("股", "万股", "亿股")
-                else "price" if suffix in ("元", "元/股") else None)
-        value = shown * FACTOR.get(suffix, 1)
-        local = re.split(r"[，,；;。]", normalized[:match.start()])[-1][-28:]
-        role = _role(local)
-        if suffix == "元" and role in ("revenue", "profit", "quarter_revenue", "quarter_profit"):
-            kind = "amount"
-        direction = re.search(r"(?:下跌|回落|(?<!涨)跌幅|下降|减少|下滑)\s*(?:约|了|为)?\s*$", local)
-        if kind == "percent" and direction and shown >= 0:
-            value = -value
-        if kind == "percent" and re.search(r"(?:上涨|增长|增加|涨幅)\s*(?:约|了|为)?\s*$", local) and shown < 0:
-            if token_diagnostic is not None:
-                token_diagnostic.update(reason='negative_value_in_positive_direction', unit=suffix, role=role)
-                diagnostic.append(token_diagnostic)
-            return False
-        preceding_dates = re.findall(r"DATE([A-Z])", normalized[:match.start()])
-        fact_date = date_markers[ord(preceding_dates[-1])-65] if preceding_dates else None
-        if kind is None:
-            kind = ("percent" if "同比" in local else "amount") if role in ("revenue", "profit", "quarter_revenue", "quarter_profit") else "price" if role in (
-                "close", "high", "low", "stop", "entry", "target_1", "target_2", "ma20", "ma60", "atr") else None
-            if kind is None:
-                if token_diagnostic is not None:
-                    token_diagnostic.update(reason='unknown_number_role_or_unit',unit=suffix,role=role)
-                    diagnostic.append(token_diagnostic)
-                return False
-        if token_diagnostic is not None:
-            window_match = re.search(r"近\s*(\d+)\s*(?:日|交易日)", sentence)
-            token_diagnostic.update(value=str(value),unit=suffix,kind=kind,role=role,date=fact_date,
-                                    window_days=window_match[1] if window_match else None)
-        matched = False
-        for original, expected_kind, expected_role, record in atoms:
-            candidate = None
-            if token_diagnostic is not None:
-                candidate = dict(evidence_id=record.get('id'),value=str(original),kind=expected_kind,
-                    role=expected_role,date=record.get('date'),report_period=record.get('report_period'),
-                      unit=record.get('unit'),temporal_scope=record.get('temporal_scope'),
-                      ordinary_tolerance=None,rounding_half_quantum=None,
-                    difference=str(abs(value-original)),reason='numeric_out_of_tolerance')
-                token_diagnostic['candidates'].append(candidate)
-            def reject(reason):
-                if candidate is not None:
-                    candidate['reason'] = reason
-            if kind is not None and kind != expected_kind:
-                reject('unit_kind_mismatch')
-                continue
-            if role and expected_role and role != expected_role:
-                reject('role_mismatch')
-                continue
-            if role in ("revenue", "profit", "quarter_revenue", "quarter_profit", "ma20", "ma60", "close", "return") and not expected_role:
-                reject('evidence_role_missing')
-                continue
-            if role in ("stop", "entry", "target_1", "target_2", "exit_below", "observe_below", "observe_above") and role != expected_role:
-                reject('plan_role_mismatch')
-                continue
-            if ("同比" in local) != ("同比" in record.get("label", "")) and kind == "percent":
-                reject('year_on_year_mismatch')
-                continue
-            if role in ("revenue", "profit", "quarter_revenue", "quarter_profit") and not fact_date:
-                latest = max((r.get("report_period") or "" for r in records if _role(r.get("label", "")) == role), default="")
-                if latest and record.get("report_period") != latest:
-                    reject('not_latest_report_period')
-                    continue
-            if role == "close" and not fact_date:
-                historical = re.search(r"(\d+)\s*(?:个交易日|交易日|日)前", sentence)
-                if historical:
-                    if historical[1] + "日前收盘" not in record.get("label", ""):
-                        reject('historical_close_offset_mismatch')
-                        continue
-                else:
-                    latest = max((r.get("date") or "" for r in records if _role(r.get("label", "")) == "close"), default="")
-                    if latest and record.get("date") != latest:
-                        reject('not_latest_close')
-                        continue
-            if fact_date and fact_date not in (record.get("date"), record.get("report_period")):
-                reject('fact_date_mismatch')
-                continue
-            if suffix == "个百分点" and record.get("unit") != "percentage_points":
-                reject('percentage_points_unit_mismatch')
-                continue
-            # A 5-day return cannot supply a 20-day return of an accidentally equal value.
-            window = re.search(r"近\s*(\d+)\s*(?:日|交易日)", sentence)
-            if window and role in ("return", "high", "low") and not re.search(r"近" + window[1] + r"日", record.get("label", "")):
-                reject('window_mismatch')
-                continue
-            if expected_kind == "amount":
-                error = Decimal(1).scaleb(shown.as_tuple().exponent) * FACTOR.get(suffix, 1) / 2
-                if candidate is not None:
-                    candidate['ordinary_tolerance'] = str(error)
-                ok = abs(value-original) <= error and (value == 0 or original == 0 or (value > 0) == (original > 0))
-            else:
-                ok = _rounded(value, original, shown, price=expected_kind == "price", diagnostic=candidate)
-            if ok:
-                reject('matched')
-                matched = True
-                break
-        if token_diagnostic is not None:
-            instrument = records[0]['instrument_id'] if records else None
-            used = {r['id'] for r in records}
-            for record in context['evidence']:
-                if record.get('instrument_id')==instrument and record['id'] not in used:
-                    for original,expected_kind,expected_role in _atoms(record):
-                        token_diagnostic['candidates'].append(dict(evidence_id=record['id'],value=str(original),
-                            kind=expected_kind,role=expected_role,difference=str(abs(value-original)),
-                            date=record.get('date'),report_period=record.get('report_period'),unit=record.get('unit'),
-                            temporal_scope=record.get('temporal_scope'),ordinary_tolerance=None,rounding_half_quantum=None,
-                            reason='outside_citation_scope'))
-            token_diagnostic['candidates'] = sorted(token_diagnostic['candidates'],
-                key=lambda c:(c['kind']!=kind,Decimal(c['difference'])))[:3]
-            token_diagnostic['matched'] = matched
-            diagnostic.append(token_diagnostic)
-        if not matched:
-            return False
-    return True
-
-
-def check_claim(item, *, instrument, context, section, index, path=''):
+def check_claim(item, *, instrument, context, section, index, path='', stats=None, expected_plan=None):
     """Return clean sentences, associated model IDs, issues and sentence counts."""
     from trading_companion.answer_diagnostics import diagnostic_event, diagnostics_enabled
+    from trading_companion.answer_numeric_bindings import bindings_for, check_numbers, resolve_ref, InvalidBinding
     def rejected(code, sentence=None):
         if diagnostics_enabled():
             diagnostic_event('rejected_field',instrument_id=instrument,section=section,item_index=index,
@@ -314,22 +94,31 @@ def check_claim(item, *, instrument, context, section, index, path=''):
     if type(item) is not dict or type(item.get("text")) is not str or not 0 < len(item["text"]) <= 1800:
         rejected(STRUCTURE)
         return "", [], [Issue(STRUCTURE, section, index)], 0, 0
-    text = item["text"].strip()
+    text = item["text"]
     supplied = {r["id"]: r for r in context["evidence"]}
     own = [r for r in supplied.values() if r["instrument_id"] == instrument]
     if not own:
         rejected(STRUCTURE,text)
         return "", [], [Issue(STRUCTURE, section, index, "本股没有送入模型的可用证据")], 1, 0
     ids = item.get("evidence_ids", [])
-    if type(ids) is not list or len(ids) > 20 or any(type(i) is not str or i not in supplied for i in ids):
-        rejected(HARD if unsafe(text) else STRUCTURE,text)
-        return "", [], [Issue(HARD if unsafe(text) else STRUCTURE, section, index, "" if unsafe(text) else text)], 1, 0
-    if any(supplied[i]["instrument_id"] != instrument for i in ids):
-        rejected(HARD,text)
-        return "", [], [Issue(HARD, section, index)], 1, 0
-    records = [supplied[i] for i in ids] if ids else own
+    try:
+        if type(ids) is not list or len(ids) > 20:
+            raise InvalidBinding('invalid_citations', STRUCTURE)
+        expanded = []
+        for ref in ids:
+            _, used = resolve_ref(ref, context, instrument)
+            expanded.extend(used)
+        ids = list(dict.fromkeys(expanded))
+        spans = bindings_for(item["text"], item.get('numbers', []))
+    except InvalidBinding as error:
+        code = HARD if unsafe(text) else error.code
+        rejected(code, text)
+        return "", [], [Issue(code, section, index, "" if code == HARD else text)], 1, 0
+    records = own
+    used_ids = list(ids)
     safe, issues, generated = [], [], 0
-    for position, sentence in enumerate(re.findall(r"[^。！？!?\n]+[。！？!?]?", text)):
+    for position, sentence_match in enumerate(re.finditer(r"[^。！？!?\n]+[。！？!?]?", text)):
+        sentence = sentence_match[0]
         before = len(issues)
         numeric = []
         generated += 1
@@ -349,13 +138,17 @@ def check_claim(item, *, instrument, context, section, index, path=''):
                 normalize_horizon(h) != normalize_horizon(context["objective"]["horizon"])
                 for h in re.findall(r"(?:未来|接下来|今后)\s*[一二两三四五六七八九十\d]+\s*(?:个交易日|交易日|天|日|周|个月|月|年)|下个月", sentence)):
             issues.append(Issue(HORIZON, section, position, sentence))
-        elif not _numeric_match(sentence, records, context, numeric):
-            issues.append(Issue(NUMERIC, section, position, sentence, instrument=instrument,
-                                  path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]', details=tuple(numeric or ())))
         else:
-            safe.append(sentence.strip())
+            code, matched_ids = check_numbers(sentence, records, context, instrument, spans,
+                offset=sentence_match.start(), stats=stats, diagnostic=numeric, expected_plan=expected_plan)
+            if code:
+                issues.append(Issue(code, section, position, "" if code == HARD else sentence, instrument=instrument,
+                    path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]', details=tuple(numeric)))
+            else:
+                safe.append(sentence.strip())
+                used_ids.extend(matched_ids)
         if len(issues)>before and diagnostics_enabled():
             diagnostic_event('rejected_sentence',instrument_id=instrument,section=section,item_index=index,
                   path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]',
                   sentence_index=position,sentence=sentence,code=issues[-1].code,numeric=numeric)
-    return "".join(safe), list(dict.fromkeys(ids or [r["id"] for r in own])), issues, generated, len(safe)
+    return "".join(safe), list(dict.fromkeys(used_ids or [r["id"] for r in own])), issues, generated, len(safe)

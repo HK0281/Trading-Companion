@@ -69,7 +69,9 @@ def scripted_narrative(context):
         close, change = price("最新收盘价"), price("近20日涨跌幅")
         low, mean, high = price("近20日最低价"), price("MA20"), price("近20日最高价")
         def claim(text, *facts):
-            return {"text": text, "evidence_ids": [r["id"] for r in facts]}
+            numbers = [{'text':r['display'], 'ref':r['id']} for r in facts
+                       if text.count(r['display']) == 1 and r.get('unit') in ('CNY/share','percent','cny')]
+            return {"text": text, "evidence_ids": [r["id"] for r in facts], **({'numbers':numbers} if numbers else {})}
         levels = {r["id"] for r in context["price_levels"] if r["instrument_id"] == instrument}
         if not {low["id"], mean["id"], high["id"]} <= levels:
             raise ModelCallError("demo_evidence_missing", "Artificial narrative needs its supplied level references")

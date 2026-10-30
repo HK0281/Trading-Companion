@@ -7,6 +7,12 @@ import { parseCompanyAnswer, CompanyParagraphs } from "../src/ProductResearch";
 const fresh = () => structuredClone(fixture);
 
 describe("reference decisions", () => {
+  it.each(["answer_binding_invalid", "answer_binding_value_mismatch"])("keeps a surviving verdict after %s", code => {
+    const payload = fresh();
+    payload.decisions[0].reasons = payload.decisions[0].reasons.slice(0, 1);
+    Object.assign(payload.decisions[0], { reason_review: { retained: 1, deleted: 1, codes: [code] } });
+    expect(parseCompanyAnswer(payload)).not.toBeNull();
+  });
   it("renders the offline example with verdict, ATR table and source dates", () => {
     expect(fixture.trade_plans[0].values!.atr).toBe("0.8102");
     expect(fixture.trade_plans[0].values!.reference_entry).toBe("10.40");

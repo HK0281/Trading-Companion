@@ -64,6 +64,27 @@ def overlay(identifier, expected):
             parent[key] = deepcopy(field["after"])
     if tuple(changed) != CHANGED_TURNS.get(identifier, ()):
         raise AssertionError(identifier + ": differs from authored changed-turn scope")
+    a3_path = ROOT/'tests/fixtures/request-routing-a3-deltas.json'
+    a3 = json.loads(a3_path.read_text(encoding='utf-8'))
+    if a3['version'] != 'request-routing-a3-deltas-v1':
+        raise AssertionError('Unknown A3 delta version')
+    for name, digest in a3['parents_sha256_lf'].items():
+        if baseline_digest((ROOT/'tests/fixtures'/name).read_bytes()) != digest:
+            raise AssertionError('A3 historical parent changed: '+name)
+    current = next(s for s in a3['scenarios'] if s['id'] == identifier)
+    if len(current['turns']) != len(output):
+        raise AssertionError('A3 scenario length changed')
+    for observation, turn in zip(output,current['turns'],strict=True):
+        for change in turn['fields']:
+            if change['path'] not in ALLOWED_PATHS or not change['path'].endswith(('/sha256','/utf8_bytes')):
+                raise AssertionError('A3 changed a field outside answer serialization: '+change['path'])
+            keys = change['path'].strip('/').split('/')
+            parent = observation
+            for key in keys[:-1]:
+                parent = parent[key]
+            if parent[keys[-1]] != change['before']:
+                raise AssertionError('A3 delta before value changed: '+identifier+change['path'])
+            parent[keys[-1]] = deepcopy(change['after'])
     return output
 
 

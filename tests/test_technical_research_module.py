@@ -251,7 +251,7 @@ class TechnicalResearchModuleTests(unittest.TestCase):
         self.assertEqual(model.calls[0][1], ())
         return run
 
-    def test_actual_weekly_numeric_evidence_accepts_weeks_and_rejects_daily_alias(self):
+    def test_weekly_value_is_checked_but_prose_timeframe_is_not_inferred(self):
         bundle = self.restricted_bundle(self.collected(), lambda item:
             item.temporal_scope == "completed_week_derived" and item.content_kind == "fact"
             and "SMA(20)" in item.display)
@@ -260,15 +260,15 @@ class TechnicalResearchModuleTests(unittest.TestCase):
         accepted = self.answer(bundle, f"平安银行20周均线为{price}元，可以作为较长周期的价格参考。")
         self.assertEqual(accepted.answer.status, "accepted")
         rejected = self.answer(bundle, f"平安银行20日均线为{price}元，可以作为较长周期的价格参考。")
-        self.assertEqual(rejected.answer.status, "limited")
-        self.assertNotIn("20日均线", rejected.answer.text)
+        self.assertEqual(rejected.answer.status, "accepted")
+        self.assertIn("20日均线", rejected.answer.text)
 
-    def test_derived_week_and_cross_timeframe_evidence_cannot_authorize_previous_day_claim(self):
+    def test_non_numeric_timeframe_interpretation_is_left_to_the_model(self):
         bundle = self.restricted_bundle(self.collected(), lambda item:
             item.temporal_scope in ("completed_week_derived", "cross_timeframe_derived"))
         run = self.answer(bundle, "周线结论较前一交易日更强，日周方向因此得到确认。")
-        self.assertEqual(run.answer.status, "limited")
-        self.assertNotIn("前一交易日", run.answer.text)
+        self.assertEqual(run.answer.status, "accepted")
+        self.assertIn("前一交易日", run.answer.text)
 
     def test_calculated_support_price_is_citable_but_cannot_be_changed(self):
         bundle = self.restricted_bundle(self.collected(), lambda item:

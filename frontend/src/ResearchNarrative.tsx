@@ -37,6 +37,8 @@ export function InlineText({ text }: { text: string }) {
     ? <strong key={i}>{part.slice(2, -2)}</strong> : part)}</>;
 }
 const reasons: Record<string, string> = { answer_numeric_unmatched: "部分数字未能对应资料，相关句子已移除",
+  answer_binding_invalid: "部分数字的资料来源无效，相关句子已移除",
+  answer_binding_value_mismatch: "部分数字与所标资料不一致，相关句子已移除",
   answer_horizon_mismatch: "部分研判期限未能对应本次问题", answer_stance_mismatch: "部分结论与操作倾向未通过核对",
   answer_hard_content: "部分内容未通过安全或证券身份核对", answer_structure_invalid: "部分回答结构未完成",
   answer_model_unavailable: "本轮模型分析未完成", answer_context_unusable: "本轮分析资料未通过核对" };

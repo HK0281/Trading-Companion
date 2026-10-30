@@ -72,7 +72,7 @@ class DecisionEvaluationTests(unittest.TestCase):
         self.assertEqual(report['metrics']['reached_answer_rate']['numerator'],20)
         self.assertEqual(report['metrics']['batch_b_groups']['true']['formed'],2)
         self.assertEqual(report['metrics']['batch_b_groups']['true']['questions'],2)
-        self.assertEqual(report['accounting']['forwarded'],46)  # 18×2 + 2×(3 setup + 2 target).
+        self.assertEqual(report['accounting']['forwarded'],44)  # 18×2 + 2×(2 shared setup + 2 target).
         self.assertFalse(report['real_model_requested'])
         self.assertFalse(report['real_data_requested'])
         fixture = report['plan']['fixture']
@@ -118,7 +118,7 @@ class DecisionEvaluationTests(unittest.TestCase):
             response = original(model, messages, tools=tools)
             if model.seed and model.case['id'] == 'D20' and response.tool_calls:
                 call = response.tool_calls[0]
-                if call.name == 'interpret_research_question':
+                if call.name == 'interpret_product_research':
                     omissions.append(call.arguments['date_expression'])
                     response = replace(response, tool_calls=(ToolCall(
                         call.call_id, call.name, {**call.arguments, 'date_expression': None}),))
@@ -326,8 +326,8 @@ class DecisionEvaluationTests(unittest.TestCase):
                 report=evaluation.evaluate(mode='live-model',provider='deepseek',model='deepseek-flash',
                                            prices=evaluation.DEFAULT_PRICES,model_call_limit=120)
         self.assertTrue(report['cost']['complete'])
-        self.assertEqual(report['accounting']['token_usage']['reported_total_tokens'],46*30)
-        self.assertEqual(report['cost']['estimated_total'],'0.008280')
+        self.assertEqual(report['accounting']['token_usage']['reported_total_tokens'],44*30)
+        self.assertEqual(report['cost']['estimated_total'],'0.007920')
 
     def test_case_cap_includes_setup_and_no_outer_retry(self):
         calls=[]

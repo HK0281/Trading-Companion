@@ -310,7 +310,7 @@ class TurnTraceApiTests(unittest.TestCase):
     def test_all_105_routing_observations_match_frozen_targets_with_tracing_enabled(self):
         from tests.routing_baseline_support import compare_observations, read_baseline
         from tests.routing_targets_support import TARGET, observe_target_scenario, validate_contracts
-        from tests.routing_b_support import overlay, validate_current_contracts
+        from tests.routing_technical_support import overlay, validate_current_contracts
         def traced_service(**kwargs):
             return ResearchApiService(**kwargs, trace_sink=self.sink)
         with patch("tests.routing_baseline_support.ResearchApiService", side_effect=traced_service):
@@ -324,7 +324,7 @@ class TurnTraceApiTests(unittest.TestCase):
         self.assertNotIn("other", {item["outcome"]["code"] for item in records})
         intents = {item["route"]["intent"] for item in records if item["route"] is not None}
         self.assertTrue({"screening", "screening_edit", "screening_followup", "company_research",
-                         "technical_research", "general_knowledge", "technical_clarification"} <= intents)
+                           "technical_research", "general_knowledge", "company_clarification"} <= intents)
 
     def test_demo_launcher_explicitly_injects_trace_without_loading_environment(self):
         def serve(app, **kwargs):
@@ -334,7 +334,7 @@ class TurnTraceApiTests(unittest.TestCase):
                     headers={"Authorization": "Bearer " + credentials["access_token"]},
                     json={"request_id": uuid4().hex, "question": QUESTION})
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.json()["result"]["code"], "research_completed")
+                self.assertEqual(response.json()["result"]["code"], "company_research_completed")
         with redirect_stdout(StringIO()) as output, patch("uvicorn.run", side_effect=serve):
             self.assertEqual(server_main(["--demo", "--trace-dir", str(self.path)]), 0)
         self.assertIn("运行记录已开启", output.getvalue())

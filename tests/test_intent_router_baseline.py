@@ -9,6 +9,22 @@ from trading_companion.intent_router_task import load_corpus
 
 
 class IntentBaselineTests(unittest.TestCase):
+    def test_technical_intent_is_not_relabelled_by_shared_executor(self):
+        rows, _ = load_corpus()
+        row = {**rows[0], 'question': '平安银行只看SMA3', 'guard': 'none'}
+        row['context'] = {**row['context'], 'company_enabled': True, 'workflow_enabled': True}
+        decisions = []
+        original = routing.route_research_request
+        def route(*args, **kwargs):
+            decision = original(*args, **kwargs)
+            decisions.append(decision)
+            return decision
+        with patch.object(routing, 'route_research_request', route):
+            result = rule_classify(row)
+        self.assertEqual(result['prediction'], 'technical_research')
+        self.assertEqual((decisions[0].intent.value, decisions[0].kind.value),
+                         ('technical_research', 'company_research'))
+
     def test_real_router_and_early_general_knowledge_functions_are_used(self):
         rows,_=load_corpus()
         with offline_network(),patch.object(routing,'route_research_request',wraps=routing.route_research_request) as route, \

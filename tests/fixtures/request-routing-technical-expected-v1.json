@@ -1,0 +1,28 @@
+{
+  "version": "request-routing-technical-expected-v1",
+  "parent": "request-routing-v5",
+  "turns": 117,
+  "requirements": {
+    "technical_identity": "Natural technical research keeps technical_research intent and uses company_research executor when enabled.",
+    "strict_scope": "Explicit only indicators forbid implicit ATR and unrequested MA20/MA60; only technical forbids company reads.",
+    "indicator_edit": "Shared-result add/replace/remove/window commands preserve subject, dates and other indicators; ambiguous targets clarify before reads.",
+    "history": "History follows the latest result storage and performs no model or source calls.",
+    "legacy": "Existing legacy pending/edit, explicit APIs, knowledge and disabled company capability retain their owners.",
+    "failure": "Failed or cancelled research never restores an earlier current subject or publishes partial state.",
+    "baseline": "Freeze all 117 original inputs, preserve original observers and v1-v5, explain every changed field including propagated state."
+  },
+  "assertions": [
+    {"scenario": "technical-pending", "turn": 2, "kind": "company_research", "intent": "technical_research", "code": "product_instrument_needs_clarification", "daily_reads": 0},
+    {"scenario": "technical-pending", "turn": 3, "kind": "company_research", "code": "company_research_completed"},
+    {"scenario": "indicator-pending", "turn": 1, "kind": "company_research", "intent": "technical_research", "indicators": ["sma(window=3)", "sma(window=5)"]},
+    {"scenario": "indicator-pending", "turn": 2, "kind": "company_research", "code": "indicator_edit_ambiguous", "daily_reads": 0},
+    {"scenario": "indicator-pending", "turn": 4, "kind": "company_research", "indicators": ["sma(window=10)", "sma(window=5)"]},
+    {"scenario": "company-technical-capabilities", "turn": 2, "kind": "company_research", "intent": "technical_research", "company_reads": 0, "indicators": ["sma(window=3)"]},
+    {"scenario": "technical-edit-and-commands", "turn": 1, "kind": "company_research", "intent": "technical_research", "company_reads": 0},
+    {"scenario": "technical-edit-and-commands", "turn": 2, "kind": "company_research", "indicators": ["sma(window=3)", "rsi(window=2)"]},
+    {"scenario": "technical-edit-and-commands", "turn": 4, "kind": "company_research", "model_forwards": 0, "daily_reads": 0, "company_reads": 0},
+    {"scenario": "selected-technical-followup", "turn": 2, "kind": "screening_followup", "company_reads": 0},
+    {"scenario": "selected-technical-followup", "turn": 3, "kind": "company_research", "indicators": ["sma(window=3)", "rsi(window=2)"]},
+    {"scenario": "company-disabled", "turn": 1, "kind": "technical_research"}
+  ]
+}

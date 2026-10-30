@@ -23,7 +23,7 @@ def _execute(question, *, model, session, directory, quote_source, source, devel
     # Selecting a new subject consumes old research even if interpretation or collection fails.
     session.begin_research(preserve_screening=True)
     effective = selection.effective_question
-    if len(selection.securities) == 1 and is_explicit_technical_request(effective):
+    if data_service is None and len(selection.securities) == 1 and is_explicit_technical_request(effective):
         prepared = prepare_research_question(effective, model=model, directory=directory,
             source="csv" if development_source is not None else source, reference_date=reference_date,
             development=development_source is not None)

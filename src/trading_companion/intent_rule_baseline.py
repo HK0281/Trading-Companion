@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "contextual-routing-b2-dates-v1"
+VERSION = "technical-shared-narrative-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -14,6 +14,7 @@ SOURCES = (
     "research_objective.py", "agent.py", "agent_input.py", "api_service.py",
     "screening_intent.py", "screening_context.py", "screening_agent.py", "screening_followup.py",
     "indicator_knowledge.py", "open_knowledge.py", "intent_router_baseline.py",
+    "product_scope.py", "product_indicator_edit.py",
 )
 
 

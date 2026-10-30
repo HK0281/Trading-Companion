@@ -214,6 +214,11 @@ def public_product_turn(result):
             "comparison": build_candidate_comparison(bundle).to_dict() if len(bundle.companies) > 1 else None}
         company["market_backgrounds"] = [{"instrument_id": item.instrument_id, **item.market_background}
             for item in bundle.companies if item.market_background is not None]
+        if plan.scope.constrained:
+            from trading_companion.product_plan import RESEARCH_KINDS
+            company['scope'] = plan.scope.to_dict()
+            company['excluded_domains'] = [kind for kind in RESEARCH_KINDS
+                if kind in plan.scope.excluded or plan.scope.domains and kind not in plan.scope.domains]
     return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
         "answer": result.display_answer, "conversation": None, "presentation": None,
         "report": report.to_dict() if report is not None else None,

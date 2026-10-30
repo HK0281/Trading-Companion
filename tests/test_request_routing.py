@@ -76,8 +76,9 @@ class RequestRoutingTests(unittest.TestCase):
             ("解释浦发银行的PE", "company_research"),
             ("市盈率怎么看，帮我分析浦发银行", "company_research"),
             ("分析平安银行", "company_research"), ("平安银行只看SMA3", "technical_research"),
-            ("平安银行周线", "company_research"), ("分析平安银行是否出现背离", "company_research"),
-            ("平安银行历史回放", "company_research"), ("再加RSI2", "technical_research"),
+            ("平安银行技术分析", "technical_research"), ("平安银行技术研究", "technical_research"),
+            ("平安银行周线", "technical_research"), ("分析平安银行是否出现背离", "technical_research"),
+            ("平安银行历史回放", "technical_research"), ("再加RSI2", "technical_research"),
         )
         for question, intent in rows:
             for field, owner in ((None, None), ("product_pending", "company_clarification"),

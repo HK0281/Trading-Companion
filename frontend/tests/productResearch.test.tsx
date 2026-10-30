@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CompanySources, parseCompanyAnswer, sourceUrl } from "../src/ProductResearch";
+import { CompanyCoverageNote, CompanySources, parseCompanyAnswer, sourceUrl } from "../src/ProductResearch";
 import { ResponseContent } from "../src/ResponseContent";
 import { presentationReply } from "./fixtures";
 
@@ -18,6 +18,21 @@ function turn() {
 }
 
 describe("company research conversations", () => {
+  it("distinguishes domains excluded by scope from unavailable sources", () => {
+    const data = parseCompanyAnswer({ ...(turn().company_research as Record<string, unknown>), excluded_domains: ["financial", "news"],
+      coverage: [{ instrument_id: "000001.SZ", sections: [{ kind: "technical", status: "available" }] }] })!;
+    render(<CompanyCoverageNote data={data} />);
+    expect(screen.getByText("财务报告、新闻按要求未研究。")).toBeVisible();
+    expect(screen.queryByText(/本轮未取得/)).not.toBeInTheDocument();
+  });
+
+  it("ignores arbitrary excluded-domain text", () => {
+    const data = parseCompanyAnswer({ ...(turn().company_research as Record<string, unknown>), excluded_domains: ["<img onerror=x>", "financial"],
+      coverage: [] })!;
+    const { container } = render(<CompanyCoverageNote data={data} />);
+    expect(screen.getByText("财务报告按要求未研究。")).toBeVisible();
+    expect(container.querySelector("img")).toBeNull();
+  });
   it("shows the direct company answer instead of legacy metric cards", () => {
     const data = turn();
     render(<ResponseContent turn={data} />);

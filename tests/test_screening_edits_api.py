@@ -196,8 +196,8 @@ class ScreeningEditsApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.assertEqual(tuple(request.instrument_id for request, _ in self.data.calls), ("000001.SZ", "600010.SH"))
         self.assertEqual(len(self.quotes.calls), 1)
 
-    def test_indicator_addition_after_selected_technical_research_stays_in_the_technical_route(self):
-        from trading_companion.agent import run_natural_research_turn
+    def test_indicator_addition_after_selected_technical_research_uses_shared_plan(self):
+        from trading_companion.product_agent import run_product_research_turn
         self.screen()
         first = self.send("分析第二只，只看SMA3")["result"]
         self.assertEqual(first["parameters"]["instrument_id"], "300001.SZ")
@@ -208,13 +208,13 @@ class ScreeningEditsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.model.technical.position = 0
                 with patch("trading_companion.screening_agent.run_screening_edit_turn",
                            side_effect=AssertionError("RSI is not a screening field")), patch(
-                        "trading_companion.api_service.run_natural_research_turn", wraps=run_natural_research_turn) as technical:
+                        "trading_companion.product_agent.run_product_research_turn", wraps=run_product_research_turn) as technical:
                     result = self.send(question)["result"]
                 technical.assert_called_once()
                 self.assertFalse(result["code"].startswith("screening_"), result)
                 if question == "增加RSI3":
                     self.assertEqual(result["parameters"]["instrument_id"], "300001.SZ", result)
-                    self.assertEqual({spec.kind for spec in self.session.confirmed.request.indicators}, {"sma", "rsi"})
+                    self.assertEqual({spec.kind for spec in self.session.product_saved.plan.indicators}, {"sma", "rsi"})
                 self.assertIs(self.session.screening_saved, saved)
                 self.assertEqual(len(self.quotes.calls), reads)
 

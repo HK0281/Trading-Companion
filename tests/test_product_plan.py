@@ -52,13 +52,13 @@ class ProductPlanTests(unittest.TestCase):
         return prepare_product_plan(question, model=model, **configuration), model
 
     def test_only_explicit_new_capabilities_enter_this_plan(self):
-        for question in ("只看技术面分析平安银行", "DIF和DEA是什么", "分析000001.SZ，指标SMA20", "切换OpenAI"):
+        for question in ("DIF和DEA是什么", "切换OpenAI"):
             with self.subTest(question=question):
                 self.assertFalse(wants_product_research(question))
                 plan, model = self.prepare(question, responses=[])
                 self.assertEqual(plan.status, "not_applicable")
                 model.complete.assert_not_called()
-        for question in ("平安银行基本面", "平安银行新闻", "公司研究", "比较两只股票", "平安银行风险", "平安银行止损"):
+        for question in ("只看技术面分析平安银行", "分析000001.SZ，指标SMA20", "平安银行基本面", "平安银行新闻", "公司研究", "比较两只股票", "平安银行风险", "平安银行止损"):
             with self.subTest(question=question):
                 self.assertTrue(wants_product_research(question))
 

@@ -9,7 +9,11 @@ from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.multi_contracts import DEFAULT_INDICATORS, IndicatorSpec, MultiIndicatorRequest, validate_research_conditions
 from trading_companion.technical_selection import select_complementary_indicators
-from trading_companion.research_intent import _dates, _INDICATOR_CUE as _DAILY_INDICATOR_CUE, _indicator as _daily_indicator
+from trading_companion.research_intent import _dates
+from trading_companion.product_scope import (
+    ProductScope, _WEEKLY_INDICATOR, _INDICATOR_CUE, _indicator, _EXPLICIT_TECHNICAL,
+    _positive_scope, _broadens_only, _ONLY, is_natural_technical_request,
+)
 from trading_companion.research_objective import (
     ResearchObjective, extract_outlook, mask_outlook_expressions,
 )
@@ -36,18 +40,8 @@ _REPLAY_METRICS = ("同期持有净收益", "同期持有收益", "同期持有"
                    "回放收益", "净收益", "收益", "最大回撤", "回撤", "基准收益")
 _REPLAY_COMPARISON = re.compile(r"(?:比较|对比)(?:一下)?\s*(?:" + "|".join(_REPLAY_METRICS)
     + r")(?:\s*(?:、|和|与|以及|及)\s*(?:" + "|".join(_REPLAY_METRICS) + r"))*(?=[，,；;。]|$)")
-_WEEKLY_INDICATOR = r"[0-9零一二两三四五六七八九十百]+\s*周\s*(?:指数移动平均线|简单移动平均线|均线|SMA|EMA|RSI)"
-_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|回测|历史回放|策略回放|技术面|技术指标|走势|趋势|均线|MACD|RSI|ATR|BOLL|ADX|OBV|VWMA|K线|周线|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力", re.I)
+_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|回测|历史回放|策略回放|技术面|技术指标|走势|趋势|均线|SMA|EMA|MACD|RSI|ATR|BOLL|ADX|OBV|VWMA|K线|周线|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力", re.I)
 _FEATURE_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|回测|历史回放|策略回放|周线|周均线|周SMA|周EMA|周RSI|周MACD|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力|趋势强度|趋势强不强|震荡还是趋势|趋势还是震荡", re.I)
-_INDICATOR_CUE = re.compile(_WEEKLY_INDICATOR + "|" + _DAILY_INDICATOR_CUE.pattern, re.I)
-
-
-def _indicator(phrase):
-    # The company path computes both daily and weekly views of the same parameters.
-    # Do not teach the original daily-only parser that a week means a daily window.
-    if re.fullmatch(_WEEKLY_INDICATOR, phrase, re.I):
-        return _daily_indicator(phrase.replace("周", "日"))
-    return _daily_indicator(phrase)
 
 
 def _comparison_requested(question):
@@ -55,7 +49,6 @@ def _comparison_requested(question):
         question = _REPLAY_COMPARISON.sub("", question)
     return _COMPARE.search(question) is not None
 _GENERAL = re.compile(r"分析|研究|预测|展望|怎么看|怎么样|后市|看看|看一下|看下")
-_EXPLICIT_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|回测|历史回放|策略回放|只看技术|仅技术|纯技术|技术面|技术指标|日线|K线|均线|SMA|EMA|MACD|RSI|ATR|BOLL|VOLUME|ADX|OBV|VWMA|周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力|趋势强度|趋势强不强|震荡还是趋势|趋势还是震荡", re.I)
 _EXECUTION = re.compile(r"下单|自动交易|自动买入|自动卖出|代我交易|执行交易|执行买入|执行卖出|"
                         r"(?:帮我|替我|为我|给我)(?:直接|自动|立即)?(?:买|卖)|"
                         r"(?:买入|卖出)\s*[0-9一二两三四五六七八九十百千]+\s*(?:股|手)|"
@@ -64,51 +57,6 @@ _INJECTION = re.compile(r"忽略(?:所有|之前|上述|系统|先前)|绕过(?:
                         r"system\s*prompt|developer\s*message|https?://|file://|"
                         r"\b(?:SELECT\b.+\bFROM|DROP\s+TABLE|DELETE\s+FROM|INSERT\s+INTO)\b", re.I | re.S)
 _CANCEL = re.compile(r"\s*(?:取消|算了|不用了|停止|cancel)\s*[。.!！]?\s*", re.I)
-_DOMAIN_TERMS = {
-    "基本面": ("profile", "financial"), "财务": ("financial",), "财报": ("financial",),
-    "公司资料": ("profile",), "公司背景": ("profile",),
-    "技术指标": ("technical",), "技术面": ("technical",), "技术分析": ("technical",),
-    "新闻": ("news",), "资讯": ("news",), "公告": ("announcements",),
-    "止盈止损": ("risk",), "止盈": ("risk",), "止损": ("risk",),
-}
-_DOMAIN_WORD = "|".join(re.escape(term) for term in sorted(_DOMAIN_TERMS, key=len, reverse=True))
-_DOMAIN_WORD_PATTERN = re.compile(_DOMAIN_WORD)
-_DOMAIN_LIST = r"(?:" + _DOMAIN_WORD + r")(?:\s*(?:以及|和|与|及|、|或|/)\s*(?:" + _DOMAIN_WORD + r"))*"
-_NEGATIVE_PREFIX = r"(?:不需要|无需|不用|不必|不要|不)(?:再)?"
-_ONLY = re.compile(r"只(?:看|分析|研究|要)|仅(?:看|分析|研究|要)")
-_NEGATED_ONLY = re.compile(
-    _NEGATIVE_PREFIX + r"\s*(?:只是|仅仅|只|仅)\s*(?:看|分析|研究|要)"
-    r"(?:\s*(?:它的|该公司的)?" + _DOMAIN_LIST + r")?")
-_NEGATIVE_DOMAIN = re.compile(
-    _NEGATIVE_PREFIX + r"(?:看|分析|研究|考虑|查询|获取|计算)?"
-    r"\s*(?:它的|该公司的)?(?P<domains>" + _DOMAIN_LIST + r")")
-_NEGATIVE_INDICATOR = re.compile(
-    _NEGATIVE_PREFIX + r"(?:看|分析|研究|考虑|查询|获取|计算)?"
-    r"\s*(?P<indicator>" + _INDICATOR_CUE.pattern + ")", re.I)
-
-
-def _positive_scope(question):
-    excluded = set()
-    def mask(match):
-        for domain in _DOMAIN_WORD_PATTERN.finditer(match["domains"]):
-            excluded.update(_DOMAIN_TERMS[domain.group()])
-        return " " * len(match.group())
-    # "Not only news" broadens analysis; it neither excludes news nor grants an
-    # affirmative only-clause. Known lists stop before punctuation or new verbs.
-    text = _NEGATED_ONLY.sub(lambda match: " " * len(match.group()), question)
-    text = _NEGATIVE_DOMAIN.sub(mask, text)
-    def mask_indicator(match):
-        try:
-            excluded.update("indicator:" + spec.kind for spec in _indicator(match["indicator"]))
-        except (InputIssue, InvalidRequestError, ValueError):
-            pass
-        return " " * len(match.group())
-    return _NEGATIVE_INDICATOR.sub(mask_indicator, text), excluded
-
-
-def _broadens_only(question, positive):
-    return _NEGATED_ONLY.search(question) is not None and _ONLY.search(positive) is None
-
 PRODUCT_INTENT_TOOL = ToolDefinition(PRODUCT_INTENT_TOOL_NAME,
     "Interpret one read-only A-share company, financial, news, announcement, risk-scenario or up-to-three-stock "
     "comparison request. Extract ALL stock names and explicit codes VERBATIM; never map names to remembered "
@@ -158,6 +106,8 @@ class ProductPlanContext:
     applied_defaults: tuple[str, ...] = ()
     indicators: tuple[IndicatorSpec, ...] = DEFAULT_INDICATORS
     indicators_explicit: bool = False
+    scope: ProductScope = ProductScope()
+    edit: object | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -182,9 +132,10 @@ class ProductPlan:
     user_question: str = field(default="", repr=False)
     indicators: tuple[IndicatorSpec, ...] = DEFAULT_INDICATORS
     indicators_explicit: bool = False
+    scope: ProductScope = ProductScope()
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result = {
             "version": "product-plan-v1", "status": self.status, "code": self.code,
             "message": self.message, "securities": [item.to_dict() for item in self.securities],
             "kinds": list(self.kinds), "as_of": self.as_of.isoformat() if self.as_of else None,
@@ -201,16 +152,22 @@ class ProductPlan:
             "pending_expires_at": self.context.expires_at.isoformat() if self.context else None,
             "execution_allowed": False,
         }
+        if self.scope.constrained:
+            result["scope"] = self.scope.to_dict()
+        return result
 
 
 def wants_product_research(question: str) -> bool:
-    """Broad research uses multiple domains; explicit technical questions retain the old path."""
+    """Natural technical and multi-domain research share one evidence/answer executor."""
     if type(question) is not str:
+        return False
+    from trading_companion.indicator_knowledge import parse_knowledge_question
+    if parse_knowledge_question(question) is not None:
         return False
     original = question
     question, _ = _positive_scope(question)
     return (len(question) <= MAX_USER_CHARACTERS
-            and (wants_decision(question) or _FEATURE_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
+            and (wants_decision(question) or _EXPLICIT_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
                      (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
                  or _GENERAL.search(question) is not None and _EXPLICIT_TECHNICAL.search(question) is None))
 
@@ -246,7 +203,7 @@ def _required_kinds(question: str) -> tuple[str, ...]:
         kinds.add("news")
     if _ANNOUNCEMENTS.search(question):
         kinds.add("announcements")
-    if _TECHNICAL.search(question) or _PRICE_SCENARIO.search(question) or _comparison_requested(question):
+    if _TECHNICAL.search(question) or is_natural_technical_request(question) or _PRICE_SCENARIO.search(question) or _comparison_requested(question):
         kinds.add("technical")
     return tuple(kind for kind in RESEARCH_KINDS if kind in kinds and kind not in excluded)
 
@@ -329,7 +286,7 @@ def _resolved_plan(base, *, directory, mentions, bindings, now, created_at=None,
         context = ProductPlanContext(base.user_question, created_at or now, expires_at or now + CONTEXT_TTL,
             reference_date, base.source, development, (), (), "", (), base.kinds, base.start_date, base.end_date,
             base.explicit_historical, base.wants_risk, base.objective, base.applied_defaults,
-            base.indicators, base.indicators_explicit)
+            base.indicators, base.indicators_explicit, base.scope)
         return replace(base, status="needs_clarification", code="missing_product_instrument",
                        message="你希望研究哪只A股？可以直接回复完整名称或代码。", context=context)
     resolved = {}
@@ -356,7 +313,7 @@ def _resolved_plan(base, *, directory, mentions, bindings, now, created_at=None,
             reference_date, base.source, development, tuple(mentions), tuple(bindings.items()), mention,
             tuple(item.instrument_id for item in candidates), base.kinds, base.start_date, base.end_date,
             base.explicit_historical, base.wants_risk, base.objective, base.applied_defaults,
-            base.indicators, base.indicators_explicit)
+            base.indicators, base.indicators_explicit, base.scope)
         choices = "、".join(f"{item.name}（{item.instrument_id}）" for item in candidates[:5])
         message = (f"请明确“{mention}”指哪只股票：{choices}。" if choices else
                    f"目录未匹配到“{mention}”，请提供完整名称或代码；其他研究条件已保留。")
@@ -395,9 +352,12 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
                        end_date=context.end_date, as_of=context.end_date,
                        explicit_historical=context.explicit_historical, wants_risk=context.wants_risk,
                        objective=context.objective, applied_defaults=context.applied_defaults,
-                       indicators=context.indicators, indicators_explicit=context.indicators_explicit,
+                       indicators=context.indicators, indicators_explicit=context.indicators_explicit, scope=context.scope,
                        user_question=context.original_question)
     validate_research_conditions(context.start_date, context.end_date, context.indicators)
+    if context.edit is not None:
+        from trading_companion.product_indicator_edit import resume_edit
+        return resume_edit(context, question, directory=directory, reference_date=reference_date, now=now)
     if _CANCEL.fullmatch(question):
         return replace(base, status="out_of_scope", code="product_plan_cancelled", message="已取消待确认的研究。")
     from trading_companion.routing_context import selection_reply, selection_conditions
@@ -437,7 +397,7 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
         base = replace(base, start_date=conditions.start_date, end_date=conditions.as_of_date,
                        as_of=conditions.as_of_date, indicators=conditions.indicators,
                        indicators_explicit=base.indicators_explicit or changed_indicators, kinds=kinds,
-                       explicit_historical=historical,
+                       explicit_historical=historical, scope=base.scope.edited(conditions.indicators),
                        applied_defaults=conditions.applied_defaults, objective=conditions.objective,
                        user_question=context.original_question + "；" + question)
     return _resolved_plan(base, directory=directory, mentions=mentions, bindings=bindings, now=now,
@@ -528,7 +488,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         if not indicator_phrases and selection.profile != "balanced":
             defaults += ("indicators:profile:" + selection.profile,)
         needs_risk = (_PRICE_SCENARIO.search(positive) is not None or decision) and not excludes_plan(question)
-        if (needs_risk and not any(spec.kind == "atr" for spec in indicators)
+        strict_indicators = _ONLY.search(positive) is not None and bool(indicator_phrases)
+        if (needs_risk and not strict_indicators and not any(spec.kind == "atr" for spec in indicators)
                 and "indicator:atr" not in excluded_indicators):
             indicators += (IndicatorSpec("atr", window=14),)
             defaults += ("indicator_dependency:atr14_for_risk",)
@@ -554,7 +515,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
                            date_text if "date_expression:local_recognition" in defaults else historical_expression or "")),
                        wants_risk=not decision and _PRICE_SCENARIO.search(question) is not None and "risk" not in excluded,
                        objective=objective, applied_defaults=defaults)
-        base = replace(base, indicators=indicators, indicators_explicit=bool(indicator_phrases)
+        base = replace(base, scope=ProductScope.from_question(question, kinds, indicators),
+                       indicators=indicators, indicators_explicit=bool(indicator_phrases)
                        or any(key.startswith("indicator:") for key in excluded_indicators))
         return _resolved_plan(base, directory=directory, mentions=mentions, bindings={}, now=now,
                               reference_date=reference_date, development=development)

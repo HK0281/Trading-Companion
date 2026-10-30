@@ -1,6 +1,7 @@
 """Real-entry conflict regressions; fake models are not a language-quality evaluation."""
 
 from datetime import timedelta
+from contextlib import nullcontext
 import unittest
 from unittest.mock import patch
 
@@ -9,13 +10,27 @@ from trading_companion.api_service import ApiProblem
 from trading_companion.errors import DataSourceError
 from trading_companion.request_routing import IntentKind, ROUTE_SPECS
 from trading_companion.turn_control import TurnControl, TurnLimits
-from tests.routing_baseline_support import observe_scenario
+from tests.routing_baseline_support import observe_scenario, Journey
 from tests.test_screening_followup_api import ScreeningJourneyFixture
 from tests.test_screening_agent import Model as ScreeningModel
 from tests.test_product_research import NOW
 
 
+def observe_existing_technical_task(scenario):
+    original = Journey.step
+    def step(journey, action, index):
+        with (patch.object(journey.service, '_product_data_service', None) if index == 1 else nullcontext()):
+            return original(journey, action, index)
+    with patch.object(Journey, 'step', step):
+        return observe_scenario(scenario)
+
+
 class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
+    def legacy_send(self, question):
+        # Seed an existing legacy task, then restore shared research capability.
+        with patch.object(self.service, '_product_data_service', None):
+            return self.send(question)
+
     def counts(self):
         return tuple(len(value) for value in (self.model.calls, self.quotes.calls, self.data.calls, self.daily.reads))
 
@@ -49,7 +64,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
             with self.subTest(reply=reply):
                 self.install()
                 self.screen()
-                self.send("平安只看SMA3")
+                self.legacy_send("平安只看SMA3")
                 pending = self.session.pending
                 counts = self.counts()
                 self.model.technical.position = 0
@@ -67,7 +82,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
             with self.subTest(reply=reply, delta=delta):
                 self.install()
                 self.screen()
-                self.send("平安只看SMA3")
+                self.legacy_send("平安只看SMA3")
                 counts = self.counts()
                 self.wall = NOW + timedelta(seconds=delta)
                 turn = self.send(reply)["result"]
@@ -84,7 +99,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 {"question": "把均线改成10日"}, {"question": reply}, {"question": "SMA3"},
             ]}
             with self.subTest(reply=reply):
-                observed = observe_scenario(scenario)
+                observed = observe_existing_technical_task(scenario)
                 blocked = observed[2]
                 self.assertEqual(blocked["route"], "technical_research")
                 self.assertEqual(blocked["calls"], dict(model_forwards=0, quote_reads=0, company_reads=0, daily_reads=0))
@@ -92,13 +107,16 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.assertEqual(observed[3]["outcome"]["response"]["result"]["code"], "research_completed")
 
     def test_complete_company_task_replaces_indicator_pending(self):
-        observed = observe_scenario({"steps": [
+        observed = observe_existing_technical_task({"steps": [
             {"question": "平安银行只看SMA3和SMA5", "technical_indicators": ["SMA3", "SMA5"]},
             {"question": "把均线改成10日"}, {"question": "分析平安银行的基本面"}, {"question": "SMA3"},
         ]})
         self.assertEqual(observed[2]["route"], "company_research")
         self.assertIsNone(observed[2]["after"]["pending_edit"])
-        self.assertEqual(observed[3]["outcome"]["response"]["result"]["code"], "no_pending_indicator_edit")
+        # A fresh indicator-only question now starts shared technical research
+        # against the latest company subject; it cannot resume the replaced edit.
+        self.assertEqual(observed[3]["outcome"]["response"]["result"]["code"], "company_research_completed")
+        self.assertIsNone(observed[3]["after"]["product_pending"])
 
     def test_workflow_disabled_is_local_and_preserves_existing_company_pending(self):
         self.install(workflow_enabled=False)
@@ -140,7 +158,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.assertIsNone(self.session.pending)
 
     def conflicting_session(self):
-        self.send("平安只看SMA3")
+        self.legacy_send("平安只看SMA3")
         pending = self.session.pending
         self.send("取消")
         self.send("分析平安的基本面")
@@ -234,7 +252,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
     def test_mutating_technical_owner_is_detected_by_real_entry_counterexample(self):
         from trading_companion import request_routing as routing
         bad_specs = tuple(spec for spec in ROUTE_SPECS if spec.intent != IntentKind.TECHNICAL_CLARIFICATION)
-        self.send("平安只看SMA3")
+        self.legacy_send("平安只看SMA3")
         with patch.object(routing, "ROUTE_SPECS", bad_specs):
             result = self.send("平安银行")["result"]
         self.assertNotEqual(result["code"], "research_completed")

@@ -1,0 +1,697 @@
+{
+  "version": "research-api-technical-delta-v1",
+  "rule_baseline_version": "technical-shared-narrative-v1",
+  "parents_sha256_lf": {
+    "research-api-v1.json": "24b988ecdd4f18b4de5ad740bd657869c43975414b5b4df23e3b06aeac25419f",
+    "research-api-b-delta-v1.json": "1e7a0fc71d60c1cfcec631d2f997479e50eb412c3ed9f0241dc82eac55238805"
+  },
+  "changes": [
+    {
+      "case_id": "C02",
+      "step": 1,
+      "old": {
+        "question": "分析平安，只看SMA3",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "technical_intent"
+          ],
+          "mentions": [
+            "平安"
+          ],
+          "indicators": [
+            "SMA3"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ],
+            "no_collection": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "instrument_needs_clarification"
+              ],
+              "reason": "“平安”存在两个候选且仅请求SMA3，技术流程应先确认证券并保留指标，不能因指标明确就猜测股票（request-routing-design.md：技术身份澄清归属）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "technical_research",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "instrument_needs_clarification"
+          },
+          "quality": {}
+        }
+      },
+      "new": {
+        "question": "分析平安，只看SMA3",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent"
+          ],
+          "mentions": [
+            "平安"
+          ],
+          "indicators": [
+            "SMA3"
+          ],
+          "kinds": [
+            "technical"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ],
+            "no_collection": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "product_instrument_needs_clarification"
+              ],
+              "reason": "“平安”存在两个候选且仅请求SMA3，技术流程应先确认证券并保留指标，不能因指标明确就猜测股票（request-routing-design.md：技术身份澄清归属）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "technical_research",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "product_instrument_needs_clarification"
+          },
+          "quality": {}
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    },
+    {
+      "case_id": "C02",
+      "step": 2,
+      "old": {
+        "question": "平安银行",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "technical_tool",
+            "technical_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "technical_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "research_completed"
+              ],
+              "reason": "回复平安银行是待确认候选的完整名称，应消费原技术澄清并计算此前要求的SMA3，不切换到公司基本面研究（request-routing-design.md：原流程拥有澄清解释权）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "technical_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "new": {
+        "question": "平安银行",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "回复平安银行是待确认候选的完整名称，应消费原技术澄清并计算此前要求的SMA3，不切换到公司基本面研究（request-routing-design.md：原流程拥有澄清解释权）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    },
+    {
+      "case_id": "C03",
+      "step": 1,
+      "old": {
+        "question": "分析平安银行，只看SMA3和RSI2",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "technical_intent",
+            "technical_tool",
+            "technical_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3",
+            "RSI2"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "research_completed"
+              ],
+              "reason": "先研究明确的平安银行及SMA3、RSI2两个指标，让后续“改成5日”面对两个可能目标；初始结果必须是真实完成的技术基准（mvp-completion.md：指标编辑上下文）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "technical_research",
+            "status": "completed",
+            "category": "completed",
+            "code": "research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "new": {
+        "question": "分析平安银行，只看SMA3和RSI2",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent",
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3",
+            "RSI2"
+          ],
+          "kinds": [
+            "technical"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "先研究明确的平安银行及SMA3、RSI2两个指标，让后续“改成5日”面对两个可能目标；初始结果必须是真实完成的技术基准（mvp-completion.md：指标编辑上下文）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "technical_research",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    },
+    {
+      "case_id": "C03",
+      "step": 2,
+      "old": {
+        "question": "改成5日",
+        "history": false,
+        "fixture_script": {
+          "phases": []
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "no_collection": true,
+            "no_model": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "indicator_edit_ambiguous"
+              ],
+              "reason": "基准同时含SMA和RSI，“改成5日”没有指明要改哪个指标，应零模型零取数地追问目标，不能同时改两个周期（mvp-completion.md：指标目标澄清）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "technical_research",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "indicator_edit_ambiguous"
+          },
+          "quality": {}
+        }
+      },
+      "new": {
+        "question": "改成5日",
+        "history": false,
+        "fixture_script": {
+          "phases": []
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "no_collection": true,
+            "no_model": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "indicator_edit_ambiguous"
+              ],
+              "reason": "基准同时含SMA和RSI，“改成5日”没有指明要改哪个指标，应零模型零取数地追问目标，不能同时改两个周期（mvp-completion.md：指标目标澄清）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "technical_research",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "indicator_edit_ambiguous"
+          },
+          "quality": {}
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    },
+    {
+      "case_id": "C03",
+      "step": 3,
+      "old": {
+        "question": "SMA3",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "technical_tool",
+            "technical_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "indicator_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "research_completed"
+              ],
+              "reason": "补充“SMA3”明确了待修改的指标实例，应只把该实例改到此前要求的5日并保留RSI2，继续技术执行（mvp-completion.md：指标编辑续接）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "indicator_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "new": {
+        "question": "SMA3",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "补充“SMA3”明确了待修改的指标实例，应只把该实例改到此前要求的5日并保留RSI2，继续技术执行（mvp-completion.md：指标编辑续接）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    },
+    {
+      "case_id": "D02",
+      "step": 1,
+      "old": {
+        "question": "分析平安银行，只看SMA3和SMA20",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "technical_intent",
+            "technical_tool",
+            "technical_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3",
+            "SMA20"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "technical_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "limited"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "partial_research"
+              ],
+              "reason": "固定配置只有5条日线，SMA3可用而SMA20不足；允许partial_research并保留缺项，不能补造15条数据使结果假完整（agent-evaluation-design.md：部分历史场景）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "technical_research",
+            "intent": "technical_research",
+            "status": "limited",
+            "category": "completed",
+            "code": "partial_research"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "new": {
+        "question": "分析平安银行，只看SMA3和SMA20",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent",
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ],
+          "indicators": [
+            "SMA3",
+            "SMA20"
+          ],
+          "kinds": [
+            "technical"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "technical_research"
+              ],
+              "status": [
+                "limited"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_partial"
+              ],
+              "reason": "固定配置只有5条日线，SMA3可用而SMA20不足；允许partial_research并保留缺项，不能补造15条数据使结果假完整（agent-evaluation-design.md：部分历史场景）。 共用研究迁移后仍保持本题约束，改用统一执行器、保存载体及对应结果码。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "technical_research",
+            "status": "limited",
+            "category": "completed",
+            "code": "company_research_partial"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model"
+          }
+        }
+      },
+      "reason": "方案 #215 / 批准 #216：自然技术使用共用计划；原始题目与质量约束不变。"
+    }
+  ]
+}

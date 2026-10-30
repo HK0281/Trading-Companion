@@ -10,6 +10,7 @@ from trading_companion.indicator_knowledge import parse_knowledge_question
 from trading_companion.open_knowledge import is_general_knowledge_question
 from trading_companion.product_agent import is_product_followup
 from trading_companion.product_plan import is_explicit_technical_request, wants_product_research
+from trading_companion.product_scope import is_natural_technical_request, is_product_indicator_edit, has_company_domain
 from trading_companion.research_decision import wants_decision
 from trading_companion.research_session import ResearchSession
 from trading_companion.screening_context import SavedScreening, is_screening_followup
@@ -57,6 +58,7 @@ class RoutingSessionView:
     screening_saved: SavedScreening | None = None
     latest_kind: str | None = None
     latest_current: bool = True
+    latest_shared: bool = False
 
     @property
     def pending_count(self) -> int:
@@ -71,6 +73,7 @@ class RoutingSessionView:
             confirmed=True if session.confirmed is not None else None,
             screening_saved=session.screening_saved,
             latest_kind=getattr(latest_subject(session), "kind", None),
+            latest_shared=shared_subject(latest_subject(session)),
             latest_current=session._subject_current if session.latest_research is not None else True)
 
 
@@ -194,11 +197,31 @@ def _screening_followup(value: _MatchInput) -> bool:
 
 def _company(value: _MatchInput) -> bool:
     context = value.context
+    if _shared_technical(value) or is_product_indicator_edit(value.question):
+        return False
     return context.company_enabled and (
         wants_product_research(value.question)
         or bool(context.directory.mentioned_spans(value.question)) and not is_explicit_technical_request(value.question)
         or not new_question(value.question) and (context.session.latest_kind == "company" and context.session.latest_current
             or context.session.latest_kind is None and context.session.product_saved is not None)
+            and (continuation_question(value.question) or is_product_followup(value.question)))
+
+
+def shared_subject(subject):
+    from trading_companion.product_plan import ProductPlan
+    return subject is not None and (type(subject.scope) is ProductPlan or subject.kind == "company")
+
+
+def _shared_technical(value):
+    context = value.context
+    if not context.company_enabled:
+        return False
+    if is_product_indicator_edit(value.question):
+        return context.session.latest_shared and context.session.latest_current and not new_question(value.question)
+    return (is_natural_technical_request(value.question)
+            or context.session.latest_shared and context.session.latest_kind == "technical"
+            and context.session.latest_current and not new_question(value.question)
+            and not has_company_domain(value.question)
             and (continuation_question(value.question) or is_product_followup(value.question)))
 
 
@@ -257,10 +280,13 @@ def route_research_request(question: str, *, context: RoutingContext,
                 company = context.company_enabled and (
                     context.session.product_pending is not None
                     or spec.intent == IntentKind.HISTORY and (_company(value)
+                        or context.session.latest_shared and context.session.product_saved is not None
                         or context.history and context.session.product_saved is not None))
                 if spec.intent == IntentKind.COMMAND and context.session.pending_count > 1:
                     company = False
                 return RouteDecision(RouteKind.COMPANY_RESEARCH if company else RouteKind.TECHNICAL_RESEARCH,
                                      spec.rule_id, spec.intent)
+            if spec.intent == IntentKind.TECHNICAL_RESEARCH and _shared_technical(value):
+                return RouteDecision(RouteKind.COMPANY_RESEARCH, spec.rule_id, spec.intent)
             return spec.decision()
     raise AssertionError("The static technical fallback must always select a route")

@@ -344,13 +344,13 @@ class ScreeningFollowupApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.service.reset(self.sid, self.token)
         self.assertIsNone(self.session.screening_saved)
 
-    def test_explicit_technical_selection_uses_original_executor_and_retains_list_on_refresh(self):
+    def test_explicit_technical_selection_uses_shared_executor_and_retains_list_on_refresh(self):
         self.screen()
         turn = self.send("分析第二只，只看SMA3")["result"]
         self.assertIsNotNone(turn["parameters"], turn)
         self.assertEqual(turn["parameters"]["instrument_id"], "300001.SZ", turn)
         self.assertEqual(turn["analyses_used"], 1)
-        self.assertEqual(turn["model_calls_attempted"], 3)
+        self.assertEqual(turn["model_calls_attempted"], 2)
         self.assertEqual(self.data.calls, [])
         self.assertEqual(self.daily.reads[0].instrument_id, "300001.SZ")
         self.model.technical.position = 0
@@ -359,6 +359,18 @@ class ScreeningFollowupApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.assertIsNotNone(self.session.screening_saved)
         self.send("名单中第二只只看新闻")
         self.assertEqual(self.data.calls[-1][0].instrument_id, "300001.SZ")
+
+    def test_disabled_shared_research_keeps_legacy_technical_selection_and_refresh(self):
+        self.install(product_data_service=None)
+        self.screen()
+        turn = self.send('分析第二只，只看SMA3')['result']
+        self.assertEqual(turn['code'], 'research_completed')
+        self.assertEqual(turn['model_calls_attempted'], 3)
+        self.assertIsNotNone(self.session.confirmed)
+        self.assertIsNone(self.session.product_saved)
+        self.model.technical.position = 0
+        self.assertEqual(self.send('刷新行情')['result']['parameters']['instrument_id'], '300001.SZ')
+        self.assertIsNotNone(self.session.screening_saved)
 
     def test_company_configuration_missing_is_explicit_and_does_not_call_a_model(self):
         self.install(product_data_service=None)

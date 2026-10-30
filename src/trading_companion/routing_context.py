@@ -62,7 +62,8 @@ def continuation_question(question):
     if type(question) is not str or new_question(question):
         return False
     from trading_companion.research_decision import wants_decision
-    return wants_decision(question) or bool(re.search(
+    from trading_companion.product_scope import is_natural_technical_request, is_product_indicator_edit
+    return wants_decision(question) or is_natural_technical_request(question) or is_product_indicator_edit(question) or bool(re.search(
         r"为什么|为何|依据|接下来|后续|走势|判断|结论|分析|风险|新闻|公告|财报|基本面|技术面|"
         r"这(?:只|家|两只|三只)|它(?:们)?|^那|继续|刷新|最新|现在.*(?:做|看)|还有.*(?:吗|么)", question))
 
@@ -88,8 +89,8 @@ def latest_subject(session):
     # Never choose between two caches without a publication record.
     saved, technical = session.product_saved, session.confirmed
     if saved is not None and technical is None:
-        return ResearchSubject(saved.plan.securities, "company", saved.plan.source,
-                               saved.plan.source == "csv", 0, saved.saved_at)
+        return ResearchSubject(saved.plan.securities, "technical" if saved.plan.kinds == ("technical",) else "company", saved.plan.source,
+                               saved.plan.source == "csv", 0, saved.saved_at, saved.plan)
     if technical is not None and saved is None:
         return ResearchSubject((technical.security,), "technical", technical.request.source,
                                technical.development_source is not None, 0, technical.confirmed_at)

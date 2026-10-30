@@ -29,18 +29,18 @@ def main() -> int:
         deleted = client.delete(path, headers=headers)
         checks = {
             "session_created": created.status_code == 201,
-            "research_completed": research.status_code == 200 and research.json()["result"]["code"] == "research_completed",
+            "research_completed": research.status_code == 200 and research.json()["result"]["code"] == "company_research_completed",
             "duplicate_replayed": replay.status_code == 200 and replay.json()["replayed"],
-            "followup_answered": followup.status_code == 200 and followup.json()["result"]["code"] == "saved_question_answered",
+            "followup_answered": followup.status_code == 200 and followup.json()["result"]["code"] == "product_followup_answered",
             "history_without_model": history.status_code == 200 and history.json()["result"]["model_calls_attempted"] == 0,
-            "reset_without_refund": reset.status_code == 200 and reset.json()["session"]["model_calls_forwarded"] == 4,
+            "reset_without_refund": reset.status_code == 200 and reset.json()["session"]["model_calls_forwarded"] == 3,
             "old_id_retired": retired.status_code == 409,
             "session_deleted": deleted.status_code == 204,
         }
     passed = all(checks.values())
     print(json.dumps({"status": "passed" if passed else "failed", "is_mock": True,
         "scope": "in_process_http_contracts_not_live_network_or_model_quality", "market_data_requested": False,
-        "model_calls_forwarded": 4, "checks": checks}, ensure_ascii=False, indent=2))
+        "model_calls_forwarded": 3, "checks": checks}, ensure_ascii=False, indent=2))
     return 0 if passed else 1
 
 

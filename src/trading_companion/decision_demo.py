@@ -67,7 +67,11 @@ def scripted_narrative(context):
                 raise ModelCallError("demo_evidence_missing", "Artificial narrative needs its supplied price facts")
             return record
         close, change = price("最新收盘价"), price("近20日涨跌幅")
-        low, mean, high = price("近20日最低价"), price("MA20"), price("近20日最高价")
+        low, high = price("近20日最低价"), price("近20日最高价")
+        # Strict indicator scopes need not supply MA20. The fixed demonstration
+        # must use available evidence rather than make the executor expand scope.
+        mean = next((e for e in records if e['label'] == 'MA20' and e['temporal_scope'] == 'daily_price_context'), close)
+        mean_label = 'MA20' if mean is not close else '收盘参考'
         def claim(text, *facts):
             numbers = [{'text':r['display'], 'ref':r['id']} for r in facts
                        if text.count(r['display']) == 1 and r.get('unit') in ('CNY/share','percent','cny')]
@@ -76,11 +80,12 @@ def scripted_narrative(context):
         if not {low["id"], mean["id"], high["id"]} <= levels:
             raise ModelCallError("demo_evidence_missing", "Artificial narrative needs its supplied level references")
         narratives.append({"instrument_id": instrument,
-            "summary": claim(f'**{context["objective"]["horizon"]}固定演示偏多，倾向买入，但仍存在回落风险。**'
+            "summary": claim(f'**{context["objective"].get("horizon") or "近期"}固定演示偏多，倾向买入，但仍存在回落风险。**'
                 "这是人工示意，不构成真实行情研判。"),
             "current": claim(f'{close["date"]}已完成日线收盘{close["display"]}，近20日涨跌幅{change["display"]}。', close, change),
             "drivers": [
-                {"title": "均价对照", **claim(f'MA20为{mean["display"]}，可用来对照收盘与近期均价的位置，不能单独证明趋势延续。', mean)},
+                {"title": "均价对照" if mean is not close else "价格对照", **claim(f'{mean_label}为{mean["display"]}，可用来对照历史价格位置，不能单独证明趋势延续。' if mean is close else
+                    f'MA20为{mean["display"]}，可用来对照收盘与近期均价的位置，不能单独证明趋势延续。', mean)},
                 {"title": "波动边界", **claim("近期高低点提供价格观察范围，触及边界后需要结合后续收盘重新判断。", low, high)},
                 {"title": "相反证据与局限", **claim("人工演示固定采用偏多研判；现有技术资料不能证明未来上涨，仍需补充经营和事件证据。")},
             ],
@@ -91,13 +96,28 @@ def scripted_narrative(context):
             ],
             "scenarios": {
                 "base": claim("若价格围绕现有区间震荡，继续观察收盘与均线的相对位置。"),
-                "better": claim("若后续收盘持续站稳MA20并接近近20日高点，可重新核对偏多依据是否增强。", mean, high),
+                "better": claim(f"若后续收盘持续站稳{mean_label}并接近近20日高点，可重新核对偏多依据是否增强。", mean, high),
                 "worse": claim("若后续收盘跌破计划中的止损价，或新增经营证据转弱，应重新评估原偏多假设。"),
             },
             "stance": claim("倾向买入，但只作为固定人工示意；实际研究仍需核对相反证据，并遵守计划中的失效条件。"),
         })
     return {"version": "product-research-answer-v3", "narratives": narratives,
-            "decisions": scripted_decision(context)["decisions"]}
+            "decisions": scripted_decision(context)["decisions"] if context['objective']['kind'] == 'decision' else []}
+
+
+def scripted_analysis(context):
+    """The original five-day offline example has no twenty-day price context."""
+    narratives = []
+    for security in context['securities']:
+        record = next(item for item in context['evidence'] if item['instrument_id'] == security['instrument_id'])
+        def claim(text):
+            return {'text': text, 'evidence_ids': [record['id']]}
+        narratives.append({'instrument_id': security['instrument_id'],
+            'summary': claim(security['name'] + '的固定技术演示基于本轮已核对资料。'),
+            'current': {}, 'scenarios': {}, 'stance': {},
+            'drivers': [{'title': '观察依据', **claim('指标读数需要结合样本范围理解，不能保证未来方向。')}],
+            'levels': []})
+    return {'version': 'product-research-answer-v3', 'narratives': narratives, 'decisions': []}
 
 
 class DecisionDemoModel:
@@ -106,15 +126,19 @@ class DecisionDemoModel:
 
     def complete(self, messages, *, tools):
         if tools and tools[0].name == PRODUCT_INTENT_TOOL_NAME:
-            if messages[-1].content.strip() != QUESTION:
+            from trading_companion.followup_demo import QUESTION as TECHNICAL_QUESTION, FOLLOWUP
+            question = messages[-1].content.strip()
+            if question not in (QUESTION, TECHNICAL_QUESTION, '分析平安银行：' + FOLLOWUP):
                 raise ModelCallError("demo_question_unsupported", "Use the fixed offline decision example")
             return ToolModelResponse("tool_calls", tool_calls=(ToolCall("demo_decision_intent", PRODUCT_INTENT_TOOL_NAME,
                 dict(intent="research", instrument_mentions=["平安银行"], research_kinds=["technical"],
-                     date_expression=None, outlook_expression=None, wants_risk=False, clarification_reason=None)),))
+                     date_expression=('2026-09-21 至 2026-09-25' if question == TECHNICAL_QUESTION else None),
+                     outlook_expression=None, wants_risk=False, clarification_reason=None)),))
         if not tools:
             context = next((m.content for m in messages if m.role == "assistant" and m.content.startswith("UNTRUSTED_RESEARCH_CONTEXT\n")), None)
             if context:
                 data = json.loads(context.split("\n", 1)[1])
-                script = scripted_narrative if "product-research-answer-v3" in messages[0].content else scripted_decision
+                script = (scripted_analysis if data['objective']['kind'] == 'analysis' else scripted_narrative
+                          ) if "product-research-answer-v3" in messages[0].content else scripted_decision
                 return ToolModelResponse("complete", text=json.dumps(script(data), ensure_ascii=False))
         return self.legacy.complete(messages, tools=tools)

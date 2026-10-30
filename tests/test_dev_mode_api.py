@@ -71,7 +71,7 @@ class DevelopmentModeApiTests(unittest.TestCase):
         response = self.send()
         self.assertEqual(response.status_code, 200)
         turn = response.json()["result"]
-        self.assertEqual(turn["code"], "research_completed")
+        self.assertEqual(turn["code"], "company_research_completed")
         self.assertEqual(turn["chart"]["data_authenticity"], "synthetic")
         self.assertEqual(self.client.get("/health").json()["data_mode"], "tencent")
         self.assert_normal_untouched()
@@ -83,7 +83,7 @@ class DevelopmentModeApiTests(unittest.TestCase):
         self.assertTrue(self.send(request_id=key).json()["replayed"])
         saved = self.client.get(self.path + "/result", headers=self.headers)
         self.assertEqual(saved.status_code, 200)
-        self.assertEqual(saved.json()["result"]["code"], "saved_result_shown")
+        self.assertEqual(saved.json()["result"]["code"], "product_saved_result")
         idle = self.client.post(self.path + "/cancel", headers=self.headers, json={"request_id": uuid4().hex})
         self.assertEqual(idle.status_code, 409)
         reset = self.client.post(self.path + "/reset", headers=self.headers, json={})

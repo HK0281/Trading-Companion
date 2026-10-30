@@ -151,6 +151,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
     """No model chooses endpoints or calculations; a plan grants bounded read access only."""
     if plan.status != "ready" or not plan.securities or len(plan.securities) > 3:
         raise ValueError("A checked company research plan is required")
+    plan.scope.validate(plan.kinds, plan.indicators)
     companies = []
     factory = source_factory or _build_source
     kinds = tuple(kind for kind in plan.kinds if kind != "technical")
@@ -232,7 +233,8 @@ def collect_product_research(plan, *, data_service, now, development_source=None
             checkpoint()
             report = build_research_report(result, expected_request=request)
             usable = report.status in ("complete", "limited")
-            coverage.append({"kind": "technical", "status": "available" if usable and result.synthesis_allowed else "unavailable",
+            coverage.append({"kind": "technical", "status": ("limited" if plan.indicators_explicit and report.status == "limited" else "available")
+                if usable and result.synthesis_allowed else "unavailable",
                 "code": report.code, "message": result.message, "source": request.source,
                 "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None})
             if usable:
@@ -307,7 +309,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
         evidence.extend(quarterly_evidence(evidence))
         if result is not None:
             from trading_companion.research_price_context import price_context_evidence
-            evidence.extend(price_context_evidence(result))
+            evidence.extend(price_context_evidence(result, allow_extra_means=not plan.indicators_explicit))
         companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background, plans))
     bundle = ProductResearchBundle(plan, tuple(companies))
     if len(companies) > 1:

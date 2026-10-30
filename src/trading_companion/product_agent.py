@@ -8,9 +8,12 @@ from trading_companion.agent import AgentTurnResult, _controlled
 from trading_companion.model import ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.multi_contracts import IndicatorSpec
-from trading_companion.product_plan import prepare_product_plan, _execution_requested, _INJECTION
+from trading_companion.product_plan import ProductPlan, prepare_product_plan, _execution_requested, _INJECTION
+from trading_companion.product_scope import (
+    ProductScope, _positive_scope, _ONLY, has_company_domain, is_product_indicator_edit,
+)
 from trading_companion.product_research import collect_product_research
-from trading_companion.research_decision import wants_decision
+from trading_companion.research_decision import wants_decision, excludes_plan
 from trading_companion.turn_control import checkpoint, company_turn_control
 from trading_companion.routing_context import (
     checked_subject, continuation_question, latest_subject, new_question, plural_subject, replaces_pending,
@@ -26,7 +29,7 @@ class SavedProductResearch:
 
 
 def is_product_followup(question):
-    return type(question) is str and (wants_decision(question) or bool(re.search(
+    return type(question) is str and (is_product_indicator_edit(question) or wants_decision(question) or bool(re.search(
         r"回测|历史回放|策略回放|周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|趋势强度|趋势强不强|"
         r"那.*(?:面|呢|如何)|为什么.*(?:判断|结论|看|说)|为何.*(?:判断|结论)|"
         r"(?:它|这只|这家|这两只|这三只).*(?:涨|跌|走势|方向|业务|盈利|风险)|"
@@ -49,22 +52,36 @@ def _inherit_scope(plan, saved_plan, question):
                            item for item in plan.applied_defaults if item not in date_defaults)))
     if plan.objective.horizon is None or (plan.objective.kind == "decision"
             and "horizon:20_trading_sessions" in plan.applied_defaults and saved_plan.objective.horizon is not None):
-        updates["objective"] = saved_plan.objective if plan.objective.kind == "analysis" else replace(
-            plan.objective, horizon=saved_plan.objective.horizon)
+        updates["objective"] = (saved_plan.objective if plan.objective.kind == "analysis"
+                                else replace(plan.objective, horizon=saved_plan.objective.horizon))
     selected_profile = any(item.startswith("indicators:profile:") for item in plan.applied_defaults)
     if not plan.indicators_explicit and (saved_plan.indicators_explicit or not selected_profile):
         updates.update(indicators=saved_plan.indicators, indicators_explicit=saved_plan.indicators_explicit)
-        if (plan.wants_risk or plan.objective.kind == "decision") and not any(spec.kind == "atr" for spec in saved_plan.indicators):
-            updates["indicators"] += (IndicatorSpec("atr", window=14),)
-            defaults = updates.get("applied_defaults", plan.applied_defaults)
-            updates["applied_defaults"] = tuple(dict.fromkeys((*defaults, "indicator_dependency:atr14_for_risk")))
+    indicators = updates.get('indicators', plan.indicators)
+    positive, excluded = _positive_scope(question)
+    changes_domain = has_company_domain(question) or bool(re.search(r'技术面|技术指标|技术分析', positive)) or _ONLY.search(positive)
+    domains = plan.scope.domains if changes_domain else saved_plan.scope.domains or plan.scope.domains
+    exclusions = set(saved_plan.scope.excluded) | set(plan.scope.excluded)
+    if changes_domain:
+        exclusions.difference_update(plan.kinds)
+    if plan.indicators_explicit:
+        exclusions.difference_update('indicator:' + spec.kind for spec in indicators)
+    scope = ProductScope(domains, tuple(spec.indicator_id for spec in indicators)
+        if saved_plan.scope.indicator_ids or plan.scope.indicator_ids else (), tuple(sorted(exclusions)))
+    if ((plan.wants_risk or plan.objective.kind == 'decision') and not excludes_plan(question)
+            and scope.permits_atr_dependency and not any(spec.kind == 'atr' for spec in indicators)):
+        indicators += (IndicatorSpec('atr', window=14),)
+        defaults = updates.get('applied_defaults', plan.applied_defaults)
+        updates['applied_defaults'] = tuple(dict.fromkeys((*defaults, 'indicator_dependency:atr14_for_risk')))
+    kinds = tuple(kind for kind in plan.kinds if (not domains or kind in domains) and kind not in exclusions)
+    updates.update(scope=scope, indicators=indicators, kinds=kinds)
     if plan.context is not None:
         context_updates = {key: value for key, value in updates.items() if key != "as_of"}
         updates["context"] = replace(plan.context, **context_updates)
     return replace(plan, **updates)
 
 
-def saved_product(session, *, directory, now, source, development):
+def saved_product(session, *, directory, now, source, development, reference_date=None):
     saved = session.product_saved
     if saved is None:
         return None
@@ -73,7 +90,7 @@ def saved_product(session, *, directory, now, source, development):
         session.product_saved = None
         return None
     try:
-        reference = now.astimezone(timezone(timedelta(hours=8))).date()
+        reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
         directory.assert_usable(reference, development=development)
         for security in saved.plan.securities:
             match = directory.lookup(security.instrument_id)
@@ -99,7 +116,7 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         return AgentTurnResult(status="cancelled", code="session_reset" if reset else "research_cancelled",
             stage="clarification", input_mode="natural", message="会话已清空。" if reset else "已取消待澄清的研究。")
     saved = saved_product(session, directory=directory, now=now, source=source,
-                          development=development_source is not None)
+                          development=development_source is not None, reference_date=reference)
     from trading_companion.research_instruments import research_spans
     securities, subject_error = (), None
     if (not research_spans(question, directory) and not new_question(question)
@@ -151,20 +168,28 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         names = "、".join(security.name for security in securities)
         effective_question = f"分析{names}：{question}"
         subject = latest_subject(session)
-        if (saved is not None and subject is not None and subject.kind == "company"
+        if (saved is not None and subject is not None and type(subject.scope) is ProductPlan
                 and saved.plan.securities == securities):
             continuation = saved.plan
-        elif (subject is not None and subject.kind == "company"
+        elif (subject is not None and type(subject.scope) is ProductPlan
                 and subject.source == ("csv" if development_source is not None else source)
                 and subject.development == (development_source is not None)):
             continuation = subject.scope
         if re.search(r"还会涨|还会跌|会上涨|会下跌", question) and not re.search(r"未来|后续|接下来", question):
             effective_question += "，讨论后续走势的条件情景"
-    plan = prepare_product_plan(effective_question, model=model, directory=directory, reference_date=reference,
-        now=now, source="csv" if development_source is not None else source,
-        development=development_source is not None, context=session.product_pending,
-        allow_context_research=bool(directory.mentioned_spans(effective_question)))
-    plan = _inherit_scope(plan, continuation, question)
+    if session.product_pending is None and is_product_indicator_edit(question):
+        from trading_companion.product_indicator_edit import edit_product_plan
+        if continuation is None:
+            return AgentTurnResult(status='needs_clarification', code='no_current_research_subject',
+                stage='clarification', input_mode='natural', message='请明确要修改的当前研究对象。', user_question=question)
+        plan = edit_product_plan(continuation, question, now=now, reference_date=reference,
+                                 development=development_source is not None)
+    else:
+        plan = prepare_product_plan(effective_question, model=model, directory=directory, reference_date=reference,
+            now=now, source="csv" if development_source is not None else source,
+            development=development_source is not None, context=session.product_pending,
+            allow_context_research=bool(directory.mentioned_spans(effective_question)))
+        plan = _inherit_scope(plan, continuation, question)
     responses = (plan.model_response,) if plan.model_response is not None else ()
     if selected_securities:
         if plan.status == "ready" and plan.securities != selected_securities:
@@ -199,12 +224,12 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     has_data = bool(bundle.evidence)
     if has_data:
         session.product_saved = SavedProductResearch(now, plan, bundle, answer)
-        session.stage_research_subject(plan.securities, kind="company", source=plan.source,
+        session.stage_research_subject(plan.securities, kind="technical" if plan.kinds == ('technical',) else "company", source=plan.source,
                                       development=development_source is not None, now=now, scope=plan)
     status = "completed" if has_data and answer.status == "accepted" and not bundle.partial else "limited" if has_data else "failed"
     return AgentTurnResult(status=status, code="company_research_completed" if status == "completed" else
         "company_research_partial" if has_data else "company_research_unavailable",
-        message="公司研究已完成。" if has_data else "本轮公开数据暂不可用。", stage="company_research",
+        message=("技术分析已完成。" if plan.kinds == ('technical',) else "公司研究已完成。") if has_data else "本轮公开数据暂不可用。", stage="company_research",
         input_mode="natural", product_answer=answer, product_bundle=bundle, product_plan=plan,
         model_responses=responses, model_calls_attempted=plan.model_calls_attempted + run.model_calls_attempted,
         failure_code=run.failure_code, user_question=question, session_event="company_research")

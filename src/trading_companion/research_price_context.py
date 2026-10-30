@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 
-def price_context_evidence(result):
+def price_context_evidence(result, *, allow_extra_means=True):
     from trading_companion.product_research import ProductEvidence
     from trading_companion.research_report import build_research_report
 
@@ -47,6 +47,7 @@ def price_context_evidence(result):
         low = min(selected, key=lambda b: (b.low_price, -b.trade_date.toordinal()))
         add(f"high_{window}d", f"近{window}日最高价", high.high_price, selected, day=high.trade_date, field="high_price")
         add(f"low_{window}d", f"近{window}日最低价", low.low_price, selected, day=low.trade_date, field="low_price")
-        average = sum(Decimal(str(b.close_price)) for b in selected) / window
-        add(f"ma{window}", f"MA{window}", average, selected)
+        if allow_extra_means or any(spec.kind == "sma" and spec.parameters['window'] == window for spec in request.indicators):
+            average = sum(Decimal(str(b.close_price)) for b in selected) / window
+            add(f"ma{window}", f"MA{window}", average, selected)
     return tuple(output)

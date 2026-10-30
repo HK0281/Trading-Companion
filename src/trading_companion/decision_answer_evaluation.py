@@ -191,13 +191,14 @@ class DecisionContractModel:
                                            mentions=[case['security_name']], indicators=['SMA3'], date_expression='最近'))
 
     def complete(self, messages, *, tools):
-        if self.seed:
+        if self.seed and ((tools and tools[0].name != PRODUCT_INTENT_TOOL_NAME)
+                          or not tools and 'product-research-answer-v3' not in messages[0].content):
             return self.technical.complete(messages, tools=tools)
         if tools and tools[0].name == PRODUCT_INTENT_TOOL_NAME:
             question = messages[-1].content
             return ToolModelResponse('tool_calls', tool_calls=(ToolCall('decision_eval_intent', PRODUCT_INTENT_TOOL_NAME,
                 dict(intent='research', instrument_mentions=[self.case['security_name']] if self.case['security_name'] in question else [],
-                     research_kinds=['technical'] if '只看技术面' in question else [], date_expression=None,
+                     research_kinds=['technical'] if '只看技术面' in question else [], date_expression='最近' if self.seed else None,
                      outlook_expression=None, wants_risk=self.case['group']=='stop', clarification_reason=None)),))
         if tools and tools[0].name == INTENT_TOOL_NAME:
             # The current technical-only route cannot deliver a decision verdict. Keep that failure visible.

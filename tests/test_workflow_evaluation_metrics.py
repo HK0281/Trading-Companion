@@ -61,7 +61,8 @@ class MetricTests(unittest.TestCase):
 
     def test_skipped_rule_is_not_counted_as_an_entered_correction(self):
         steps = self.steps("D02")
-        rule = next(e for e in steps[0]["trace"]["event_records"] if e["operation"] == "intent_rule")
+        rule = {'kind': 'repair', 'operation': 'intent_rule', 'entered': False, 'status': 'skipped', 'code': 'rule_skipped'}
+        steps[0]['trace']['event_records'].append(rule)
         self.assertEqual(summarize_steps(steps)["repairs"]["rule_correction"]["affected_steps"], 0)
         rule.update(entered=True, code="rule_applied", status="ok")
         output = summarize_steps(steps)["repairs"]["rule_correction"]

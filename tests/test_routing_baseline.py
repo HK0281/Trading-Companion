@@ -19,10 +19,27 @@ from tests.routing_targets_support import (
     BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
     field_deltas, observe_target_scenario, validate_contracts,
 )
-from tests.routing_b_support import overlay, validate_current_contracts
+from tests.routing_technical_support import overlay, validate_current_contracts
 
 
 class RoutingBaselineTests(unittest.TestCase):
+    def test_v6_seals_all_parents_and_every_field_delta_across_117_original_turns(self):
+        from tests.routing_technical_support import corpus as technical_corpus
+        from tests.routing_b_support import overlay as parent_overlay
+        delta = technical_corpus()
+        originals = read_baseline(TARGET)['scenarios'] + read_baseline(ROOT/'tests/fixtures/request-routing-v3.json')['scenarios']
+        self.assertEqual([s['id'] for s in delta['scenarios']], [s['id'] for s in originals])
+        self.assertEqual(sum(len(s['turns']) for s in delta['scenarios']), 117)
+        for name, digest in delta['metadata']['observer_sha256_lf'].items():
+            self.assertEqual(baseline_digest((ROOT/'tests'/name).read_bytes()), digest)
+        for scenario, changes in zip(originals, delta['scenarios'], strict=True):
+            before = parent_overlay(scenario['id'], scenario['observed'])
+            after = overlay(scenario['id'], scenario['observed'])
+            self.assertEqual(len(changes['turns']), len(scenario['steps']))
+            for index, (a, b, turn) in enumerate(zip(before, after, changes['turns'], strict=True), 1):
+                self.assertEqual(turn['index'], index)
+                self.assertEqual(turn['fields'], field_deltas(a, b))
+
     def test_frozen_legacy_fact_integrity_and_provenance(self):
         corpus = read_baseline()
         self.assertEqual(corpus["metadata"]["schema_version"], 2)
@@ -88,7 +105,7 @@ class RoutingBaselineTests(unittest.TestCase):
         from trading_companion import request_routing as routing
         corpus = read_baseline(TARGET)
         for scenario_id, missing_intent in (
-                ("technical-pending", routing.IntentKind.TECHNICAL_CLARIFICATION),
+                ("technical-pending", routing.IntentKind.COMPANY_CLARIFICATION),
                 ("company-pending-owns-replies", routing.IntentKind.INDICATOR_KNOWLEDGE),
                 ("workflow-off", routing.IntentKind.KNOWLEDGE_DISABLED)):
             with self.subTest(scenario=scenario_id):
@@ -97,7 +114,7 @@ class RoutingBaselineTests(unittest.TestCase):
                 with patch.object(routing, "ROUTE_SPECS", mutant):
                     observed, decisions = observe_target_scenario(scenario)
                 with self.assertRaisesRegex(AssertionError, "independent target contract differs"):
-                    validate_contracts(scenario, observed, decisions)
+                    validate_current_contracts(scenario, observed, decisions)
 
     def test_uuid_normalization_preserves_references_and_semantic_differences(self):
         identifier = "ab" * 16

@@ -79,6 +79,7 @@ def repair_metrics(steps):
 
 def source_metrics(steps):
     company = [step for step in steps if step["expectation"]["offline_expected"]["intent"] == "company_research"
+               or step["expectation"]["offline_expected"]["route"] == "company_research" and expects_answer(step)
                or step["expectation"]["offline_expected"]["intent"] == "screening_followup"
                and "answer_status_if_answered" in step["expectation"]["quality"]]
     counts = Counter(dict.fromkeys(("partial_deadline", "all_missing", "ordinary_source_failure", "whole_turn_stop",

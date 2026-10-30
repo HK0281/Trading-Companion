@@ -2,6 +2,8 @@
 
 A Chinese-language research agent for China's A-share market, with application-controlled tools, checked evidence, and trading decisions kept with the human.
 
+Natural technical questions now share the checked v3 narrative workflow, including shortlist research and indicator edits. “只看SMA3” keeps that exact indicator set: no implicit ATR or extra MA20/MA60. Excluded domains display “按要求未研究”; an unavailable reference plan does not discard a valid answer. Legacy tasks and structured entry points remain available. [Scope and compatibility](docs/technical-shared-narrative-design.md) · [117-turn v6 comparison](docs/request-routing-technical-deltas.md)
+
 ![Offline demo with synthetic data: candlesticks, SMA3, volume and RSI2](docs/images/demo-research-chart.png)
 
 **Offline demo with synthetic data.** Actual interface capture using a fixed fake model and five artificial daily bars; no live market data or model API calls. Reproduce with `.\start.cmd --demo`, send `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`, then expand **历史 K 线与指标**. First-time setup is below.

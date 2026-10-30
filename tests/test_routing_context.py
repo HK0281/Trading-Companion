@@ -214,7 +214,8 @@ class CrossSubjectApiTests(unittest.TestCase):
 
                 for case, kind in zip(cases[:2], kinds):
                     model.start(case, seed=kind == 'technical')
-                    result = send(case['security_name'] + ('最近只看SMA3' if kind == 'technical' else '现在能买吗'))
+                    with patch.object(service, '_product_data_service', None if kind == 'technical' else sources.company):
+                        result = send(case['security_name'] + ('最近只看SMA3' if kind == 'technical' else '现在能买吗'))
                     self.assertIn(result['status'], ('completed', 'limited'), (kind, result['code'], result['message']))
                 session = service._entries[credentials['session_id']].session
                 subject = session.latest_research

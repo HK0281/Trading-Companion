@@ -42,7 +42,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
                     "not_run": 0, "hard_requirement_violations": 0, "outside_acceptable": 0,
                     "quality_requirement_failures": 0, "trace_missing": 0})
                 self.assertEqual(report["model_call_limit"], 354)
-                self.assertEqual(report["accounting"]["forwarded"], 72)
+                self.assertEqual(report["accounting"]["forwarded"], 68)
                 self.assertEqual(len({s["trace"]["run_id"] for s in report["steps"]}), 59)
                 self.assertTrue(all(c["transport"]["maximum_in_flight"] <= width and c["transport"]["responses_closed"]
                                     and c["transport"]["requests"] == c["transport"]["closed_clients"] for c in report["cases"]))
@@ -72,7 +72,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertGreater(expected["categories"]["error"], 0)
         self.assertEqual(expected["overall"]["total_elapsed_ms"]["n"], 59)
         self.assertEqual(expected["models"]["provider_requests_started"], 0)
-        self.assertEqual(expected["models"]["attempted"], 72)
+        self.assertEqual(expected["models"]["attempted"], 68)
         self.assertIsNone(report["accounting"]["token_usage"]["reported_total_tokens"])
 
     def test_deadline_partial_full_missing_and_complete_are_distinct(self):
@@ -109,7 +109,8 @@ class WorkflowBoundaryTests(unittest.TestCase):
     def test_b_delta_preserves_parent_and_changes_only_two_versioned_steps(self):
         raw = evaluation.CORPUS.read_bytes().replace(b'\r\n', b'\n')
         parent = json.loads(raw)
-        current, digest = evaluation.load_corpus()
+        current = evaluation._apply_b_delta(deepcopy(parent), raw)
+        _, digest = evaluation.load_corpus()
         descriptor = evaluation.b_delta_descriptor()
         self.assertEqual(descriptor['parent_sha256'], sha256(raw).hexdigest())
         self.assertNotEqual(digest, descriptor['parent_sha256'])
@@ -139,6 +140,26 @@ class WorkflowBoundaryTests(unittest.TestCase):
                     self.assertEqual(evaluation.evaluate_workflows(**values)["status"], "invalid_request")
             model.assert_not_called()
             sources.assert_not_called()
+
+    def test_technical_delta_preserves_questions_and_requirements_and_reports_version(self):
+        delta = json.loads(evaluation.TECHNICAL_DELTA.read_text(encoding='utf-8'))
+        self.assertEqual([(c['case_id'], c['step']) for c in delta['changes']],
+                         [('C02', 1), ('C02', 2), ('C03', 1), ('C03', 2), ('C03', 3), ('D02', 1)])
+        for change in delta['changes']:
+            for key in ('question', 'history'):
+                self.assertEqual(change['old'][key], change['new'][key])
+            for key in ('required', 'quality'):
+                self.assertEqual(change['old']['expectation'][key], change['new']['expectation'][key])
+        from trading_companion.workflow_evaluation_runtime import make_plan
+        plan, _, _ = make_plan(selected_cases=['C02'])
+        self.assertEqual(plan['corpus']['rule_baseline_version'], 'technical-shared-narrative-v1')
+        self.assertEqual(plan['corpus']['technical_delta'], evaluation.technical_delta_descriptor())
+        broken = deepcopy(delta)
+        broken['changes'][0]['new']['question'] = 'tampered'
+        path = Path(self.temporary.name) / 'technical-delta.json'
+        path.write_text(json.dumps(broken), encoding='utf-8')
+        with patch.object(evaluation, 'TECHNICAL_DELTA', path), self.assertRaises(ValueError):
+            evaluation.load_corpus()
 
     def test_repeat_uses_distinct_sessions_and_ids_and_one_whole_run_allowance(self):
         original, calls = ResearchApiService.message, []
@@ -200,7 +221,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
         original = ScriptedWorkflowModel._respond
 
         def invalid(model, phase, messages, tools):
-            if phase == "technical_answer":
+            if phase == "company_answer":
                 return ToolModelResponse("complete", "private-rejected-answer")
             return original(model, phase, messages, tools)
         with patch.object(ScriptedWorkflowModel, "_respond", invalid):

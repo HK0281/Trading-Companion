@@ -13,6 +13,7 @@ type CompanyAnswer = { paragraphs: string[]; evidence: Evidence[]; origin: strin
   narratives?: Narrative[]; quality?: NarrativeQuality;
   paragraph_evidence?: string[][];
   coverage?: unknown;
+  excluded_domains?: unknown;
   securities: { name: string; instrument_id: string }[]; daily_cutoff: string };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, max = 1600): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
@@ -77,9 +78,10 @@ const kinds: Record<string, string> = { profile: "公司资料", financial: "财
 const coverageKinds: Record<string, string> = { ...kinds, financial: "财务", announcements: "公告", market_context: "交易所背景" };
 
 export function CompanyCoverageNote({ data }: { data: CompanyAnswer }) {
-  if (data.quality?.state !== "complete" || !Array.isArray(data.coverage)) return null;
+  if (!Array.isArray(data.coverage)) return null;
   const missing: string[] = [];
   for (const company of data.coverage.slice(0, 3)) {
+    if (data.quality?.state !== "complete") continue;
     if (!object(company) || !Array.isArray(company.sections)) continue;
     const security = data.securities.find(s => s.instrument_id === company.instrument_id);
     if (!security) continue;
@@ -88,7 +90,13 @@ export function CompanyCoverageNote({ data }: { data: CompanyAnswer }) {
         && typeof section.kind === "string" && Object.hasOwn(coverageKinds, section.kind) ? [coverageKinds[section.kind]] : []))];
     if (labels.length) missing.push(`${data.securities.length > 1 ? security.name + "：" : ""}${labels.join("、")}本轮未取得`);
   }
-  return missing.length ? <p className="data-note" role="note">回答已通过本轮校验；{missing.join("；")}。现有资料仍可使用。</p> : null;
+  const excluded = Array.isArray(data.excluded_domains) ? [...new Set(data.excluded_domains.slice(0, 5).flatMap(kind =>
+    typeof kind === "string" && Object.hasOwn(kinds, kind) ? [kinds[kind]] : []))] : [];
+  if (!missing.length && !excluded.length) return null;
+  return <>
+    {missing.length > 0 && <p className="data-note" role="note">回答已通过本轮校验；{missing.join("；")}。现有资料仍可使用。</p>}
+    {excluded.length > 0 && <p className="data-note" role="note">{excluded.join("、")}按要求未研究。</p>}
+  </>;
 }
 const sources: Record<string, string> = { eastmoney_company: "东方财富", eastmoney_financial: "东方财富", eastmoney_news: "东方财富",
   eastmoney_announcements: "东方财富公告", cninfo_announcements: "巨潮资讯", sina_company_news: "新浪财经", sina_news: "新浪财经",

@@ -550,7 +550,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         if not kinds:
             raise InputIssue("needs_clarification", "product_no_research_domain", "请保留至少一个希望研究的领域。")
         base = replace(base, kinds=kinds, start_date=start, end_date=end, as_of=end,
-                       explicit_historical=bool(historical_expression and re.search(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", historical_expression)),
+                       explicit_historical=bool(re.search(r"[0-9]{4}-[0-9]{2}-[0-9]{2}",
+                           date_text if "date_expression:local_recognition" in defaults else historical_expression or "")),
                        wants_risk=not decision and _PRICE_SCENARIO.search(question) is not None and "risk" not in excluded,
                        objective=objective, applied_defaults=defaults)
         base = replace(base, indicators=indicators, indicators_explicit=bool(indicator_phrases)

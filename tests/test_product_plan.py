@@ -190,12 +190,17 @@ class ProductPlanTests(unittest.TestCase):
                 self.assertTrue(plan.explicit_historical)
                 self.assertEqual(plan.as_of, date(2025, 12, 31))
 
-    def test_missing_or_partial_date_extraction_cannot_ignore_a_historical_requirement(self):
+    def test_locally_recovered_dates_keep_the_explicit_historical_boundary(self):
+        question = "分析平安银行2025-01-01至2025-12-31的基本面"
+        complete, _ = self.prepare(question, _arguments(expression="2025-01-01至2025-12-31"))
         for expression in (None, "2025-01-01"):
             with self.subTest(expression=expression):
-                plan, _ = self.prepare("分析平安银行2025-01-01至2025-12-31的基本面", _arguments(expression=expression))
-                self.assertEqual(plan.status, "needs_clarification")
-                self.assertNotEqual(plan.code, "product_plan_ready")
+                plan, _ = self.prepare(question, _arguments(expression=expression))
+                self.assertEqual(plan.status, "ready", plan.message)
+                self.assertTrue(plan.explicit_historical)
+                self.assertEqual((plan.start_date, plan.end_date, plan.as_of),
+                                 (complete.start_date, complete.end_date, complete.as_of))
+                self.assertIn("date_expression:local_recognition", plan.applied_defaults)
 
     def test_today_future_and_oversized_historical_windows_do_not_authorize_data_access(self):
         for expression in ("2026-09-26", "2026-09-27", "2024-01-01至2026-09-25", "2026-09-25至2026-09-01"):

@@ -98,7 +98,7 @@ _KINDS = {"tool": "tools", "source": "sources", "check": "checks", "repair": "re
 _OPERATIONS = frozenset("""
 research workflow execute daily_bars company_section company_collect directory market_context_load market_background answer_validation
 screening_snapshot knowledge_search tool_history tool_request tool_scope research_response workflow_response
-indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule rewrite_decision model_rewrite
+indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule local_date_expression rewrite_decision model_rewrite
 daily_source daily_records
 """.split())
 _EVENT_STATUSES = ("ok", "limited", "rejected", "failed", "stopped", "skipped", "unfinished")
@@ -122,7 +122,7 @@ workflow_response_invalid_observations workflow_response_invalid_paragraphs work
 workflow_response_numeric_prose_not_supported workflow_response_snapshot_mismatch
 invalid_output citation_association numeric_citation_association comparison_company_coverage
 product_research_answered
-rewrite_disabled rewrite_not_repairable rewrite_limit_reached rewrite_allowed rule_applied rule_not_needed rule_not_applicable
+rewrite_disabled rewrite_not_repairable rewrite_limit_reached rewrite_allowed rule_applied rule_not_needed rule_not_applicable local_date_recognized
 research_data_deadline_exceeded source_redirect_blocked source_http_error source_response_too_large
 research_request_budget_exhausted research_byte_budget_exhausted
 news_callback_mismatch invalid_source_json source_connection_failed source_business_error invalid_source_rows
@@ -177,6 +177,8 @@ def _source_identity(operation, function, args):
 
 
 def _result_metadata(operation, result):
+    if operation == "local_date_expression":
+        return ("ok", "local_date_recognized") if result is True else ("rejected", "rule_not_applicable")
     if operation == "intent_shape":
         return ("ok", "ok") if result is True else ("rejected", "rule_not_applicable")
     if operation == "tool_scope":

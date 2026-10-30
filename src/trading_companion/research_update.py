@@ -19,6 +19,7 @@ _CUE = re.compile(r"添加|增加|加上|删除|移除|去掉|不要再看|"
                   r"^(?:(?:请帮我|请|帮我)\s*)?(?:换成|换为|改成|改看)|"
                   r"(?:股票|证券|研究对象|" + _DATE_TARGET + r")\s*(?:改|换|调)")
 _DATE_FLAGS = {"cutoff:previous_shanghai_day", "range:365_calendar_days",
+               "date_expression:local_recognition",
                "relative_unit:30_days_per_month_365_per_year", "dates:explicit_update",
                "dates:relative_update", "dates:refresh_latest_previous_day", "refresh:same_dates"}
 _RELATIVE = r"(?:最近|近|过去)\s*[0-9零一二两三四五六七八九十百]+\s*(?:个)?\s*(?:自然日|天|日|周|月|年)"

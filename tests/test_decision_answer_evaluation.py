@@ -15,7 +15,7 @@ from scripts import evaluate_decision_answers as cli
 from scripts.verify import clean_environment, offline_network
 from trading_companion import decision_answer_evaluation as evaluation
 from trading_companion.model import ModelCallError, TokenUsage
-from trading_companion.tool_model import ToolModelResponse
+from trading_companion.tool_model import ToolCall, ToolModelResponse
 
 PRIVATE = 'private-evaluation-error-and-draft-never-export'
 
@@ -110,6 +110,28 @@ class DecisionEvaluationTests(unittest.TestCase):
         self.assertEqual(counts['bound_pass_rate']['numerator'],2)
         rows[0]['quality'].pop('numeric_validation_version')
         self.assertEqual(evaluation.summarize(rows)['numeric_bindings']['unknown_questions'],1)
+
+    def test_d20_full_chat_flow_recovers_recent_when_setup_model_omits_it(self):
+        original = evaluation.DecisionContractModel.complete
+        omissions = []
+        def omit_setup_date(model, messages, *, tools):
+            response = original(model, messages, tools=tools)
+            if model.seed and model.case['id'] == 'D20' and response.tool_calls:
+                call = response.tool_calls[0]
+                if call.name == 'interpret_research_question':
+                    omissions.append(call.arguments['date_expression'])
+                    response = replace(response, tool_calls=(ToolCall(
+                        call.call_id, call.name, {**call.arguments, 'date_expression': None}),))
+            return response
+        with patch.object(evaluation.DecisionContractModel, 'complete', new=omit_setup_date):
+            report = evaluation.evaluate()
+        self.assertEqual(omissions, ['最近'])
+        d20 = next(case for case in report['cases'] if case['id'] == 'D20')
+        self.assertEqual(d20['setup'][0]['status'], 'completed')
+        self.assertEqual(d20['route'], 'company_research')
+        self.assertTrue(d20['formed'])
+        self.assertTrue(all(d20['checks'].values()))
+        self.assertEqual(report['accounting']['forwarded'], self.report['accounting']['forwarded'])
 
     def test_preview_has_all_questions_including_setup_with_absolute_120_cap(self):
         with patch.object(evaluation,'build_real_model',side_effect=AssertionError('No model')):

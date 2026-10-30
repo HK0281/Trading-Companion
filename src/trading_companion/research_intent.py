@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 import re
-from trading_companion.turn_trace import trace_call
+from trading_companion.turn_trace import trace_call, trace_event
 
 from trading_companion.agent_input import InputIssue, parse_indicator_specs, request_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
@@ -46,9 +46,18 @@ _DATE_CUE = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}|最近|近期|过去|截至|截止|今天|今日|昨天|昨日|前天|明天|未来|"
     r"上周|本周|上个月|这个月|本月|去年|今年|明年|交易日|"
     r"近(?=[0-9一二两三四五六七八九十百几数半])|半年|半个月|近日|近来|"
-    r"[0-9零一二两三四五六七八九十百]+\s*个?\s*(?:自然日|天|日|周|个月|月|年)")
+    r"[0-9零一二两三四五六七八九十百几数半]+\s*个?\s*(?:自然日|天|日|周|个月|月|年)")
 _ISO = r"([0-9]{4}-[0-9]{2}-[0-9]{2})"
 _COUNT = r"[0-9零一二两三四五六七八九十百]+"
+_DATE_RANGE = re.compile(_ISO + r"\s*(?:至|到|~|～)\s*" + _ISO)
+_DATE_POINT = re.compile(r"(?:(?:截至|截止|到)\s*)?" + _ISO)
+_DATE_RELATIVE = re.compile(r"(?:最近|近|过去)\s*(" + _COUNT + r")\s*"
+                            r"(?:个)?\s*(自然日|天|日|周|月|年)")
+_LOCAL_DATE = re.compile(
+    r"(?<![0-9-])(?:" + _DATE_RANGE.pattern + "|" + _DATE_POINT.pattern + "|"
+    + _DATE_RELATIVE.pattern + r"|(?:最近|近期)(?!\s*[0-9零一二两三四五六七八九十百几数半+＋－.点-]))(?![0-9-])")
+_DATE_SUFFIX = re.compile(r"\s*(?:半|多|左右|以内|以上|以下|底|末|初|上旬|中旬|下旬|"
+                          r"(?:之|以)?(?:前|后|内|外)|起|至|到|~|～)")
 _INDICATOR_CUE = re.compile(
     r"[+＋－-]?(?:[0-9]+(?:\.[0-9]+)?|[零一二两三四五六七八九十百]+)\s*(?:日|天)\s*"
     r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)|"
@@ -79,6 +88,17 @@ def _bounded_research_shape(question, draft):
     phrases.extend(value for value in (draft["date_expression"], draft.get("outlook_expression")) if value)
     remaining = mask_outlook_expressions(_masked(question, _spans(question, phrases)))
     remaining = _SUPPORTED_WORDS.sub("", remaining)
+    if re.fullmatch(r"[\s，,。.!！?？、;；:：]*", remaining) is not None:
+        return True
+    # Only a missing/partial date may repair a date clarification, never another task category.
+    if draft["intent"] not in ("research", "clarify") or draft["clarification_reason"] not in (None, "date"):
+        return False
+    historical = mask_outlook_expressions(_masked(question, _spans(
+        question, [*draft["instrument_mentions"], *draft["indicator_mentions"]])))
+    local = _local_date_expression(historical)
+    if local is None:
+        return False
+    remaining = _SUPPORTED_WORDS.sub("", _masked(historical, _spans(historical, [local])))
     return re.fullmatch(r"[\s，,。.!！?？、;；:：]*", remaining) is not None
 
 
@@ -215,27 +235,57 @@ def _candidate(response: ToolModelResponse, question: str) -> dict:
     return arguments
 
 
+def _local_date_expression(question: str) -> str | None:
+    """Find one whole historical expression; never choose among dates or ignore leftovers."""
+    matches = list(_LOCAL_DATE.finditer(question))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    if _DATE_SUFFIX.match(question, match.end()) or _DATE_CUE.search(_masked(question, [match.span()])):
+        return None
+    return match[0]
+
+
 def _dates(expression: str | None, remaining_question: str, reference: date) -> tuple[date, date, tuple[str, ...]]:
+    uncovered = remaining_question if expression is None else remaining_question.replace(
+        expression, " " * len(expression), 1)
+    text = expression.strip() if expression is not None else ""
+    partial = expression is not None and not (text in ("最近", "近期") or _DATE_RANGE.fullmatch(text)
+        or _DATE_POINT.fullmatch(text) or _DATE_RELATIVE.fullmatch(text))
+    uncovered_cue = _DATE_CUE.search(uncovered)
+    if uncovered_cue or partial and _DATE_CUE.search(remaining_question):
+        local = _local_date_expression(remaining_question)
+        if local is None and not uncovered_cue:
+            return _parse_dates(expression, reference)
+        if local is None:
+            code = "date_not_grounded" if expression is None else "conflicting_dates"
+            message = ("原问题含时间要求，但未能完整识别；请明确时间范围。" if expression is None
+                       else "发现未被完整理解的时间条件，请明确一个研究区间。")
+            raise InputIssue("needs_clarification", code, message)
+        with trace_event("repair", "local_date_expression") as event:
+            start, cutoff, defaults = _parse_dates(local, reference)
+            event.result(True)
+        return start, cutoff, (*defaults, "date_expression:local_recognition")
+    return _parse_dates(expression, reference)
+
+
+def _parse_dates(expression: str | None, reference: date) -> tuple[date, date, tuple[str, ...]]:
+    """The shared date semantics for verbatim model expressions and local recognition."""
     defaults = []
     cutoff = reference - timedelta(days=1)
     if expression is None:
-        if _DATE_CUE.search(remaining_question):
-            raise InputIssue("needs_clarification", "date_not_grounded", "原问题含时间要求，但未能完整识别；请明确时间范围。")
         return cutoff - timedelta(days=364), cutoff, ("cutoff:previous_shanghai_day", "range:365_calendar_days")
-    if _DATE_CUE.search(remaining_question.replace(expression, " " * len(expression))):
-        raise InputIssue("needs_clarification", "conflicting_dates", "发现未被完整理解的时间条件，请明确一个研究区间。")
     text = expression.strip()
-    match = re.fullmatch(_ISO + r"\s*(?:至|到|~|～)\s*" + _ISO, text)
+    match = _DATE_RANGE.fullmatch(text)
     if match:
         return date.fromisoformat(match[1]), date.fromisoformat(match[2]), ()
-    match = re.fullmatch(r"(?:(?:截至|截止|到)\s*)?" + _ISO, text)
+    match = _DATE_POINT.fullmatch(text)
     if match:
         cutoff = date.fromisoformat(match[1])
         return cutoff - timedelta(days=364), cutoff, ("range:365_calendar_days",)
     if text in ("最近", "近期"):
         return cutoff - timedelta(days=364), cutoff, ("cutoff:previous_shanghai_day", "range:365_calendar_days")
-    match = re.fullmatch(r"(?:最近|近|过去)\s*(" + _COUNT + r")\s*"
-                         r"(?:个)?\s*(自然日|天|日|周|月|年)", text)
+    match = _DATE_RELATIVE.fullmatch(text)
     if match:
         number = _count(match[1])
         unit = match[2]

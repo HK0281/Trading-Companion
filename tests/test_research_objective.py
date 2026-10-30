@@ -252,9 +252,12 @@ class NaturalObjectiveTests(unittest.TestCase):
                 self.assertEqual(result.status, "needs_clarification")
                 self.assertIsNone(result.request)
 
-    def test_historical_and_future_fields_cannot_hide_each_others_omitted_conditions(self):
+    def test_omitted_historical_date_is_recovered_separately_from_future_horizon(self):
         result = self.prepare("分析中际旭创最近30天，预测下个月走势", outlook="下个月", include_outlook=True)
-        self.assertEqual(result.code, "date_not_grounded")
+        self.assertEqual(result.status, "ready", result.message)
+        self.assertEqual((result.request.as_of_date - result.request.start_date).days + 1, 30)
+        self.assertEqual(result.conditions.objective.horizon, "下个月")
+        self.assertIn("date_expression:local_recognition", result.applied_defaults)
         result = self.prepare("分析中际旭创最近30天并预测下个月走势", expression="最近30天并预测下个月")
         self.assertEqual(result.code, "conflicting_dates")
 

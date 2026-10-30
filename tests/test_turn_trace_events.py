@@ -63,6 +63,22 @@ class TraceEventTests(unittest.TestCase):
     def record(self):
         return read_records(self.path)[-1]
 
+    def test_local_date_repair_records_only_its_fixed_source_and_outcome(self):
+        _, directory = load_development_fixtures()
+        question = "分析平安银行近三个月的走势，只看3日均线"
+        values = intent_arguments(expression=None, indicators=["3日均线"])
+        with self.scope():
+            result = prepare_research_question(
+                question, model=FakeToolModel([interpretation(values)]), directory=directory,
+                source="csv", reference_date=REFERENCE_DATE, development=True)
+        self.assertEqual(result.status, "ready", result.message)
+        events = self.events("repair", "local_date_expression")
+        self.assertEqual([(event["status"], event["code"]) for event in events],
+                         [("ok", "local_date_recognized")])
+        encoded = json.dumps(self.record(), ensure_ascii=False)
+        for raw in (question, "平安银行", "近三个月", "3日均线"):
+            self.assertNotIn(raw, encoded)
+
     def events(self, kind=None, operation=None):
         return [event for event in self.record()["events"]
                 if (kind is None or event["kind"] == kind) and (operation is None or event["operation"] == operation)]

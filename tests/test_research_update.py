@@ -126,10 +126,11 @@ class UpdateParsingTests(unittest.TestCase):
 
     def test_applied_default_labels_follow_the_changed_dimension(self):
         original = conditions(flags=("cutoff:previous_shanghai_day", "range:365_calendar_days",
-            "relative_unit:30_days_per_month_365_per_year", "indicators:default_eight"))
+            "relative_unit:30_days_per_month_365_per_year", "date_expression:local_recognition", "indicators:default_eight"))
         added = self.apply("添加ATR2", original)
         self.assertNotIn("indicators:default_eight", added.applied_defaults)
         self.assertIn("range:365_calendar_days", added.applied_defaults)
+        self.assertIn("date_expression:local_recognition", added.applied_defaults)
         dated = self.apply("把截止日期改成2026-09-24", original)
         self.assertEqual(dated.applied_defaults, ("indicators:default_eight", "dates:explicit_update"))
 

@@ -240,12 +240,17 @@ class IntentTests(GuardedTests):
             if "月" in expression:
                 self.assertIn("relative_unit:30_days_per_month_365_per_year", result.applied_defaults)
 
-    def test_dates_cannot_be_omitted_shortened_or_invented_by_model(self):
-        for expression, expected in ((None, "date_not_grounded"), ("最近", "conflicting_dates"),
-                                    ("2026-09-25", "ungrounded_intent")):
+    def test_omitted_or_shortened_dates_are_recovered_but_invented_dates_are_rejected(self):
+        for expression in (None, "最近"):
             result = self.prepare("看看平安银行最近20日走势",
                                   intent_arguments(expression=expression, indicators=[]))
-            self.assertEqual(result.code, expected)
+            self.assertEqual(result.status, "ready")
+            self.assertEqual((result.request.start_date, result.request.as_of_date),
+                             (date(2026, 9, 6), date(2026, 9, 25)))
+            self.assertIn("date_expression:local_recognition", result.applied_defaults)
+        invented = self.prepare("看看平安银行最近20日走势",
+                                intent_arguments(expression="2026-09-25", indicators=[]))
+        self.assertEqual(invented.code, "ungrounded_intent")
         half_year = self.prepare("看看平安银行近半年走势", intent_arguments(expression=None, indicators=[]))
         self.assertEqual(half_year.code, "date_not_grounded")
 

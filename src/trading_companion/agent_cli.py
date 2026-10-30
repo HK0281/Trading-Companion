@@ -29,6 +29,7 @@ DEFAULT_LABELS = {
     "cutoff:previous_shanghai_day": "截止日取日期锚点的前一自然日，不推断交易日",
     "range:365_calendar_days": "默认区间为365个自然日",
     "relative_unit:30_days_per_month_365_per_year": "相对区间按每月30天、每年365天解释",
+    "date_expression:local_recognition": "历史时间条件由程序从原问题本地识别",
     "indicators:default_eight": "未指定指标，采用默认8项组合（7类指标）",
     "indicators:inherited_then_edited": "沿用原指标组合，仅替换本轮明确指定的一项",
     "indicators:inherited_then_updated": "沿用原组合，仅添加或删除本轮明确的一项指标",

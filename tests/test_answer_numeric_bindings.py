@@ -41,6 +41,21 @@ class BindingTests(unittest.TestCase):
                 self.assertEqual(stats['bound_rejected'], 1)
                 self.assertEqual(stats['unbound_matched'], 0)
 
+    def test_combined_refs_are_invalid_even_when_both_possible_ids_match(self):
+        ctx = context()
+        ctx['evidence'].append({**ctx['evidence'][0], 'id': 'E49'})
+        ctx['price_levels'] = [dict(id='L49', instrument_id='000001.SZ', price='29.7',
+            evidence_id='E49', field='latest_close', label='最新收盘价', date='2026-09-25')]
+        for valid in ('E49', 'L49'):
+            self.assertEqual(self.check('读数29.7元。', [{'text': '29.7元', 'ref': valid}], ctx)[0][0], '读数29.7元。')
+        for combined in ('L:E49', 'E:L49', 'E/L49'):
+            with self.subTest(ref=combined):
+                result, stats = self.check('仍需观察。读数29.7元。', [{'text': '29.7元', 'ref': combined}], ctx)
+                self.assertEqual(result[0], '仍需观察。')
+                self.assertEqual([issue.code for issue in result[2]], [BINDING_INVALID])
+                self.assertEqual(stats['bound_rejected'], 1)
+                self.assertEqual(stats['unbound_matched'], 0)
+
     def test_partial_bindings_still_check_every_other_number_in_the_sentence(self):
         result, stats = self.check('读数29.7元、另一个999元。', [{'text': '29.7元', 'ref': 'E1'}])
         self.assertFalse(result[0])

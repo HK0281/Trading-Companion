@@ -46,6 +46,12 @@ class NarrativeTests(unittest.TestCase):
         run = synthesize_product_answer("分析走势", bundle, model=model, repair_invalid=repair)
         return run, model
 
+    def test_instruction_never_suggests_combined_evidence_or_level_prefixes(self):
+        from trading_companion.product_narrative_answer import INSTRUCTION
+        for combined in ('E/L', 'L:E', 'E:L'):
+            with self.subTest(combined=combined):
+                self.assertNotIn(combined, INSTRUCTION)
+
     def test_current_entry_returns_sections_with_independent_verdict_and_prices(self):
         run, model = self.run_answer()
         self.assertEqual((run.answer.status, len(model.calls)), ("accepted", 1))

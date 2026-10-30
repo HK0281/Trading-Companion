@@ -30,7 +30,7 @@ _STOPS = frozenset(("turn_cancelled", "turn_deadline_exceeded", "model_call_budg
 # Source-code coverage and reasoned non-turn exclusions live in test_turn_trace.py.
 # Unknown external values still become "other"; source discovery never runs in production.
 _CODES = _STOPS | _ANSWER_CODES | frozenset("""
-decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable
+decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable decision_rating_required
 missing_research_subject no_current_research_subject research_subject_time_invalid research_subject_identity_changed
 research_subject_directory_unusable research_subject_ambiguous
 decision_no_evidence decision_output_invalid decision_ready demo_domain_unavailable demo_evidence_missing
@@ -634,11 +634,16 @@ def safe_answer_validation(value):
     for key in ('local_structure_recoveries','partial_structure_recoveries','punctuation_structure_recoveries',
                 'output_truncations','initial_output_truncations','repair_output_truncations', 'numeric_tokens',
                 'bound_numbers','bound_matched','bound_rejected','unbound_matched','unbound_rejected','unbound_ambiguous',
-                'deduplicated_drivers','deduplicated_sentences','inline_binding_recoveries'):
+                'deduplicated_drivers','deduplicated_sentences','inline_binding_recoveries',
+                'ignored_nonnumeric_bindings','ignored_binding_fields','invalid_binding_fallbacks',
+                'invalid_binding_fallback_matched','invalid_binding_fallback_rejected','rsi_local_value_checks',
+                'rsi_reference_explanations','generated_clauses','retained_clauses','deleted_clauses','partially_retained_sentences'):
         if type(value.get(key)) is int and value[key]>=0:
             result[key] = min(value[key],10000)
-    if value.get('numeric_validation_version') == 'source-bindings-v1':
-        result['numeric_validation_version'] = 'source-bindings-v1'
+    if value.get('numeric_validation_version') in ('source-bindings-v1', 'source-bindings-v2'):
+        result['numeric_validation_version'] = value['numeric_validation_version']
+    if value.get('sentence_count_version') == 'sentence-counts-v2':
+        result['sentence_count_version'] = 'sentence-counts-v2'
     if value.get('output_truncation_version') == 'answer-output-v1':
         result['output_truncation_version'] = 'answer-output-v1'
     if value.get('issue_count_version') == 'answer-issues-v1':

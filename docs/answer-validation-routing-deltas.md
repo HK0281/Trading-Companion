@@ -1,0 +1,122 @@
+# 回答核对放宽后的117轮差异
+
+父基线为v6；v1～v6和历史观察器保持原字节。此层不占用期限功能预留的v7。
+质量统计升级为v2；提示词精简后预算内可多保留同轮已有证据，部分公开引用增加。输出和保存摘要随之变化；以下逐轮列全字段差异。路由、调用预算和独立指标范围仍按既有契约验证。
+
+- knowledge-ready/1：无差异。
+- knowledge-ready/2：无差异。
+- knowledge-directory-missing/1：无差异。
+- knowledge-stale/1：无差异。
+- knowledge-stale/2：无差异。
+- workflow-off/1：无差异。
+- workflow-off/2：无差异。
+- workflow-off-fixed/1：无差异。
+- fixed-knowledge/1：无差异。
+- fixed-knowledge/2：无差异。
+- fixed-knowledge-directory-gate/1：无差异。
+- mixed-named-directory-gate/1：无差异。
+- mixed-named-directory-gate/2：无差异。
+- screen-new-and-replace/1：无差异。
+- screen-new-and-replace/2：无差异。
+- screen-new-and-replace/3：无差异。
+- screen-explicit-interval/1：无差异。
+- screen-no-source/1：无差异。
+- edits-no-list/1：无差异。
+- edits-no-list/2：无差异。
+- edits-no-list/3：无差异。
+- edits-refresh-sample/1：无差异。
+- edits-refresh-sample/2：无差异。
+- edits-refresh-sample/3：无差异。
+- edits-refresh-sample/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- edits-empty-list/1：无差异。
+- edits-empty-list/2：无差异。
+- edits-empty-list/3：无差异。
+- edit-company-lookalikes/1：无差异。
+- edit-company-lookalikes/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- edit-company-lookalikes/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- ordinal-no-list/1：无差异。
+- ordinal-selections/1：无差异。
+- ordinal-selections/2：无差异。
+- ordinal-selections/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- named-time-ordinals/1：无差异。
+- named-time-ordinals/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- named-time-ordinals/3：v2质量/同轮已有证据引用及响应保存摘要：`/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- named-time-ordinals/4：无差异。
+- named-time-ordinals/5：无差异。
+- named-time-ordinals/6：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-pending-owns-replies/1：无差异。
+- company-pending-owns-replies/2：无差异。
+- company-pending-owns-replies/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-pending-owns-replies/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- company-pending-owns-replies/5：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- company-pending-owns-replies/6：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-pending/1：无差异。
+- technical-pending/2：无差异。
+- technical-pending/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-pending/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- technical-pending/5：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- indicator-pending/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- indicator-pending/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- indicator-pending/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- indicator-pending/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-technical-capabilities/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-technical-capabilities/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-technical-capabilities/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-technical-capabilities/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-disabled/1：无差异。
+- company-disabled/2：无差异。
+- company-disabled/3：无差异。
+- knowledge-does-not-renew-list/1：无差异。
+- knowledge-does-not-renew-list/2：无差异。
+- knowledge-does-not-renew-list/3：无差异。
+- knowledge-does-not-renew-list/4：无差异。
+- current-pronoun-versus-list/1：无差异。
+- current-pronoun-versus-list/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- current-pronoun-versus-list/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- current-pronoun-versus-list/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-followups-and-history/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-followups-and-history/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-followups-and-history/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-followups-and-history/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- company-followups-and-history/5：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-edit-and-commands/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-edit-and-commands/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-edit-and-commands/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- technical-edit-and-commands/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- technical-edit-and-commands/5：v2质量/同轮已有证据引用及响应保存摘要：`/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- replay-and-isolation/1：无差异。
+- replay-and-isolation/2：无差异。
+- replay-and-isolation/3：无差异。
+- replay-and-isolation/4：无差异。
+- source-change/1：无差异。
+- source-change/2：无差异。
+- lazy-clock-explicit-ordinal/1：无差异。
+- lazy-clock-explicit-ordinal/2：无差异。
+- lazy-clock-named-member/1：无差异。
+- lazy-clock-named-member/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- selected-technical-followup/1：无差异。
+- selected-technical-followup/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- selected-technical-followup/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- selected-technical-followup/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- failed-research-consumes-current/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- failed-research-consumes-current/2：v2质量/同轮已有证据引用及响应保存摘要：`/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- failed-research-consumes-current/3：无差异。
+- failed-research-consumes-current/4：无差异。
+- cancelled-selection/1：无差异。
+- cancelled-selection/2：无差异。
+- cancelled-selection/3：无差异。
+- development-mode/1：无差异。
+- development-mode/2：无差异。
+- development-mode/3：无差异。
+- decision-direct-and-history/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-direct-and-history/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-paraphrases/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-paraphrases/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-paraphrases/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-paraphrases/4：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-identity-boundary/1：无差异。
+- decision-identity-boundary/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-identity-boundary/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`。
+- decision-domain-limits/1：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-domain-limits/2：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。
+- decision-domain-limits/3：v2质量/同轮已有证据引用及响应保存摘要：`/after/product_saved/answer/full_json/sha256`, `/after/product_saved/answer/full_json/utf8_bytes`, `/before/product_saved/answer/full_json/sha256`, `/before/product_saved/answer/full_json/utf8_bytes`, `/outcome/response/result/full_json/sha256`, `/outcome/response/result/full_json/utf8_bytes`。

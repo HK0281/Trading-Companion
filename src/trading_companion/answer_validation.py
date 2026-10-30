@@ -95,11 +95,19 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         rejected(STRUCTURE)
         return "", [], [Issue(STRUCTURE, section, index)], 0, 0
     text = item["text"]
+    def rejected_counts(value):
+        from trading_companion.answer_clauses import clause_spans
+        sentences = [m[0] for m in re.finditer(r'[^。！？!?\n]+[。！？!?]?', value) if any(c.isalnum() for c in m[0])]
+        count = sum(len(clause_spans(s)) for s in sentences)
+        if stats is not None:
+            stats['generated_clauses'] = stats.get('generated_clauses', 0) + count
+            stats['deleted_clauses'] = stats.get('deleted_clauses', 0) + count
+        return len(sentences)
     supplied = {r["id"]: r for r in context["evidence"]}
     own = [r for r in supplied.values() if r["instrument_id"] == instrument]
     if not own:
         rejected(STRUCTURE,text)
-        return "", [], [Issue(STRUCTURE, section, index, "本股没有送入模型的可用证据")], 1, 0
+        return "", [], [Issue(STRUCTURE, section, index, "本股没有送入模型的可用证据")], rejected_counts(text), 0
     ids = item.get("evidence_ids", [])
     try:
         from trading_companion.answer_claim_recovery import prepare_claim
@@ -113,16 +121,20 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
             _, used = resolve_ref(ref, context, instrument)
             expanded.extend(used)
         ids = list(dict.fromkeys(expanded))
-        spans = bindings_for(text, numbers)
+        spans = bindings_for(text, numbers, context=context, instrument=instrument, stats=stats)
     except InvalidBinding as error:
         code = HARD if unsafe(text) else error.code
         rejected(code, text)
-        return "", [], [Issue(code, section, index, "" if code == HARD else text)], 1, 0
+        return "", [], [Issue(code, section, index, "" if code == HARD else text)], rejected_counts(text), 0
     records = own
     used_ids = list(ids) + inline_ids
     safe, issues, generated = [], [], 0
+    safe_source_ids, partially_retained = [], False
     for position, sentence_match in enumerate(re.finditer(r"[^。！？!?\n]+[。！？!?]?", text)):
         sentence = sentence_match[0]
+        from trading_companion.answer_clauses import clause_spans, independent_remainder
+        clauses = clause_spans(sentence)
+        retained_clauses = 0
         before = len(issues)
         numeric = []
         generated += 1
@@ -148,13 +160,50 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
             code, matched_ids = check_numbers(sentence, records, context, instrument, spans,
                 offset=sentence_match.start(), stats=stats, diagnostic=numeric, expected_plan=expected_plan)
             if code:
+                failed = [detail for detail in numeric if detail.get('matched') is False or detail.get('stage') == 'sentence']
+                if code in (NUMERIC, 'answer_binding_value_mismatch') and failed and all(
+                        detail.get('ordinary_numeric') is True for detail in failed) and len(clauses) > 1:
+                    kept_parts, kept_ids = [], []
+                    for start, end, part in clauses:
+                        part_code, part_ids = check_numbers(part, records, context, instrument, spans,
+                            offset=sentence_match.start() + start, expected_plan=expected_plan)
+                        if part_code is None:
+                            kept_parts.append(part)
+                            kept_ids.extend(part_ids)
+                        elif diagnostics_enabled():
+                            diagnostic_event('rejected_clause', instrument_id=instrument, section=section,
+                                path=f'{path}.text.sentence[{position}].clause[{start}]', sentence=part, code=part_code)
+                    recovered = independent_remainder(sentence, kept_parts)
+                    if recovered:
+                        # Recheck without the original offsets/bindings; references were already checked
+                        # on each retained original span. Never count the verification pass twice.
+                        final_code, _ = check_numbers(recovered, records, context, instrument, expected_plan=expected_plan)
+                        if final_code is None:
+                            safe.append(recovered)
+                            used_ids.extend(kept_ids)
+                            safe_source_ids.extend(kept_ids)
+                            partially_retained = True
+                            retained_clauses = len(kept_parts)
+                            if stats is not None:
+                                stats['partially_retained_sentences'] = stats.get('partially_retained_sentences', 0) + 1
                 issues.append(Issue(code, section, position, "" if code == HARD else sentence, instrument=instrument,
                     path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]', details=tuple(numeric)))
             else:
                 safe.append(re.sub(r'\s+([，。！？；：])', r'\1', sentence).strip())
                 used_ids.extend(matched_ids)
+                safe_source_ids.extend(matched_ids)
+                retained_clauses = len(clauses)
+        if stats is not None:
+            for key, value in (('generated_clauses', len(clauses)), ('retained_clauses', retained_clauses),
+                               ('deleted_clauses', len(clauses) - retained_clauses)):
+                stats[key] = stats.get(key, 0) + value
         if len(issues)>before and diagnostics_enabled():
             diagnostic_event('rejected_sentence',instrument_id=instrument,section=section,item_index=index,
                   path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]',
                   sentence_index=position,sentence=sentence,code=issues[-1].code,numeric=numeric)
-    return "".join(safe), list(dict.fromkeys(used_ids or [r["id"] for r in own])), issues, generated, len(safe)
+    if partially_retained:
+        # Whole-block citations may include deleted numbers. Only validated
+        # retained fragments contribute numeric sources after clause recovery.
+        used_ids = safe_source_ids
+    fallback_ids = [own[0]['id']] if partially_retained else [r['id'] for r in own]
+    return "".join(safe), list(dict.fromkeys(used_ids or fallback_ids)), issues, generated, len(safe)

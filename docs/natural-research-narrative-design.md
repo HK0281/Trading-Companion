@@ -57,7 +57,7 @@
 {"text":"若收盘跌破25.99元，应重新评估。","numbers":[{"text":"25.99元","ref":"L5","field":"reference_stop"}]}
 ```
 
-`text` 必须在所属文字块中逐字且唯一出现；重复片段、重叠和格式错误拒绝。能够定位时只影响相应句子，定位不到时影响该文字块。坏标注不会退回未标注搜索。原因码区分 `answer_binding_invalid`（来源或标注无效）与 `answer_binding_value_mismatch`（来源有效但值不符）。跨股仍按原安全规则拒绝。
+2026-10-30用户授权#243，方案#246经#247批准，有意覆盖#227/#234的普通坏标注不可降级要求。`text`须在所属块逐字出现，同片段多次出现或同跨度重复标注可逐处核对，全部标注合法且匹配才通过；不同跨度重叠和结构错仍拒绝。无数据数字的标注忽略，普通不存在field可忽略，普通无效ref可在实际送模同股证据中按原容差重新匹配；不猜组合编号。已解析跨股、值矛盾、派生结构错和计划价位不降级。能够定位时只影响相应句子，定位不到影响整个块。原因码继续区分`answer_binding_invalid`与`answer_binding_value_mismatch`。
 
 | 字段或编号 | 含义与限制 |
 | --- | --- |
@@ -66,7 +66,7 @@
 | `field`，可省略 | 仅选择该记录公开的字段，如 `latest_close`、`close_20d_ago`、`revenue_yoy`、`reference_stop`、`target_1`；不接受任意对象路径或自报值 |
 | `derive=distance` | 唯一开放的派生计算，必须配恰好两个有序 `refs` |
 
-同股所有实际供应证据均参与未标注数字的兜底，不受段落 `evidence_ids` 缩小；裁掉的证据、其他股票和其他轮资料不可用。精确值优先，否则多个不同值同时落入容差就拒绝；相同值、相同类型的重复来源可合并。整句所有数值都检查，成功匹配的来源补回公开引用。新闻/公告只使用实际供应的标题文本，诊断标记 `source=title`，不能当作完整正文或正式财务字段。
+同股所有实际供应证据均参与普通未标注数字兜底，不受段落`evidence_ids`缩小；裁掉的普通数字、其他股票和其他轮资料不可用。仅RSI关系允许本轮已验证最新本地值，保留参数、周期和原事实身份，不造悬空引用。精确值优先，否则多个不同值同时落入容差就拒绝；相同值、类型的来源可合并。明确周期严格，未明确周期先日后周，同一指标的读数及关系不可混周期。新闻/公告只用实际供应标题，不能当完整正文或正式财务字段。
 
 距离示例：
 
@@ -78,11 +78,15 @@
 
 明确“止损、止盈1、止盈2、入场参考、退出观察位、上下方观察位”后紧邻数字仍须对应计划字段，标成另一字段也不能绕过。计划数值取已核对的结构化 `values`，不再从“止盈112.05元”等展示串反推。levels 端点应选 L；误写 E 时只在其能唯一映射到已有同股价位时兼容，不造新价位。上下文裁剪同步移除依赖该证据的价位。
 
-`quality.numeric_validation_version=source-bindings-v1`；`numeric_tokens` 是实际核对的数字词元数，`bound_numbers` 是其中已绑定数量；另列 `bound_matched/bound_rejected`、`unbound_matched/unbound_rejected` 和失败子集 `unbound_ambiguous`。同一句可有多个词元，计数不能当删句数；格式/安全检查提前拒绝的内容可能未进入词元核对。标注及完整资料不进入公开回答。固定版本和有界计数可入普通 trace，原文只进显式本地诊断。
+`quality.numeric_validation_version=source-bindings-v2`；`numeric_tokens`按实际数字词元计数，`bound_numbers`不因重复标注数量重复增加。另列`bound_matched/bound_rejected`、`unbound_matched/unbound_rejected/unbound_ambiguous`、标注忽略/无效引用回退成功失败、本地RSI等计数。同一句可有多个词元，计数不当删句数；格式/安全提前拒绝可能未进入词元核对。固定版本和有界计数可入普通trace，原文只进显式本地诊断。
 
 正文和评级分别接收。评级仍核对身份、期限、评级/方向、理由及计划用途。坏数字句不抹掉有效评级，坏评级不抹掉有效正文。首版有效字段与列表位置保留，修正只补缺失位置；部分通过的文字块可追加修正后的干净句子。最终合并后再核对结论与评级方向。整体 JSON 无法解析也允许一次结构修正；取消、调用预算和超时仍直接服从控制器。
 
-计数定义：`generated_sentences` 累计两次草稿实际检查的句子（含小标题）；`deleted_sentences` 累计被拒绝的句子；`retained_sentences` 是最终保留的模型句子，两次草稿的相同句子不会在最终回答里重复。因为修正草稿可能重复首版，三个计数不要求相加相等。`retained_paragraphs` 为最终有模型内容的段落数。结构无法解析不虚构句子数，由 `structure_failures` 单独计数。
+仅普通数字错误允许独立分句保留，其他错误仍按原范围拒绝。条件、否定、因果、对比依赖或仅剩连接词/数字时整句删除。保留文本再核对一次，不增加模型调用，不重复计数字；数字引用只汇总实际保留片段来源。
+
+计数定义升级`sentence_count_version=sentence-counts-v2`：generated_sentences累计两稿实际检查句子（含标题），deleted_sentences只计整句消失，部分保留另列partially_retained_sentences，并同时记录generated/retained/deleted_clauses和分句删除率。去重计数仍单列。retained_sentences是最终模型句子，修正合并后不重复，故三个句数不要求相加相等。结构不解析由structure_failures计数。**v2整句率不能直接比较历史v1的17.5%、26.9%。**
+
+只要有本轮已验证、同股且日期有效的结构化价格，v3要求模型形成评级；严格单指标研究降为低信心并说明范围，无ATR时plan_id为null、参考计划不可用。仅无有效价格可insufficient_evidence；有价格而模型拒绝评级走原一次修正，仍失败标decision_rating_required，不由程序编造“持有”。前端评级与计划注明仅供参考。完整边界、历史回放和117轮覆盖层见[技术核对说明](technical-numeric-grounding-design.md)。历史v1/v2协议入口的读取与专项检查保留，当前自然研究业务统一走v3。
 
 ## 事实兜底与诊断
 

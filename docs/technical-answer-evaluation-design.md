@@ -1,5 +1,9 @@
 # 技术回答评估：technical-answer-v1
 
+2026-10-30用户授权#243 / 批准#247更新：使用source-bindings-v2和sentence-counts-v2。整句完全消失才计deleted_sentences，保留部分独立分句另计partially_retained_sentences，并同报generated_clauses、retained_clauses、deleted_clauses和分句删除率。目标、准备、全部轮次分别汇总，去重仍单列。缺少新版本/计数字段的旧报告为未知，不补零。**历史v1的17.5%、26.9%与v2整句率不可直接比较**，也不把数字计数当句子计数。
+
+普通标注可恢复、同轮最新本地RSI关系可核对；数字容差、严格只看范围、计划价位及跨股等底线保留。技术题库10题/14轮和调用上限不变。新脚本`scripts/replay_answer_validation.py`在固定旧版b5d77eb与工作区间比较同一历史草稿，不新增模型或行情调用；输入/逐字段/逐稿统计留在忽略目录，上下文不足列未知。回放不能替代合入后的真实重跑，也不证明完整评级形成。规则详见[边界设计](technical-numeric-grounding-design.md)。
+
 数字误判与日期参数的后续修复见[边界设计](technical-numeric-grounding-design.md)。增加`inline_binding_recoveries`数组迁移计数；正文及结构化价位均用带数字的肯定计划声明判断，无计划时的否定说明不算违规。
 
 **草稿题库、需人工复核。** 本批仅验证离线人工脚本、程序检查器及故障处理，不代表真实模型的技术分析质量。真实 10 题由 Claude 在审核合入后运行；报告中的人工复核字段默认未知。

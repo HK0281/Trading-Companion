@@ -46,7 +46,8 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(self.check("收盘区间29.7-30元。")[0])
         # A3: identity/value checks deliberately do not infer the prose date/role.
         self.assertTrue(self.check("2026-09-24收盘29.7元。")[0])
-        self.assertTrue(self.check("MA20为29.7元。")[0])
+        # #243: adjacent indicator readings require that instance, even if a close matches.
+        self.assertFalse(self.check("MA20为29.7元。")[0])
         self.assertFalse(self.check("收盘区间30—29.7元。")[0])
         self.assertTrue(self.check("营业收入5346000000元。")[0])
 

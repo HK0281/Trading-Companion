@@ -42,7 +42,8 @@ def implementation_fingerprint():
              'technical_answer_evaluation_fixtures.py', 'decision_answer_evaluation.py', 'workflow_evaluation_fixtures.py',
              'product_narrative_answer.py', 'product_indicator_edit.py', 'product_agent.py', 'product_plan.py',
              'product_scope.py', 'product_research.py', 'answer_validation.py', 'answer_numeric_bindings.py',
-             'answer_claim_recovery.py', 'answer_technical_validation.py', 'research_intent.py',
+             'answer_claim_recovery.py', 'answer_technical_validation.py', 'answer_clauses.py',
+             'answer_validation_metrics.py', 'research_intent.py',
              'deepseek_model.py', 'deepseek_tool_model.py', 'turn_trace.py')
     digest = sha256()
     for name in names:
@@ -306,10 +307,12 @@ def _run(cases, plan, meter, delegate, trace_root):
 
 
 def aggregate_turns(selected):
+    from trading_companion.answer_validation_metrics import clause_metrics
     known = [t for t in selected if type(t.get('generated_sentences')) is int and type(t.get('deleted_sentences')) is int]
     generated, deleted = (sum(t[key] for t in known) for key in ('generated_sentences', 'deleted_sentences'))
     unknown = len(selected) - len(known)
-    return dict(generated_sentences=generated if not unknown else None,
+    return dict(**clause_metrics([t.get('quality') or {} for t in selected]),
+        generated_sentences=generated if not unknown else None,
         deleted_sentences=deleted if not unknown else None, known_generated_sentences=generated, known_deleted_sentences=deleted,
         sentence_deletion_rate=ratio(deleted, generated) if not unknown else None, unknown_turns=unknown,
         draft_failure_counts={phase: {code: sum(t['draft_failure_counts'][phase][code] for t in selected if t.get('issue_counts_known'))
@@ -415,12 +418,16 @@ def write_report(report, root):
     destination.mkdir(parents=True, exist_ok=False)
     (destination / 'report.json').write_text(json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2) + '\n', encoding='utf-8')
     lines = ['# 技术回答评估', '', NOTICE, '', '离线结果只验证人工脚本和检查器，不代表真实模型质量。', '',
-             '删句分母沿用产品口径（含标题、两稿）；去重删除的标题和正文句子计入删除数，另列去重数量。', '',
+             '删句率口径v2：含标题、两稿；整句全删才计删句，部分保留另计，同时报告分句删除率。不能直接对比v1历史删句率。去重删除另列。', '',
              f"状态：{report['status']}；正文形成：{report['metrics']['formed']}/10；范围违规：{report['metrics']['scope_violations']}。", '',
              '| 题号 | 正文形成 | 范围违规 | 预算耗尽 | 模型调用 |', '| --- | --- | --- | --- | --- |']
     for row in report['cases']:
         lines.append(f"| {row['id']} | {row['formed']} | {sum(len(t['scope']['violations']) for t in row['turns'])} | "
                      f"{any(t['budget_exhausted'] for t in row['turns'])} | {row['model_calls']} |")
+    lines += ['', '| 范围 | 整句删除率（v2） | 分句删除率 | 部分保留句数 |', '| --- | --- | --- | --- |']
+    for key in ('target', 'setup', 'all_turns'):
+        metrics = report['metrics'][key]
+        lines.append(f"| {key} | {metrics.get('sentence_deletion_rate')} | {metrics.get('clause_deletion_rate')} | {metrics.get('partially_retained_sentences')} |")
     lines += ['', '完整逐轮删句、失败码、截断、成本和未知计数见 report.json。评级和投资含义仍需逐题人工复核。', '']
     (destination / 'report.md').write_text('\n'.join(lines), encoding='utf-8')
     reviews = [dict(id=r['id'], notice=NOTICE, status=r['status'], relevance=None, evidence_support=None,

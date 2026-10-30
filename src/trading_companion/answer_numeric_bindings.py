@@ -11,6 +11,10 @@ BINDING_INVALID = 'answer_binding_invalid'
 BINDING_MISMATCH = 'answer_binding_value_mismatch'
 COUNTERS = ('numeric_tokens', 'bound_numbers', 'bound_matched', 'bound_rejected',
             'unbound_matched', 'unbound_rejected', 'unbound_ambiguous')
+RELAXATION_COUNTERS = ('ignored_nonnumeric_bindings', 'ignored_binding_fields',
+    'invalid_binding_fallbacks', 'invalid_binding_fallback_matched', 'invalid_binding_fallback_rejected',
+    'rsi_local_value_checks', 'rsi_reference_explanations')
+CLAUSE_COUNTERS = ('generated_clauses', 'retained_clauses', 'deleted_clauses', 'partially_retained_sentences')
 UNITS = {'CNY/share': 'price', 'cny': 'amount', 'percent': 'percent',
          'percentage_points': 'points', 'ratio': 'ratio', 'shares': 'shares', 'count': 'count',
          'index_points': 'index'}
@@ -31,9 +35,15 @@ for _window in (5, 20, 60):
         FIELDS[f'近{_window}日{_label}价'] = f'{_side}_{_window}d'
 PLAN_LABELS = {'止损': 'reference_stop', '止盈1': 'target_1', '止盈2': 'target_2',
                '入场参考': 'reference_entry', '入场价': 'reference_entry', '退出观察位': 'exit_below',
-               '下方观察位': 'observe_below', '上方观察位': 'observe_above'}
-_LABEL = '|'.join(map(re.escape, PLAN_LABELS))
+               '下方观察位': 'observe_below', '上方观察位': 'observe_above',
+               '买入价': 'reference_entry', '退出价': 'exit_below', '目标价1': 'target_1',
+               '目标价2': 'target_2', '目标价': 'target', '目标价格': 'target', '止盈': 'target',
+               '参考目标': 'target', '参考止损': 'reference_stop', '入场位': 'reference_entry',
+               '买入价格': 'reference_entry', '退出价格': 'exit_below'}
+_LABEL = '|'.join(map(re.escape, sorted(PLAN_LABELS, key=len, reverse=True)))
 PLAN_PREFIX = re.compile(r'(' + _LABEL + r')\s*(?:价(?:格|位)?|为|是|约|在|[:：]|\*\*)*\s*$')
+PLAN_LANGUAGE = re.compile(r'止损|止盈|目标价|参考目标|买入价|入场价|入场位|入场参考|退出价|退出观察位|[上下]方观察位')
+PLAN_SUFFIX = re.compile(r'^\s*(?:附近|一带)?\s*(?:是|为|的)?\s*(?:计划|参考)?(' + _LABEL + r')')
 
 
 @dataclass(frozen=True)
@@ -126,22 +136,37 @@ def level_ref(ref, context, instrument):
     return matches[0]
 
 
-def bindings_for(text, numbers):
-    """Locate exact substrings before normalization. Never downgrade a bad binding."""
+def bindings_for(text, numbers, *, context=None, instrument=None, stats=None):
+    """Locate exact spans; ignore nondata annotations, but never foreign citations."""
     if type(numbers) is not list or len(numbers) > 80:
         raise InvalidBinding('invalid_numbers_array')
     spans = []
     for binding in numbers:
         if type(binding) is not dict or type(binding.get('text')) is not str or not binding['text']:
             raise InvalidBinding('invalid_binding_text')
+        fragment = unicodedata.normalize('NFKC', binding['text'])
+        fragment = re.sub(r'(?:VWMA|VOLUME|MACD|BOLL|SMA|EMA|RSI|ATR|ADX|OBV|MA)\s*(?:\([^)]*\)|\d+)', '', fragment, flags=re.I)
+        fragment = re.sub(DATE, '', fragment)
+        fragment = re.sub(r'\d+\s*(?:个交易日|交易日|日|天|周|个月|月|年)', '', fragment)
+        if not NUMBER.search(fragment):
+            if context is not None and 'ref' in binding:
+                try:
+                    resolve_ref(binding['ref'], context, instrument)
+                except InvalidBinding as error:
+                    if error.code == HARD:
+                        raise
+            if stats is not None:
+                stats['ignored_nonnumeric_bindings'] = stats.get('ignored_nonnumeric_bindings', 0) + 1
+            continue
         found = list(re.finditer(re.escape(binding['text']), text))
         if not found:
             raise InvalidBinding('binding_text_not_in_block')
         for match in found:
-            invalid = len(found) != 1 or any(match.start() < end and match.end() > start
-                                           for start, end, _, _ in spans)
+            invalid = any(match.start() < end and match.end() > start
+                          and (match.start(), match.end()) != (start, end) for start, end, _, _ in spans)
             if invalid:
-                spans = [(s, e, b, bad or (match.start() < e and match.end() > s)) for s, e, b, bad in spans]
+                spans = [(s, e, b, bad or (match.start() < e and match.end() > s
+                         and (match.start(), match.end()) != (s, e))) for s, e, b, bad in spans]
             spans.append((match.start(), match.end(), binding, invalid))
     return spans
 
@@ -184,7 +209,7 @@ def _direction(prefix, shown_text, value, kind):
     return (-value if negative else value), None
 
 
-def _bound_atoms(binding, context, instrument):
+def _bound_atoms(binding, context, instrument, *, strict=False, stats=None):
     if binding.get('derive') is not None:
         if (binding.get('derive') != 'distance' or set(binding) != {'text', 'derive', 'refs'}
                 or type(binding.get('refs')) is not list or len(binding['refs']) != 2):
@@ -206,8 +231,12 @@ def _bound_atoms(binding, context, instrument):
     if 'field' in binding:
         field = binding['field']
         if type(field) is not str or not field or not any(a.field == field for a in candidates):
-            raise InvalidBinding('field_not_supplied')
-        candidates = [a for a in candidates if a.field == field]
+            if strict or any(a.plan_id is not None for a in candidates):
+                raise InvalidBinding('field_not_supplied')
+            if stats is not None:
+                stats['ignored_binding_fields'] = stats.get('ignored_binding_fields', 0) + 1
+        else:
+            candidates = [a for a in candidates if a.field == field]
     if not candidates:
         raise InvalidBinding('ref_has_no_numeric_value')
     return candidates, ids
@@ -225,10 +254,11 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         return code, []
     if re.search(r'(?<![\d.])[零〇一二两三四五六七八九十百千万亿]+(?:亿元|万元|元|个百分点|倍|成)|百分之|美元|港元|欧元|USD|HKD', sentence, re.I):
         return reject('unsupported_number_representation_or_currency')
-    from trading_companion.answer_technical_validation import mask_technical, InvalidTechnical
+    from trading_companion.answer_technical_validation import mask_technical, reading_candidates, InvalidTechnical
     try:
         normalized, masked = _masked(sentence, context, records)
-        technical_mask, technical_ids = mask_technical(normalized, context, instrument, records)
+        technical_mask, technical_ids = mask_technical(normalized, context, instrument, records, stats=stats)
+        restrictions = reading_candidates(normalized, context, instrument, records)
         masked = ''.join(' ' if technical == ' ' else original
                          for original, technical in zip(masked, technical_mask, strict=True))
     except InvalidBinding as error:
@@ -244,15 +274,23 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
             local_spans.append((left, right, binding, bad or start < offset or end > offset+len(sentence)))
     tokens = list(NUMBER.finditer(masked))
     for start, end, binding, bad in local_spans:
-        if bad or not any(start <= m.start() and m.start()+len(m[0].rstrip()) <= end for m in tokens):
-            return reject('ambiguous_overlapping_or_nonnumeric_binding', BINDING_INVALID)
+        if bad:
+            return reject('ambiguous_overlapping_binding', BINDING_INVALID)
+        if not any(start <= m.start() and m.start()+len(m[0].rstrip()) <= end for m in tokens):
+            # A full-block date/period annotation may become nonnumeric only after masking.
+            try:
+                resolve_ref(binding.get('ref'), context, instrument)
+            except InvalidBinding as error:
+                if error.code == HARD:
+                    return reject(error.reason, HARD)
+            count('ignored_nonnumeric_bindings')
     all_atoms = [a for record in records for a in atoms(record)]
     used, code = list(technical_ids), None
     for match in tokens:
         count('numeric_tokens')
-        binding = next((b for s, e, b, _ in local_spans
-                        if s <= match.start() and match.start()+len(match[0].rstrip()) <= e), None)
-        if binding is not None:
+        bindings = [b for s, e, b, _ in local_spans
+                    if s <= match.start() and match.start()+len(match[0].rstrip()) <= e]
+        if bindings:
             count('bound_numbers')
         token = match[0].strip()
         split = re.fullmatch(r'([-+]?\d+(?:\.\d+)?)\s*(.*)', token)
@@ -266,60 +304,93 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                 'yuan' if suffix == '元' else None)
         value, direction_error = _direction(normalized[:match.start()], split[1], shown * FACTOR.get(suffix, 1), kind)
         detail = dict(token=token, shown=str(shown), value=str(value), kind=kind, unit=suffix,
-                      binding=binding is not None, candidates=[])
-        candidates = all_atoms
-        binding_ids = []
-        error_code = None
-        try:
-            if binding is not None:
-                candidates, binding_ids = _bound_atoms(binding, context, instrument)
-        except InvalidBinding as error:
-            candidates, error_code = [], error.code
-            detail['reason'] = error.reason
+                      start=match.start(), end=match.end(), binding=bool(bindings), candidates=[])
         label = PLAN_PREFIX.search(normalized[:match.start()])
-        plan_field = PLAN_LABELS[label[1]] if label else None
-        matched = []
-        for atom in candidates:
-            d = dict(evidence_id=atom.evidence_id, value=str(atom.value), kind=atom.kind,
-                     field=atom.field, source=atom.source, difference=str(abs(value-atom.value)))
-            detail['candidates'].append(d)
-            if kind == 'yuan' and atom.kind not in ('price', 'amount') or kind not in (None, 'yuan', atom.kind):
-                d['reason'] = 'unit_kind_mismatch'
-            elif plan_field and (atom.field != plan_field or atom.plan_id is None):
-                d['reason'] = 'plan_field_mismatch'
-            elif expected_plan and atom.kind == 'price' and atom.plan_id != expected_plan:
-                d['reason'] = 'selected_plan_mismatch'
-            elif direction_error:
-                d['reason'] = direction_error
-            else:
-                if atom.kind == 'amount':
-                    tolerance = Decimal(1).scaleb(shown.as_tuple().exponent) * FACTOR.get(suffix, 1) / 2
-                    ok = abs(value-atom.value) <= tolerance and (value == 0 or atom.value == 0 or (value > 0) == (atom.value > 0))
+        suffix_label = PLAN_SUFFIX.search(normalized[match.end():])
+        plan_field = PLAN_LABELS[label[1]] if label else PLAN_LABELS[suffix_label[1]] if suffix_label else None
+        # A coordinated historical low in the same comma clause is not another
+        # plan price: "跌破51.58元计划止损且失守50.11元低点".
+        boundary = r'[，,；;。]|并且|以及|且|并|和'
+        local = re.split(boundary, normalized[:match.start()])[-1] + re.split(boundary, normalized[match.end():])[0]
+        level_binding = any(type(b.get('ref')) is str and re.fullmatch(r'L[1-9]\d*', b['ref']) for b in bindings)
+        protected = bool(plan_field or expected_plan or kind in ('price', 'yuan', None) and PLAN_LANGUAGE.search(local))
+        detail['ordinary_numeric'] = not protected
+        matched, binding_ids, error_code, passed, ambiguous = [], [], None, True, False
+        for binding in bindings or [None]:
+            candidates, group_ids, fallback = all_atoms, [], False
+            try:
+                if binding is not None:
+                    candidates, group_ids = _bound_atoms(binding, context, instrument, strict=protected, stats=stats)
+            except InvalidBinding as error:
+                if (not protected and not level_binding and binding.get('derive') is None and error.reason in
+                        ('invalid_ref_type', 'ref_not_supplied', 'ref_has_no_numeric_value')):
+                    candidates = [a for a in all_atoms if a.plan_id is None]
+                    fallback = True
+                    count('invalid_binding_fallbacks')
+                    detail['fallback_reason'] = error.reason
                 else:
-                    ok = _rounded(value, atom.value, shown, price=atom.kind == 'price', diagnostic=d)
-                d['reason'] = 'matched' if ok else 'numeric_out_of_tolerance'
-                if ok:
-                    matched.append(atom)
-        # Exact values disambiguate tolerance neighbours. Otherwise distinct values
-        # within a tolerance are ambiguous; duplicate records aren't.
-        exact = [a for a in matched if a.value == value]
-        if exact:
-            matched = exact
+                    candidates = []
+                    error_code = HARD if error.code == HARD or error_code == HARD else error_code or error.code
+                    detail['reason'] = error.reason
+                    detail['ordinary_numeric'] = False
+            restriction = restrictions.get(match.start())
+            if restriction is not None:
+                daily, weekly = restriction
+                allowed = daily if any(a.evidence_id in daily and _rounded(value, a.value, shown, price=a.kind == 'price')
+                                       for a in candidates) else weekly
+                candidates = [a for a in candidates if a.evidence_id in allowed]
+            group = []
+            for atom in candidates:
+                d = dict(evidence_id=atom.evidence_id, value=str(atom.value), kind=atom.kind,
+                         field=atom.field, source=atom.source, difference=str(abs(value-atom.value)))
+                detail['candidates'].append(d)
+                field_ok = (atom.field in ('target_1', 'target_2', 'reference_target') if plan_field == 'target'
+                            else atom.field == plan_field)
+                if kind == 'yuan' and atom.kind not in ('price', 'amount') or kind not in (None, 'yuan', atom.kind):
+                    d['reason'] = 'unit_kind_mismatch'
+                elif plan_field and (not field_ok or atom.plan_id is None):
+                    d['reason'] = 'plan_field_mismatch'
+                elif protected and atom.kind == 'price' and atom.plan_id is None:
+                    d['reason'] = 'plan_source_required'
+                elif expected_plan and atom.kind == 'price' and atom.plan_id != expected_plan:
+                    d['reason'] = 'selected_plan_mismatch'
+                elif direction_error:
+                    d['reason'] = direction_error
+                else:
+                    if atom.kind == 'amount':
+                        tolerance = Decimal(1).scaleb(shown.as_tuple().exponent) * FACTOR.get(suffix, 1) / 2
+                        ok = abs(value-atom.value) <= tolerance and (value == 0 or atom.value == 0 or (value > 0) == (atom.value > 0))
+                    else:
+                        ok = _rounded(value, atom.value, shown, price=atom.kind == 'price', diagnostic=d)
+                    d['reason'] = 'matched' if ok else 'numeric_out_of_tolerance'
+                    if ok:
+                        group.append(atom)
+            exact = [a for a in group if a.value == value]
+            group = exact or group
+            group_distinct = {(a.value, a.kind) for a in group}
+            group_ok = len(group_distinct) == 1
+            ambiguous |= len(group_distinct) > 1
+            passed &= group_ok
+            if fallback:
+                count('invalid_binding_fallback_matched' if group_ok else 'invalid_binding_fallback_rejected')
+            if group_ok:
+                matched.extend(group)
+                binding_ids.extend(group_ids)
         distinct = {(a.value, a.kind) for a in matched}
-        passed = len(distinct) == 1
         if not passed:
-            if binding is None:
+            if not bindings:
                 count('unbound_rejected')
-                if len(distinct) > 1:
+                if ambiguous:
                     count('unbound_ambiguous')
             else:
                 count('bound_rejected')
-            error_code = error_code or (BINDING_MISMATCH if binding is not None else NUMERIC)
-            detail.setdefault('reason', 'ambiguous_match' if distinct else direction_error or 'no_candidate')
+            error_code = error_code or (BINDING_MISMATCH if bindings else NUMERIC)
+            detail.setdefault('reason', 'ambiguous_match' if ambiguous else
+                              'binding_value_mismatch' if bindings and distinct else direction_error or 'no_candidate')
             # A later hard violation must not be hidden by an earlier soft failure.
             code = HARD if error_code == HARD or code == HARD else code or error_code
         else:
-            count('bound_matched' if binding is not None else 'unbound_matched')
+            count('bound_matched' if bindings else 'unbound_matched')
             used.extend(binding_ids)
             used.extend(a.evidence_id for a in matched)
         detail['matched'] = passed

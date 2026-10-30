@@ -22,7 +22,7 @@ describe("reference decisions", () => {
     expect(screen.getByText("买入")).toBeVisible();
     expect(screen.getByText("未来20个交易日")).toBeVisible();
     expect(screen.getByText(/模型自评，未经历史校准/)).toBeVisible();
-    expect(screen.getByRole("table", { name: /ATR 参考计划.*2026-09-25/ })).toBeVisible();
+    expect(screen.getByRole("table", { name: /ATR 参考计划 · 仅供参考.*2026-09-25/ })).toBeVisible();
     expect(screen.getByRole("table", { name: /关键价位区间/ })).toBeVisible();
     expect(screen.getByText(/人工样例，非真实行情/)).toBeVisible();
     expect(screen.getByText(/止盈 2/)).toBeVisible();

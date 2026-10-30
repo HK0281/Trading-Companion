@@ -4,6 +4,8 @@ A Chinese-language research agent for China's A-share market, with application-c
 
 Natural technical questions now share the checked v3 narrative workflow, including shortlist research and indicator edits. “只看SMA3” keeps that exact indicator set: no implicit ATR or extra MA20/MA60. Excluded domains display “按要求未研究”; an unavailable reference plan does not discard a valid answer. Legacy tasks and structured entry points remain available. [Scope and compatibility](docs/technical-shared-narrative-design.md) · [117-turn v6 comparison](docs/request-routing-technical-deltas.md)
 
+Answer validation now tolerates recoverable ordinary numeric annotations and retains independently valid clauses. Plan prices, cross-stock references, false RSI relations and excluded indicators remain checked. Valid same-stock prices require a model rating; limited indicator research has low conviction, with the plan unavailable when ATR was not requested. Sentence deletion statistics changed from v1 to v2: reports also show clause deletions and partially retained sentences. Historical **17.5% / 26.9%** deletion rates cannot be directly compared with v2. [Validation rules (Chinese)](docs/technical-numeric-grounding-design.md) · [117-turn validation deltas](docs/answer-validation-routing-deltas.md)
+
 ![Offline demo with synthetic data: candlesticks, SMA3, volume and RSI2](docs/images/demo-research-chart.png)
 
 **Offline demo with synthetic data.** Actual interface capture using a fixed fake model and five artificial daily bars; no live market data or model API calls. Reproduce with `.\start.cmd --demo`, send `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`, then expand **历史 K 线与指标**. First-time setup is below.

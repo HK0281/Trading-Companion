@@ -90,7 +90,7 @@ function PlanTable({ plan }: { plan: Plan }) {
   return <>
     {plan.purpose === "holding_exit" && <p>如已持有：收盘跌破 {plan.values.exit_below} 元时考虑减仓或退出。<br />空仓：观望。</p>}
     {plan.purpose === "wait" && <p>等待观察；触及观察价位时重新核对依据，不代表自动买卖。</p>}
-    <div className="table-scroll"><table className="reference-plan"><caption>ATR 参考计划 · 行情 {plan.source_date}</caption>
+    <div className="table-scroll"><table className="reference-plan"><caption>ATR 参考计划 · 仅供参考 · 行情 {plan.source_date}</caption>
       <thead><tr><th>项目</th><th>参考值</th></tr></thead><tbody>{Object.entries(plan.values).map(([key, v]) =>
         <tr key={key}><th scope="row">{labels[key]}</th><td>{v}{key.startsWith("reward_risk") || key === "atr_multiple" ? " 倍" : " 元"}</td></tr>)}</tbody></table></div>
     <small>数据性质：{plan.data_authenticity === "synthetic" ? "人工样例，非真实行情" : plan.source === "csv" ? "CSV 数据，真实性未经验证" : "供应商历史数据"} ·
@@ -108,7 +108,7 @@ export function ResearchDecision({ data, securities, renderEvidence }: { data: D
     const plans = data.trade_plans.filter(p => p.instrument_id === d.instrument_id);
     const selected = plans.find(p => p.plan_id === d.plan_id) ?? plans.find(p => p.purpose === "conditional_entry");
     return <section className="research-verdict" key={d.instrument_id} aria-label={`${name}参考研判`}>
-      <h4>{name} · 参考研判</h4>
+      <h4>{name} · 参考研判 · 仅供参考</h4>
       {d.status === "available" ? <>
         <dl className="verdict-grid"><div><dt>评级</dt><dd>{d.rating}</dd></div><div><dt>方向</dt><dd>{d.direction}</dd></div>
           <div><dt>期限</dt><dd>{d.horizon}</dd></div><div><dt>把握</dt><dd>{d.conviction}</dd></div></dl>

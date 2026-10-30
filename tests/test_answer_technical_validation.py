@@ -31,8 +31,7 @@ class TechnicalValidationTests(unittest.TestCase):
         for text in ('RSI6尚需观察。', 'RSI(29.7)尚需观察。', 'SMA30尚需观察。',
                      'MACD(12,26,8)尚需观察。', 'MACD(12,26)尚需观察。', 'RSI(14,6)尚需观察。',
                      'RSI(14尚需观察。', '周线SMA(3)尚需观察。', 'SMA3元。',
-                     'SMA(3)29.7元。', 'SMA3(29.7)。', 'SMA(3)(29.7)。',
-                     'SMA3(29.7元。', '周线方面RSI(14)低于50中线。',
+                     'SMA3(29.7)。', 'SMA(3)(29.7)。', 'SMA3(29.7元。',
                      '6日RSI低于50中线。', '30日均线提供支撑。', '3周SMA尚需观察。',
                      '-3日SMA尚需观察。', '3.0日SMA尚需观察。'):
             with self.subTest(text=text):
@@ -77,20 +76,20 @@ class TechnicalValidationTests(unittest.TestCase):
         both_periods = deepcopy(base)
         both_periods['_technical_validation']['000001.SZ']['values'].append({
             **both_periods['_technical_validation']['000001.SZ']['values'][0], 'timeframe': 'weekly'})
-        self.assertFalse(self.check('RSI低于50中线。', both_periods)[0])
+        self.assertTrue(self.check('RSI低于50中线。', both_periods)[0])
         self.assertTrue(self.check('日线RSI低于50中线。', both_periods)[0])
 
     def test_real_numeric_values_and_other_thresholds_keep_normal_checks(self):
         self.assertTrue(self.check('RSI值为42。')[0])
         self.assertFalse(self.check('RSI值为99。')[0])
-        self.assertFalse(self.check('RSI低于50中线，收盘999元。')[0])
+        self.assertEqual(self.check('RSI低于50中线，收盘999元。')[0], 'RSI低于50中线。')
         self.assertFalse(self.check('ADX低于50中线。')[0])
         self.assertFalse(self.check('RSI低于60中线。')[0])
         self.assertIn('E6', self.check('RSI低于50中线。')[1])
         coincidence = technical_context()
         coincidence['evidence'][0]['raw_value'] = 30
         self.assertFalse(self.check('RSI低于30。', coincidence)[0])
-        self.assertFalse(self.check('RSI使用30/70参考阈值。', coincidence)[0])
+        self.assertTrue(self.check('RSI使用30/70参考阈值。', coincidence)[0])
 
     def test_unit_bearing_parentheses_are_readings_not_indicator_parameters(self):
         ctx = technical_context()

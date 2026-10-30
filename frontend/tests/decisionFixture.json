@@ -1382,7 +1382,8 @@
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|divergence:rsi(window=14):bullish",
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:support",
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:resistance",
-          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value"
+          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value",
+          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=60):value"
         ]
       },
       "current": {
@@ -1413,7 +1414,8 @@
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|divergence:rsi(window=14):bullish",
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:support",
           "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:resistance",
-          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value"
+          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value",
+          "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=60):value"
         ]
       },
       "drivers": [
@@ -1453,7 +1455,8 @@
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|divergence:rsi(window=14):bullish",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:support",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:resistance",
-            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value"
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value",
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=60):value"
           ],
           "title": "相反证据与局限"
         }
@@ -1480,7 +1483,8 @@
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|divergence:rsi(window=14):bullish",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:support",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:resistance",
-            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value"
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value",
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=60):value"
           ]
         },
         "better": {
@@ -1511,7 +1515,8 @@
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|divergence:rsi(window=14):bullish",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:support",
             "17563b6a78bd460fbfb3239b78c5817e|technical-missing|levels:resistance",
-            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value"
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=20):value",
+            "17563b6a78bd460fbfb3239b78c5817e|technical-missing|weekly:sma(window=60):value"
           ]
         }
       },
@@ -1559,14 +1564,26 @@
     "retained_paragraphs": 1,
     "repair_attempts": 0,
     "structure_failures": 0,
-    "numeric_validation_version": "source-bindings-v1",
+    "numeric_validation_version": "source-bindings-v2",
+    "sentence_count_version": "sentence-counts-v2",
     "numeric_tokens": 3,
     "bound_numbers": 3,
     "bound_matched": 3,
     "bound_rejected": 0,
     "unbound_matched": 0,
     "unbound_rejected": 0,
-    "unbound_ambiguous": 0
+    "unbound_ambiguous": 0,
+    "ignored_nonnumeric_bindings": 0,
+    "ignored_binding_fields": 0,
+    "invalid_binding_fallbacks": 0,
+    "invalid_binding_fallback_matched": 0,
+    "invalid_binding_fallback_rejected": 0,
+    "rsi_local_value_checks": 0,
+    "rsi_reference_explanations": 0,
+    "generated_clauses": 42,
+    "retained_clauses": 42,
+    "deleted_clauses": 0,
+    "partially_retained_sentences": 0
   },
   "securities": [
     {

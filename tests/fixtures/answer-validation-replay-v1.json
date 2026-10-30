@@ -1,0 +1,14 @@
+{
+  "notice": "人工固定输入，无真实账户或行情；实际证据仅E1，E2只在同轮公开报告中。",
+  "context": {
+    "securities": [{"instrument_id": "000001.SZ", "name": "人工样例"}],
+    "objective": {"kind": "analysis", "horizon": null},
+    "start_date": "2026-09-01", "daily_cutoff": "2026-09-25", "price_levels": [],
+    "evidence": [{"id": "E1", "instrument_id": "000001.SZ", "kind": "technical", "label": "最新收盘价", "raw_value": 29.7, "unit": "CNY/share", "date": "2026-09-25", "content_kind": "fact"}]
+  },
+  "public": [
+    {"id": "fake|price_context:latest_close", "instrument_id": "000001.SZ", "kind": "technical", "label": "最新收盘价", "raw_value": 29.7, "unit": "CNY/share", "date": "2026-09-25", "content_kind": "fact"},
+    {"id": "fake|000001.SZ|2026-09-25|rsi(window=14)|value", "instrument_id": "000001.SZ", "kind": "technical", "label": "RSI(14)", "raw_value": 45, "unit": "index_points", "date": "2026-09-25", "content_kind": "fact"}
+  ],
+  "draft": {"narratives": [{"instrument_id": "000001.SZ", "summary": {"text": "RSI低于50。"}, "drivers": [{"title": "样例", "text": "收盘29.7元，营业收入999亿元。", "numbers": [{"text": "29.7元", "ref": "E404"}]}]}], "decisions": []}
+}

@@ -20,7 +20,7 @@ from trading_companion.turn_trace import trace_event
 from trading_companion.answer_diagnostics import diagnostic_event, diagnostic_location, diagnostics_enabled
 from trading_companion.narrative_answer_parser import parse_narrative
 from trading_companion.answer_numeric_bindings import (
-    COUNTERS, FIELDS, InvalidBinding, level_ref,
+    COUNTERS, RELAXATION_COUNTERS, CLAUSE_COUNTERS, FIELDS, InvalidBinding, level_ref,
 )
 
 VERSION = "product-research-answer-v3"
@@ -29,12 +29,12 @@ INSTRUCTION = """Answer the original question in natural Chinese, using only the
 No browsing, transactions, guaranteed returns, invented odds/probabilities, HTML or links. Numbers must come from supplied evidence; reasonable rounding/unit conversion is allowed. Latest price means a dated completed daily close.
 Return only JSON: {"version":"product-research-answer-v3","narratives":[{"instrument_id":"code","summary":{"text":"direct conclusion, horizon, uncertainty"},"current":{"text":"dated close and trend"},"drivers":[{"title":"short heading","text":"evidence and interpretation"}],"levels":[{"lower_id":"price_levels.id","upper_id":"price_levels.id","text":"conditional interpretation"}],"scenarios":{"base":{"text":"base case"},"better":{"text":"improving conditions"},"worse":{"text":"weakening conditions"}},"stance":{"text":"consistent action stance"}}],"decisions":[]}.
 One group per stock, never use another stock's data. Be concise: at most 4 drivers, 1-2 sentences each; each driver must explain a different factor, never repeat the same factor under another heading; each scenario one sentence; avoid repeating levels and reasons. text is plain Chinese with optional **bold**. evidence_ids are optional. levels: select supplied price_levels IDs only, never enter prices; same ID is a single level; prefer at most 3 rows.
-Every text block may add a sibling numbers array. Copy ref exactly from one supplied evidence or price_levels ID, without adding prefixes or combining IDs. The block's text contains readable prose only, with no IDs or JSON. Each binding has text, ref and an optional field selected only from supplied fields. A binding's text must occur exactly once in that block. Bind key prices; other numbers must directly match supplied same-stock evidence, otherwise omit them or use the permitted derivation below. Write negative percentages with an explicit minus sign (e.g. -3.84%), including inside bold markup. Dates and periods need no binding. Example: {"text":"若跌破25.99元则重评。","numbers":[{"text":"25.99元","ref":"L5"}]}.
+Every text block may have sibling numbers:[{text,ref,field?}]. text is readable Chinese, no IDs or JSON. Copy ONE exact supplied evidence or price_levels ID per ref, no added prefixes or combined IDs. Bind plan prices to their exact fields. Other numbers must match same-stock evidence. Write negative percentages with a minus sign (e.g. -3.84%), also in bold. Dates and periods need no binding.
 Only derived type: {"text":"约2.9%","derive":"distance","refs":["E8","L2"]}. refs[0] is base/denominator, refs[1] comparison: abs(second-first)/abs(first)*100%. Each ref must identify one price (use L for multi-price plans). Example IDs must be replaced with actual supplied IDs. Never swap stop and target fields.
 Do not confuse cumulative and quarterly financials, or infer missing cashflow, valuation, causality or complete article contents. Attribute title figures to the title, and describe contrary evidence and missing information.
 For objective.kind=decision, decisions has one item per stock: instrument_id,status,rating,direction,horizon,conviction,reasons,invalidation,plan_id. status=formed: rating=买入/增持/持有/减持/卖出, direction=偏多/震荡/偏空, conviction=高/中/低. horizon must mean objective.horizon. reasons is preferably 2-4 {text} blocks, at least 1; invalidation is {text}.
 买入/增持: direction 偏多, plan purpose conditional_entry. 持有: 偏多/震荡, wait. 减持/卖出: 偏空/震荡, holding_exit. plan_id selects an available same-stock same-purpose trade_plans item, otherwise null. Plan prices are application calculations, not forecasts.
-If insufficient evidence, status=insufficient_evidence, other rating fields=null, reasons explain the gaps; never fabricate a hold rating. For nondecision objectives decisions=[]. Respect permitted research domains and historical cutoff.
+Valid same-stock price REQUIRES a formed rating even for SMA3-only research. Limited evidence: conviction=低, reasons state limits; never demand excluded fundamentals or ATR. No ATR: null plan_id, no invented prices. insufficient_evidence only if no valid price, never default hold. Ratings/plans are references, not advice or guarantees. Nondecision: decisions=[]. Respect permitted scope and cutoff.
 """
 
 
@@ -106,7 +106,7 @@ def _messages(question, context, issues=()):
         if any(i.code == TRUNCATED for i in issues):
             feedback += "上一稿超长被截断，请精简：drivers 不超过 4 条，每条 1～2 句，numbers 只标注关键价位。"
         feedback += ("按同一证据输出完整精简JSON，含decisions与指定horizon；负数写负号，"
-                     "绑定片段只出现一次，ref/field选给定证据；评级、立场和计划用途一致。")
+                     "ref/field选给定证据；评级、立场和计划用途一致。有本股价格必须给评级，证据有限把握低；无ATR不编价位。")
         introduction = "仅重写一次，优先修复以下问题；程序会保留已通过检查的内容："
         entry_limit = min(500, 700-len(feedback)-len(introduction))
         entries, seen = [], set()
@@ -255,6 +255,17 @@ class _Checker:
         reason_issues = self.issues[reason_start:]
         checked = [{**c,'_slot':i} for i,c in enumerate(checked) if c]
         if raw.get("status") == "insufficient_evidence":
+            from trading_companion.answer_numeric_bindings import atoms
+            has_price = any(atom.kind == 'price' and atom.value > 0 and atom.plan_id is None
+                            for row in self.context['evidence'] if row['instrument_id'] == instrument
+                            and row.get('kind') == 'technical' and row.get('content_kind') == 'fact'
+                            and row.get('unit') == 'CNY/share' and row.get('raw_value') is not None
+                            and self.context['start_date'] <= (row.get('date') or '') <= self.context['daily_cutoff']
+                            for atom in atoms(row))
+            if has_price:
+                self.issues.append(Issue(STANCE, 'decision', 0, '有本股有效价格，须在已授权范围形成低把握评级；无ATR仅使计划不可用',
+                                         path=f'{self.prefix}.status'))
+                return {**unavailable, 'code': 'decision_rating_required'}
             invalidation = self.claim(raw.get('invalidation'), instrument, 'decision', 4, field='invalidation')
             return {**unavailable, "code": "decision_insufficient_evidence", "reasons": checked, "invalidation": invalidation}
         rating = raw.get("rating")
@@ -308,8 +319,11 @@ class _Checker:
             review['reason_review'] = dict(retained=len(checked),deleted=dropped,codes=sorted(set(codes)))
         if origin=='application':
             review['invalidation_origin'] = origin
+        conviction = raw['conviction']
+        if self.bundle.plan.indicators_explicit and len(self.bundle.plan.indicators) == 1 and self.bundle.plan.kinds == ('technical',):
+            conviction = '低'
         return {**unavailable, "status": "available", "code": "decision_ready", "rating": rating,
-            "direction": raw["direction"], "conviction": raw["conviction"], "reasons": checked,
+            "direction": raw["direction"], "conviction": conviction, "reasons": checked,
             "invalidation": invalidation, "plan_id": selected.plan_id if selected else None,
             "condition": selected.condition if selected else None, **review}
 
@@ -594,7 +608,7 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
     truncations = initial_truncations = repair_truncations = 0
     initial_available, repair_restored, repair_added = set(), False, False
     repair_additions = set()
-    numeric_stats = {key: 0 for key in COUNTERS}
+    numeric_stats = {key: 0 for key in (*COUNTERS, *RELAXATION_COUNTERS, *CLAUSE_COUNTERS)}
     draft_issue_counts = []
     try:
         if type(question) is not str or not question.strip() or len(question) > MAX_USER_CHARACTERS:
@@ -718,7 +732,7 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
             trace_answer_validation(answer.quality)
             return ProductAnswerRun(answer, calls)
     answer = _answer(bundle, context, narratives, decisions, issues, generated, deleted, repairs, structure_failures)
-    answer.quality.update(numeric_validation_version='source-bindings-v1', **numeric_stats)
+    answer.quality.update(numeric_validation_version='source-bindings-v2', sentence_count_version='sentence-counts-v2', **numeric_stats)
     output_quality = dict(output_truncation_version='answer-output-v1', output_truncations=truncations,
         initial_output_truncations=initial_truncations, repair_output_truncations=repair_truncations)
     # Ordinary successful public answers retain their previous shape. Versioned

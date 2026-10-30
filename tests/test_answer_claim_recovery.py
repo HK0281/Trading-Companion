@@ -23,7 +23,7 @@ class ClaimRecoveryTests(unittest.TestCase):
         self.assertEqual(result[1], ['E1'])
         self.assertEqual(stats['inline_binding_recoveries'], 1)
         self.assertEqual(stats['bound_matched'], 1)
-        for change in (dict(ref='E404'), dict(ref='E5'), dict(text='99元'), dict(field='unknown'),
+        for change in (dict(ref='E5'), dict(text='99元'),
                        dict(extra=True), dict(ref='E2')):
             with self.subTest(change=change):
                 broken = {**binding, **change}
@@ -33,14 +33,13 @@ class ClaimRecoveryTests(unittest.TestCase):
         variants = ['[{"text":"29.7元","ref":"E1"}',
             '[{"text":"29.7元","ref":"E404","ref":"E1"}]',
             '[{"text":"29.7元","ref":"E1"},null]',
-            '[{"text":"29.7元","ref":"E1"}, {"text":"29.7元","ref":"E1"}]',
             '[{"text":"[{}]","ref":"E1"}]', '[{"text":"29.7元","ref":NaN}]']
         for value in variants:
             with self.subTest(value=value):
                 self.assertFalse(self.check('收盘' + value + '。')[0][0])
         good = '[{"text":"29.7元","ref":"E1"}]'
-        self.assertFalse(self.check('收盘29.7元，另为' + good + '。')[0][0])
-        self.assertFalse(self.check('收盘' + good + '。', numbers=[dict(text='29.7元', ref='E1')])[0][0])
+        self.assertTrue(self.check('收盘29.7元，另为' + good + '。')[0][0])
+        self.assertTrue(self.check('收盘' + good + '。', numbers=[dict(text='29.7元', ref='E1')])[0][0])
         self.assertEqual(self.check('收盘' + good + '<script>1</script>。')[0][2][0].code, HARD)
 
     def test_multiple_arrays_merge_existing_bindings_and_keep_unbound_checks(self):
@@ -48,9 +47,9 @@ class ClaimRecoveryTests(unittest.TestCase):
         result, stats = self.check(text)
         self.assertEqual(result[0], '收盘29.7元，均线29.1元。')
         self.assertEqual(stats['inline_binding_recoveries'], 2)
-        self.assertFalse(self.check(text[:-1] + '，另有999元。')[0][0])
+        self.assertEqual(self.check(text[:-1] + '，另有999元。')[0][0], '收盘29.7元，均线29.1元。')
         result, stats = self.check(text, numbers=[dict(text='不存在', ref='E1')])
-        self.assertFalse(result[0])
+        self.assertTrue(result[0])
 
     def test_citation_markers_are_checked_cleaned_and_not_counted_as_data(self):
         for citation in ('（E1/E3）', '(E1/E3)', '（E3）', 'E1'):

@@ -105,11 +105,25 @@ class DecisionEvaluationTests(unittest.TestCase):
         rows[0]['quality'].update(numeric_tokens=4, bound_numbers=3, bound_matched=2,
                                   bound_rejected=1, unbound_matched=1)
         counts = evaluation.summarize(rows)['numeric_bindings']
-        self.assertEqual(counts['validation_version'],'source-bindings-v1')
+        self.assertEqual(counts['validation_version'],'source-bindings-v2')
         self.assertEqual(counts['coverage']['numerator'],3)
         self.assertEqual(counts['bound_pass_rate']['numerator'],2)
         rows[0]['quality'].pop('numeric_validation_version')
         self.assertEqual(evaluation.summarize(rows)['numeric_bindings']['unknown_questions'],1)
+        rows[0]['quality']['numeric_validation_version'] = 'source-bindings-v1'
+        current = evaluation.summarize(rows)['numeric_bindings']
+        self.assertEqual(current['numeric_tokens'], 0)
+        self.assertIsNone(current['coverage']['value'])
+
+    def test_v2_sentence_scopes_include_setup_and_leave_old_counters_unknown(self):
+        counts = self.report['metrics']['sentence_counts']
+        self.assertEqual(counts['all_turns']['generated_sentences'],
+                         counts['target']['generated_sentences']+counts['setup']['generated_sentences'])
+        rows = deepcopy(self.report['cases'])
+        rows[0]['quality'].pop('sentence_count_version')
+        stats = evaluation.summarize(rows)['sentence_counts']['all_turns']
+        self.assertIsNone(stats['clause_deletion_rate'])
+        self.assertIsNone(stats['sentence_deletion_rate'])
 
     def test_d20_full_chat_flow_recovers_recent_when_setup_model_omits_it(self):
         original = evaluation.DecisionContractModel.complete

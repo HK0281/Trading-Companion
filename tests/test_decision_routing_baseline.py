@@ -6,7 +6,7 @@ from tests.routing_baseline_support import compare_observations, ROOT
 from tests.routing_targets_support import baseline_digest
 from tests.routing_decision_support import TARGET, SOURCES, authored_scenarios, observe, validate
 from tests.routing_narrative_support import current_decision_contracts, corpus as narrative_corpus
-from tests.routing_technical_support import overlay
+from tests.routing_relaxed_support import overlay
 from trading_companion.intent_rule_baseline import current_baseline
 
 

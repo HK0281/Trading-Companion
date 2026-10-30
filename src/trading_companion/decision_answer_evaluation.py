@@ -54,7 +54,8 @@ def _implementation_fingerprint():
     names = ('decision_answer_evaluation.py', 'deepseek_model.py', 'deepseek_tool_model.py',
              'model_registry.py', 'tool_model.py', 'product_narrative_answer.py', 'narrative_answer_parser.py',
              'answer_validation.py', 'answer_numeric_bindings.py', 'answer_claim_recovery.py',
-             'answer_technical_validation.py', 'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
+             'answer_technical_validation.py', 'answer_clauses.py', 'answer_validation_metrics.py',
+             'research_workflow.py', 'workflow_tools.py', 'turn_trace.py')
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii')+b'\0')
@@ -322,10 +323,13 @@ def summarize(cases):
         target_turn_latency=_latency([c.get('target_elapsed_ms') for c in cases]),
         model_call_latency=_latency([call['elapsed_ms'] for c in cases for call in c.get('calls',[])]))
     from trading_companion.answer_numeric_bindings import COUNTERS
-    counts = {key:sum(q[key] for q in quality if type(q.get(key)) is int) for key in COUNTERS}
+    known_numeric = [q for q in quality if q.get('numeric_validation_version') == 'source-bindings-v2'
+                     and all(type(q.get(key)) is int and q[key] >= 0 for key in COUNTERS)]
+    counts = {key:sum(q[key] for q in known_numeric) for key in COUNTERS}
+    numeric_unknown = len(quality) - len(known_numeric)
     result['numeric_bindings'] = dict(**counts,
-        validation_version='source-bindings-v1',
-        unknown_questions=sum(q.get('numeric_validation_version') != 'source-bindings-v1' for q in quality),
+        validation_version='source-bindings-v2',
+        unknown_questions=numeric_unknown,
         coverage=ratio(counts['bound_numbers'],counts['numeric_tokens']),
         bound_pass_rate=ratio(counts['bound_matched'],counts['bound_numbers']))
     fields = ('output_truncations', 'initial_output_truncations', 'repair_output_truncations')
@@ -339,6 +343,12 @@ def summarize(cases):
         repair_draft=totals['repair_output_truncations'] if not unknown else None,
         affected_questions=sum(q['output_truncations']>0 for q in known) if not unknown else None,
         known_subtotals=totals, unknown_questions=unknown)
+    from trading_companion.answer_validation_metrics import clause_metrics, deletion_metrics
+    result.update(clause_metrics([c.get('quality') or {} for c in cases]))
+    target_quality = [c.get('quality') or {} for c in cases]
+    setup_quality = [s.get('quality') or {} for c in cases for s in c.get('setup', [])]
+    result['sentence_counts'] = {key:deletion_metrics(values) for key, values in (
+        ('target', target_quality), ('setup', setup_quality), ('all_turns', setup_quality+target_quality))}
     return result
 
 
@@ -393,6 +403,7 @@ def _run(cases, plan, meter, delegate, trace_root):
                         with diagnostic_location(case_id=case['id'],phase='setup'):
                             result, elapsed, trace = _send(service,credentials,question,path,seen)
                         row['setup'].append(dict(question=question,status=result['status'],code=result['code'],
+                            quality=deepcopy((result.get('company_research') or {}).get('quality')),
                             elapsed_ms=elapsed, model_calls=meter.forwarded-setup_before,
                             identity=(result.get('parameters') or {}).get('instrument_id'),
                             trace_complete=bool(trace and not trace['truncated'] and not trace['missing_parents']),
@@ -517,11 +528,16 @@ def write_report(report,root):
     lines = ['# 决策回答20题评估','',f"规则版本：{report.get('acceptance_version','decision-acceptance-v1')}。",
              f"模式：{report['plan']['mode']}；主分母固定20；形成 {report['metrics']['formed']}/20，目标至少18。",
              '两条理由对照仅使用本次公开回答重新计数，不是对旧规则整套执行的重放。',
+             '删句率口径v2：整句全删才计删句，部分保留另计；同时报告分句删除率，不能直接对比v1历史删句率。',
              '离线脚本不代表真实模型质量；自动通过仍需人工核对证据关联、措辞和条件。','',
              '| 题号 | 组别 | 依赖B | 状态/结果码 | 有效结论 | 问题 |','| --- | --- | --- | --- | --- | --- |']
     truncations = report['metrics'].get('output_truncations', {})
     show = lambda key: '未知' if truncations.get(key) is None else truncations[key]
     lines[5:5] = [f"输出截断：总计 {show('total')}；首稿 {show('first_draft')}；修复稿 {show('repair_draft')}；受影响题数 {show('affected_questions')}。", '']
+    for scope in ('target', 'setup', 'all_turns'):
+        counts = report['metrics'].get('sentence_counts', {}).get(scope, {})
+        shown = lambda key: '未知' if counts.get(key) is None else counts[key]
+        lines += [f"{scope}：整句删除率 {shown('sentence_deletion_rate')}；分句删除率 {shown('clause_deletion_rate')}；部分保留句 {shown('partially_retained_sentences')}。", '']
     for c in report['cases']:
         lines.append('| '+' | '.join(cell(v) for v in (c['id'],c['group'],c['requires_batch_b'],c['status']+'/'+c['code'],c['formed'],c['question']))+' |')
     lines += ['', '## 指标', '', '```json',json.dumps(report['metrics'],ensure_ascii=False,indent=2),'```','',

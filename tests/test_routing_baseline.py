@@ -19,11 +19,13 @@ from tests.routing_targets_support import (
     BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
     field_deltas, observe_target_scenario, validate_contracts,
 )
-from tests.routing_technical_support import overlay, validate_current_contracts
+from tests.routing_relaxed_support import overlay
+from tests.routing_technical_support import validate_current_contracts
 
 
 class RoutingBaselineTests(unittest.TestCase):
     def test_v6_seals_all_parents_and_every_field_delta_across_117_original_turns(self):
+        from tests.routing_technical_support import overlay
         from tests.routing_technical_support import corpus as technical_corpus
         from tests.routing_b_support import overlay as parent_overlay
         delta = technical_corpus()
@@ -39,6 +41,23 @@ class RoutingBaselineTests(unittest.TestCase):
             for index, (a, b, turn) in enumerate(zip(before, after, changes['turns'], strict=True), 1):
                 self.assertEqual(turn['index'], index)
                 self.assertEqual(turn['fields'], field_deltas(a, b))
+
+    def test_validation_layer_seals_all_117_turns_without_changing_routes_or_budgets(self):
+        from tests.routing_relaxed_support import corpus
+        from tests.routing_technical_support import overlay as parent_overlay
+        originals = read_baseline(TARGET)['scenarios'] + read_baseline(ROOT/'tests/fixtures/request-routing-v3.json')['scenarios']
+        changes = corpus()['scenarios']
+        self.assertEqual([s['id'] for s in originals], [s['id'] for s in changes])
+        self.assertEqual(sum(len(s['turns']) for s in changes), 117)
+        for scenario, delta in zip(originals, changes, strict=True):
+            before = parent_overlay(scenario['id'], scenario['observed'])
+            after = overlay(scenario['id'], scenario['observed'])
+            self.assertEqual(len(after), len(scenario['steps']))
+            for index, (a, b, turn) in enumerate(zip(before, after, delta['turns'], strict=True), 1):
+                self.assertEqual(turn['index'], index)
+                self.assertEqual(turn['fields'], field_deltas(a, b))
+                for key in ('route', 'executor_chain', 'calls'):
+                    self.assertEqual(a[key], b[key])
 
     def test_frozen_legacy_fact_integrity_and_provenance(self):
         corpus = read_baseline()

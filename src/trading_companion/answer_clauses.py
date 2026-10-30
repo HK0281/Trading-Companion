@@ -2,6 +2,27 @@
 import re
 
 
+def has_empty_slot(text, removed_spans=()):
+    """Recognize definite missing operands, without judging general Chinese prose."""
+    # Citation cleanup preserves spaces. Only a clause-initial preposition plus
+    # a missing object/copula/unit or a bare preposition is unambiguous here.
+    boundary = r'(?:^|[，,；;。！？!?\n])\s*'
+    if (re.search(boundary + r'(?:自|至|从|到|在|于|为)(?:'
+        r'\s*(?=[，,；;。！？!?]|$)|[ \t]+(?=为|是|元(?:/股)?))', text)
+        or re.search(boundary + r'自[ \t]+(?:向上突破|向下跌破|升破|跌破|站稳)', text)):
+        return True
+    # Inside a clause, require a known removed reference, rather than guessing
+    # whether whitespace or the last character of a normal word means a hole.
+    for start, end in removed_spans:
+        before = text[:start].replace('**', '').rstrip()
+        after = text[end:].replace('**', '').lstrip()
+        if (re.search(r'(?:自|至|从|到|在|于|以)$|'
+                      r'(?:价位|价格|收盘价?|入场|止损|目标|区间|均线|读数|数值)(?:为|在|于)$', before)
+                and re.match(r'(?:$|[，,；;。！？!?]|为|是|元(?:/股)?|附近|一带|以上|以下|向上突破|向下跌破)', after)):
+            return True
+    return False
+
+
 def clause_spans(text):
     start, stack, output = 0, [], []
     pairs = {'(': ')', '（': '）', '[': ']', '【': '】', '“': '”', '「': '」'}
@@ -27,6 +48,7 @@ def independent_remainder(original, clauses):
         return None
     cleaned = [part.strip(' \t，,；;。！？!?') for part in clauses]
     if any(not part or re.fullmatch(r'(?:但|且|而|并|或|及|同时|以及|不过|然而|并且|而且|但是)', part)
+           or has_empty_slot(part)
            or re.fullmatch(r'(?:约|为|是|读数为?)?\s*[-+]?[\d.,]+\s*(?:亿元|万元|元/股|元|%|倍|点)?', part)
            or len(re.sub(r'[^\u4e00-\u9fffA-Za-z]', '', part)) < 2 for part in cleaned):
         return None

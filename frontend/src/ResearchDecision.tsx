@@ -115,6 +115,12 @@ const unavailable: Record<string, string> = { plan_excluded: "本次研究未启
   risk_atr_not_requested: "本次未计算所需的波动指标。", risk_atr_unavailable: "最新波动指标不可用或历史窗口不足。",
   risk_nonpositive_reference: "未取得有效的正价格或历史波动。", risk_evidence_mismatch: "行情未通过来源和日期核对。",
   plan_price_grid_unavailable: "按价格网格舍入后无法形成有效计划。", decision_context_unusable: "未取得完整且通过核对的计划资料。" };
+function displayRatio(value: string) {
+  const [integer, fraction = ""] = value.split(".");
+  const cents = BigInt(integer) * 100n + BigInt((fraction + "00").slice(0, 2)) + (Number(fraction[2] ?? "0") >= 5 ? 1n : 0n);
+  const rounded = cents.toString().padStart(3, "0");
+  return `${rounded.slice(0, -2)}.${rounded.slice(-2)}`.replace(/\.?0+$/, "");
+}
 function PlanTable({ plan }: { plan: Plan }) {
   const profile = plan.horizon_profile && ({ short: "短线（1-2周）", medium: "中线（1-3个月）", long: "长线（半年以上）" })[plan.horizon_profile];
   const horizon = profile && <p className="data-note">期限：{plan.horizon}；使用{profile}参数 · {plan.atr_timeframe === "weekly" ? "完整周线" : "日线"} ATR14
@@ -128,7 +134,7 @@ function PlanTable({ plan }: { plan: Plan }) {
     {plan.purpose === "wait" && <p>等待观察；触及观察价位时重新核对依据，不代表自动买卖。</p>}
     <div className="table-scroll"><table className="reference-plan"><caption>ATR 参考计划 · 仅供参考 · 行情 {plan.source_date}</caption>
       <thead><tr><th>项目</th><th>参考值</th></tr></thead><tbody>{Object.entries(plan.values).map(([key, v]) =>
-        <tr key={key}><th scope="row">{plan.target_multiples && key.startsWith("target_") ? `止盈 ${key.slice(-1)}（${plan.target_multiples[Number(key.slice(-1))-1]}R）` : labels[key]}</th><td>{v}{key.startsWith("reward_risk") || key === "atr_multiple" ? " 倍" : " 元"}</td></tr>)}</tbody></table></div>
+        <tr key={key}><th scope="row">{plan.target_multiples && key.startsWith("target_") ? `止盈 ${key.slice(-1)}（${plan.target_multiples[Number(key.slice(-1))-1]}R）` : labels[key]}</th><td>{key.startsWith("reward_risk") ? displayRatio(v) : v}{key.startsWith("reward_risk") || key === "atr_multiple" ? " 倍" : " 元"}</td></tr>)}</tbody></table></div>
     <small>数据性质：{plan.data_authenticity === "synthetic" ? "人工样例，非真实行情" : plan.source === "csv" ? "CSV 数据，真实性未经验证" : "供应商历史数据"} ·
       {({ tencent: "腾讯行情", csv: "开发样例", akshare_eastmoney: "东方财富行情" } as Record<string, string>)[plan.source ?? ""] ?? "历史行情"} ·
       {plan.price_adjustment === "unadjusted" ? "不复权" : "按来源所示复权口径"}<br />
@@ -151,7 +157,7 @@ export function ResearchDecision({ data, securities, renderEvidence }: { data: D
         <small>模型自评，未经历史校准；持有、增持或减持均以假如已有仓位为条件。</small>
       </> : <p className="data-note">本轮研判未形成；下方仅为程序计算的参考价位。期限：{d.horizon}</p>}
       {d.reasons.length > 0 && <details><summary>研判依据</summary>{d.reasons.map((r, i) => <div key={i}><p>{r.text}</p>{renderEvidence?.(r.evidence_ids)}</div>)}</details>}
-      {d.reason_review && <p className="data-note" role="status">已保留 {d.reason_review.retained} 条依据，删除 {d.reason_review.deleted} 条未通过核对的依据（{d.reason_review.codes.join("、")}）。</p>}
+      {d.reason_review && <p className="data-note" role="status">已保留 {d.reason_review.retained} 条依据，删除 {d.reason_review.deleted} 条未通过核对的依据。</p>}
       {d.invalidation && <details><summary>研判失效或重评条件{d.invalidation_origin === "application" ? " · 程序参考计划" : ""}</summary><p>{d.invalidation.text}</p>{renderEvidence?.(d.invalidation.evidence_ids)}</details>}
       {selected && <PlanTable plan={selected} />}
       {d.status === "available" && ["减持", "卖出"].includes(d.rating ?? "") && !selected?.values && <p>如已持有：当前缺少有效退出价位。<br />空仓：观望。</p>}

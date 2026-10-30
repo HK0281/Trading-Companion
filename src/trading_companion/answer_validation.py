@@ -109,9 +109,11 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         rejected(STRUCTURE,text)
         return "", [], [Issue(STRUCTURE, section, index, "本股没有送入模型的可用证据")], rejected_counts(text), 0
     ids = item.get("evidence_ids", [])
+    removed_spans = []
     try:
         from trading_companion.answer_claim_recovery import prepare_claim
-        text, numbers, inline_ids, recoveries = prepare_claim(text, item.get('numbers', []), context, instrument)
+        text, numbers, inline_ids, recoveries = prepare_claim(text, item.get('numbers', []), context, instrument,
+                                                            removed_spans=removed_spans)
         if recoveries and stats is not None:
             stats['inline_binding_recoveries'] = stats.get('inline_binding_recoveries', 0) + recoveries
         if type(ids) is not list or len(ids) > 20:
@@ -132,7 +134,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
     safe_source_ids, partially_retained = [], False
     for position, sentence_match in enumerate(re.finditer(r"[^。！？!?\n]+[。！？!?]?", text)):
         sentence = sentence_match[0]
-        from trading_companion.answer_clauses import clause_spans, independent_remainder
+        from trading_companion.answer_clauses import clause_spans, independent_remainder, has_empty_slot
         clauses = clause_spans(sentence)
         retained_clauses = 0
         before = len(issues)
@@ -151,6 +153,10 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         if unsafe(sentence) or wrong_company:
             issues.append(Issue(HARD, section, position))
         elif any(not ch.isprintable() and ch != "\t" for ch in sentence):
+            issues.append(Issue(STRUCTURE, section, position, sentence))
+        elif has_empty_slot(sentence, [(start-sentence_match.start(), end-sentence_match.start())
+                                       for start, end in removed_spans
+                                       if sentence_match.start() <= start < end <= sentence_match.end()]):
             issues.append(Issue(STRUCTURE, section, position, sentence))
         elif context.get("objective", {}).get("horizon") and any(
                 normalize_horizon(h) != normalize_horizon(context["objective"]["horizon"])

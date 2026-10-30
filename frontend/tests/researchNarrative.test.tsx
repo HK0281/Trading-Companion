@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import fixture from "./decisionFixture.json";
 import legacy from "./decisionLegacyFixture.json";
@@ -18,6 +18,37 @@ function fresh() {
 }
 
 describe("natural research narratives", () => {
+  it.each([["reference_entry", "入场参考"], ["reference_stop", "止损参考"], ["target_1", "目标1"],
+    ["target_2", "目标2"], ["latest_close", "最新收盘价"], ["reference_close", "收盘参考"],
+    ["exit_below", "退出观察位"], ["observe_below", "下方观察位"], ["observe_above", "上方观察位"],
+    ["MA20", "MA20"], ["近20日最低价", "近20日最低价"]])("labels saved endpoint %s as %s", (field, label) => {
+    const p = fresh();
+    Object.assign(p.narratives[0].levels[0], { lower_label: field, upper_label: field });
+    render(<CompanyParagraphs data={parseCompanyAnswer(p)!} />);
+    const table = screen.getByRole("table", { name: /关键价位区间/ });
+    expect(within(table).getByText(label)).toBeVisible();
+    if (field !== label) expect(table).not.toHaveTextContent(field);
+  });
+  it("hides unknown field labels while retaining the verified interval and known endpoint", () => {
+    const p = fresh();
+    Object.assign(p.narratives[0].levels[0], { lower_label: "unknown_price_key", upper_label: "constructor" });
+    p.narratives[0].levels.push({ ...p.narratives[0].levels[0], lower_label: "reference_stop" });
+    render(<CompanyParagraphs data={parseCompanyAnswer(p)!} />);
+    const table = screen.getByRole("table", { name: /关键价位区间/ });
+    expect(table).toHaveTextContent("9.00—10.40 元");
+    expect(table).toHaveTextContent("止损参考");
+    expect(table).not.toHaveTextContent(/unknown_price_key|constructor|\//);
+    expect(table.querySelectorAll("tbody small")).toHaveLength(1);
+  });
+  it.each(["answer_numeric_unmatched", "future_private_code", "constructor"])("shows Chinese notices without internal code %s", code => {
+    const p = fresh();
+    p.quality = { state: "partial", code: "answer_partial", reasons: [{ code, section: "current", index: 0 }] };
+    const data = parseCompanyAnswer(p)!;
+    render(<CompanyParagraphs data={data} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/相关句子已移除|未通过的内容已移除/);
+    expect(screen.getByRole("status")).not.toHaveTextContent(code);
+    expect(data.quality!.reasons[0].code).toBe(code);
+  });
   it.each(["answer_binding_invalid", "answer_binding_value_mismatch"])("explains local numeric binding failure %s", code => {
     const payload = fresh();
     payload.quality = { state: "partial", code: "answer_partial", reasons: [{ code, section: "current", index: 0 }] };
@@ -50,7 +81,8 @@ describe("natural research narratives", () => {
       { code: "answer_numeric_unmatched", section: "current", index: 0 }] };
     Object.assign(p.decisions[0], { status: "unavailable", rating: null, direction: null, conviction: null, plan_id: null });
     render(<CompanyParagraphs data={parseCompanyAnswer(p)!} />);
-    expect(screen.getByRole("status")).toHaveTextContent("answer_numeric_unmatched");
+    expect(screen.getByRole("status")).toHaveTextContent("本轮模型分析未完成，以下为程序事实与参考价位");
+    expect(screen.getByRole("status")).not.toHaveTextContent("answer_numeric_unmatched");
     expect(screen.getByText("程序事实")).toBeVisible();
     expect(screen.queryByText("持有")).not.toBeInTheDocument();
   });

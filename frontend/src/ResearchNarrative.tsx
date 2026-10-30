@@ -42,13 +42,21 @@ const reasons: Record<string, string> = { answer_numeric_unmatched: "部分数�
   answer_horizon_mismatch: "部分研判期限未能对应本次问题", answer_stance_mismatch: "部分结论与操作倾向未通过核对",
   answer_hard_content: "部分内容未通过安全或证券身份核对", answer_structure_invalid: "部分回答结构未完成",
   answer_model_unavailable: "本轮模型分析未完成", answer_context_unusable: "本轮分析资料未通过核对" };
+const levelLabels: Record<string, string> = { reference_entry: "入场参考", reference_stop: "止损参考",
+  target_1: "目标1", target_2: "目标2", latest_close: "最新收盘价", close_price: "收盘价",
+  reference_close: "收盘参考", exit_below: "退出观察位", observe_below: "下方观察位", observe_above: "上方观察位",
+  reference_target: "目标参考", risk_per_share: "每股参考风险", reward_per_share: "每股参考收益" };
+function levelLabel(label: string) {
+  if (Object.hasOwn(levelLabels, label)) return levelLabels[label];
+  return /[\u3400-\u9fff]/.test(label) || /^(?:MA|SMA|EMA)\d+$/.test(label) ? label : "";
+}
 
 export function ResearchNarrative({ narratives, quality, securities }: { narratives: Narrative[]; quality: NarrativeQuality;
   securities: { instrument_id: string; name: string }[] }) {
   const reason = quality.reasons[0]?.code ?? quality.code;
   return <div className="research-narratives">
     {quality.state !== "complete" && <p className="data-note" role="status">
-      {quality.state === "fallback" ? "本轮模型分析未完成，以下为程序事实与参考价位" : reasons[reason] ?? "部分分析可用，未通过的内容已移除"}（{reason}）
+      {quality.state === "fallback" ? "本轮模型分析未完成，以下为程序事实与参考价位" : Object.hasOwn(reasons, reason) ? reasons[reason] : "部分分析可用，未通过的内容已移除"}
     </p>}
     {narratives.map(n => <section key={n.instrument_id} aria-label={`${securities.find(s => s.instrument_id === n.instrument_id)?.name}分析`}>
       {securities.length > 1 && <h4>{securities.find(s => s.instrument_id === n.instrument_id)?.name}</h4>}
@@ -58,9 +66,11 @@ export function ResearchNarrative({ narratives, quality, securities }: { narrati
         <li key={i}><strong><InlineText text={d.title} /></strong>：<InlineText text={d.text} /></li>)}</ul>}
       {n.levels.length > 0 && <div className="table-scroll"><table className="reference-plan"><caption>关键价位区间 · 仅供参考</caption>
         <thead><tr><th>区间</th><th>{quality.state === "fallback" || n.origin === "application" ? "程序事实" : "我的判断"}</th></tr></thead>
-        <tbody>{n.levels.map((l, i) => <tr key={i}><td>{l.lower === l.upper ? l.lower : `${l.lower}—${l.upper}`} 元
-          <small>{l.lower_label === l.upper_label ? l.lower_label : `${l.lower_label} / ${l.upper_label}`}</small></td>
-          <td><InlineText text={l.text} /></td></tr>)}</tbody></table></div>}
+        <tbody>{n.levels.map((l, i) => {
+          const label = [...new Set([levelLabel(l.lower_label), levelLabel(l.upper_label)].filter(Boolean))].join(" / ");
+          return <tr key={i}><td>{l.lower === l.upper ? l.lower : `${l.lower}—${l.upper}`} 元
+            {label && <small>{label}</small>}</td><td><InlineText text={l.text} /></td></tr>;
+        })}</tbody></table></div>}
       {Object.entries(n.scenarios).some(([, c]) => c) && <ul className="narrative-scenarios">{Object.entries(n.scenarios).map(([key, c]) => c &&
         <li key={key}><strong>{{ base: "基准情景", better: "变好条件", worse: "变坏条件" }[key]}</strong>：<InlineText text={c.text} /></li>)}</ul>}
       {n.stance && <p><InlineText text={n.stance.text} /></p>}

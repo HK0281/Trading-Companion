@@ -7,7 +7,7 @@ _REF = re.compile(r'(?<![A-Za-z0-9_.])(?:E|L)\d+(?![A-Za-z0-9_.])')
 _EMPTY = re.compile(r'[（(]\s*(?:[/、,，;；]\s*)*[）)]')
 
 
-def prepare_claim(text, numbers, context, instrument):
+def prepare_claim(text, numbers, context, instrument, *, removed_spans=None):
     from trading_companion.answer_numeric_bindings import InvalidBinding, resolve_ref
     from trading_companion.answer_validation import HARD, unsafe
     from trading_companion.product_answer import _unique, _constant
@@ -47,8 +47,14 @@ def prepare_claim(text, numbers, context, instrument):
     def clear(match):
         _, ids = resolve_ref(match[0], context, instrument)
         used.extend(ids)
+        if removed_spans is not None:
+            removed_spans.append(match.span())
+        return ' ' * len(match[0])
+    def clear_empty(match):
+        if removed_spans is not None:
+            removed_spans.append(match.span())
         return ' ' * len(match[0])
     # Preserve positions and sentence boundaries, including reference-only sentences.
     text = _REF.sub(clear, text)
-    text = _EMPTY.sub(lambda m: ' ' * len(m[0]), text)
+    text = _EMPTY.sub(clear_empty, text)
     return text, bindings, used, recovered

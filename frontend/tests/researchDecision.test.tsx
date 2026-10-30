@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import fixture from "./decisionFixture.json";
 import legacy from "./decisionLegacyFixture.json";
@@ -7,6 +7,19 @@ import { parseCompanyAnswer, CompanyParagraphs } from "../src/ProductResearch";
 const fresh = () => structuredClone(fixture);
 
 describe("reference decisions", () => {
+  it.each([["2.000000", "2"], ["3.500000", "3.5"], ["1.234567", "1.23"], ["1.235000", "1.24"],
+    ["1.995000", "2"], ["0.004000", "0"], ["999999999999999999.995000", "1000000000000000000"]])(
+    "displays reward/risk %s as %s without changing stored precision", (raw, shown) => {
+      const payload = fresh();
+      payload.trade_plans[0].values!.reward_risk_1 = raw;
+      const data = parseCompanyAnswer(payload)!;
+      render(<CompanyParagraphs data={data} />);
+      const table = screen.getByRole("table", { name: /ATR 参考计划/ });
+      const row = within(table).getByRole("rowheader", { name: "实际盈亏比 1" }).closest("tr")!;
+      expect(within(row).getByRole("cell")).toHaveTextContent(new RegExp(`^${shown.replace(".", "\\.")} 倍$`));
+      expect(within(table).getByText("0.8102 元")).toBeVisible();
+      expect(data.decision!.trade_plans[0].values!.reward_risk_1).toBe(raw);
+    });
   it.each(["profile", "multiple", "timeframe", "horizon"])("rejects inconsistent horizon %s", kind => {
     const payload = fresh();
     const plan = payload.trade_plans[0];
@@ -129,6 +142,8 @@ describe("reference decisions", () => {
     render(<CompanyParagraphs data={data!} />);
     expect(screen.getByText("买入")).toBeVisible();
     expect(screen.getByText(/已保留 1 条依据，删除 1 条/)).toBeVisible();
+    expect(screen.getByRole("status")).not.toHaveTextContent("answer_numeric_unmatched");
+    expect(data!.decision!.decisions[0].reason_review!.codes).toEqual(["answer_numeric_unmatched"]);
     expect(screen.getByText(/研判失效或重评条件 · 程序参考计划/)).toBeVisible();
     expect(screen.queryByText(/999999/)).not.toBeInTheDocument();
   });

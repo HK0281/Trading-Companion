@@ -18,6 +18,7 @@ from trading_companion.typesafe_jev import JevConfig, ClassifierError, require
 from trading_companion.intent_router_task import load_corpus, input_state, digest, read_json, definition_digest, frozen_sources, LABELS
 from trading_companion.intent_router_baseline import rule_classify, protected_reason
 from trading_companion.intent_router_models import JevIntent, DeepSeekIntent, fixture_post, TEMPLATE
+from trading_companion.intent_rule_baseline import current_baseline
 from trading_companion.intent_router_metrics import metrics, choose_threshold, cutover, scores, ratio, paired
 from trading_companion.workflow_evaluation_runtime import PlanError, check_output_root
 
@@ -45,16 +46,20 @@ def compatible(reference, plan):
     return (reference["version"] == "intent-router-evaluation-v1" and reference["status"] == "completed"
         and other["suite"] == "paraphrase" and other["repeat"] == 1
         and all(other[k] == plan[k] for k in ("mode", "models", "classifiers", "timeout_seconds", "definition_sha256", "implementation_sha256", "prices_sha256"))
-        and other.get('actual_rule_source_sha256_lf') == plan['actual_rule_source_sha256_lf']
+        and all(other.get(k) == plan[k] for k in (
+            'actual_rule_source_sha256_lf', 'rule_baseline_version', 'rule_source_digest'))
         and other["corpus"]["corpus_sha256"] == plan["corpus"]["corpus_sha256"]
         and other["corpus"]["split_sha256"] == plan["corpus"]["split_sha256"])
 
 
 def load_lock(path, plan):
     lock = read_json(path)
-    need(lock["version"] == "intent-router-threshold-lock-v1" and lock["selection_sha256"] == digest(lock["selection"]),
+    need(lock["version"] == "intent-router-threshold-lock-v2" and lock["selection_sha256"] == digest(lock["selection"]),
          "intent_lock_invalid", "阈值锁格式或摘要不符。")
     selection = lock["selection"]
+    need(lock.get("rule_baseline_version") == plan["rule_baseline_version"]
+         and lock.get("rule_source_digest") == plan["rule_source_digest"],
+         "intent_lock_incompatible", "阈值锁与当前规则版本或源码不兼容。")
     source = read_json(selection["source_report"], 10_000_000)
     need(lock["mode"] == plan["mode"] and digest(source) == selection["source_report_sha256"]
          and compatible(source,plan) and source["plan"]["split"] == "dev",
@@ -101,11 +106,16 @@ def validate_dev_report(report):
 def export_lock(report_path, output):
     report = read_json(report_path, 10_000_000)
     validate_dev_report(report)
+    baseline = current_baseline()
+    need(report["plan"].get("rule_baseline_version") == baseline["rule_baseline_version"]
+         and report["plan"].get("rule_source_digest") == baseline["source_digest"],
+         "intent_lock_incompatible", "旧规则报告不能导出当前规则的阈值锁。")
     selection = {"source_report": str(Path(report_path).resolve()), "source_report_sha256": digest(report),
         "threshold": choose_threshold([r for r in report["rows"] if r["case_kind"] == "semantic"]),
         "models": report["plan"]["models"], "actual_models": report["metrics"]["providers"]["jev"]["actual_models"],
         "selection_rule": "accuracy>=.95;n>=40;coverage>=.4;Wilson_lower>=.85;max_coverage_then_higher_threshold"}
-    lock = {"version": "intent-router-threshold-lock-v1", "mode": report["plan"]["mode"], "selection": selection,
+    lock = {"version": "intent-router-threshold-lock-v2", "mode": report["plan"]["mode"], "selection": selection,
+            "rule_baseline_version": baseline["rule_baseline_version"], "rule_source_digest": baseline["source_digest"],
             "selection_sha256": digest(selection), "review_status": "draft", "reviewer": None}
     target = Path(output)
     check_output_root(target.parent)
@@ -150,10 +160,12 @@ def make_plan(*, mode="offline", classifiers=None, split="dev", suite="paraphras
         suites[name] = {"questions": count, "requests_upper_bound": count*len(chosen)*repeat,
             "implemented": name != "legacy-upper-bound", "cost_by_provider": {
                 c: estimate_cost(price_data,"typesafe" if c=="jev" else c,models[c],count*repeat,assumed_input_tokens,assumed_output_tokens) for c in chosen}}
+    baseline = current_baseline()
     plan = {"version": "intent-router-plan-v1", "status": "planned", "mode":mode, "suite":suite, "split":split,
         "classifiers":chosen, "models":models, "repeat":repeat, "seed":42, "corpus":manifest,
         "definition_sha256":definition_digest(), "implementation_sha256":implementation_digest(), "deepseek_template":TEMPLATE,
-        "actual_rule_source_sha256_lf":frozen_sources(),
+        "actual_rule_source_sha256_lf":baseline["sources_sha256_lf"],
+        "rule_baseline_version":baseline["rule_baseline_version"], "rule_source_digest":baseline["source_digest"],
         "prices_sha256":price_sha, "price_entries":{c:price_for(price_data,"typesafe" if c=="jev" else c,models[c]) for c in chosen},
         "planned_questions":len(selected)*repeat, "unique_questions":len(selected), "worst_case_requests":total,"call_limit":limit,
         "suite_preview":suites, "all_suites_requests_upper_bound":sum(v["requests_upper_bound"] for v in suites.values()),

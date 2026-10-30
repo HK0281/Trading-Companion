@@ -387,7 +387,7 @@ class ConversationTests(GuardedTests):
     def test_reply_cannot_silently_change_indicators(self):
         code, output, model = self.chat([AMBIGUOUS, "平安银行，改看RSI3", "/exit"], model=build_demo_model())
         self.assertEqual((code, model.responses_consumed), (0, 1))
-        self.assertIn("clarification_reply_not_specific", output)
+        self.assertIn("condition_update_not_supported", output)
         self.assertIn("已确认0次分析", output)
 
     def test_full_new_question_replaces_pending_request_explicitly(self):

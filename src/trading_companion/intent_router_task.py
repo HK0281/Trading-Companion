@@ -69,10 +69,8 @@ def frozen_sources():
 
 
 def sources_match(historical):
-    actual = frozen_sources()
-    return type(historical) is dict and historical.keys() == actual.keys() and all(
-        historical[name] == value or (historical[name], value) == SOURCE_REVISIONS.get(name)
-        for name, value in actual.items())
+    from trading_companion.intent_rule_baseline import historical_sources_match
+    return historical_sources_match(historical)
 
 
 def valid_context(context, *, ablated=False):

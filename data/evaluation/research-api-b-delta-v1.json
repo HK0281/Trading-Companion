@@ -1,0 +1,221 @@
+{
+  "version": "research-api-b-delta-v1",
+  "rule_baseline_version": "contextual-routing-b-v1",
+  "parent_sha256_lf": "24b988ecdd4f18b4de5ad740bd657869c43975414b5b4df23e3b06aeac25419f",
+  "changes": [
+    {
+      "case_id": "C05",
+      "step": 2,
+      "old": {
+        "question": "第一个",
+        "history": false,
+        "fixture_script": {
+          "phases": []
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "no_collection": true,
+            "no_model": true
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_clarification"
+              ],
+              "status": [
+                "needs_clarification"
+              ],
+              "category": [
+                "clarification"
+              ],
+              "code": [
+                "product_explicit_selection_required"
+              ],
+              "reason": "公司身份待确认时“第一个”不是完整证券名称或代码，原公司流程应继续要求明确身份，不能转成旧名单序号（request-routing-design.md：待澄清优先于名单解释）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_clarification",
+            "status": "needs_clarification",
+            "category": "clarification",
+            "code": "product_explicit_selection_required"
+          },
+          "quality": {}
+        }
+      },
+      "new": {
+        "question": "第一个",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "B规则允许以当前候选显示顺序选择第一个，接续原基本面请求，不使用旧筛选排名。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model",
+            "answer_status_if_answered": "accepted"
+          }
+        }
+      },
+      "reason": "B规则允许以当前候选显示顺序选择第一个，接续原基本面请求，不使用旧筛选排名。"
+    },
+    {
+      "case_id": "C05",
+      "step": 3,
+      "old": {
+        "question": "平安银行",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_clarification"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "在不合要求的序号回复之后提供平安银行，仍应恢复最初的基本面请求；无效回复不得悄悄替换研究对象或清掉条件（company-research-design.md：无效澄清回复）。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_clarification",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model",
+            "answer_status_if_answered": "accepted"
+          }
+        }
+      },
+      "new": {
+        "question": "平安银行",
+        "history": false,
+        "fixture_script": {
+          "phases": [
+            "company_intent",
+            "company_answer"
+          ],
+          "mentions": [
+            "平安银行"
+          ]
+        },
+        "expectation": {
+          "required": {
+            "forbid_codes": [
+              "research_internal_error"
+            ],
+            "securities_if_answered": [
+              "000001.SZ"
+            ]
+          },
+          "acceptable": [
+            {
+              "route": [
+                "company_research"
+              ],
+              "intent": [
+                "company_research"
+              ],
+              "status": [
+                "completed"
+              ],
+              "category": [
+                "completed"
+              ],
+              "code": [
+                "company_research_completed"
+              ],
+              "reason": "上一轮序号选择已完成原任务，本轮具名输入启动新的公司研究，不再接续已消费的澄清。"
+            }
+          ],
+          "offline_expected": {
+            "route": "company_research",
+            "intent": "company_research",
+            "status": "completed",
+            "category": "completed",
+            "code": "company_research_completed"
+          },
+          "quality": {
+            "answer_origin_if_answered": "model",
+            "answer_status_if_answered": "accepted"
+          }
+        }
+      },
+      "reason": "上一轮序号选择已完成原任务，本轮具名输入启动新的公司研究，不再接续已消费的澄清。"
+    }
+  ]
+}

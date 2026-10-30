@@ -244,7 +244,10 @@ class ConditionConversationTests(GuardedTests):
         self.begin()
         self.turn("换成平安")
         self.assertEqual(self.turn("贵州茅台").code, "candidate_selection_mismatch")
-        self.assertEqual(self.turn("平安银行，添加ATR2").code, "clarification_reply_not_specific")
+        invalid = self.turn("平安银行，添加不支持的指标")
+        self.assertEqual(invalid.status, "needs_clarification")
+        self.assertEqual((invalid.model_calls_attempted, invalid.analyses_used), (0, 0))
+        self.assertIsNotNone(self.session.pending)
         bars = [replace(bar, instrument_id="601318.SH") for bar in self.source.read_daily_bars()]
         with patch.object(CsvDailyBarSource, "read_daily_bars", return_value=bars):
             result = self.turn("中国平安", model=ExplanationDemoModel([proposal(instrument="601318.SH")]))

@@ -48,7 +48,7 @@ def main(argv=None):
         except (OSError,ValueError,TypeError,KeyError,ClassifierError,RecursionError) as error:
             result=failure(error)
         print(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False))
-        return 0 if result.get("version")=="intent-router-threshold-lock-v1" else 2
+        return 0 if result.get("version")=="intent-router-threshold-lock-v2" else 2
     result=build_plan(**options) if preview else evaluate(**options)
     if not preview and options["report_dir"] is not None and "metrics" in result:
         try:

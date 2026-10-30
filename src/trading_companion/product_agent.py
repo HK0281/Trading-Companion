@@ -12,6 +12,9 @@ from trading_companion.product_plan import prepare_product_plan, _execution_requ
 from trading_companion.product_research import collect_product_research
 from trading_companion.research_decision import wants_decision
 from trading_companion.turn_control import checkpoint, company_turn_control
+from trading_companion.routing_context import (
+    checked_subject, continuation_question, latest_subject, new_question, plural_subject, replaces_pending,
+)
 
 
 @dataclass(frozen=True)
@@ -98,14 +101,26 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     saved = saved_product(session, directory=directory, now=now, source=source,
                           development=development_source is not None)
     from trading_companion.research_instruments import research_spans
+    securities, subject_error = (), None
+    if (not research_spans(question, directory) and not new_question(question)
+            and session.product_pending is None and continuation_question(question)):
+        try:
+            securities, subject_error = checked_subject(session, directory=directory, reference_date=reference,
+                development=development_source is not None, now=now)
+        except DataValidationError:
+            subject_error = "research_subject_directory_unusable"
+        if len(securities) > 1 and not plural_subject(question):
+            securities, subject_error = (), "research_subject_ambiguous"
     if (wants_decision(question) and not research_spans(question, directory)
             and not _execution_requested(question) and not _INJECTION.search(question)):
-        new_question = re.match(r"\s*新问题\s*[:：]", question)
-        ambiguous = saved is not None and len(saved.plan.securities) > 1 and not re.search(r"两只|三只|分别|各自|它们|这几只", question)
-        if new_question or session.product_pending is None and (saved is None or ambiguous):
+        if new_question(question) or session.product_pending is None and not securities:
             return AgentTurnResult(status="needs_clarification", code="decision_instrument_required",
                 stage="clarification", input_mode="natural", message="请明确要研判的股票名称或代码。",
                 user_question=question)
+    if subject_error and continuation_question(question) and not research_spans(question, directory):
+        return AgentTurnResult(status="needs_clarification", code=subject_error,
+            stage="clarification", input_mode="natural", message="请明确要继续研究的股票；原资料未被当作最新使用。",
+            user_question=question)
     history = command in ("查看上次结果", "查看上一次结果", "上次研究结果")
     if history:
         if saved is None:
@@ -114,7 +129,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         return AgentTurnResult(status="completed", code="product_saved_result", message="基于已保存的公司研究结果。",
             stage="company_research", input_mode="natural", product_answer=saved.answer,
             product_bundle=saved.bundle, product_plan=saved.plan, session_event="history")
-    if (saved is not None and session.product_pending is None and not directory.mentioned_spans(question)
+    if (saved is not None and securities == saved.plan.securities and session.product_pending is None
+            and not directory.mentioned_spans(question)
             and re.search(r"为什么|为何|依据|解释.*(?:结论|判断)|详细.*(?:结论|判断)", question)
             and not wants_decision(question)
             and not re.search(r"最新|刷新|重新|新闻|公告|财报|财务|基本面|技术面|止损|止盈", question)):
@@ -131,14 +147,19 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     effective_question = question
     continuation = None
     # A short new-domain follow-up may reuse identities, never silently reuse current market data.
-    if (saved is not None and session.product_pending is None and not directory.mentioned_spans(question)
-            and not re.match(r"\s*新问题\s*[:：]", question)):
-        if is_product_followup(question) or re.search(r"那|它|这(?:家|只|个|两|三)|再|继续|基本面|财报|公告|新闻|止盈|止损|风险|公司", question):
-            names = "、".join(security.name for security in saved.plan.securities)
-            effective_question = f"分析{names}：{question}"
+    if securities and session.product_pending is None and not research_spans(question, directory):
+        names = "、".join(security.name for security in securities)
+        effective_question = f"分析{names}：{question}"
+        subject = latest_subject(session)
+        if (saved is not None and subject is not None and subject.kind == "company"
+                and saved.plan.securities == securities):
             continuation = saved.plan
-            if re.search(r"还会涨|还会跌|会上涨|会下跌", question) and not re.search(r"未来|后续|接下来", question):
-                effective_question += "，讨论后续走势的条件情景"
+        elif (subject is not None and subject.kind == "company"
+                and subject.source == ("csv" if development_source is not None else source)
+                and subject.development == (development_source is not None)):
+            continuation = subject.scope
+        if re.search(r"还会涨|还会跌|会上涨|会下跌", question) and not re.search(r"未来|后续|接下来", question):
+            effective_question += "，讨论后续走势的条件情景"
     plan = prepare_product_plan(effective_question, model=model, directory=directory, reference_date=reference,
         now=now, source="csv" if development_source is not None else source,
         development=development_source is not None, context=session.product_pending,
@@ -178,6 +199,8 @@ def _execute(question, *, session, model, directory, now, reference_date, source
     has_data = bool(bundle.evidence)
     if has_data:
         session.product_saved = SavedProductResearch(now, plan, bundle, answer)
+        session.stage_research_subject(plan.securities, kind="company", source=plan.source,
+                                      development=development_source is not None, now=now, scope=plan)
     status = "completed" if has_data and answer.status == "accepted" and not bundle.partial else "limited" if has_data else "failed"
     return AgentTurnResult(status=status, code="company_research_completed" if status == "completed" else
         "company_research_partial" if has_data else "company_research_unavailable",
@@ -196,4 +219,5 @@ def run_product_research_turn(question, *, session, model, directory, now, sourc
         directory=directory, now=now, reference_date=reference_date, source=source,
         development_source=development_source, data_service=data_service, source_factory=source_factory,
         market_background_source=market_background_source, background_clock=background_clock),
-        model=model, session=session, control=control or company_turn_control(), default_calls=6, input_mode="natural")
+        model=model, session=session, control=control or company_turn_control(), default_calls=6, input_mode="natural",
+        replace_pending=replaces_pending(question, directory))

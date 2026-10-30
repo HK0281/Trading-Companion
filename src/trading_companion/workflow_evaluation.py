@@ -25,6 +25,7 @@ from trading_companion.workflow_evaluation_fixtures import (
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "data/evaluation/research-api-v1.json"
+B_DELTA = ROOT / "data/evaluation/research-api-b-delta-v1.json"
 VERSION = "research-workflow-evaluation-v2"
 OUTCOME_KEYS = frozenset(("route", "intent", "status", "category", "code"))
 REQUIRED_KEYS = frozenset(("forbid_codes", "require_codes", "securities_if_answered", "no_collection", "no_model",
@@ -64,6 +65,8 @@ def load_corpus(path=CORPUS):
     raw = path.read_bytes().replace(b"\r\n", b"\n")
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique,
                       parse_constant=lambda value: _require(False))
+    if path.resolve() == CORPUS.resolve():
+        data = _apply_b_delta(data, raw)
     _require(type(data) is dict and data.keys() == {"schema_version", "version", "annotation_policy", "data_authenticity", "cases"}
              and data["schema_version"] == "research-api-corpus-v2" and data["version"] == "research-api-v1"
              and data["data_authenticity"] == "fixed_synthetic" and type(data["annotation_policy"]) is str
@@ -154,7 +157,32 @@ def load_corpus(path=CORPUS):
             _require(any(_matches(exact, value) for value in alternatives)
                      and exact["code"] not in required.get("forbid_codes", [])
                      and exact["category"] not in required.get("forbid_categories", []))
-    return data, sha256(raw).hexdigest()
+    effective = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return data, sha256(effective if path.resolve() == CORPUS.resolve() else raw).hexdigest()
+
+
+def b_delta_descriptor():
+    raw = B_DELTA.read_bytes().replace(b"\r\n", b"\n")
+    delta = json.loads(raw.decode("utf-8"))
+    return {"parent_sha256": delta["parent_sha256_lf"], "delta_version": delta["version"],
+            "delta_sha256": sha256(raw).hexdigest(), "rule_baseline_version": delta["rule_baseline_version"]}
+
+
+def _apply_b_delta(data, raw):
+    delta = json.loads(B_DELTA.read_text(encoding="utf-8"))
+    _require(type(delta) is dict and delta.keys() == {"version", "rule_baseline_version", "parent_sha256_lf", "changes"}
+             and delta["version"] == "research-api-b-delta-v1"
+             and delta["rule_baseline_version"] == "contextual-routing-b-v1"
+             and delta["parent_sha256_lf"] == sha256(raw).hexdigest()
+             and type(delta["changes"]) is list and len(delta["changes"]) == 2)
+    case = next(case for case in data["cases"] if case["id"] == "C05")
+    for index, change in zip((2, 3), delta["changes"]):
+        _require(type(change) is dict and change.keys() == {"case_id", "step", "old", "new", "reason"}
+                 and change["case_id"] == "C05" and change["step"] == index
+                 and type(change["reason"]) is str and bool(change["reason"])
+                 and case["steps"][index - 1] == change["old"])
+        case["steps"][index - 1] = deepcopy(change["new"])
+    return data
 
 
 def _codes(value):

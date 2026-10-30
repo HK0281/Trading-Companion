@@ -66,11 +66,13 @@ class DecisionRoutingApiTests(unittest.TestCase):
         self.assertEqual(self.send("新问题：现在能买吗")["result"]["code"], "decision_instrument_required")
         self.assertEqual(len(self.factory.reads), before)
 
-    def test_expired_and_multi_company_pronoun_requests_require_identity(self):
+    def test_expired_company_rebuilds_but_multi_company_pronoun_requires_identity(self):
         self.send("平安银行现在能买吗")
         entry = self.service._entries[self.credentials["session_id"]]
         entry.session.product_saved = replace(entry.session.product_saved, saved_at=NOW-timedelta(minutes=16))
-        self.assertEqual(self.send("那现在能买吗")["result"]["code"], "decision_instrument_required")
+        before = len(self.factory.reads)
+        self.assertEqual(self.send("那现在能买吗")["result"]["code"], "company_research_completed")
+        self.assertGreater(len(self.factory.reads), before)
         self.model.mentions = ("平安银行", "浦发银行")
         response = self.send("平安银行和浦发银行现在能买吗")["result"]["company_research"]
         self.assertEqual(len(response["decisions"]), 2)

@@ -14,6 +14,7 @@ from trading_companion.screening_intent import (SCREEN_TOOL, _OPERATORS, _plain_
 from trading_companion.tool_model import ToolMessage
 from trading_companion.turn_control import checkpoint
 from trading_companion.turn_trace import trace_call
+from trading_companion.routing_context import independent_task
 
 
 def _preflight(question, *, directory, base):
@@ -97,6 +98,9 @@ def _collect(request, *, defaulted, responses, session, directory, source, clock
         text = "未指定数值条件，本轮先按成交额列出活跃研究候选。\n\n" + text
     session.screening_saved = SavedScreening.checked(result, directory=directory, quote_source=source,
                                                     now=clock(), research_source=research_source)
+    # A new shortlist must not leave an unrelated previous company as "it".
+    session.latest_research = None
+    session._subject_current = False
     return AgentTurnResult(status="completed" if result.rows else "limited", code=result.code,
         message=text, screening_result=result, screening_defaulted=defaulted,
         model_responses=responses, **base)
@@ -106,7 +110,8 @@ def run_screening_turn(question, *, session, model, directory, source, now, cont
                        research_source="tencent"):
     return _controlled(lambda checked, working: _execute(question, session=working, model=checked, directory=directory,
         source=source, now=now, clock=clock or (lambda: datetime.now(timezone.utc)), research_source=research_source),
-        model=model, session=session, control=control, default_calls=1, input_mode="natural")
+        model=model, session=session, control=control, default_calls=1, input_mode="natural",
+        replace_pending=independent_task(question, directory))
 
 
 def _execute_edit(question, *, session, directory, source, clock, research_source, development):

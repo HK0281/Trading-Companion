@@ -83,7 +83,8 @@ class RequestRoutingTests(unittest.TestCase):
             for field, owner in ((None, None), ("product_pending", "company_clarification"),
                     ("pending", "technical_clarification"), ("pending_edit", "indicator_clarification")):
                 context = self.context if field is None else self.pending(field)
-                expected = intent if owner is None or intent in ("screening", "general_knowledge", "indicator_knowledge") else owner
+                new_named = intent in ("company_research", "technical_research") and bool(self.context.directory.mentioned_spans(question))
+                expected = intent if owner is None or new_named or intent in ("screening", "general_knowledge", "indicator_knowledge") else owner
                 with self.subTest(question=question, pending=field):
                     self.assertEqual(self.route(question, context=context).intent.value, expected)
                     value = routing._MatchInput(question, context=context)
@@ -107,12 +108,14 @@ class RequestRoutingTests(unittest.TestCase):
         self.assertEqual(self.route("查看上一次结果", context=saved).kind, routing.RouteKind.TECHNICAL_RESEARCH)
         self.assertNotEqual(self.route("取消之后分析平安银行").intent, routing.IntentKind.COMMAND)
 
-    def test_pending_conflict_precedes_knowledge_but_allows_recovery_and_history(self):
+    def test_pending_conflict_allows_independent_knowledge_and_screening_but_not_bare_selection(self):
         for fields in (("pending", "product_pending"), ("pending_edit", "product_pending"), ("pending", "pending_edit")):
             context = replace(self.context, session=replace(self.context.session, **{field: True for field in fields}))
-            self.assertFalse(routing.probe_general_knowledge("怎么用PE/PB看估值", workflow=True, history=False, session=context.session))
-            for question in ("MACD是什么", "怎么用PE/PB看估值", "帮我选5只股票", "平安银行"):
-                self.assertEqual(self.route(question, context=context).intent, routing.IntentKind.STATE_CONFLICT)
+            self.assertTrue(routing.probe_general_knowledge("怎么用PE/PB看估值", workflow=True, history=False, session=context.session))
+            for question, intent in (("MACD是什么", routing.IntentKind.INDICATOR_KNOWLEDGE),
+                    ("怎么用PE/PB看估值", routing.IntentKind.GENERAL_KNOWLEDGE),
+                    ("帮我选5只股票", routing.IntentKind.SCREENING), ("平安银行", routing.IntentKind.STATE_CONFLICT)):
+                self.assertEqual(self.route(question, context=context).intent, intent)
             self.assertEqual(self.route("取消", context=context).kind, routing.RouteKind.TECHNICAL_RESEARCH)
             self.assertEqual(self.route("查看上次结果", context=context).intent, routing.IntentKind.HISTORY)
 

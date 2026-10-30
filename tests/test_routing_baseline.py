@@ -19,7 +19,7 @@ from tests.routing_targets_support import (
     BASELINE_HASH_FORMAT, BASE_REVISION, CHANGES, TARGET, baseline_digest, contracts_for,
     field_deltas, observe_target_scenario, validate_contracts,
 )
-from tests.routing_narrative_support import overlay
+from tests.routing_b_support import overlay, validate_current_contracts
 
 
 class RoutingBaselineTests(unittest.TestCase):
@@ -68,7 +68,7 @@ class RoutingBaselineTests(unittest.TestCase):
                 self.assertEqual(old_inputs, new["steps"])
                 self.assertEqual(new["contracts"], contracts_for(old))
                 observed, decisions = observe_target_scenario(new)
-                validate_contracts(new, observed, decisions)
+                validate_current_contracts(new, observed, decisions)
                 self.assertEqual(len(new["deltas"]), len(new["steps"]))
                 frozen_old, frozen_new = expand_observations(old["observed"]), expand_observations(new["observed"])
                 expected_current = []

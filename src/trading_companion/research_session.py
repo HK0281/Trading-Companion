@@ -21,6 +21,7 @@ from trading_companion.research_objective import parse_outlook_expression
 from trading_companion.research_update import parse_condition_update, update_conditions
 from trading_companion.security_directory import Security, SecurityDirectory, SecurityMatch
 from trading_companion.tool_model import MAX_USER_CHARACTERS
+from trading_companion.routing_context import ResearchSubject
 
 
 PENDING_LIFETIME = timedelta(minutes=15)
@@ -93,6 +94,10 @@ class ResearchSession:
         self.screening_saved = None
         self._turn_lock = Lock()
         self._turn_parent = None
+        self.latest_research = None
+        self._publication_sequence = 0
+        self._replacing_pending = False
+        self._subject_current = False
 
     def _fork_for_turn(self):
         """Stage state privately while the original session lock is held by the Agent."""
@@ -104,6 +109,9 @@ class ResearchSession:
         working.product_pending, working.product_saved = self.product_pending, self.product_saved
         working.screening_saved = self.screening_saved
         working._turn_parent = self
+        working.latest_research = self.latest_research
+        working._publication_sequence = self._publication_sequence
+        working._subject_current = self._subject_current
         return working
 
     def _publish_turn(self, working):
@@ -113,6 +121,16 @@ class ResearchSession:
         self._result_current = working._result_current
         self.product_pending, self.product_saved = working.product_pending, working.product_saved
         self.screening_saved = working.screening_saved
+        self.latest_research = working.latest_research
+        self._publication_sequence = working._publication_sequence
+        self._subject_current = working._subject_current
+
+    def stage_research_subject(self, securities, *, kind, source, development, now, scope=None):
+        """Only checked successful executors may stage this; publication remains atomic."""
+        self._publication_sequence += 1
+        self.latest_research = ResearchSubject(tuple(securities), kind, source, development,
+                                              self._publication_sequence, now, scope)
+        self._subject_current = True
 
     @property
     def pending(self) -> PendingResearch | None:
@@ -127,13 +145,15 @@ class ResearchSession:
         return self._confirmed
 
     def clear(self) -> None:
+        self.latest_research = None
+        self._subject_current = False
         self.product_pending = None
         self.product_saved = None
         self.clear_screening()
         self.clear_pending()
         self.clear_confirmed()
         self.clear_saved_result()
-        if self._turn_parent is not None:
+        if self._turn_parent is not None and not self._replacing_pending:
             self._turn_parent.clear()
 
     def clear_saved_result(self) -> None:
@@ -142,7 +162,7 @@ class ResearchSession:
 
     def clear_screening(self) -> None:
         self.screening_saved = None
-        if self._turn_parent is not None:
+        if self._turn_parent is not None and not self._replacing_pending:
             self._turn_parent.clear_screening()
 
     def begin_research(self, *, preserve_screening: bool = False) -> None:
@@ -154,7 +174,8 @@ class ResearchSession:
         self.product_pending = None
         self.product_saved = None
         self._result_current = False
-        if self._turn_parent is not None:
+        self._subject_current = False
+        if self._turn_parent is not None and not self._replacing_pending:
             # Consumption is immediate, but newly produced state remains staged until finish().
             self._turn_parent.clear_pending()
             self._turn_parent.begin_research(preserve_screening=preserve_screening)
@@ -168,6 +189,8 @@ class ResearchSession:
         if snapshot is None:
             return False
         self._last_result, self._result_current = snapshot, True
+        self.stage_research_subject((prepared.security,), kind="technical", source=prepared.request.source,
+                                    development=development_source is not None, now=now, scope=prepared.conditions)
         return True
 
     def saved_result(self, *, directory: SecurityDirectory, source: str,
@@ -473,13 +496,12 @@ class ResearchSession:
             return replace(result, status="needs_clarification", code="invalid_input",
                            clarification_resumable=True,
                            message="请回复完整股票名称或代码，或取消当前请求。")
-        match = selection_match(reply, directory)
-        if match.status != "resolved":
+        from trading_companion.routing_context import selection_reply, selection_conditions
+        security, suffix = selection_reply(reply, pending.candidates, directory)
+        if security is None:
             return replace(result, status="needs_clarification", code="clarification_reply_not_specific",
                            clarification_resumable=True,
-                           message="请只回复完整股票名称或代码；额外条件不会被忽略。若要改日期、指标或开始新研究，"
-                                   "请用“新问题：”给出完整问题，也可回复“取消”。")
-        security = match.candidates[0]
+                            message="请选择候选股票名称、代码或序号；可以附带明确条件，也可直接提出完整新研究。")
         previous = {item.instrument_id: item for item in pending.candidates}
         if previous and security.instrument_id not in previous:
             return replace(result, status="needs_clarification", code="candidate_selection_mismatch",
@@ -490,13 +512,21 @@ class ResearchSession:
             return replace(result, code="clarification_directory_changed",
                            message="目录中的证券名称已改变，旧请求已清除；请重新确认完整研究问题。")
         try:
+            conditions = (selection_conditions(pending.conditions, suffix, reference_date=reference_date,
+                                               instrument_id=security.instrument_id)
+                          if suffix else pending.conditions)
             if source != "csv" and pending.conditions.as_of_date >= reference_date:
                 raise InvalidRequestError("Cutoff no longer precedes the current Shanghai date")
-            request = pending.conditions.for_security(security.instrument_id)
+            request = conditions.for_security(security.instrument_id)
+        except InputIssue as issue:
+            return replace(result, status=issue.status, code=issue.code, message=str(issue), clarification_resumable=True)
         except InvalidRequestError:
             self.clear_pending()
             return replace(result, status="needs_clarification", code="invalid_research_parameters",
                            message="该证券或日期不符合当前研究来源限制，旧请求已清除；不会自动换源。")
         self.clear_pending()
         return replace(result, status="ready", code="clarification_resolved", request=request, security=security,
-                       candidates=(security,), message="股票已确认；沿用并展示此前日期、指标和来源，执行前已重新校验。")
+                        conditions=conditions, applied_defaults=conditions.applied_defaults,
+                        user_question=pending.user_question + ("；" + reply if suffix else ""),
+                        candidates=(security,), message="股票已确认；研究条件已完整核对，未忽略附加修改。" if suffix else
+                        "股票已确认；沿用并展示此前日期、指标和来源，执行前已重新校验。")

@@ -11,6 +11,7 @@ from trading_companion.request_routing import IntentKind, ROUTE_SPECS
 from trading_companion.turn_control import TurnControl, TurnLimits
 from tests.routing_baseline_support import observe_scenario
 from tests.test_screening_followup_api import ScreeningJourneyFixture
+from tests.test_screening_agent import Model as ScreeningModel
 from tests.test_product_research import NOW
 
 
@@ -62,7 +63,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.assertIsNone(self.session.product_saved)
 
     def test_invalid_and_expired_short_reply_stays_with_technical_owner(self):
-        for reply, delta in (("第一个", 0), ("贵州茅台", 0), ("平安银行", 900)):
+        for reply, delta in (("第九个", 0), ("贵州茅台", 0), ("平安银行", 900)):
             with self.subTest(reply=reply, delta=delta):
                 self.install()
                 self.screen()
@@ -77,7 +78,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.wall = NOW
 
     def test_indicator_pending_company_or_list_reply_does_not_start_new_task(self):
-        for reply in ("平安银行", "分析平安银行的基本面", "分析名单中第一只"):
+        for reply in ("平安银行", "分析名单中第一只"):
             scenario = {"steps": [
                 {"question": "平安银行只看SMA3和SMA5", "technical_indicators": ["SMA3", "SMA5"]},
                 {"question": "把均线改成10日"}, {"question": reply}, {"question": "SMA3"},
@@ -89,6 +90,15 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
                 self.assertEqual(blocked["calls"], dict(model_forwards=0, quote_reads=0, company_reads=0, daily_reads=0))
                 self.assertEqual(blocked["before"]["pending_edit"], blocked["after"]["pending_edit"])
                 self.assertEqual(observed[3]["outcome"]["response"]["result"]["code"], "research_completed")
+
+    def test_complete_company_task_replaces_indicator_pending(self):
+        observed = observe_scenario({"steps": [
+            {"question": "平安银行只看SMA3和SMA5", "technical_indicators": ["SMA3", "SMA5"]},
+            {"question": "把均线改成10日"}, {"question": "分析平安银行的基本面"}, {"question": "SMA3"},
+        ]})
+        self.assertEqual(observed[2]["route"], "company_research")
+        self.assertIsNone(observed[2]["after"]["pending_edit"])
+        self.assertEqual(observed[3]["outcome"]["response"]["result"]["code"], "no_pending_indicator_edit")
 
     def test_workflow_disabled_is_local_and_preserves_existing_company_pending(self):
         self.install(workflow_enabled=False)
@@ -140,7 +150,7 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.conflicting_session()
         pending, product = self.session.pending, self.session.product_pending
         counts = self.counts()
-        for question in ("平安银行", "MACD是什么", "怎么用PE/PB看估值", "帮我选5只股票"):
+        for question in ("平安银行",):
             result = self.send(question)["result"]
             self.assertEqual((result["status"], result["code"]), ("needs_clarification", "routing_state_conflict"))
             self.assertIs(self.session.pending, pending)
@@ -154,6 +164,29 @@ class RoutingConflictsApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.assertIsNone(self.session.pending)
         self.assertIsNone(self.session.product_pending)
         self.assertEqual(self.counts(), counts)
+
+    def test_conflicting_pending_allows_knowledge_and_complete_new_screening(self):
+        self.conflicting_session()
+        pending, product = self.session.pending, self.session.product_pending
+        counts = self.counts()
+        for question, code in (("MACD是什么", "indicator_knowledge_answered"),
+                               ("怎么用PE/PB看估值", "general_knowledge_answered")):
+            self.assertEqual(self.send(question)["result"]["code"], code)
+            self.assertIs(self.session.pending, pending)
+            self.assertIs(self.session.product_pending, product)
+        self.assertEqual(self.counts(), (counts[0] + 1, *counts[1:]))
+        self.assertEqual(self.send("帮我选5只股票")["result"]["code"], "sample_conditions_evaluated")
+        self.assertIsNone(self.session.pending)
+        self.assertIsNone(self.session.product_pending)
+
+    def test_valid_empty_screening_still_completes_replacement_of_old_pending(self):
+        self.conflicting_session()
+        self.model.screening = ScreeningModel((dict(field='pe_dynamic', operator='lt', value=0.01, phrase='PE低于0.01'),))
+        result = self.send('筛选PE低于0.01')['result']
+        self.assertEqual(result['status'], 'limited')
+        self.assertEqual(result['screening']['status'], 'empty')
+        self.assertIsNone(self.session.pending)
+        self.assertIsNone(self.session.product_pending)
 
     def test_cancel_preserves_saved_list_and_reset_clears_it_for_both_owners(self):
         for start in ("分析平安的基本面", "平安只看SMA3"):

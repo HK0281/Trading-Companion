@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 from datetime import date
 from io import StringIO
+from hashlib import sha256
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -41,7 +42,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
                     "not_run": 0, "hard_requirement_violations": 0, "outside_acceptable": 0,
                     "quality_requirement_failures": 0, "trace_missing": 0})
                 self.assertEqual(report["model_call_limit"], 354)
-                self.assertEqual(report["accounting"]["forwarded"], 70)
+                self.assertEqual(report["accounting"]["forwarded"], 72)
                 self.assertEqual(len({s["trace"]["run_id"] for s in report["steps"]}), 59)
                 self.assertTrue(all(c["transport"]["maximum_in_flight"] <= width and c["transport"]["responses_closed"]
                                     and c["transport"]["requests"] == c["transport"]["closed_clients"] for c in report["cases"]))
@@ -71,7 +72,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertGreater(expected["categories"]["error"], 0)
         self.assertEqual(expected["overall"]["total_elapsed_ms"]["n"], 59)
         self.assertEqual(expected["models"]["provider_requests_started"], 0)
-        self.assertEqual(expected["models"]["attempted"], 70)
+        self.assertEqual(expected["models"]["attempted"], 72)
         self.assertIsNone(report["accounting"]["token_usage"]["reported_total_tokens"])
 
     def test_deadline_partial_full_missing_and_complete_are_distinct(self):
@@ -104,6 +105,28 @@ class WorkflowBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
+
+    def test_b_delta_preserves_parent_and_changes_only_two_versioned_steps(self):
+        raw = evaluation.CORPUS.read_bytes().replace(b'\r\n', b'\n')
+        parent = json.loads(raw)
+        current, digest = evaluation.load_corpus()
+        descriptor = evaluation.b_delta_descriptor()
+        self.assertEqual(descriptor['parent_sha256'], sha256(raw).hexdigest())
+        self.assertNotEqual(digest, descriptor['parent_sha256'])
+        changed = [(old['id'], index) for old, new in zip(parent['cases'], current['cases'])
+                   for index, (a, b) in enumerate(zip(old['steps'], new['steps']), 1) if a != b]
+        self.assertEqual(changed, [('C05', 2), ('C05', 3)])
+        delta = json.loads(evaluation.B_DELTA.read_text(encoding='utf-8'))
+        for key in ('parent_sha256_lf', 'old'):
+            broken = deepcopy(delta)
+            if key == 'old':
+                broken['changes'][0]['old']['question'] = 'tampered'
+            else:
+                broken[key] = '0' * 64
+            path = Path(self.temporary.name) / 'delta.json'
+            path.write_text(json.dumps(broken), encoding='utf-8')
+            with patch.object(evaluation, 'B_DELTA', path), self.assertRaises(ValueError):
+                evaluation.load_corpus()
 
     def test_invalid_parameters_fail_before_model_or_sources_or_credentials(self):
         invalid = ({"mode": "live"}, {"mode": "live-model"}, {"repeat": True}, {"repeat": 4},

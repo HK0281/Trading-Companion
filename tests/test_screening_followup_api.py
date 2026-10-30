@@ -210,18 +210,17 @@ class ScreeningFollowupApiTests(ScreeningJourneyFixture, unittest.TestCase):
         self.assertEqual(self.data.calls[-1][0].instrument_id, "300001.SZ")
         self.assertEqual(len(self.quotes.calls), 1)
 
-    def test_pending_identity_reply_has_priority_over_the_shortlist_and_never_calls_a_model(self):
+    def test_pending_identity_ordinal_selects_its_candidates_before_the_shortlist(self):
         self.screen()
         pending = self.send("分析平安的基本面")["result"]
         self.assertEqual(pending["code"], "product_instrument_needs_clarification")
         saved = self.session.screening_saved
         count = len(self.model.calls)
         reply = self.send("第一个")["result"]
-        self.assertEqual(reply["code"], "product_explicit_selection_required")
-        self.assertEqual(len(self.model.calls), count)
-        self.assertEqual(self.data.calls, [])
-        self.assertIs(self.session.screening_saved, saved)
-        self.send("平安银行")
+        self.assertEqual(reply["code"], "company_research_completed")
+        self.assertEqual(len(self.model.calls), count+1)
+        self.assertIsNone(self.session.screening_saved)
+        self.assertIsNone(self.session.product_pending)
         self.assertEqual(self.data.calls[-1][0].instrument_id, "000001.SZ")
 
     def test_named_outside_research_consumes_the_old_list_and_new_screening_changes_ordinals(self):

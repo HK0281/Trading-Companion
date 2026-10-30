@@ -31,6 +31,8 @@ _STOPS = frozenset(("turn_cancelled", "turn_deadline_exceeded", "model_call_budg
 # Unknown external values still become "other"; source discovery never runs in production.
 _CODES = _STOPS | _ANSWER_CODES | frozenset("""
 decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable
+missing_research_subject no_current_research_subject research_subject_time_invalid research_subject_identity_changed
+research_subject_directory_unusable research_subject_ambiguous
 decision_no_evidence decision_output_invalid decision_ready demo_domain_unavailable demo_evidence_missing
 demo_question_unsupported plan_price_grid_unavailable plan_ready plan_excluded
 api_session_call_limit authentication_error connection_error invalid_response provider_error rate_limited timeout

@@ -28,6 +28,7 @@ def format_report(report):
         "语义路由标签不等于最终用户结果；规则执行器后续能否澄清未判定。",
         f"题库摘要：{p['corpus']['corpus_sha256']}；定义摘要：{p['definition_sha256']}；状态：{report['status']}。",
         "旧59步/105轮一致率套件已后置，本报告不包含该项结果。",
+        f"规则版本：{p.get('rule_baseline_version', 'historical-unversioned')}；源码摘要：{p.get('rule_source_digest', 'unknown')}。旧规则、新规则和模型成绩分别解释。",
         "", "| 分类器/返回模型 | 全部准确率 | 全部macro-F1 | 非反问题准确率 | 非反问题macro-F1 | 误路由率 | 反问率 | 反例误触发 | 已尝试p50/p95 ms | 费用/覆盖 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for name,m in report["metrics"]["providers"].items():

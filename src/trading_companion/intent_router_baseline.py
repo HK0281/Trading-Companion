@@ -46,6 +46,9 @@ def rule_classify(row):
         product_pending=True if row["guard"] in ("company_pending", "state_conflict") else None,
         pending=True if row["guard"] in ("technical_pending", "state_conflict") else None,
         pending_edit=True if row["guard"] == "indicator_pending" else None)
+    from dataclasses import replace
+    view = replace(view, latest_kind=value["latest_valid_research_kind"]
+                   if value["latest_valid_research_kind"] in ("company", "technical") else None)
     question = row["question"]
     probe = routing.probe_general_knowledge(question, workflow=value["workflow_enabled"], history=row["guard"] == "history", session=view)
     result = routing.resolve_general_knowledge(question, candidate=probe, directory=directory)

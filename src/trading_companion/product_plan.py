@@ -400,12 +400,17 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
     validate_research_conditions(context.start_date, context.end_date, context.indicators)
     if _CANCEL.fullmatch(question):
         return replace(base, status="out_of_scope", code="product_plan_cancelled", message="已取消待确认的研究。")
-    match = directory.lookup(question.strip())
-    if match.status != "resolved":
+    from trading_companion.routing_context import selection_reply, selection_conditions
+    by_id = {item.instrument_id: item for item in directory.securities}
+    if any(key not in by_id for key in context.candidate_ids):
+        return replace(base, status="needs_clarification", code="product_identity_changed",
+                       message="原候选已不在当前目录，请重新明确研究对象；没有移动候选序号。")
+    candidates = tuple(by_id[key] for key in context.candidate_ids)
+    selected, suffix = selection_reply(question, candidates, directory)
+    if selected is None:
         return replace(base, status="needs_clarification", code="product_explicit_selection_required",
-                       message="请直接回复完整股票名称或代码，或回复“取消”。", context=context,
+                       message="请选择候选股票名称、代码或序号；可以附带明确条件，也可直接提出完整新研究。", context=context,
                        candidates=tuple(item for item in directory.securities if item.instrument_id in context.candidate_ids))
-    selected = match.candidates[0]
     if context.candidate_ids and selected.instrument_id not in context.candidate_ids:
         return replace(base, status="needs_clarification", code="product_selection_outside_candidates",
                        message="该股票不在原待选名单中，请选择原候选或重新提出完整研究。", context=context,
@@ -413,6 +418,28 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
     bindings = dict(context.bindings)
     mentions = context.mentions or (question.strip(),)
     bindings[context.pending_mention if context.mentions else question.strip()] = selected.instrument_id
+    if suffix:
+        from trading_companion.research_intent import ResearchConditions
+        try:
+            conditions = ResearchConditions(base.start_date, base.end_date, base.indicators, source,
+                                            reference_date, base.applied_defaults, base.objective)
+            conditions = selection_conditions(conditions, suffix, reference_date=reference_date,
+                                              instrument_id=selected.instrument_id)
+        except InputIssue as issue:
+            return replace(base, status=issue.status, code=issue.code, message=str(issue),
+                           context=context, candidates=candidates)
+        changed_indicators = conditions.indicators != base.indicators
+        kinds, historical = base.kinds, base.explicit_historical
+        if changed_indicators:
+            kinds = tuple(kind for kind in RESEARCH_KINDS if kind in base.kinds or kind == "technical")
+        if conditions.start_date != base.start_date or conditions.as_of_date != base.end_date:
+            historical = "dates:explicit_update" in conditions.applied_defaults
+        base = replace(base, start_date=conditions.start_date, end_date=conditions.as_of_date,
+                       as_of=conditions.as_of_date, indicators=conditions.indicators,
+                       indicators_explicit=base.indicators_explicit or changed_indicators, kinds=kinds,
+                       explicit_historical=historical,
+                       applied_defaults=conditions.applied_defaults, objective=conditions.objective,
+                       user_question=context.original_question + "；" + question)
     return _resolved_plan(base, directory=directory, mentions=mentions, bindings=bindings, now=now,
                           created_at=context.created_at, expires_at=context.expires_at,
                           reference_date=context.reference_date, development=development)
@@ -444,9 +471,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         return replace(base, code="product_directory_unavailable", message="证券目录尚不可用，未调用模型或自动补码。")
     try:
         directory.assert_usable(reference_date, development=development)
-        if context is not None and (not wants_product_research(question)
-                or wants_decision(question) and not directory.mentioned_spans(question)
-                and not re.match(r"\s*新问题\s*[:：]", question)):
+        from trading_companion.routing_context import independent_task
+        if context is not None and not independent_task(question, directory):
             return _resume(context, question, directory=directory, reference_date=reference_date, now=now,
                            source=source, development=development)
         base = replace(base, user_question=question)

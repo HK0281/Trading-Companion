@@ -187,6 +187,29 @@ class IntentEvaluationTests(unittest.TestCase):
             self.assertEqual(report['metrics']['providers']['jev']['statuses']['failed'],1)
             self.assertEqual(report['metrics']['providers']['jev']['cost']['unknown_requests'],1)
 
+    def test_rule_versions_reject_old_locks_and_cross_rule_references(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root)
+            source=save(self.dev,root/'dev.json')
+            path=root/'lock.json'
+            lock=evaluation.export_lock(source,path)
+            self.assertEqual(lock['version'],'intent-router-threshold-lock-v2')
+            self.assertEqual(lock['rule_baseline_version'],self.dev['plan']['rule_baseline_version'])
+            old=deepcopy(lock)
+            old['version']='intent-router-threshold-lock-v1'
+            save(old,path)
+            self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_invalid')
+            old=deepcopy(lock)
+            old['rule_baseline_version']='old-rule-version'
+            save(old,path)
+            self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_incompatible')
+            old_report=deepcopy(self.dev)
+            old_report['plan']['rule_baseline_version']='old-rule-version'
+            self.assertEqual(evaluation.build_plan(suite='context-ablation',
+                reference_report=save(old_report,root/'old.json'))['code'],'intent_reference_incompatible')
+            with self.assertRaises(ValueError):
+                evaluation.export_lock(root/'old.json',root/'old-lock.json')
+
     def test_dev_lock_roundtrip_holdout_and_tampering(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

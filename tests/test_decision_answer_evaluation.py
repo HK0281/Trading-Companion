@@ -46,15 +46,15 @@ class DecisionEvaluationTests(unittest.TestCase):
             with self.assertRaises((ValueError,evaluation.PlanError)):
                 evaluation.load_corpus(corpus)
 
-    def test_offline_uses_real_message_entry_and_preserves_batch_b_failures(self):
+    def test_offline_uses_real_message_entry_and_forms_batch_b_verdicts(self):
         report=self.report
         self.assertEqual((report['status'],len(report['cases'])),('passed',20))
-        self.assertEqual(report['metrics']['formed'],18)
+        self.assertEqual(report['metrics']['formed'],20)
         self.assertEqual(report['metrics']['formation_rate']['denominator'],20)
-        self.assertEqual(report['metrics']['reached_answer_rate']['numerator'],18)
-        self.assertEqual(report['metrics']['batch_b_groups']['true']['formed'],0)
+        self.assertEqual(report['metrics']['reached_answer_rate']['numerator'],20)
+        self.assertEqual(report['metrics']['batch_b_groups']['true']['formed'],2)
         self.assertEqual(report['metrics']['batch_b_groups']['true']['questions'],2)
-        self.assertEqual(report['accounting']['forwarded'],44)  # 18×2 + 2×(3 setup + 1 target).
+        self.assertEqual(report['accounting']['forwarded'],46)  # 18×2 + 2×(3 setup + 2 target).
         self.assertFalse(report['real_model_requested'])
         self.assertFalse(report['real_data_requested'])
         fixture = report['plan']['fixture']
@@ -70,8 +70,9 @@ class DecisionEvaluationTests(unittest.TestCase):
         for c in report['cases']:
             if c['requires_batch_b']:
                 self.assertEqual(c['setup'][0]['status'],'completed')
-                self.assertEqual(c['route'],'technical_research')
-                self.assertFalse(c['formed'])
+                self.assertEqual(c['route'],'company_research')
+                self.assertTrue(c['formed'])
+                self.assertTrue(all(c['checks'].values()))
             else:
                 self.assertEqual(c['company_research']['quality']['state'],'complete')
                 self.assertTrue(all(e['data_authenticity']=='fixed_synthetic'
@@ -190,8 +191,8 @@ class DecisionEvaluationTests(unittest.TestCase):
         rows=deepcopy(self.report['cases'])
         rows[0].update(grade)
         metrics=evaluation.summarize(rows)
-        self.assertEqual(metrics['formation_rate']['numerator'],18)
-        self.assertEqual(metrics['two_reason_comparison_rate']['numerator'],17)
+        self.assertEqual(metrics['formation_rate']['numerator'],20)
+        self.assertEqual(metrics['two_reason_comparison_rate']['numerator'],19)
 
     def test_repair_rates_separate_all_passed_rating_and_content_with_old_metadata_unknown(self):
         rows=deepcopy(self.report['cases'])
@@ -220,9 +221,9 @@ class DecisionEvaluationTests(unittest.TestCase):
                 return super().complete(messages,tools=tools)
         with patch.object(evaluation,'DecisionContractModel',BrokenFirst):
             report=evaluation.evaluate()
-        self.assertEqual(report['metrics']['formed'],18)
+        self.assertEqual(report['metrics']['formed'],20)
         self.assertEqual(report['metrics']['structure_parse_failure_rate']['numerator'],1)
-        self.assertEqual(report['metrics']['structure_parse_failure_rate']['denominator'],19)
+        self.assertEqual(report['metrics']['structure_parse_failure_rate']['denominator'],21)
         self.assertEqual(report['metrics']['repair_attempts'],1)
         self.assertEqual(report['metrics']['repair_success_rate']['value'],1)
         self.assertEqual(report['metrics']['generated_paragraphs_unknown_attempts'],1)
@@ -284,8 +285,8 @@ class DecisionEvaluationTests(unittest.TestCase):
                 report=evaluation.evaluate(mode='live-model',provider='deepseek',model='deepseek-flash',
                                            prices=evaluation.DEFAULT_PRICES,model_call_limit=120)
         self.assertTrue(report['cost']['complete'])
-        self.assertEqual(report['accounting']['token_usage']['reported_total_tokens'],44*30)
-        self.assertEqual(report['cost']['estimated_total'],'0.007920')
+        self.assertEqual(report['accounting']['token_usage']['reported_total_tokens'],46*30)
+        self.assertEqual(report['cost']['estimated_total'],'0.008280')
 
     def test_case_cap_includes_setup_and_no_outer_retry(self):
         calls=[]
@@ -310,7 +311,7 @@ class DecisionEvaluationTests(unittest.TestCase):
             self.assertIsNone(review[0]['review']['evidence_support'])
             self.assertTrue(review[0]['company_research']['evidence'])
             markdown=(destination/'report.md').read_text(encoding='utf-8')
-            self.assertIn('18/20',markdown)
+            self.assertIn('20/20',markdown)
             self.assertIn('D20',markdown)
 
     def test_cli_plan_and_output_path_validation_are_side_effect_free(self):

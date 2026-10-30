@@ -15,6 +15,7 @@ from trading_companion.research_session import ResearchSession
 from trading_companion.screening_context import SavedScreening, is_screening_followup
 from trading_companion.screening_intent import is_screening_edit, is_screening_request
 from trading_companion.security_directory import SecurityDirectory
+from trading_companion.routing_context import independent_task, latest_subject, continuation_question, new_question
 
 
 class RouteKind(str, Enum):
@@ -54,6 +55,8 @@ class RoutingSessionView:
     product_saved: bool | None = None
     confirmed: bool | None = None
     screening_saved: SavedScreening | None = None
+    latest_kind: str | None = None
+    latest_current: bool = True
 
     @property
     def pending_count(self) -> int:
@@ -66,7 +69,9 @@ class RoutingSessionView:
             pending_edit=True if session.pending_edit is not None else None,
             product_saved=True if session.product_saved is not None else None,
             confirmed=True if session.confirmed is not None else None,
-            screening_saved=session.screening_saved)
+            screening_saved=session.screening_saved,
+            latest_kind=getattr(latest_subject(session), "kind", None),
+            latest_current=session._subject_current if session.latest_research is not None else True)
 
 
 @dataclass(frozen=True)
@@ -113,7 +118,7 @@ class RouteSpec:
 def probe_general_knowledge(question: str, *, workflow: bool, history: bool,
                             session: RoutingSessionView | None = None) -> bool:
     """Whether the API should attempt the optional local identity hint first."""
-    return (workflow and not history and (session is None or session.pending_count < 2)
+    return (workflow and not history
             and parse_knowledge_question(question) is None
             and is_general_knowledge_question(question))
 
@@ -140,7 +145,7 @@ def _history(value: _MatchInput) -> bool:
 
 
 def _conflict(value: _MatchInput) -> bool:
-    return value.context.session.pending_count > 1
+    return value.context.session.pending_count > 1 and not independent_task(value.question, value.context.directory)
 
 
 def _indicator_knowledge(value: _MatchInput) -> bool:
@@ -167,15 +172,16 @@ def _screening(value: _MatchInput) -> bool:
 
 
 def _company_pending(value: _MatchInput) -> bool:
-    return value.context.company_enabled and value.context.session.product_pending is not None
+    return (value.context.company_enabled and value.context.session.product_pending is not None
+            and not independent_task(value.question, value.context.directory))
 
 
 def _technical_pending(value: _MatchInput) -> bool:
-    return value.context.session.pending is not None
+    return value.context.session.pending is not None and not independent_task(value.question, value.context.directory)
 
 
 def _indicator_pending(value: _MatchInput) -> bool:
-    return value.context.session.pending_edit is not None
+    return value.context.session.pending_edit is not None and not independent_task(value.question, value.context.directory)
 
 
 def _screening_followup(value: _MatchInput) -> bool:
@@ -188,13 +194,12 @@ def _screening_followup(value: _MatchInput) -> bool:
 
 def _company(value: _MatchInput) -> bool:
     context = value.context
-    if (wants_decision(value.question) and context.session.product_saved is None
-            and context.session.confirmed is not None and not context.directory.mentioned_spans(value.question)):
-        return False
     return context.company_enabled and (
         wants_product_research(value.question)
         or bool(context.directory.mentioned_spans(value.question)) and not is_explicit_technical_request(value.question)
-        or context.session.product_saved is not None and is_product_followup(value.question))
+        or not new_question(value.question) and (context.session.latest_kind == "company" and context.session.latest_current
+            or context.session.latest_kind is None and context.session.product_saved is not None)
+            and (continuation_question(value.question) or is_product_followup(value.question)))
 
 
 def _technical(value: _MatchInput) -> bool:

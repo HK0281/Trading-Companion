@@ -251,10 +251,13 @@ class ProductPlanTests(unittest.TestCase):
                 self.assertIsNone(plan.context)
                 model.complete.assert_not_called()
 
-    def test_candidate_selection_does_not_accept_ordinal_or_outside_stock(self):
+    def test_candidate_selection_accepts_ordinal_but_rejects_outside_stock(self):
         pending, _ = self.prepare("平安基本面", _arguments(["平安"]))
-        for reply, code in (("第一个", "product_explicit_selection_required"),
-                            ("贵州茅台", "product_selection_outside_candidates")):
+        selected, model = self.prepare("第一个", responses=[], context=pending.context)
+        self.assertEqual(selected.status, "ready")
+        self.assertEqual(selected.securities[0].instrument_id, pending.candidates[0].instrument_id)
+        model.complete.assert_not_called()
+        for reply, code in (("贵州茅台", "product_selection_outside_candidates"),):
             with self.subTest(reply=reply):
                 plan, model = self.prepare(reply, responses=[], context=pending.context)
                 self.assertEqual(plan.code, code)

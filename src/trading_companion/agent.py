@@ -228,7 +228,7 @@ def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
                    "本轮已达到运行限制；停止后续调度，迟到内容已丢弃。仅保留停止前核验的事实，未保存为会话结果。")
 
 
-def _controlled(action, *, model, control, default_calls, input_mode, session=None):
+def _controlled(action, *, model, control, default_calls, input_mode, session=None, replace_pending=False):
     limits = workflow_turn_limits() if default_calls == 6 else TurnLimits(model_calls=default_calls)
     runtime = TurnControl(limits) if control is None else control
     if type(runtime) is not TurnControl:
@@ -240,11 +240,22 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
     try:
         runtime.start()
         working = session._fork_for_turn() if session is not None else None
+        if working is not None and replace_pending and any(
+                item is not None for item in (working.pending, working.pending_edit, working.product_pending)):
+            working._replacing_pending = True
+            working.clear_pending()
 
         def publish(stopped):
             if session is None:
                 return
             if not stopped:
+                if working._replacing_pending and not (
+                        outcome.status == "completed" or outcome.status == "limited" and (
+                            _has_research(outcome) or outcome.product_bundle is not None and bool(outcome.product_bundle.evidence)
+                            or outcome.screening_result is not None and outcome.screening_result.status == "empty")
+                        or outcome.status == "needs_clarification" and any(item is not None for item in
+                            (working.pending, working.pending_edit, working.product_pending))):
+                    return
                 session._publish_turn(working)
 
         outcome = AgentTurnResult(input_mode=input_mode)
@@ -307,11 +318,13 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
         raise ModelConfigurationError("Workflow mode must be selected by trusted application code")
     if session is not None and type(session) is not ResearchSession:
         raise ModelConfigurationError("Use a trusted per-conversation research session")
+    from trading_companion.routing_context import replaces_pending
     return _controlled(lambda checked_model, working: _run_natural(
         question, model=checked_model, directory=directory, source=source,
         development_source=development_source, reference_date=reference_date,
         session=working, current_time=current_time, workflow=workflow),
-        model=model, control=control, default_calls=6 if workflow else 3, input_mode="natural", session=session)
+        model=model, control=control, default_calls=6 if workflow else 3, input_mode="natural", session=session,
+        replace_pending=replaces_pending(question, directory))
 
 
 def _run_general_knowledge(question, *, model, directory=None) -> AgentTurnResult:

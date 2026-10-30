@@ -1,0 +1,1966 @@
+{
+  "version": "request-routing-b-expectations-v1",
+  "authored_before_candidate": true,
+  "base_revision": "1a8fd77",
+  "parents_sha256_lf": {
+    "request-routing-v1.json": "d751c6a46db4e09a8eebb14f0c07b93f5d9cb6a12024b97dfaff3ced229eee6b",
+    "request-routing-v2.json": "68c6e8b389c84e4350aaf3ffd7231a3bd6dcf80476f6c5f2b694196dcbfa918c",
+    "request-routing-v3.json": "ae3273683ef6c1e86700f62dc08bd893018294b28c1f7c0fcbd7d8b60b871145",
+    "request-routing-v4.json": "3e8a639a9c36659069eb3d08273aaea8f1e1e9a311c7ef6574e382c558e12061",
+    "request-routing-a2-deltas.json": "abbd8e911f37dffb16e3dda6e743684c3e8a9dc35e9bbbf9f10b786df6760681",
+    "request-routing-a3-deltas.json": "4fd5478a478a06d1b8fee638b873f2410a064a27365bf1576ad41e61a07ec162"
+  },
+  "policy": "人工预期独立于B候选；未知差异先调查，在文档记录根因，不以候选反推目标。调用/状态的连带影响单独逐字段记录。",
+  "scenarios": [
+    {
+      "id": "knowledge-ready",
+      "turns": [
+        {
+          "index": 1,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "如何阅读财报",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "knowledge-directory-missing",
+      "turns": [
+        {
+          "index": 1,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "knowledge-stale",
+      "turns": [
+        {
+          "index": 1,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "PE是什么，顺便解释平安银行的估值",
+          "expected_route": "company_research",
+          "expected_code": "product_directory_unusable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "workflow-off",
+      "turns": [
+        {
+          "index": 1,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "local_reply",
+          "expected_code": "general_knowledge_disabled",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "RSI是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "workflow-off-fixed",
+      "turns": [
+        {
+          "index": 1,
+          "question": "RSI是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "fixed-knowledge",
+      "turns": [
+        {
+          "index": 1,
+          "question": "RSI是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "MACD是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "fixed-knowledge-directory-gate",
+      "turns": [
+        {
+          "index": 1,
+          "question": "RSI是什么",
+          "expected_route": null,
+          "expected_code": "directory_unusable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "mixed-named-directory-gate",
+      "turns": [
+        {
+          "index": 1,
+          "question": "PE是什么，顺便解释平安银行的估值",
+          "expected_route": null,
+          "expected_code": "directory_unusable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "解释平安银行财报",
+          "expected_route": null,
+          "expected_code": "directory_unusable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "screen-new-and-replace",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析平安的基本面",
+          "expected_route": "company_research",
+          "expected_code": "product_instrument_needs_clarification",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "screen-explicit-interval",
+      "turns": [
+        {
+          "index": 1,
+          "question": "筛选PE在10到20之间的股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "screen-no-source",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "screening_source_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "edits-no-list",
+      "turns": [
+        {
+          "index": 1,
+          "question": "把PE改为低于15",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "按市净率升序选3只",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "再加换手率大于2%",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "edits-refresh-sample",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "再加换手率大于2%",
+          "expected_route": "screening_edit",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "按市净率升序选3只",
+          "expected_route": "screening_edit",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "第一只只看新闻",
+          "expected_route": "screening_followup",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "edits-empty-list",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "再加价格低于1",
+          "expected_route": "screening_edit",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "把价格改为在10到20之间",
+          "expected_route": "screening_edit",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "edit-company-lookalikes",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "按市盈率分析浦发银行的估值",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "把浦发银行和平安银行的市盈率比较一下",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 2,
+            "daily_reads": 2,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "ordinal-no-list",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析第一只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "ordinal-selections",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "把第一只和第二只比较一下",
+          "expected_route": "screening_followup",
+          "expected_code": "invalid_product_parameters",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "第一只只看新闻，不要技术指标",
+          "expected_route": "screening_followup",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "named-time-ordinals",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析浦发银行上市后第一个交易日以来的走势",
+          "expected_route": "company_research",
+          "expected_code": "date_not_grounded",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析浦发银行第三个季度的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "分析浦发银行上市后第一个交易日以来的走势",
+          "expected_route": "company_research",
+          "expected_code": "date_not_grounded",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 5,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 6,
+          "question": "分析浦发银行第三个季度的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "company-pending-owns-replies",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析平安的基本面",
+          "expected_route": "company_research",
+          "expected_code": "product_instrument_needs_clarification",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "第一个",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": true,
+          "reason": "序号唯一选择原候选，完成旧公司研究",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "把PE改为低于15",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": true,
+          "reason": "原候选研究消费旧名单，筛选编辑不再被旧澄清截获",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 5,
+          "question": "MACD是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "前轮已无旧pending；固定知识只读",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 6,
+          "question": "平安银行",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": true,
+          "reason": "原pending已在第3轮完成；具名对象按新公司研究",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "technical-pending",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "平安只看SMA3",
+          "expected_route": "technical_research",
+          "expected_code": "instrument_needs_clarification",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "第一个",
+          "expected_route": "technical_research",
+          "expected_code": "research_completed",
+          "expected_behavior_change": true,
+          "reason": "序号唯一选择原技术候选",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "MACD是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": true,
+          "reason": "前轮研究成功后的状态传播；固定知识不刷新研究对象",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 5,
+          "question": "平安银行",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": true,
+          "reason": "原pending已完成；裸明确名称按新公司研究",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "indicator-pending",
+      "turns": [
+        {
+          "index": 1,
+          "question": "平安银行只看SMA3和SMA5",
+          "expected_route": "technical_research",
+          "expected_code": "research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 3,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "把均线改成10日",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_edit_ambiguous",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "MACD是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": true,
+          "reason": "纯知识独立成功，副本中清理旧指标澄清",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "SMA3",
+          "expected_route": "technical_research",
+          "expected_code": "no_pending_indicator_edit",
+          "expected_behavior_change": true,
+          "reason": "旧指标澄清被独立知识成功替换，不能复活原修改",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "company-technical-capabilities",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析平安银行的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "平安银行只看SMA3",
+          "expected_route": "technical_research",
+          "expected_code": "research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 3,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "平安银行周线",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "分析平安银行是否出现背离",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "company-disabled",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析平安银行的基本面",
+          "expected_route": "technical_research",
+          "expected_code": "ungrounded_intent",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "第一只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_research_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "knowledge-does-not-renew-list",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": null,
+          "expected_route": "technical_research",
+          "expected_code": "no_saved_result",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "分析名单中第一只",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_list_expired",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "current-pronoun-versus-list",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "第一只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "它的新闻呢",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "名单中第二只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "company-followups-and-history",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析平安银行的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "为什么这么判断",
+          "expected_route": "company_research",
+          "expected_code": "product_followup_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "那新闻呢",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": null,
+          "expected_route": "company_research",
+          "expected_code": "product_saved_result",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 5,
+          "question": "查看上次结果",
+          "expected_route": "company_research",
+          "expected_code": "product_saved_result",
+          "expected_behavior_change": false,
+          "reason": "仍为历史查看；不因过期重取，身份记录不延长缓存期限",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "technical-edit-and-commands",
+      "turns": [
+        {
+          "index": 1,
+          "question": "平安银行只看SMA3",
+          "expected_route": "technical_research",
+          "expected_code": "research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 3,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "再加RSI2",
+          "expected_route": "technical_research",
+          "expected_code": "ungrounded_intent",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "取消",
+          "expected_route": "technical_research",
+          "expected_code": "research_cancelled",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": null,
+          "expected_route": "technical_research",
+          "expected_code": "saved_result_shown",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 5,
+          "question": "新对话",
+          "expected_route": "technical_research",
+          "expected_code": "session_reset",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "replay-and-isolation",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "帮我选5只股票",
+          "expected_route": null,
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "分析第一只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "按市净率升序选3只",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "source-change",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "再加换手率大于2%",
+          "expected_route": "screening_edit",
+          "expected_code": "screening_list_configuration_changed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "lazy-clock-explicit-ordinal",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析名单中第一只",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_list_expired",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "lazy-clock-named-member",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析平安银行的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "selected-technical-followup",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "分析第二只，只看SMA3",
+          "expected_route": "screening_followup",
+          "expected_code": "research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 3,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "再加RSI2",
+          "expected_route": "technical_research",
+          "expected_code": "ungrounded_intent",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "名单中第二只只看新闻",
+          "expected_route": "screening_followup",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "failed-research-consumes-current",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析平安银行的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "平安银行只看SMA3",
+          "expected_route": "technical_research",
+          "expected_code": "research_data_failed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 1,
+            "model_forwards": 2,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "为什么这么判断",
+          "expected_route": "technical_research",
+          "expected_code": "no_saved_result",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": null,
+          "expected_route": "technical_research",
+          "expected_code": "no_saved_result",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "cancelled-selection",
+      "turns": [
+        {
+          "index": 1,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "sample_conditions_evaluated",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "第一只的基本面",
+          "expected_route": "screening_followup",
+          "expected_code": "turn_cancelled",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 1,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "它的新闻呢",
+          "expected_route": "screening_followup",
+          "expected_code": "screening_selection_needs_clarification",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "development-mode",
+      "turns": [
+        {
+          "index": 1,
+          "question": "RSI是什么",
+          "expected_route": "technical_research",
+          "expected_code": "indicator_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "怎么用PE/PB看估值",
+          "expected_route": "general_knowledge",
+          "expected_code": "general_knowledge_answered",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 1,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "帮我选5只股票",
+          "expected_route": "screening",
+          "expected_code": "screening_source_unavailable",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "company_reads": 0,
+            "daily_reads": 0,
+            "model_forwards": 0,
+            "quote_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "decision-direct-and-history",
+      "turns": [
+        {
+          "index": 1,
+          "question": "平安银行现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "查看上次结果",
+          "expected_route": "company_research",
+          "expected_code": "product_saved_result",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "decision-paraphrases",
+      "turns": [
+        {
+          "index": 1,
+          "question": "分析平安银行的基本面",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "现在这个价位值得购买吗",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "那现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 4,
+          "question": "它后面怎么走",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "decision-identity-boundary",
+      "turns": [
+        {
+          "index": 1,
+          "question": "那现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "decision_instrument_required",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "平安银行现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "新问题：现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "decision_instrument_required",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 0,
+            "quote_reads": 0,
+            "company_reads": 0,
+            "daily_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    },
+    {
+      "id": "decision-domain-limits",
+      "turns": [
+        {
+          "index": 1,
+          "question": "只看平安银行新闻，现在能买吗",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 0
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 2,
+          "question": "平安银行现在能买吗，不要ATR",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        },
+        {
+          "index": 3,
+          "question": "平安银行现在能买吗，不要交易计划",
+          "expected_route": "company_research",
+          "expected_code": "company_research_completed",
+          "expected_behavior_change": false,
+          "reason": "核心B对本轮无预期可见变化；旧观察逐字段严格相等",
+          "parent_calls": {
+            "model_forwards": 2,
+            "quote_reads": 0,
+            "company_reads": 1,
+            "daily_reads": 1
+          },
+          "identity_source_scope_budget": "明确对象、原配置、原全轮预算；未点名变更的字段沿用父基线"
+        }
+      ]
+    }
+  ]
+}

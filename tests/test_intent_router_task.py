@@ -13,16 +13,16 @@ from trading_companion.typesafe_jev import ClassifierError
 
 
 class IntentTaskTests(unittest.TestCase):
-    def test_a2_source_revision_is_exact_and_preserves_historical_corpus(self):
+    def test_b_source_version_preserves_historical_corpus_and_rejects_unknown_edits(self):
+        from trading_companion.intent_rule_baseline import current_baseline, source_hashes
         historical=read_json(MANIFEST)['frozen_sources']
         self.assertTrue(sources_match(historical))
-        current=frozen_sources()
-        for name,pair in SOURCE_REVISIONS.items():
-            self.assertEqual((historical[name],current[name]),pair)
+        current=source_hashes()
+        self.assertEqual(current_baseline()['sources_sha256_lf'],current)
         for name in current:
-            with self.subTest(name=name),patch('trading_companion.intent_router_task.frozen_sources',
-                    return_value={**current,name:'0'*64}):
-                self.assertFalse(sources_match(historical))
+            with self.subTest(name=name),patch('trading_companion.intent_rule_baseline.source_hashes',
+                    return_value={**current,name:'0'*64}),self.assertRaises(ValueError):
+                sources_match(historical)
 
     def test_authored_distributions_pairs_and_unreviewed_status(self):
         rows,manifest=load_corpus()

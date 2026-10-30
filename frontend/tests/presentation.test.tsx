@@ -106,16 +106,15 @@ async function openChat() {
 }
 
 describe("conversation-first workspace", () => {
-  it("collapses research attachments and omits execution diagnostics", async () => {
+  it("omits retired research attachments and execution diagnostics", async () => {
     const { api } = await openChat();
     fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "分析平安银行" } });
     fireEvent.keyDown(screen.getByLabelText("研究问题"), { key: "Enter" });
     await screen.findByRole("heading", { name: "先看已核对的指标表现" });
     expect(screen.queryByText("research_completed")).not.toBeInTheDocument();
     expect(screen.queryByText("参数与执行记录")).not.toBeInTheDocument();
-    expect(screen.getByText(presentationReply().result.answer!)).not.toBeVisible();
-    fireEvent.click(screen.getByText("完整报告", { selector: "summary" }));
-    expect(screen.getByText(presentationReply().result.answer!)).toBeVisible();
+    expect(screen.queryByText(presentationReply().result.answer!)).not.toBeInTheDocument();
+    expect(screen.queryByText("完整报告", { selector: "summary" })).not.toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
     expect(api.history).not.toHaveBeenCalled();
   });

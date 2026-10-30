@@ -38,7 +38,8 @@ describe("research workspace", () => {
     await screen.findByText(ANSWER);
     expect(api.create).toHaveBeenCalledOnce(); expect(api.send).toHaveBeenCalledOnce();
     expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
-    expect(screen.getByText("指标字段与证据")).toBeInTheDocument();
+    expect(screen.queryByText("指标字段与证据")).not.toBeInTheDocument();
+    expect(document.querySelector(".answer-attachments")).toBeNull();
     expect(screen.queryByLabelText("候选股票")).not.toBeInTheDocument();
   });
   it("renders untrusted text literally instead of executing HTML", async () => {
@@ -51,11 +52,13 @@ describe("research workspace", () => {
     const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => chartReply(id));
     send(); await screen.findByText(ANSWER);
-    const summary = screen.getByText("历史 K 线与指标");
-    const details = summary.closest("details")!;
-    details.open = true; fireEvent(details, new Event("toggle"));
     await screen.findByRole("img", { name: /000001.SZ 历史日 K 线/ });
     expect(screen.getByText("人工样例 · 非真实行情")).toBeInTheDocument();
+    const attachments = document.querySelector(".answer-attachments")!;
+    expect(attachments.children).toHaveLength(1);
+    expect(attachments.firstElementChild).toHaveClass("research-chart");
+    expect(attachments.querySelector("details, table, input[type=range]")).toBeNull();
+    expect(screen.queryByText(/指标字段与证据|研究依据|证券状态与交易日历|完整报告/)).not.toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce();
     expect(api.history).not.toHaveBeenCalled();
   });
@@ -72,14 +75,11 @@ describe("research workspace", () => {
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
     expect(api.send).toHaveBeenCalledOnce();
   });
-  it("integrates request-bound market context without extra calls or changing the answer", async () => {
+  it("keeps market context in the data without showing the retired attachment", async () => {
     const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => marketContextReply(id));
     send(); await screen.findByText(ANSWER);
-    fireEvent.click(screen.getByText("证券状态与交易日历", { selector: "summary" }));
-    await screen.findByRole("region", { name: "证券状态与交易日历" });
-    expect(screen.getByText("人工样例 · 非真实市场事实")).toBeInTheDocument();
-    expect(screen.getByText("24 个自然日")).toBeInTheDocument();
+    expect(screen.queryByText("证券状态与交易日历")).not.toBeInTheDocument();
     expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
     expect(api.send).toHaveBeenCalledOnce(); expect(api.history).not.toHaveBeenCalled();
   });
@@ -91,19 +91,19 @@ describe("research workspace", () => {
       return value;
     });
     send(); await screen.findByText(ANSWER);
-    expect(screen.getByText(/市场上下文暂不可用或未通过范围校验/)).toBeInTheDocument();
+    expect(screen.queryByText(/市场上下文暂不可用或未通过范围校验/)).not.toBeInTheDocument();
     expect(screen.getByText("人工样例 / 非真实行情。收盘价高于SMA(3)。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试原请求" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "研究问题" })).toBeEnabled();
     expect(api.send).toHaveBeenCalledOnce();
   });
-  it("marks saved market context as historical without a new research request", async () => {
+  it("keeps a saved answer historical without the retired market-context attachment", async () => {
     const { api, controller } = await workspace(); await act(async () => controller.start());
     api.history.mockImplementationOnce(async () => marketContextReply());
     fireEvent.click(screen.getByRole("button", { name: /查看上次结果/ }));
-    await screen.findByText("已保存上下文 · 非新查询");
-    fireEvent.click(screen.getByText("证券状态与交易日历", { selector: "summary" }));
-    expect(screen.getByText("展示上次保存的上下文，没有重新查询或刷新证券状态。")).toBeInTheDocument();
+    await screen.findByText("已保存的研究 · 非新分析");
+    expect(screen.getByText(ANSWER)).toBeInTheDocument();
+    expect(screen.queryByText("证券状态与交易日历")).not.toBeInTheDocument();
     expect(api.history).toHaveBeenCalledOnce(); expect(api.send).not.toHaveBeenCalled();
   });
   it("fills a verified candidate only; the user must explicitly submit it", async () => {

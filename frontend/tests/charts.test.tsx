@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResearchChart } from "../src/ResearchChart";
 import { chartScale, lineSegments, parseResearchChart, validChartDate, type ChartParameters, type ChartSeries, type ResearchChartData } from "../src/charts";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const request = "chart-request-1";
 const parameters: ChartParameters = { instrument_id: "000001.SZ", start_date: "2026-09-21", as_of_date: "2026-09-25", source: "csv",
@@ -47,6 +49,21 @@ function extendedFixture(): { data: ResearchChartData; scope: ChartParameters } 
     series("vwma", "value", "CNY/share", [null, 10.666, 10, 13], ["insufficient_history", "available", "available", "available"], "VWMA(2) 成交量加权均线"),
   ];
   return { data, scope: { ...parameters, indicators: [{ kind: "adx", window: 2 }, { kind: "obv" }, { kind: "vwma", window: 2 }] } };
+}
+
+function multiFieldFixture(): ResearchChartData {
+  const data = fixture();
+  const specs: { kind: string; parameters: Record<string, number>; id: string; algorithm: string; fields: string[]; unit: ChartSeries["unit"] }[] = [
+    { kind: "boll", parameters: { window: 3, stddev_multiplier: 2 }, id: "boll(window=3,stddev_multiplier=2.0)", algorithm: "boll-population-ddof0-v1", fields: ["middle", "upper", "lower"], unit: "CNY/share" },
+    { kind: "macd", parameters: { fast: 2, slow: 3, signal: 2 }, id: "macd(fast=2,slow=3,signal=2)", algorithm: "macd-sma-seed-double-histogram-v1", fields: ["dif", "dea", "histogram"], unit: "CNY/share" },
+    { kind: "volume", parameters: { window: 3 }, id: "volume(window=3)", algorithm: "volume-prior-records-ratio-v1", fields: ["volume_shares", "volume_ma", "previous_volume_ma", "relative_volume"], unit: "shares" },
+  ];
+  data.series = [data.series[0], ...specs.flatMap((spec) => spec.fields.map((field) => ({
+    id: `${spec.id}:${field}`, indicator_id: spec.id, kind: spec.kind, parameters: spec.parameters, algorithm_version: spec.algorithm,
+    field, label: field, unit: field === "relative_volume" ? "multiple" : spec.unit,
+    start_effect_warning: false, values: [1, 2, 3, 4], statuses: ["available", "available", "available", "available"],
+  } as ChartSeries)))];
+  return data;
 }
 
 describe("request-bound chart parser", () => {
@@ -143,15 +160,7 @@ describe("request-bound chart parser", () => {
     expect(parseResearchChart(data, { ...parameters, indicators: undefined }, request)).toBeNull();
   });
   it("accepts full BOLL/MACD/volume field definitions and rejects omitted fields", () => {
-    const data = fixture();
-    const specs: { kind: string; parameters: Record<string, number>; id: string; algorithm: string; fields: string[]; unit: ChartSeries["unit"] }[] = [
-      { kind: "boll", parameters: { window: 3, stddev_multiplier: 2 }, id: "boll(window=3,stddev_multiplier=2.0)", algorithm: "boll-population-ddof0-v1", fields: ["middle", "upper", "lower"], unit: "CNY/share" },
-      { kind: "macd", parameters: { fast: 2, slow: 3, signal: 2 }, id: "macd(fast=2,slow=3,signal=2)", algorithm: "macd-sma-seed-double-histogram-v1", fields: ["dif", "dea", "histogram"], unit: "CNY/share" },
-      { kind: "volume", parameters: { window: 3 }, id: "volume(window=3)", algorithm: "volume-prior-records-ratio-v1", fields: ["volume_shares", "volume_ma", "previous_volume_ma", "relative_volume"], unit: "shares" },
-    ];
-    data.series = specs.flatMap((spec) => spec.fields.map((field) => ({ id: `${spec.id}:${field}`, indicator_id: spec.id, kind: spec.kind,
-      parameters: spec.parameters, algorithm_version: spec.algorithm, field, label: field, unit: field === "relative_volume" ? "multiple" : spec.unit,
-      start_effect_warning: false, values: [1, 2, 3, 4], statuses: ["available", "available", "available", "available"] } as ChartSeries)));
+    const data = multiFieldFixture();
     expect(parseResearchChart(data, { ...parameters, indicators: undefined }, request)).not.toBeNull();
     data.series.pop(); expect(parseResearchChart(data, { ...parameters, indicators: undefined }, request)).toBeNull();
   });
@@ -196,10 +205,26 @@ describe("chart geometry", () => {
   });
 });
 
-function openChart() {
-  const details = screen.getByText("历史 K 线与指标").closest("details")!;
-  details.open = true; fireEvent(details, new Event("toggle"));
+function readout() { return screen.getByRole("note", { name: "选定K线读数" }); }
+function plot() { return screen.getByRole("group", { name: "互动日线图" }); }
+function pointer(svg: SVGSVGElement, type: string, values: Record<string, unknown> = {}) {
+  const event = new Event(type, { bubbles: true });
+  Object.assign(event, { pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0, clientX: 187, clientY: 100 }, values);
+  fireEvent(svg, event);
 }
+function pointerSurface() {
+  const svg = screen.getByRole("img") as unknown as SVGSVGElement;
+  vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 100, top: 50, width: 480, height: 264.5 } as DOMRect);
+  const captures = new Set<number>();
+  const capture = vi.fn((id: number) => { captures.add(id); });
+  const release = vi.fn((id: number) => { captures.delete(id); });
+  Object.defineProperties(svg, {
+    setPointerCapture: { value: capture }, hasPointerCapture: { value: (id: number) => captures.has(id) },
+    releasePointerCapture: { value: release },
+  });
+  return { svg, capture, release };
+}
+
 describe("research chart component", () => {
   it("omits an absent chart and degrades invalid charts without throwing", () => {
     const { rerender, container } = render(<ResearchChart value={null} parameters={parameters} reportRequestId={request} />);
@@ -208,77 +233,237 @@ describe("research chart component", () => {
     expect(screen.getByRole("note")).toHaveTextContent("不影响上方已确认的研究答案与证据");
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
-  it("states provenance immediately and defers SVG rendering until expanded", () => {
-    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText("人工样例 · 非真实行情")).toBeInTheDocument();
-    expect(screen.getByText(/复权：未知/)).toBeInTheDocument();
-    expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument(); openChart();
-    expect(screen.getByText("人工样例 · 非真实行情")).toBeVisible();
-    expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).not.toBeVisible();
-    fireEvent.click(screen.getByText("数据口径与采集记录"));
-    expect(screen.getByText(/请求范围：2026-09-21 — 2026-09-25/)).toBeVisible();
-    expect(screen.getByRole("img", { name: /历史日 K 线/ })).toBeInTheDocument();
-    expect(screen.getByText(/红涨 \/ 绿跌 \/ 灰平/)).toBeInTheDocument();
+  it("shows the chart immediately with concise provenance and no retired tables or slider", () => {
+    const { container, rerender } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    expect(screen.getByRole("img", { name: /历史日 K 线/ })).toBeVisible();
+    expect(screen.getByText("人工样例 · 非真实行情").closest("p")).toHaveClass("chart-warning");
+    expect(screen.getByText(/复权：未知/)).toHaveTextContent("来源：CSV");
+    expect(screen.getByText(/历史日线，非实时/)).toBeVisible();
+    expect(container.querySelector("details, table, input[type=range], [style]")).toBeNull();
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    expect(container.querySelector(".chart-crosshair")).toBeNull();
+    expect(screen.queryByText("数据口径与采集记录")).not.toBeInTheDocument();
+    rerender(<ResearchChart value={{ ...fixture(), data_authenticity: "unverified_csv" }} parameters={parameters} reportRequestId={request} />);
+    expect(screen.getByText("CSV 输入 · 真实性未核验").closest("p")).toHaveClass("chart-warning");
   });
-  it("marks saved context as historical rather than a fresh analysis", () => {
+  it("marks both saved context and explicitly opened history as a snapshot", () => {
     const data = fixture(); data.context = "saved"; data.saved_at = "2026-09-25T12:30:00Z";
-    render(<ResearchChart value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText(/已保存快照，非新分析/)).toBeInTheDocument();
-    expect(screen.getByText(/保存时间：2026-09-25T12:30:00Z/)).toBeInTheDocument();
+    const { rerender } = render(<ResearchChart value={data} parameters={parameters} reportRequestId={request} />);
+    expect(screen.getByText(/已保存快照，非新分析/)).toBeVisible();
+    rerender(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} historical />);
+    expect(screen.getByText(/已保存快照，非新分析/)).toBeVisible();
   });
-  it("exposes selected values and missing statuses through a native keyboard-accessible range", () => {
-    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />); openChart();
-    const slider = screen.getByRole("slider"); slider.focus(); expect(slider).toHaveFocus();
-    expect(slider).toHaveAttribute("step", "1"); expect(slider).toHaveAttribute("aria-valuetext", "2026-09-25");
-    fireEvent.change(slider, { target: { value: "0" } });
-    expect(slider).toHaveAttribute("aria-valuetext", "2026-09-21");
-    expect(screen.getAllByText("历史不足")).toHaveLength(2);
-    expect(screen.getAllByText("—")).toHaveLength(2);
-    expect(screen.getByLabelText("选定交易日行情")).toHaveTextContent("成交量100 股");
-    fireEvent.change(slider, { target: { value: "2" } });
-    expect(slider).toHaveAttribute("aria-valuetext", "2026-09-24");
-    expect(screen.getByLabelText("选定交易日行情")).toHaveTextContent("成交量0 股");
+  it("hides hover and click inspection on leave but keeps keyboard inspection until blur", () => {
+    const { container } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    const { svg } = pointerSurface();
+    pointer(svg, "pointerover", { relatedTarget: document.body }); expect(readout()).toHaveTextContent("2026-09-21");
+    pointer(svg, "pointerout", { relatedTarget: document.body });
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    expect(container.querySelector(".chart-crosshair")).toBeNull();
+    pointer(svg, "pointerdown"); pointer(svg, "pointerup");
+    expect(plot()).toHaveFocus(); expect(readout()).toBeVisible();
+    pointer(svg, "pointerout", { relatedTarget: document.body });
+    expect(plot()).toHaveFocus();
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    act(() => { plot().blur(); plot().focus(); });
+    expect(readout()).toBeVisible();
+    pointer(svg, "pointerout", { relatedTarget: document.body });
+    expect(readout()).toBeVisible();
+    act(() => plot().blur());
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    expect(container.querySelector(".chart-crosshair")).toBeNull();
   });
-  it("toggles price overlays and independent units without recomputing or network activity", () => {
-    const { container } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />); openChart();
+  it("moves by keyboard, keeps missing readings explicit and announces only date and close", () => {
+    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    act(() => plot().focus()); expect(plot()).toHaveFocus();
+    fireEvent.keyDown(plot(), { key: "Home" });
+    expect(readout()).toHaveTextContent("2026-09-21");
+    expect(within(readout()).getAllByText("历史不足")).toHaveLength(2);
+    expect(within(readout()).getAllByText("—")).toHaveLength(2);
+    expect(readout()).toHaveTextContent("量100 股");
+    expect(screen.getByRole("status")).toHaveTextContent(/^2026-09-21，收盘 11 元\/股$/);
+    fireEvent.keyDown(plot(), { key: "ArrowLeft" }); expect(readout()).toHaveTextContent("2026-09-21");
+    fireEvent.keyDown(plot(), { key: "ArrowRight" }); expect(readout()).toHaveTextContent("2026-09-22");
+    fireEvent.keyDown(plot(), { key: "ArrowRight" }); expect(readout()).toHaveTextContent("量0 股");
+    fireEvent.keyDown(plot(), { key: "End" }); expect(readout()).toHaveTextContent("2026-09-25");
+    fireEvent.keyDown(plot(), { key: "ArrowRight" }); expect(readout()).toHaveTextContent("2026-09-25");
+  });
+  it("converts scaled pointer coordinates, clamps both ends and moves both crosshair lines without live chatter", () => {
+    const { container } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    const { svg } = pointerSurface();
+    fireEvent.keyDown(plot(), { key: "End" });
+    const announcement = screen.getByRole("status").textContent;
+    pointer(svg, "pointermove");
+    expect(readout()).toHaveTextContent("2026-09-21");
+    expect(container.querySelector(".chart-selection-x")).toHaveAttribute("x1", "174");
+    expect(container.querySelector(".chart-selection-y")).toHaveAttribute("y1", "100");
+    expect(readout()).toHaveClass("chart-tooltip-right");
+    pointer(svg, "pointermove", { clientX: 900, clientY: 900 });
+    expect(readout()).toHaveTextContent("2026-09-25");
+    expect(readout()).toHaveClass("chart-tooltip-left");
+    expect(container.querySelector(".chart-selection-y")).toHaveAttribute("y1", "487");
+    pointer(svg, "pointermove", { clientX: 0, clientY: 0 });
+    expect(readout()).toHaveTextContent("2026-09-21");
+    expect(container.querySelector(".chart-selection-y")).toHaveAttribute("y1", "28");
+    expect(screen.getByRole("status").textContent).toBe(announcement);
+  });
+  it.each(["pointerup", "pointercancel", "lostpointercapture"])("ends touch selection on %s and ignores extra fingers", (ending) => {
+    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    const { svg, capture, release } = pointerSurface();
+    pointer(svg, "pointermove", { pointerType: "touch" });
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    pointer(svg, "pointerdown", { pointerType: "touch" });
+    expect(capture).toHaveBeenCalledWith(1); expect(plot()).toHaveFocus();
+    pointer(svg, "pointerdown", { pointerType: "touch", pointerId: 2, isPrimary: false, clientX: 900 });
+    pointer(svg, "pointermove", { pointerType: "touch", pointerId: 2, clientX: 900 });
+    pointer(svg, "pointerout", { pointerType: "touch", pointerId: 2, isPrimary: false, relatedTarget: document.body });
+    expect(capture).toHaveBeenCalledOnce(); expect(readout()).toHaveTextContent("2026-09-21");
+    pointer(svg, "pointermove", { pointerType: "touch", clientX: 900 });
+    expect(readout()).toHaveTextContent("2026-09-25");
+    pointer(svg, ending, { pointerType: "touch" });
+    if (ending !== "lostpointercapture") expect(release).toHaveBeenCalledWith(1);
+    pointer(svg, "pointermove", { pointerType: "touch" });
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+    expect(document.querySelector(".chart-crosshair")).toBeNull();
+    pointer(svg, "pointerdown", { pointerType: "touch" });
+    expect(capture).toHaveBeenCalledTimes(2); expect(readout()).toHaveTextContent("2026-09-21");
+  });
+  it("does not capture secondary buttons and ignores surfaces with no geometry", () => {
+    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    const { svg, capture } = pointerSurface();
+    pointer(svg, "pointerdown", { button: 2 });
+    expect(capture).not.toHaveBeenCalled();
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width: 0, height: 0 } as DOMRect);
+    pointer(svg, "pointermove");
+    expect(screen.queryByRole("note", { name: "选定K线读数" })).not.toBeInTheDocument();
+  });
+  it("toggles price overlays and separate units in both plot and readout without a request", () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const { container } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
     expect(container.querySelectorAll(".chart-line")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("checkbox", { name: "sma(window=3)" }));
+    fireEvent.keyDown(plot(), { key: "End" });
+    expect(readout()).toHaveTextContent("11.333 元/股"); expect(readout()).toHaveTextContent("80 点");
+    fireEvent.click(screen.getByRole("checkbox", { name: "SMA3" }));
     expect(container.querySelectorAll(".chart-line")).toHaveLength(1);
+    expect(readout()).not.toHaveTextContent("SMA3");
     fireEvent.change(screen.getByLabelText("独立指标"), { target: { value: "" } });
     expect(container.querySelectorAll(".chart-line")).toHaveLength(0);
-    expect(container.querySelector("[style]")).toBeNull();
+    expect(readout()).not.toHaveTextContent("RSI");
+    expect(fetch).not.toHaveBeenCalled(); expect(container.querySelector("[style]")).toBeNull();
   });
-  it("keeps VWMA in price overlays and ADX/OBV in the separate indicator panel", () => {
+  it("keeps VWMA on the price axis and signed OBV in a separately selected panel", () => {
     const { data, scope } = extendedFixture();
-    render(<ResearchChart value={data} parameters={scope} reportRequestId={request} />); openChart();
-    expect(screen.getByRole("checkbox", { name: "vwma(window=2)" })).toBeVisible();
+    render(<ResearchChart value={data} parameters={scope} reportRequestId={request} />);
+    expect(screen.getByRole("checkbox", { name: "VWMA2" })).toBeVisible();
     const field = screen.getByLabelText("独立指标");
-    expect(field).toHaveTextContent("ADX(2) 趋势强度（点）");
-    expect(field).toHaveTextContent("OBV 能量潮（股）");
-    expect(field).not.toHaveTextContent("VWMA");
+    expect(field).toHaveTextContent("ADX2");
+    expect(field).toHaveTextContent("+DI2"); expect(field).toHaveTextContent("−DI2");
+    expect(field).toHaveTextContent("OBV"); expect(field).not.toHaveTextContent("VWMA");
+    expect(field).not.toHaveTextContent(/元\/股|（点）|（股）|window=/);
     fireEvent.change(field, { target: { value: "obv():value" } });
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "1" } });
-    expect(screen.getByText("-50 股")).toBeVisible();
+    fireEvent.keyDown(plot(), { key: "Home" }); fireEvent.keyDown(plot(), { key: "ArrowRight" });
+    expect(within(readout()).getByText("-50 股")).toBeVisible();
+  });
+  it("uses short BOLL, MACD and volume names while preserving internal selection identities", () => {
+    const { container } = render(<ResearchChart value={multiFieldFixture()} parameters={{ ...parameters, indicators: undefined }} reportRequestId={request} />);
+    expect(screen.getByRole("checkbox", { name: "SMA3" })).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "BOLL(3,2)" })).toBeVisible();
+    expect(screen.getByLabelText("价格指标图例")).toHaveTextContent("BOLL 中轨");
+    expect(screen.getByLabelText("价格指标图例")).toHaveTextContent("BOLL 上轨");
+    expect(screen.getByLabelText("价格指标图例")).toHaveTextContent("BOLL 下轨");
+    expect(screen.getByRole("option", { name: "MACD DIF" })).toHaveValue("macd(fast=2,slow=3,signal=2):dif");
+    for (const label of ["MACD DEA", "MACD 柱", "成交量(3)", "成交量均量(3)", "此前均量(3)", "量比(3)"]) {
+      expect(screen.getByRole("option", { name: label })).toBeInTheDocument();
+    }
+    fireEvent.keyDown(plot(), { key: "End" });
+    expect(readout()).toHaveTextContent("另有 5 条线");
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(5);
+    fireEvent.click(screen.getByRole("checkbox", { name: "BOLL(3,2)" }));
+    expect(readout()).not.toHaveTextContent("另有");
+    expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("MACD DIF");
+    expect(container.textContent).not.toMatch(/window=|stddev_multiplier=|fast=|slow=|signal=/);
+  });
+  it("keeps multiple BOLL and MACD parameter sets distinguishable with common notation", () => {
+    const data = multiFieldFixture();
+    const extra = data.series.filter((series) => ["boll", "macd"].includes(series.kind)).map((series) => {
+      const params: Record<string, number> = series.kind === "boll" ? { window: 5, stddev_multiplier: 2 } : { fast: 3, slow: 4, signal: 2 };
+      const id = series.kind === "boll" ? "boll(window=5,stddev_multiplier=2.0)" : "macd(fast=3,slow=4,signal=2)";
+      return { ...series, parameters: params, indicator_id: id, id: `${id}:${series.field}` };
+    });
+    data.series.push(...extra);
+    const { container } = render(<ResearchChart value={data} parameters={{ ...parameters, indicators: undefined }} reportRequestId={request} />);
+    const legend = screen.getByLabelText("价格指标图例");
+    expect(legend).toHaveTextContent("BOLL(3,2) 中轨"); expect(legend).toHaveTextContent("BOLL(5,2) 中轨");
+    expect(screen.getByRole("option", { name: "MACD(2,3,2) DIF" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "MACD(3,4,2) DIF" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/window=|stddev_multiplier=|fast=|signal=/);
+  });
+  it.each([["ema", "ema-sma-seed-v1", "EMA3"], ["atr", "atr-wilder-prior-close-v1", "ATR3"]])(
+    "uses a readable %s period label", (kind, algorithm, label) => {
+      const data = fixture(); data.series[0] = { ...data.series[0], kind, algorithm_version: algorithm,
+        indicator_id: `${kind}(window=3)`, id: `${kind}(window=3):value` };
+      render(<ResearchChart value={data} parameters={{ ...parameters, indicators: undefined }} reportRequestId={request} />);
+      expect(kind === "ema" ? screen.getByRole("checkbox", { name: label }) : screen.getByRole("option", { name: label })).toBeInTheDocument();
+    },
+  );
+  it("caps narrow-screen readings and formats large quantities without long digit strings", () => {
+    let resize: ResizeObserverCallback = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe() {} disconnect() {}
+    });
+    const data = fixture(); data.bars[3].volume = 1e15;
+    data.series.push({ ...data.series[0], indicator_id: "sma(window=4)", id: "sma(window=4):value", parameters: { window: 4 } });
+    render(<ResearchChart value={data} parameters={{ ...parameters, indicators: undefined }} reportRequestId={request} />);
+    fireEvent.keyDown(plot(), { key: "End" });
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(8);
+    act(() => resize([{ contentRect: { width: 300 } } as ResizeObserverEntry], {} as ResizeObserver));
+    expect(readout()).toHaveTextContent("另有 3 条线");
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(5);
+    expect(readout()).toHaveTextContent("1E15 股");
+    fireEvent.change(screen.getByLabelText("独立指标"), { target: { value: "" } });
+    expect(readout()).not.toHaveTextContent("另有");
+    expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("SMA4");
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(7);
   });
   it("uses only returned trading days and renders a flat single candle safely", () => {
-    const data = fixture(); data.bars = [data.bars[2]]; data.series.forEach((series) => { series.values = [series.values[2]]; series.statuses = [series.statuses[2]]; });
-    const { container } = render(<ResearchChart value={data} parameters={parameters} reportRequestId={request} />); openChart();
+    const data = fixture(); data.bars = [data.bars[2]];
+    data.series.forEach((series) => { series.values = [series.values[2]]; series.statuses = [series.statuses[2]]; });
+    const { container } = render(<ResearchChart value={data} parameters={parameters} reportRequestId={request} />);
     expect(container.querySelectorAll(".chart-flat")).toHaveLength(1);
     expect(container.innerHTML).not.toMatch(/NaN|Infinity|2026-09-23/);
     expect(container.querySelectorAll(".chart-point")).toHaveLength(2);
+    fireEvent.keyDown(plot(), { key: "ArrowLeft" }); expect(readout()).toHaveTextContent("2026-09-24");
   });
-  it("limits visible rows and clamps the native date selection to the new window", () => {
+  it("clamps selection when reducing the window and retains that selection when expanding again", () => {
     const data = fixture(); const start = new Date("2026-07-01T00:00:00Z");
     data.bars = Array.from({ length: 90 }, (_, index) => ({ ...data.bars[0], date: new Date(start.valueOf() + index * 86400000).toISOString().slice(0, 10) }));
     data.start_date = data.bars[0].date; data.as_of_date = data.bars.at(-1)!.date;
     data.series.forEach((series) => { series.values = Array(90).fill(12); series.statuses = Array(90).fill("available"); });
-    render(<ResearchChart value={data} parameters={{ ...parameters, start_date: data.start_date, as_of_date: data.as_of_date }} reportRequestId={request} />); openChart();
-    expect(screen.getByText(/60 条。仅使用返回交易日/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("显示日线"), { target: { value: "366" } });
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("显示日线"), { target: { value: "30" } });
-    expect(screen.getByRole("slider")).toHaveAttribute("min", "60");
-    expect(screen.getByRole("slider")).toHaveValue("60");
+    const { container } = render(<ResearchChart value={data} parameters={{ ...parameters, start_date: data.start_date, as_of_date: data.as_of_date }} reportRequestId={request} />);
+    expect(container.querySelectorAll(".chart-volume")).toHaveLength(60);
+    fireEvent.change(screen.getByLabelText("显示条数"), { target: { value: "366" } });
+    fireEvent.keyDown(plot(), { key: "Home" }); expect(readout()).toHaveTextContent(data.start_date);
+    fireEvent.change(screen.getByLabelText("显示条数"), { target: { value: "30" } });
+    expect(container.querySelectorAll(".chart-volume")).toHaveLength(30);
+    expect(readout()).toHaveTextContent(data.bars[60].date);
+    fireEvent.change(screen.getByLabelText("显示条数"), { target: { value: "366" } });
+    expect(readout()).toHaveTextContent(data.bars[60].date);
+  });
+  it("adapts the SVG coordinates on resize and disconnects its observer", () => {
+    let resize: ResizeObserverCallback = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe() {} disconnect = disconnect;
+    });
+    const { container, unmount } = render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} />);
+    act(() => resize([{ contentRect: { width: 300 } } as ResizeObserverEntry], {} as ResizeObserver));
+    expect(screen.getByRole("img")).toHaveAttribute("viewBox", "0 0 300 529");
+    expect(within(screen.getByRole("img")).getByText("09-21")).toBeInTheDocument();
+    expect(within(screen.getByRole("img")).getByText("09-25")).toBeInTheDocument();
+    expect(within(screen.getByRole("img")).queryByText("09-22")).not.toBeInTheDocument();
+    expect(container.querySelector("[style]")).toBeNull();
+    unmount(); expect(disconnect).toHaveBeenCalledOnce();
   });
 });

@@ -1,5 +1,4 @@
-/** Optional company sources; untrusted source text is always rendered as text nodes. */
-import type { PublicTurn } from "./api";
+/** Research paragraphs and their sources; untrusted source text stays in text nodes. */
 import { parseDecision, ResearchDecision } from "./ResearchDecision";
 import type { DecisionData } from "./ResearchDecision";
 import { parseNarratives, ResearchNarrative } from "./ResearchNarrative";
@@ -149,13 +148,4 @@ export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
       </div>;
     })}
   </div>;
-}
-
-export function CompanySources({ turn }: { turn: PublicTurn }) {
-  const data = parseCompanyAnswer(turn.company_research);
-  if (!data?.evidence.length) return null;
-  const groups = new Set(data.evidence.map(sourceGroupKey));
-  return <details className="disclosure company-sources"><summary>研究依据 <span>{groups.size} 组资料</span></summary>
-    <SourceList data={data} evidence={data.evidence} />
-  </details>;
 }

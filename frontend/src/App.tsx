@@ -2,9 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type
 import { availableLiveProviders, createApi, type LiveProvider } from "./api";
 import { ResearchController, type Entry } from "./controller";
 import { ResearchChart } from "./ResearchChart";
-import { MarketContext } from "./MarketContext";
-import { CompanySources } from "./ProductResearch";
-import { EvidenceTable, ReadableText, ResponseContent } from "./ResponseContent";
+import { ResponseContent } from "./ResponseContent";
 import { parsePresentation, sourceLabel } from "./presentation";
 
 const samples = (development: boolean) => [
@@ -54,15 +52,9 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
             key={candidate.instrument_id} onClick={() => choose(candidate.instrument_id)}>
             {candidate.name} <span>{candidate.instrument_id}</span></button>)}
         </div>}
-        <div className="answer-attachments">
+        {turn.chart != null && <div className="answer-attachments">
           <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} />
-          <EvidenceTable turn={turn} />
-          <CompanySources turn={turn} />
-          {turn.market_context != null && <details className="disclosure"><summary>证券状态与交易日历 <span>查看背景</span></summary>
-            <MarketContext value={turn.market_context} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} /></details>}
-          {(structured || turn.conversation != null) && <details className="disclosure full-report"><summary>完整报告 <span>详细口径与限制</span></summary>
-            <ReadableText text={turn.answer ?? turn.message} /></details>}
-        </div>
+        </div>}
       </>}
       {entry.error && <p className="error-text" role="alert">{entry.error}</p>}
       {!turn && !entry.error && <div className="waiting" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>正在研究你的问题…</div>}

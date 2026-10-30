@@ -37,7 +37,7 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
     {conversation.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
     {conversation.origin === "model" && <small className="response-origin">基于本轮历史日线的模型解读</small>}
   </div>;
-  if (turn.conversation != null) return <ReadableText text="本轮回答未能正常显示，请查看下方研究数据。本次没有重新调用模型。" />;
+  if (turn.conversation != null) return <ReadableText text="本轮回答未能正常显示，请重新发送研究问题。本次没有重新调用模型。" />;
   if (!presentation) return <ReadableText text={turn.answer ?? turn.message} />;
   const isResearch = presentation.kind !== "knowledge";
   return <div className="response-content">
@@ -66,23 +66,4 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
       </section>)}
     </div>
   </div>;
-}
-
-export function EvidenceTable({ turn }: { turn: PublicTurn }) {
-  if (turn.company_research != null) return null;
-  const fields = turn.report?.fields ?? [];
-  if (!fields.length) return null;
-  return <details className="disclosure facts"><summary>指标字段与证据 <span>{fields.length} 个字段</span></summary>
-    <div className="table-scroll"><table>
-      <thead><tr><th>字段 / 交易日</th><th>数值</th><th>可用性</th><th>证据编号</th></tr></thead>
-      <tbody>{fields.map((field) => <tr key={`${field.indicator_id}-${field.field}`}>
-        <td>{field.label}<small>{field.trade_date}</small></td>
-        <td className="number">{field.value === null ? "—" : formatNumber(field.value)}
-          {field.value !== null && <small>{unitLabel[field.unit] ?? field.unit}</small>}</td>
-        <td>{field.status === "available" ? "可用" : unavailableLabel[field.status] ?? "不可用"}
-          {field.missing_bars > 0 && <small>还缺 {field.missing_bars} 条</small>}</td>
-        <td><code>{field.fact_id ?? "无可用证据"}</code></td>
-      </tr>)}</tbody>
-    </table></div>
-  </details>;
 }

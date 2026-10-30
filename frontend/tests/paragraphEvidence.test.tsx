@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CompanySources, parseCompanyAnswer } from "../src/ProductResearch";
+import { parseCompanyAnswer } from "../src/ProductResearch";
 import { ResponseContent } from "../src/ResponseContent";
 import { presentationReply } from "./fixtures";
 
@@ -89,11 +89,11 @@ describe("paragraph-level research evidence", () => {
     const { turn, company } = fixture();
     if (mapping === undefined) delete (company as Partial<typeof company>).paragraph_evidence;
     else { company.origin = "application"; company.status = "fallback"; company.paragraph_evidence = mapping; }
-    render(<><ResponseContent turn={turn} /><CompanySources turn={turn} /></>);
+    render(<ResponseContent turn={turn} />);
     expect(screen.getByText("盈利提供了经营线索，但还需要看现金流。")).toBeVisible();
     expect(screen.queryByText(/^依据 \d/)).not.toBeInTheDocument();
-    expect(screen.getByText("研究依据")).toBeVisible();
-    expect(screen.getByText("另一篇资料标题")).not.toBeVisible();
+    expect(screen.queryByText("研究依据")).not.toBeInTheDocument();
+    expect(screen.queryByText("另一篇资料标题")).not.toBeInTheDocument();
   });
 
   it.each([null, {}, ["income"], [["income"]], [["missing"], ["trend"], []], [["income", "income"], ["trend"], []]])(

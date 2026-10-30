@@ -1,6 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { MarketContext } from "../src/MarketContext";
+import { describe, expect, it } from "vitest";
 import { marketContextNotice, parseMarketContext, queryContextDates, validContextDate, validContextTimestamp,
   type MarketContextData, type MarketContextParameters } from "../src/marketContextData";
 
@@ -197,74 +195,5 @@ describe("calendar coverage and conflict classification", () => {
     expect(marketContextNotice("__proto__")).toMatch(/未识别/);
     expect(marketContextNotice("bar_on_reported_closed_date")).toMatch(/未识别/);
     expect(marketContextNotice("bar_on_reported_closed_date", "conflict")).toMatch(/未删除或修改行情/);
-  });
-});
-
-describe("read-only market context card", () => {
-  it("omits absent context and safely degrades invalid auxiliary data", () => {
-    const { container, rerender } = render(<MarketContext value={null} parameters={parameters} reportRequestId={request} />);
-    expect(container).toBeEmptyDOMElement();
-    rerender(<MarketContext value={{ status: "unavailable" }} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByRole("note")).toHaveTextContent("不影响研究答案、指标证据或行情展示");
-    rerender(<MarketContext value={{ ...fixture(), security: { toString: 0 } }} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByRole("note")).toHaveTextContent("未知状态没有被当作正常状态");
-  });
-  it("shows synthetic provenance, business date, coverage, collection and the non-PIT boundary", () => {
-    render(<MarketContext value={fixture()} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText("人工样例 · 非真实市场事实")).toBeInTheDocument();
-    expect(screen.getByText(/业务分析日：2026-09-25/)).toBeInTheDocument();
-    expect(screen.getByText(/采集时间：2026-10-22T12:30:00/)).toBeInTheDocument();
-    expect(screen.getByText(/业务有效期：2026-01-01 — 2026-12-31/)).toBeInTheDocument();
-    expect(screen.getByText(/这不是 point-in-time 数据/)).toBeInTheDocument();
-    expect(screen.getByText("24 个自然日")).toBeInTheDocument();
-    expect(screen.getByText(/上市自然日数不是交易日数/)).toBeInTheDocument();
-  });
-  it("marks an unverified local snapshot separately from synthetic data", () => {
-    const data = fixture(); data.data_authenticity = "unverified_local_snapshot"; data.security.source = "szse"; data.calendar.source = "curated_local";
-    render(<MarketContext value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText("本地快照 · 内容与来源未独立核实")).toBeInTheDocument();
-    expect(screen.getByText(/来源：深交所（快照标注）/)).toBeInTheDocument();
-  });
-  it("marks history as a saved context rather than a refreshed query", () => {
-    render(<MarketContext value={fixture()} parameters={parameters} reportRequestId={request} historical />);
-    expect(screen.getByText("已保存上下文 · 非新查询")).toBeInTheDocument();
-    expect(screen.getByText(/没有重新查询或刷新证券状态/)).toBeInTheDocument();
-  });
-  it("keeps unknown ST and suspension values explicit instead of normal", () => {
-    const data = fixture(); data.security.status = "limited"; data.security.reason = "partial_state_unknown";
-    data.security.st_status = "unknown"; data.security.suspension_status = "unknown"; markLimited(data);
-    render(<MarketContext value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText("未知，不能视为非 ST")).toBeInTheDocument();
-    expect(screen.getByText("未知，不能视为正常交易")).toBeInTheDocument();
-  });
-  it("shows open/closed/unknown counts and expandable dates without making a request", () => {
-    const fetch = vi.spyOn(globalThis, "fetch");
-    render(<MarketContext value={fixture()} parameters={parameters} reportRequestId={request} />);
-    const calendar = screen.getByRole("region", { name: "交易所日历" });
-    expect(within(calendar).getByText("4 日")).toBeInTheDocument();
-    expect(within(calendar).getByText("1 日")).toBeInTheDocument();
-    const summary = screen.getByText("报告开市日期：4 日 · 展开日期");
-    fireEvent.click(summary); expect(summary.closest("details")).toHaveAttribute("open");
-    expect(within(summary.closest("details")!).getByText("2026-09-21")).toBeInTheDocument();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it("does not label missing open-date bars as suspension or silently alter conflicts", () => {
-    const data = fixture(); data.conflicts = ["bar_on_reported_closed_date"]; markLimited(data);
-    render(<MarketContext value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText(/开市但缺少日线不等于停牌/)).toBeInTheDocument();
-    expect(screen.getByText(/仅提示来源冲突，未删除或修改行情/)).toBeInTheDocument();
-    expect(screen.getByText(/未评估涨跌停、委托资格或完整交易规则/)).toBeInTheDocument();
-  });
-  it("renders unfamiliar code only as a fixed generic reminder, never raw text or HTML", () => {
-    const data = fixture(); data.warnings.push("UNTRUSTED_ASSURED_TRADABLE");
-    const { container } = render(<MarketContext value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText(/快照包含未识别的限制项/)).toBeInTheDocument();
-    expect(container).not.toHaveTextContent("UNTRUSTED_ASSURED_TRADABLE");
-    expect(container.querySelector("[style], img, script")).toBeNull();
-  });
-  it("describes a future listing date without inventing a negative age", () => {
-    const data = fixture(); data.security.listing_date = "2026-09-26"; data.security.listing_age_calendar_days = null;
-    render(<MarketContext value={data} parameters={parameters} reportRequestId={request} />);
-    expect(screen.getByText("尚未到所报上市日")).toBeInTheDocument();
   });
 });

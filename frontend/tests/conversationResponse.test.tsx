@@ -192,7 +192,7 @@ describe("natural-language research response", () => {
     expect(await screen.findByText("目前表现偏强，但还不足以确认持续上涨。")).toBeVisible();
     expect(screen.queryByText("technical detail not the main answer")).not.toBeInTheDocument();
     expect(screen.queryByText("模型引用的指标关系已核对；自然语言含义与未来方向判断并未由程序验证。")).not.toBeInTheDocument();
-    expect(screen.getByText(conversationalReply().result.answer!)).not.toBeVisible();
+    expect(screen.queryByText(conversationalReply().result.answer!)).not.toBeInTheDocument();
     expect(screen.queryByText("本轮详情", { selector: "summary" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数与执行记录")).not.toBeInTheDocument();
     expect(screen.queryByText("主要判断")).not.toBeInTheDocument();

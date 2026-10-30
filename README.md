@@ -8,7 +8,7 @@ Answer validation now tolerates recoverable ordinary numeric annotations and ret
 
 ![Offline demo with synthetic data: candlesticks, SMA3, volume and RSI2](docs/images/demo-research-chart.png)
 
-**Offline demo with synthetic data.** Actual interface capture using a fixed fake model and five artificial daily bars; no live market data or model API calls. Reproduce with `.\start.cmd --demo`, send `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`, then expand **历史 K 线与指标**. First-time setup is below.
+**Offline demo with synthetic data.** This earlier interface capture uses a fixed fake model and five artificial daily bars; no live market data or model API calls. Reproduce with `.\start.cmd --demo` and send `分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2`. The current interface shows **历史 K 线与指标** directly below the answer: move the mouse, drag horizontally by touch, or focus the chart and use the arrow keys to read a candle. The extra evidence table, global source list, security calendar and full-report attachments have been removed; paragraph sources and research decisions remain in the answer. See the [chart design](docs/chart-workspace-design.md). First-time setup is below.
 
 ## Architecture
 

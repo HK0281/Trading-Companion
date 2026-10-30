@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CompanyCoverageNote, CompanySources, parseCompanyAnswer, sourceUrl } from "../src/ProductResearch";
+import { CompanyCoverageNote, parseCompanyAnswer, sourceUrl } from "../src/ProductResearch";
 import { ResponseContent } from "../src/ResponseContent";
 import { presentationReply } from "./fixtures";
 
@@ -9,6 +9,7 @@ function turn() {
   result.company_research = {
     version: "product-research-answer-v1", origin: "model", status: "accepted", daily_cutoff: "2026-09-25",
     paragraphs: ["先看盈利和价格是否相互支持。", "营收增长是经营线索，仍需观察现金流。"],
+    paragraph_evidence: [["company-f1"], []],
     securities: [{ instrument_id: "000001.SZ", name: "平安银行" }],
     evidence: [{ id: "company-f1", instrument_id: "000001.SZ", kind: "financial", label: "营业收入", display: "100亿元",
       source: "eastmoney_financial", date: "2026-08-20", url: "https://data.eastmoney.com/finance/000001.html",
@@ -42,9 +43,9 @@ describe("company research conversations", () => {
   });
 
   it("keeps references collapsed until requested, with report period and safe source link", () => {
-    render(<CompanySources turn={turn()} />);
+    render(<ResponseContent turn={turn()} />);
     expect(screen.getByText("营业收入：100亿元")).not.toBeVisible();
-    fireEvent.click(screen.getByText("研究依据"));
+    fireEvent.click(screen.getByText("依据 1"));
     expect(screen.getByText("营业收入：100亿元")).toBeVisible();
     expect(screen.getByText("报告期：2026-06-30")).toBeVisible();
     expect(screen.getByRole("link", { name: "查看来源" })).toHaveAttribute("rel", "noopener noreferrer");
@@ -60,8 +61,8 @@ describe("company research conversations", () => {
     const company = data.company_research as { evidence: { display: string; url: string }[] };
     company.evidence[0].display = '<img src=x onerror="alert(1)">';
     company.evidence[0].url = "javascript:alert(1)";
-    const { container } = render(<CompanySources turn={data} />);
-    fireEvent.click(screen.getByText("研究依据"));
+    const { container } = render(<ResponseContent turn={data} />);
+    fireEvent.click(screen.getByText("依据 1"));
     expect(screen.getByText(/img src=x/)).toBeVisible();
     expect(container.querySelector("img")).toBeNull();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();

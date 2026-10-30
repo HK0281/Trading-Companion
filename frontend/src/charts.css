@@ -10,6 +10,15 @@
 .chart-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
 .chart-controls label { display: grid; gap: 4px; min-width: 0; max-width: 100%; font-size: 11px; color: #5c7063; }
 .chart-controls select { font: inherit; border: 1px solid #cfdbd1; color: #314a3c; border-radius: 5px; background: #fff; padding: 6px 8px; min-width: 0; max-width: 100%; }
+.chart-period-note { margin: 6px 14px; font-size: 11px; color: #697c70; overflow-wrap: anywhere; }
+.chart-choices { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 10px 0; }
+.chart-intervals { display: flex; flex-shrink: 0; gap: 2px; }
+.chart-intervals button { font: inherit; font-size: 11px; padding: 5px 7px; border: 1px solid #d7e2da; border-radius: 4px; color: #466553; background: white; white-space: nowrap; }
+.chart-intervals button[aria-pressed="true"] { background: #386b55; color: white; }
+.chart-intervals button:disabled { opacity: .45; cursor: not-allowed; }
+.chart-choices .chart-overlays { flex: 1; margin: 0; flex-wrap: nowrap; overflow-x: auto; padding: 5px; gap: 8px; }
+.chart-choices .chart-overlays label { flex-shrink: 0; white-space: nowrap; }
+.chart-time-range { overflow: hidden; text-overflow: ellipsis; }
 .chart-overlays { display: flex; gap: 8px 14px; flex-wrap: wrap; margin: 12px 0; border: 1px solid #e1e7df; border-radius: 5px; padding: 8px 10px; min-width: 0; font-size: 11px; }
 .chart-overlays legend { color: #617568; padding: 0 4px; }
 .chart-overlays label { display: flex; gap: 5px; align-items: center; overflow-wrap: anywhere; }
@@ -54,8 +63,12 @@
 .chart-unavailable { margin: 14px 0; padding: 10px 12px; border: 1px solid #e2dfd2; border-radius: 6px; background: #faf8f1; color: #817558; font-size: 11px; }
 @media (max-width: 560px) {
   .chart-workspace { padding: 9px; }
-  .chart-controls { flex-direction: column; gap: 8px; }
-  .chart-controls label { width: 100%; }
+  .chart-controls { flex-wrap: nowrap; gap: 8px; }
+  .chart-controls label { flex: 1; width: 0; }
+  .chart-controls select { width: 100%; padding: 5px 3px; }
+  .chart-choices { gap: 5px; }
+  .chart-intervals { flex-wrap: wrap; width: 104px; }
+  .chart-intervals button { flex: 1 0 45%; padding: 4px 3px; }
   .chart-heading { padding: 10px; }
   .chart-heading span { flex-basis: 100%; }
   .chart-provenance { padding: 10px; }

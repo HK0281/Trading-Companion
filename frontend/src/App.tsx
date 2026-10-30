@@ -29,7 +29,8 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.chart} /></svg>;
 }
 
-function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement> }) {
+function Answer({ entry, choose, canChoose, elementRef, loadChart }: { entry: Entry; choose: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement>;
+  loadChart: ResearchController["loadChart"] }) {
   const response = entry.response, turn = response?.result;
   const structured = turn && parsePresentation(turn);
   return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
@@ -53,7 +54,8 @@ function Answer({ entry, choose, canChoose, elementRef }: { entry: Entry; choose
             {candidate.name} <span>{candidate.instrument_id}</span></button>)}
         </div>}
         {turn.chart != null && <div className="answer-attachments">
-          <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history} />
+          <ResearchChart value={turn.chart} parameters={turn.parameters} reportRequestId={turn.report?.request_id} historical={entry.history}
+            capabilities={turn.chart_capabilities} loadInterval={(interval, signal) => loadChart(entry.id, interval, signal)} />
         </div>}
       </>}
       {entry.error && <p className="error-text" role="alert">{entry.error}</p>}
@@ -219,7 +221,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             {health?.provider === "fake" && <details className="demo-guide" aria-label="演示说明"><summary>{health.data_mode === "synthetic" ? "离线演示" : "固定模型脚本"} · 查看使用方式</summary>
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
-          </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose}
+          </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} loadChart={controller.loadChart}
             elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && index === state.entries.length - 1} />)}
         </section>
       </div>

@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Path, Response
+from fastapi import Depends, FastAPI, Path, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -45,6 +45,11 @@ class CancelRequest(EmptyRequest):
     request_id: Identifier
 
 
+class ChartQuery(EmptyRequest):
+    research_id: Annotated[str, StringConstraints(strict=True, pattern=r"^[A-Za-z0-9_.-]{1,100}$")]
+    interval: Literal["1w", "60m", "120m"]
+
+
 class PublicTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str
@@ -61,6 +66,7 @@ class PublicTurn(BaseModel):
     report: dict | None
     parameters: dict | None
     chart: dict | None
+    chart_capabilities: dict | None = None
     market_context: dict | None
     candidates: list[dict]
     applied_defaults: list[str]
@@ -213,15 +219,23 @@ def create_app(*, service: ResearchApiService | None = None,
     @app.post("/v1/sessions/{session_id}/messages", response_model=MessageResponse)
     def send_message(session_id: SessionPath, body: MessageRequest, token: token_type):
         # Sync endpoints run in the framework's worker pool, not on the ASGI event loop.
-        return service.message(session_id, token, body.request_id, body.question)
+        value = service.message(session_id, token, body.request_id, body.question)
+        value["result"]["chart_capabilities"] = service.chart_capabilities(value["result"], session_id=session_id, token=token)
+        return value
 
     @app.get("/v1/sessions/{session_id}/result", response_model=MessageResponse)
     def view_result(session_id: SessionPath, token: token_type):
-        return service.history(session_id, token)
+        value = service.history(session_id, token)
+        value["result"]["chart_capabilities"] = service.chart_capabilities(value["result"], session_id=session_id, token=token)
+        return value
 
     @app.post("/v1/sessions/{session_id}/cancel", status_code=202)
     def cancel_request(session_id: SessionPath, body: CancelRequest, token: token_type):
         return service.cancel(session_id, token, body.request_id)
+
+    @app.get("/v1/sessions/{session_id}/chart")
+    def chart(session_id: SessionPath, token: token_type, query: Annotated[ChartQuery, Query()]):
+        return service.chart(session_id, token, query.research_id, query.interval)
 
     @app.post("/v1/sessions/{session_id}/reset")
     def reset_session(session_id: SessionPath, body: EmptyRequest, token: token_type):

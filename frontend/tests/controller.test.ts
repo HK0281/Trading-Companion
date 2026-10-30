@@ -1,13 +1,29 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, ConnectionError, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
-import { credentials, deferred, health, ID, idle, mockApi, reply } from "./fixtures";
+import { credentials, deferred, health, ID, idle, mockApi, reply, chartReply } from "./fixtures";
 
 describe("research controller", () => {
   let api: ReturnType<typeof mockApi>;
   let controller: ResearchController;
   beforeEach(() => { api = mockApi(); let next = 0; controller = new ResearchController(api, () => (++next).toString(16).padStart(32, "0")); });
   const ready = async () => { await controller.load(); await controller.start(); };
+
+  it("binds chart fetching to the report id, preserves research state and rejects late results after reset", async () => {
+    const pending = deferred<unknown>();
+    const chart = vi.fn().mockResolvedValueOnce({ status: "unavailable" }).mockReturnValueOnce(pending.promise);
+    Object.assign(api, { chart });
+    await ready(); api.send.mockResolvedValue(chartReply()); await controller.send("问题");
+    const entry = controller.snapshot().entries[0];
+    const original = controller.snapshot();
+    await controller.loadChart(entry.id, "1w");
+    expect(chart.mock.calls[0][1]).toBe("research-fixture");
+    expect(controller.snapshot()).toBe(original);
+    const late = controller.loadChart(entry.id, "60m");
+    const rejected = expect(late).rejects.toThrow(ConnectionError);
+    await controller.reset(); pending.resolve({ status: "available" }); await rejected;
+    expect(api.send).toHaveBeenCalledOnce();
+  });
 
   it("page initialization checks health only; no session or model call", async () => {
     await controller.load();

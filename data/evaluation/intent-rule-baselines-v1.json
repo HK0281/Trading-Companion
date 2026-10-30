@@ -33,7 +33,7 @@
       "research_objective.py": "62698e1c92f7394fc4851769af76c8ecf4d6f7fa31faf0740f912a4b5c47a05e",
       "agent.py": "46aa5bb4b30bff27793a1e5e810183a16cf705bc88c8a1124de9741b755b85b7",
       "agent_input.py": "6bbfbd2ff133447fa3bfaf9d503edc8d3deaafcc710e45f841414a3e0b36bb26",
-      "api_service.py": "87b56e5fab3fac727ca8d75d017f4b10de687d995ab6ae4b5adf8d346bc76a2d",
+      "api_service.py": "626a16bb8c883321f18831a9bafb4140da72eafc0b2380d55f909d7ca95dff6d",
       "screening_intent.py": "74a519cf4966e7e0ee64d09c90e5f94ed6ff0ed36d55940ca39628279b819745",
       "screening_context.py": "903371f53d74dc6aea2449b16460616231f264c5bfc6ef6e835417c97c00e9ca",
       "screening_agent.py": "86bcc0d6ad7926ba4320b306fef5699e085de5cbd0b75a88144225ae3e618696",
@@ -44,8 +44,8 @@
       "product_scope.py": "64f96b8da509906f49f1af78f72f4c55458ca58649ca60445d2a742e6ee6c966",
       "product_indicator_edit.py": "6b0391942f0baa26b83db55b361f704dd1a03cb642d0e8b1e605eeff7e8e9d8d"
     },
-    "source_digest": "a55e310388a4c711b3e885c3d151ba50844abac1601ccd5cc61f893f613a91b1",
-    "note": "相对日区间与后置指标参数分别归属；近20日RSI使用日期区间和默认RSI14，20日RSI仍为RSI20。历史304题、标注、观察器及旧规则记录不变，旧阈值锁不可复用。 #254仅兼容意图可空字符串的固定空值写法，更新product_plan.py和research_intent.py摘要；分类和路由规则不变，更新前完整记录保留在previous_rules，旧锁仍按源码总摘要拒绝复用。"
+    "source_digest": "637087e5a97539e592c02a1756e2f0bb14baf47649036b60afe78327b1d5a02a",
+    "note": "相对日区间与后置指标参数分别归属；近20日RSI使用日期区间和默认RSI14，20日RSI仍为RSI20。历史304题、标注、观察器及旧规则记录不变，旧阈值锁不可复用。 #254仅兼容意图可空字符串的固定空值写法，更新product_plan.py和research_intent.py摘要；分类和路由规则不变，更新前完整记录保留在previous_rules，旧锁仍按源码总摘要拒绝复用。 #244 B: chart-only HTTP view and session caches; routing rules and historical corpus unchanged."
   },
   "previous_rules": [
     {
@@ -173,6 +173,39 @@
       },
       "source_digest": "4cac210010d0a1e14b000d576faa59884050176782c0788aef6fdbc40dc64ed2",
       "note": "相对日区间与后置指标参数分别归属；近20日RSI使用日期区间和默认RSI14，20日RSI仍为RSI20。历史304题、标注、观察器及旧规则记录不变，旧阈值锁不可复用。"
+    },
+    {
+      "rule_baseline_version": "technical-parameter-grounding-v1",
+      "parent_version": "technical-shared-narrative-v1",
+      "sources_sha256_lf": {
+        "request_routing.py": "a1e41bad9ef747baeb2ea47d6d7951da8f98f819d1bb2458a07f226473c04290",
+        "routing_context.py": "041e9850672dc9450c807ea9c8438fc30f638b2ef964510fb18d2eb4abd022ee",
+        "product_agent.py": "9f2c4aa975950847c440f0c846e737d2747d1270d1f56922910fb670c27c3c91",
+        "product_plan.py": "e049092f6182945b03fa21a3eb93e39fb9f0072a591c9116aba4aa3f61cac6bf",
+        "research_session.py": "448293fb935b2d259d37eb134ded6161c5d1e93c7ae82fb925142693674d203e",
+        "research_memory.py": "03efc329c6757db3db8824a8638388367d9f3031ee49344a8e3cada7121bcb8c",
+        "research_followup.py": "6b4876c9e2f0c1f79c6f74039163608a1ff34a1d7d938e45f96e11e2bd07b93e",
+        "research_decision.py": "9a58364827bd69b5320973c9f233cc0731fa83a16c66290f18c8898679829b0b",
+        "research_intent.py": "9e95b9962a16bcd83f3ccfa235e684f6fb7badf3a2344ae5422675fbc5dc9876",
+        "research_instruments.py": "72c6b970e9782184d71b16989416015c7c6ae77e737c9da26e340ea3562d3efd",
+        "research_edit.py": "9adb43670a05342e5845ec515c70fda93dce495f95a88edab3a1d997089f40e6",
+        "research_update.py": "98a716d36577b058767bb6f600db8723f6bb3de9323badd8b052829b11359a87",
+        "research_objective.py": "62698e1c92f7394fc4851769af76c8ecf4d6f7fa31faf0740f912a4b5c47a05e",
+        "agent.py": "46aa5bb4b30bff27793a1e5e810183a16cf705bc88c8a1124de9741b755b85b7",
+        "agent_input.py": "6bbfbd2ff133447fa3bfaf9d503edc8d3deaafcc710e45f841414a3e0b36bb26",
+        "api_service.py": "87b56e5fab3fac727ca8d75d017f4b10de687d995ab6ae4b5adf8d346bc76a2d",
+        "screening_intent.py": "74a519cf4966e7e0ee64d09c90e5f94ed6ff0ed36d55940ca39628279b819745",
+        "screening_context.py": "903371f53d74dc6aea2449b16460616231f264c5bfc6ef6e835417c97c00e9ca",
+        "screening_agent.py": "86bcc0d6ad7926ba4320b306fef5699e085de5cbd0b75a88144225ae3e618696",
+        "screening_followup.py": "a9dac3722d9ba82bbd65d8f77297c25f5496c3792a7abcfed63f95b4bee7dfe6",
+        "indicator_knowledge.py": "2cb69b802a8356518c8aa760af1e580b4f70784f0233bd07c41a1115804d8dcf",
+        "open_knowledge.py": "3821092b801c27f5b85af913a5f271f1cb64c49715e4e4402e86a76422dadc60",
+        "intent_router_baseline.py": "8d6bab64805335cda9ecd5caadb274cf89f50d987e4b0bd7bdacc671b757aa92",
+        "product_scope.py": "64f96b8da509906f49f1af78f72f4c55458ca58649ca60445d2a742e6ee6c966",
+        "product_indicator_edit.py": "6b0391942f0baa26b83db55b361f704dd1a03cb642d0e8b1e605eeff7e8e9d8d"
+      },
+      "source_digest": "a55e310388a4c711b3e885c3d151ba50844abac1601ccd5cc61f893f613a91b1",
+      "note": "相对日区间与后置指标参数分别归属；近20日RSI使用日期区间和默认RSI14，20日RSI仍为RSI20。历史304题、标注、观察器及旧规则记录不变，旧阈值锁不可复用。 #254仅兼容意图可空字符串的固定空值写法，更新product_plan.py和research_intent.py摘要；分类和路由规则不变，更新前完整记录保留在previous_rules，旧锁仍按源码总摘要拒绝复用。"
     }
   ]
 }

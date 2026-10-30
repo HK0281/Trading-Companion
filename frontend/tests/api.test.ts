@@ -6,6 +6,20 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
   headers: { "Content-Type": "application/json" } });
 
 describe("same-origin HTTP client", () => {
+  it("loads only a research-bound chart using bearer auth and forwards cancellation", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ version: "research-chart-interval-v1", status: "unavailable", code: "chart_timeout" }));
+    const abort = new AbortController();
+    await createApi(fetcher).chart!(credentials, "report-fixture", "60m", abort.signal);
+    const [url, options] = fetcher.mock.calls[0];
+    expect(url).toBe(`/v1/sessions/${credentials.session_id}/chart?research_id=report-fixture&interval=60m`);
+    expect(options?.headers).toEqual({ Authorization: `Bearer ${credentials.access_token}` });
+    expect(options?.body).toBeUndefined(); expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it("bounds chart response bytes and makes no automatic retry", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ version: "research-chart-interval-v1", status: "available", extra: "x".repeat(256 * 1024) }));
+    await expect(createApi(fetcher).chart!(credentials, "report-fixture", "1w")).rejects.toThrow(ConnectionError);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("loads health without cookies or bearer credentials", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(health));
     expect(await createApi(fetcher).health()).toEqual(health);

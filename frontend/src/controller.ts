@@ -56,6 +56,16 @@ export class ResearchController {
   }
 
   snapshot = () => this.state;
+  loadChart = async (entryId: string, interval: "1w" | "60m" | "120m", signal?: AbortSignal): Promise<unknown> => {
+    const credentials = this.credentials, api = this.api;
+    const entry = this.state.entries.find((item) => item.id === entryId);
+    const researchId = entry?.response?.result.report?.request_id;
+    if (!credentials || !researchId || !api.chart || this.state.switching) throw new ConnectionError();
+    const result = await api.chart(credentials, researchId, interval, signal);
+    if (this.credentials !== credentials || this.api !== api || signal?.aborted
+      || !this.state.entries.some((item) => item === entry)) throw new ConnectionError();
+    return result;
+  };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
 
   private update(patch: Partial<WorkspaceState>) {

@@ -79,8 +79,8 @@ def _validate_bars(bars, instrument_id=None):
         previous = bar.trade_date
 
 
-def aggregate_completed_weeks(bars, *, start_date: date, as_of_date: date) -> tuple[DailyBar, ...]:
-    """Aggregate observed rows only; a week is complete after its Sunday boundary."""
+def group_daily_weeks(bars, *, start_date: date, as_of_date: date):
+    """Group observed days by Monday, omitting the truncated first week."""
     if type(start_date) is not date or type(as_of_date) is not date or start_date > as_of_date:
         raise ValueError("Valid date boundaries are required")
     bars = tuple(bars)
@@ -90,11 +90,18 @@ def aggregate_completed_weeks(bars, *, start_date: date, as_of_date: date) -> tu
         if not start_date <= bar.trade_date <= as_of_date:
             continue
         monday = bar.trade_date - timedelta(days=bar.trade_date.weekday())
-        if monday < start_date or monday + timedelta(days=6) > as_of_date:
+        if monday < start_date:
             continue
         groups.setdefault(monday, []).append(bar)
+    return tuple((monday, tuple(rows)) for monday, rows in groups.items())
+
+
+def aggregate_completed_weeks(bars, *, start_date: date, as_of_date: date) -> tuple[DailyBar, ...]:
+    """Aggregate observed rows only; a week is complete after its Sunday boundary."""
     output = []
-    for rows in groups.values():
+    for monday, rows in group_daily_weeks(bars, start_date=start_date, as_of_date=as_of_date):
+        if monday + timedelta(days=6) > as_of_date:
+            continue
         output.append(DailyBar(
             rows[0].instrument_id, rows[-1].trade_date, rows[0].open_price,
             max(row.high_price for row in rows), min(row.low_price for row in rows),

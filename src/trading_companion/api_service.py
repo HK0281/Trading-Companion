@@ -17,6 +17,11 @@ from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn,
 from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
+from trading_companion.chart_intervals import (
+    ChartUnavailable, INTERVALS, VERSION as INTERVAL_VERSION, bind_chart, capabilities,
+    weekly_bars, two_hour_bars, build_interval_chart,
+)
+from trading_companion.chart_hourly import read_tencent_hours, remaining as chart_remaining
 from trading_companion.market_context import build_market_context
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
@@ -101,6 +106,7 @@ class _Record:
     problem: tuple[int, str, str] | None = None
     retired: bool = False
     run_id: str | None = None
+    chart_generation: int = 0
 
 
 @dataclass
@@ -115,6 +121,10 @@ class _Entry:
     active_id: str | None = None
     control: TurnControl | None = field(default=None, repr=False)
     messages_used: int = 0
+    chart_generation: int = 0
+    chart_busy: bool = False
+    chart_cache: dict = field(default_factory=dict, repr=False)
+    chart_base_cache: dict = field(default_factory=dict, repr=False)
 
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
@@ -238,7 +248,8 @@ class ResearchApiService:
                  development_source=None, reference_date=None, limits=None, market_context_loader=None,
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
-                 screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal"):
+                 screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
+                 chart_hourly_loader=None):
         self.limits = ApiLimits() if limits is None else limits
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
@@ -278,12 +289,20 @@ class ResearchApiService:
         self._entries: dict[str, _Entry] = {}
         self._lock = Lock()
         self._active = 0
+        self._chart_active = 0
+        self._chart_hourly_loader = chart_hourly_loader or read_tencent_hours
         self._closed = False
+
+    def _clear_charts(self, entry):
+        entry.chart_generation += 1
+        entry.chart_cache.clear()
+        entry.chart_base_cache.clear()
 
     def _prune(self):
         now = self._clock()
         for key, entry in list(self._entries.items()):
             if self._closed or now < entry.created or now - entry.created >= self.limits.lifetime_seconds:
+                self._clear_charts(entry)
                 if entry.control is not None:
                     entry.control.cancel()
                 else:
@@ -363,7 +382,7 @@ class ResearchApiService:
                 raise ModelConfigurationError("Control factory must create a fresh trusted TurnControl")
             if not history:
                 entry.messages_used += 1
-                entry.records[request_id] = _Record(digest, run_id=trace_run_id())
+                entry.records[request_id] = _Record(digest, run_id=trace_run_id(), chart_generation=entry.chart_generation)
             entry.active_id, entry.control = request_id, control
             self._active += 1
             return entry, control, None
@@ -520,6 +539,7 @@ class ResearchApiService:
             with self._lock:
                 if reset_contexts:
                     entry.market_contexts.clear()
+                    self._clear_charts(entry)
                 if problem is None and staged_context is not None:
                     key, value = staged_context
                     if len(entry.market_contexts) < self.limits.messages or key in entry.market_contexts:
@@ -539,6 +559,97 @@ class ResearchApiService:
         # History lookup never calls the model or consumes a message allowance.
         return self.message(session_id, token, uuid4().hex, "查看上次结果", history=True)
 
+    def _chart_binding(self, entry, research_id):
+        if type(research_id) is not str or not 1 <= len(research_id) <= 100:
+            raise ApiProblem(404, "chart_research_not_found", "本会话没有可用的单股图表快照。")
+        for record in reversed(tuple(entry.records.values())):
+            if record.retired or record.response is None or record.chart_generation != entry.chart_generation:
+                continue
+            turn = record.response.get("result", {})
+            if type(turn.get("report")) is not dict or turn["report"].get("request_id") != research_id:
+                continue
+            try:
+                return record, bind_chart(turn, self.data_mode)
+            except ChartUnavailable:
+                continue
+        raise ApiProblem(404, "chart_research_not_found", "本会话没有可用的单股图表快照。")
+
+    def chart_capabilities(self, turn, *, session_id=None, token=None):
+        """An optional HTTP view; never append display metadata to saved chat responses."""
+        try:
+            binding = bind_chart(turn, self.data_mode)
+            if session_id is not None:
+                with self._lock:
+                    self._chart_binding(self._entry(session_id, token), binding.request.request_id)
+            return capabilities(binding, self.data_mode)
+        except (ChartUnavailable, ApiProblem):
+            return None
+
+    def chart(self, session_id, token, research_id, interval):
+        with self._lock:
+            entry = self._entry(session_id, token)
+            if type(interval) is not str or interval not in INTERVALS:
+                raise ApiProblem(422, "chart_interval_invalid", "请选择支持的图表周期。")
+            record, binding = self._chart_binding(entry, research_id)
+            enabled = capabilities(binding, self.data_mode)["intervals"][interval]
+            if not enabled["enabled"]:
+                return {"version": INTERVAL_VERSION, "status": "unavailable", "code": enabled["code"]}
+            now = self._clock()
+            for cache in (entry.chart_cache, entry.chart_base_cache):
+                for key, item in tuple(cache.items()):
+                    if item[0] <= now:
+                        del cache[key]
+            base_key = (self.data_mode, binding.request)
+            key = (*base_key, interval)
+            if key in entry.chart_cache:
+                return deepcopy(entry.chart_cache[key][1])
+            if entry.chart_busy or self._chart_active >= 2:
+                raise ApiProblem(429, "chart_busy", "图表正在取数，请稍后切换周期。")
+            entry.chart_busy = True
+            self._chart_active += 1
+            generation = entry.chart_generation
+            deadline = now + 8
+            base = entry.chart_base_cache.get(base_key)
+        loaded_base = None
+        try:
+            chart_remaining(deadline, self._clock)
+            if interval == "1w":
+                bars = weekly_bars(binding)
+                retrieved = datetime.fromisoformat(binding.snapshot["retrieved_at"]) if binding.snapshot["retrieved_at"] else self._wall_clock()
+            else:
+                if base is None:
+                    raw = self._chart_hourly_loader(binding.request.instrument_id, deadline=deadline,
+                                                   now=self._wall_clock(), clock=self._clock)
+                    chart_remaining(deadline, self._clock)
+                    bars = tuple(bar for bar in raw if binding.request.start_date <= bar.end.date() <= binding.request.as_of_date)
+                    if not bars:
+                        raise ChartUnavailable("chart_insufficient_history")
+                    retrieved = self._wall_clock()
+                    loaded_base = (bars, retrieved)
+                else:
+                    bars, retrieved = base[1]
+                if interval == "120m":
+                    bars = two_hour_bars(bars)
+            value = build_interval_chart(binding, interval, bars, retrieved)
+            chart_remaining(deadline, self._clock)
+        except ChartUnavailable as error:
+            value = {"version": INTERVAL_VERSION, "status": "unavailable", "code": error.code}
+        except Exception:
+            value = {"version": INTERVAL_VERSION, "status": "unavailable", "code": "chart_data_unavailable"}
+        finally:
+            with self._lock:
+                entry.chart_busy = False
+                self._chart_active -= 1
+        with self._lock:
+            current = self._entry(session_id, token)
+            if (current is not entry or entry.chart_generation != generation or record.retired
+                    or record.response is None):
+                raise ApiProblem(404, "chart_research_not_found", "图表快照已失效，请查看当前会话。")
+            if loaded_base is not None and self._clock() < deadline:
+                entry.chart_base_cache[base_key] = (self._clock() + 60, loaded_base)
+            entry.chart_cache[key] = (self._clock() + (60 if value["status"] == "available" else 10), deepcopy(value))
+            return value
+
     def cancel(self, session_id, token, request_id):
         with self._lock:
             entry = self._entry(session_id, token)
@@ -554,6 +665,7 @@ class ResearchApiService:
                 raise ApiProblem(409, "session_busy", "请先取消并等待当前请求结束，再重置会话。")
             entry.session.clear()
             entry.market_contexts.clear()
+            self._clear_charts(entry)
             for record in entry.records.values():
                 record.response, record.problem, record.retired = None, None, True
             return {"status": "reset", "session": self._view(entry)}
@@ -565,12 +677,14 @@ class ResearchApiService:
                 raise ApiProblem(409, "session_busy", "请先取消并等待当前请求结束，再删除会话。")
             entry.session.clear()
             entry.market_contexts.clear()
+            self._clear_charts(entry)
             del self._entries[session_id]
 
     def close(self):
         with self._lock:
             self._closed = True
             for entry in self._entries.values():
+                self._clear_charts(entry)
                 if entry.control is not None:
                     entry.control.cancel()
                 else:

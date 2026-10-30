@@ -57,6 +57,7 @@ export interface PublicTurn {
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;
+  chart_capabilities?: unknown;
   market_context?: unknown;
   candidates: { name: string; instrument_id: string }[];
   applied_defaults: string[];
@@ -78,6 +79,7 @@ export interface ResearchApi {
   inspect(session: SessionCredentials): Promise<SessionView>;
   send(session: SessionCredentials, id: string, question: string): Promise<MessageResponse>;
   history(session: SessionCredentials): Promise<MessageResponse>;
+  chart?(session: SessionCredentials, researchId: string, interval: "1w" | "60m" | "120m", signal?: AbortSignal): Promise<unknown>;
   cancel(session: SessionCredentials, id: string): Promise<void>;
   reset(session: SessionCredentials): Promise<SessionView>;
   end(session: SessionCredentials): Promise<void>;
@@ -150,7 +152,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
   if (serviceMode !== "normal" && serviceMode !== "development") throw new ConnectionError();
   const prefix = serviceMode === "development" ? "/dev-api" : "";
   async function request<T>(path: string, check: (value: unknown) => value is T,
-    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean } = {}): Promise<T> {
+    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean } = {}): Promise<T> {
     if (options.session) {
       const boundMode = credentialModes.get(options.session);
       // Unmarked legacy callers remain root-only; development credentials must be minted here.
@@ -158,6 +160,9 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
         || serviceMode === "development" && boundMode !== "development") throw new ConnectionError();
     }
     const abort = new AbortController();
+    const cancel = () => abort.abort();
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    if (options.signal?.aborted) abort.abort();
     // Client timeout is not server-side cancellation; never retry automatically.
     const timer = setTimeout(() => abort.abort(), options.long ? 120_000 : 10_000);
     try {
@@ -176,13 +181,29 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
         } catch { /* Untrusted response bodies are never displayed. */ }
         throw new ApiError(response.status, code);
       }
-      const value: unknown = response.status === 204 ? null : await response.json();
+      let value: unknown;
+      if (options.bounded && response.body) {
+        const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+        let size = 0;
+        try {
+          while (true) {
+            const { done, value: chunk } = await reader.read();
+            if (done) break;
+            size += chunk.byteLength;
+            if (size > 256 * 1024) { await reader.cancel(); throw new ConnectionError(); }
+            chunks.push(chunk);
+          }
+        } finally { reader.releaseLock(); }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+        value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      } else value = response.status === 204 ? null : await response.json();
       if (!check(value)) throw new ConnectionError();
       return value;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ConnectionError();
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); options.signal?.removeEventListener("abort", cancel); }
   }
   const path = (session: SessionCredentials) => `/v1/sessions/${session.session_id}`;
   return {
@@ -217,6 +238,12 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
       (value): value is MessageResponse => message(value) && value.request_id === id,
       { method: "POST", session, body: { request_id: id, question }, long: true }),
     history: (session) => request(path(session) + "/result", message, { session }),
+    chart: (session, researchId, interval, signal) => {
+      if (!/^[A-Za-z0-9_.-]{1,100}$/.test(researchId) || !["1w", "60m", "120m"].includes(interval)) throw new ConnectionError();
+      return request(path(session) + `/chart?research_id=${encodeURIComponent(researchId)}&interval=${interval}`,
+        (value): value is Record<string, unknown> => record(value) && value.version === "research-chart-interval-v1"
+          && ["available", "unavailable"].includes(String(value.status)), { session, signal, bounded: true });
+    },
     cancel: async (session, id) => { await request(path(session) + "/cancel",
       (value): value is Record<string, unknown> => record(value) && value.request_id === id
         && value.status === "cancellation_requested", { method: "POST", session, body: { request_id: id } }); },

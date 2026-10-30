@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { chartScale, lineSegments, parseResearchChart, type ChartParameters, type ChartSeries, type ResearchChartData } from "./charts";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { chartScale, lineSegments, parseResearchChart, parseChartCapabilities, parseIntervalChart,
+  type ChartParameters, type ChartSeries, type ResearchChartData, type DisplayChartData, type ChartInterval } from "./charts";
 import "./charts.css";
 
 const unitNames = { "CNY/share": "元/股", shares: "股", index_points: "点", multiple: "倍" };
@@ -31,7 +32,11 @@ function SeriesLine({ values, x, y, className }: { values: readonly (number | nu
     : <circle key={index} cx={Number(points.split(",")[0])} cy={Number(points.split(",")[1])} r="2.4" className="chart-point" />)}</g>;
 }
 
-function ChartWorkspace({ data }: { data: ResearchChartData }) {
+const intervalNames = { "1d": "日线", "1w": "周线", "60m": "1小时", "120m": "2小时" };
+const dateLabel = (date: string, narrow = false) => date.length > 10
+  ? `${date.slice(narrow ? 5 : 0, 10)} ${date.slice(11, 16)}` : narrow ? date.slice(5) : date;
+
+function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; intervalControls: ReactNode }) {
   const id = useId();
   const plot = useRef<HTMLDivElement>(null);
   const activePointer = useRef<number | null>(null);
@@ -55,7 +60,8 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
   const name = (series: ChartSeries) => seriesName(series,
     new Set(data.series.filter((item) => item.kind === series.kind).map((item) => item.indicator_id)).size > 1);
   const inspectedSeries = [...overlay, ...(field ? [field] : [])];
-  const omittedLines = inspectedSeries.length > (width < 560 ? 2 : 3) ? inspectedSeries.length : 0;
+  const shownSeries = [...overlay.slice(0, width < 560 ? 2 : 3), ...(field ? [field] : [])];
+  const omittedLines = inspectedSeries.length - shownSeries.length;
   const visible = pointerVisible || keyboardFocused;
   const fieldValues = field?.values.slice(offset) ?? [];
   const left = 64, right = width - 16;
@@ -122,10 +128,11 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
         <option value="">不显示</option>{independent.map((series) => <option value={series.id} key={series.id}>{name(series)}</option>)}
       </select></label>
     </div>
+    <div className="chart-choices">{intervalControls}
     {!!groups.length && <fieldset className="chart-overlays"><legend>价格叠加 · 元/股</legend>{groups.map((group) => <label key={group.indicator_id}>
       <input type="checkbox" checked={!hidden.includes(group.indicator_id)} onChange={() => toggle(group.indicator_id)} />{instanceName(group)}
-    </label>)}</fieldset>}
-    <div className="chart-plot" ref={plot} tabIndex={0} role="group" aria-label="互动日线图" aria-describedby={`${id}-keys`}
+    </label>)}</fieldset>}</div>
+    <div className="chart-plot" ref={plot} tabIndex={0} role="group" aria-label={`互动${intervalNames[data.version === "research-chart-v1" ? "1d" : data.interval]}图`} aria-describedby={`${id}-keys`}
       onKeyDown={moveKey} onFocus={() => {
         if (activePointer.current === null) { setKeyboardFocused(true); announce(selected); }
       }} onBlur={() => setKeyboardFocused(false)}>
@@ -155,7 +162,7 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
         onLostPointerCapture={(event) => {
           if (activePointer.current === event.pointerId) { activePointer.current = null; setPointerVisible(false); }
         }}>
-        <title id={`${id}-title`}>{data.instrument_id} 历史日 K 线、成交量{field ? "及独立指标" : ""}</title>
+        <title id={`${id}-title`}>{data.instrument_id} 历史{data.version === "research-chart-v1" ? "日" : intervalNames[data.interval]} K 线、成交量{field ? "及独立指标" : ""}</title>
         <desc id={`${id}-desc`}>红涨、绿跌、灰平，以收盘对开盘比较。价格、成交量和副图分轴；缺项断线。十字线选择交易日，浮层显示读数。</desc>
         {[price.max, (price.min + price.max) / 2, price.min].map((value, index) => <g key={index}>
           <line x1={left} x2={right} y1={price.project(value)} y2={price.project(value)} className="chart-grid" />
@@ -191,15 +198,17 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
           <line x1={x(selected - offset)} x2={x(selected - offset)} y1="25" y2={field ? 490 : 333} className="chart-selection chart-selection-x" />
           <line x1={left} x2={right} y1={crossY} y2={crossY} className="chart-selection chart-selection-y" />
         </g>}
-        {dates.map((index) => <text x={x(index)} y={field ? 516 : 356} key={index} textAnchor={index === 0 ? "start" : index === bars.length - 1 ? "end" : "middle"} className="chart-tick">{width < 400 ? bars[index].date.slice(5) : bars[index].date}</text>)}
+        {dates.map((index) => <text x={x(index)} y={field ? 516 : 356} key={index} textAnchor={index === 0 ? "start" : index === bars.length - 1 ? "end" : "middle"} className="chart-tick">{dateLabel(bars[index].date, width < 560)}</text>)}
       </svg>
       {visible && <div className={`chart-tooltip ${x(selected - offset) < width / 2 ? "chart-tooltip-right" : "chart-tooltip-left"}`}
         role="note" aria-label="选定K线读数">
-        <strong>{bar.date}</strong>
+        <strong>{dateLabel(bar.date)}</strong>
+        {"complete" in bar && !bar.complete && <p>本周未完（截至 {data.as_of_date}）</p>}
+        {"start_at" in bar && <p className="chart-time-range" title={`${bar.start_at} — ${bar.end_at}`}>{dateLabel(String(bar.start_at), true)} — {dateLabel(String(bar.end_at), true)}</p>}
         <dl>{[["开", bar.open], ["高", bar.high], ["低", bar.low], ["收", bar.close], ["量", bar.volume]].map(([label, value]) => <div key={label}>
           <dt>{label}</dt><dd>{readoutNumber(Number(value))} {label === "量" ? "股" : "元/股"}</dd>
         </div>)}
-          {!omittedLines && inspectedSeries.map((series) => <div key={series.id}>
+          {shownSeries.map((series) => <div key={series.id}>
             <dt className={`chart-colour-${priceKind(series) ? data.series.indexOf(series) % 6 : 0}`} title={name(series)}>{name(series)}</dt>
             <dd>{valueText(series)}{series.values[selected] === null && <small>{statusNames[series.statuses[selected]]}</small>}</dd>
           </div>)}
@@ -214,20 +223,73 @@ function ChartWorkspace({ data }: { data: ResearchChartData }) {
   </div>;
 }
 
-export function ResearchChart({ value, parameters, reportRequestId, historical = false }: {
+type IntervalLoader = (interval: ChartInterval, signal: AbortSignal) => Promise<unknown>;
+
+function IntervalWorkspace({ daily, historical, capabilityValue, loadInterval }: {
+  daily: ResearchChartData; historical: boolean; capabilityValue: unknown; loadInterval?: IntervalLoader;
+}) {
+  const [loaded, setLoaded] = useState<{ snapshot: ResearchChartData; chart: DisplayChartData } | null>(null);
+  const data = loaded?.snapshot === daily ? loaded.chart : daily;
+  const [interval, setInterval] = useState<ChartInterval | "1d">("1d");
+  const [loading, setLoading] = useState(false), [failed, setFailed] = useState(false);
+  const active = useRef<AbortController | null>(null), revision = useRef(0);
+  const capabilities = parseChartCapabilities(capabilityValue, daily);
+  useEffect(() => {
+    setLoaded(null); setInterval("1d"); setLoading(false); setFailed(false);
+    return () => { revision.current++; active.current?.abort(); };
+  }, [daily]);
+  const select = async (next: ChartInterval | "1d") => {
+    const current = ++revision.current;
+    active.current?.abort(); setFailed(false); setInterval(next);
+    if (next === "1d") { setLoaded(null); setLoading(false); return; }
+    if (!loadInterval || !capabilities?.[next].enabled) return;
+    const abort = new AbortController(); active.current = abort;
+    setLoading(true);
+    try {
+      const response = await loadInterval(next, abort.signal);
+      if (revision.current !== current || abort.signal.aborted) return;
+      const parsed = parseIntervalChart(response, daily, next);
+      if (!parsed) throw new Error("chart_unavailable");
+      setLoaded({ snapshot: daily, chart: parsed });
+    } catch {
+      if (revision.current !== current || abort.signal.aborted) return;
+      setFailed(true); setInterval("1d"); setLoaded(null);
+    } finally { if (revision.current === current) setLoading(false); }
+  };
+  const current = data.version === "research-chart-v1" ? "1d" : data.interval;
+  const saved = historical || daily.context === "saved";
+  const hourly = current === "60m" || current === "120m";
+  const controls = <div className="chart-intervals" role="group" aria-label="K线周期">
+    {(["60m", "120m", "1d", "1w"] as const).map((item) => <button type="button" key={item} aria-pressed={interval === item}
+      aria-label={intervalNames[item]} aria-busy={loading && interval === item}
+      disabled={item !== "1d" && (!loadInterval || !capabilities?.[item].enabled || loading && interval === item)}
+      title={item !== "1d" && !capabilities?.[item].enabled ? item === "1w" ? "本会话暂无周线能力" : "当前来源暂不支持小时线" : undefined}
+      onClick={() => void select(item)}>{intervalNames[item]}{loading && interval === item ? "…" : ""}</button>)}
+  </div>;
+  return <section className="research-chart" aria-label="历史 K 线与指标">
+    <header className="chart-heading"><h4>历史 K 线与指标</h4><span>{data.bars.length} 条{intervalNames[current]} · {saved
+      ? hourly ? "按历史研究窗口取数，非新分析" : "已保存快照，非新分析" : "本轮数据快照"}</span></header>
+    <p className={`chart-provenance ${data.data_authenticity !== "provider_reported" ? "chart-warning" : ""}`}>
+      <strong>{data.data_authenticity === "synthetic" ? "人工样例 · 非真实行情" : data.data_authenticity === "unverified_csv" ? "CSV 输入 · 真实性未核验" : "供应商报告值 · 未独立核验"}</strong>
+      {" · 来源："}{data.source === "csv" ? "CSV" : data.source === "tencent" ? "腾讯" : "AKShare / 东方财富"}
+      {" · 复权："}{data.price_adjustment === "unknown" ? "未知" : "不复权"}{hourly ? " · 分钟数据有延迟、非实时 · 上海时间" : current === "1d" ? " · 历史日线，非实时" : " · 历史周线，非实时"}
+    </p>
+    {data.version !== "research-chart-v1" && <p className="chart-period-note">实际覆盖 {dateLabel(data.coverage.start_at)} — {dateLabel(data.coverage.end_at)}（上海时间）。指标按{intervalNames[current]}条数重算，空值表示历史不足或无可用读数。
+      {current === "1w" && data.bars.some((bar) => !bar.complete) && ` 本周未完（截至快照 ${data.as_of_date}）。`}</p>}
+    {!capabilities?.["60m"].enabled && <p className="chart-period-note">当前来源暂不支持小时线；日线和可用周线仍可查看。</p>}
+    {loading && <p role="status" className="chart-period-note">正在加载{intervalNames[interval]}，仍可切回日线…</p>}
+    {failed && <p role="status" className="chart-period-note">所选周期暂不可用，已显示原日线；可以重新选择周期。</p>}
+    <ChartWorkspace data={data} intervalControls={controls} key={`${data.request_id}:${current}`} />
+  </section>;
+}
+
+export function ResearchChart({ value, parameters, reportRequestId, historical = false, capabilities, loadInterval }: {
   value: unknown; parameters: ChartParameters | null; reportRequestId: string | undefined; historical?: boolean;
+  capabilities?: unknown; loadInterval?: IntervalLoader;
 }) {
   if (value === undefined || value === null) return null;
   const data = parseResearchChart(value, parameters, reportRequestId);
   if (!data) return <p className="chart-unavailable" role="note">图表暂不可用或未通过范围校验；不影响上方已确认的研究答案与证据。</p>;
-  const saved = historical || data.context === "saved";
-  return <section className="research-chart" aria-label="历史 K 线与指标">
-    <header className="chart-heading"><h4>历史 K 线与指标</h4><span>{data.bars.length} 条日线 · {saved ? "已保存快照，非新分析" : "本轮数据快照"}</span></header>
-    <p className={`chart-provenance ${data.data_authenticity !== "provider_reported" ? "chart-warning" : ""}`}>
-      <strong>{data.data_authenticity === "synthetic" ? "人工样例 · 非真实行情" : data.data_authenticity === "unverified_csv" ? "CSV 输入 · 真实性未核验" : "供应商报告值 · 未独立核验"}</strong>
-      {" · 来源："}{data.source === "csv" ? "CSV" : data.source === "tencent" ? "腾讯" : "AKShare / 东方财富"}
-      {" · 复权："}{data.price_adjustment === "unknown" ? "未知" : "不复权"}{" · 历史日线，非实时"}
-    </p>
-    <ChartWorkspace data={data} key={`${data.request_id}:${data.context}`} />
-  </section>;
+  return <IntervalWorkspace daily={data} historical={historical} capabilityValue={capabilities} loadInterval={loadInterval}
+    key={`${data.request_id}:${data.context}`} />;
 }

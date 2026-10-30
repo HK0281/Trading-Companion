@@ -17,6 +17,78 @@ export interface ResearchChartData {
   bars: ChartBar[]; series: ChartSeries[];
 }
 
+export type ChartInterval = "1w" | "60m" | "120m";
+export interface IntervalChartData extends Omit<ResearchChartData, "version" | "code" | "validation_scope" | "bars"> {
+  version: "research-chart-interval-v1"; code: "chart_only_series"; interval: ChartInterval; timezone: "Asia/Shanghai";
+  coverage: { start_at: string; end_at: string; bar_count: number };
+  bars: (ChartBar & { start_at: string; end_at: string; complete: boolean })[];
+}
+export type DisplayChartData = ResearchChartData | IntervalChartData;
+export type ChartCapabilities = Record<ChartInterval, { enabled: boolean; code: string }>;
+
+export function parseChartCapabilities(value: unknown, daily: ResearchChartData): ChartCapabilities | null {
+  if (!object(value) || value.version !== "research-chart-capabilities-v1" || value.research_id !== daily.request_id
+    || !object(value.intervals) || Object.keys(value.intervals).length !== 3) return null;
+  for (const interval of ["1w", "60m", "120m"]) {
+    const item = value.intervals[interval];
+    if (!object(item) || typeof item.enabled !== "boolean" || typeof item.code !== "string"
+      || !["ready", "chart_hourly_source_unsupported", "chart_market_unsupported"].includes(item.code)
+      || item.enabled !== (item.code === "ready") || interval === "1w" && !item.enabled
+      || interval !== "1w" && item.enabled && daily.source !== "tencent") return null;
+  }
+  return value.intervals as ChartCapabilities;
+}
+
+export function parseIntervalChart(value: unknown, daily: ResearchChartData, interval: ChartInterval): IntervalChartData | null {
+  if (!object(value) || value.version !== "research-chart-interval-v1" || value.status !== "available"
+    || value.code !== "chart_only_series" || value.interval !== interval || value.timezone !== "Asia/Shanghai"
+    || !["request_id", "instrument_id", "start_date", "as_of_date", "source", "price_adjustment", "data_authenticity"]
+      .every((key) => value[key] === daily[key as keyof ResearchChartData])
+    || !["current", "saved"].includes(String(value.context)) || !timestamp(value.saved_at)
+    || (value.context === "current" ? value.saved_at !== null : value.saved_at === null)
+    || value.retrieved_at === null || !timestamp(value.retrieved_at)
+    || interval !== "1w" && (value.source !== "tencent" || value.data_authenticity !== "provider_reported")
+    || !Array.isArray(value.bars) || !value.bars.length || value.bars.length > (interval === "1w" ? 53 : 320)
+    || !Array.isArray(value.series) || !value.series.length || value.series.length > 48
+    || !object(value.coverage) || value.coverage.bar_count !== value.bars.length) return null;
+  let previous = "";
+  for (const bar of value.bars) {
+    // Adjacent hourly periods may share a boundary; overlapping periods are invalid.
+    if (!object(bar) || typeof bar.start_at !== "string" || typeof bar.end_at !== "string"
+      || !timestamp(bar.start_at) || !timestamp(bar.end_at)
+      || !bar.start_at.endsWith("+08:00") || !bar.end_at.endsWith("+08:00")
+      || bar.start_at < previous || bar.start_at > bar.end_at || typeof bar.complete !== "boolean"
+      || bar.start_at.slice(0, 10) < daily.start_date || bar.end_at.slice(0, 10) > daily.as_of_date
+      || ![bar.open, bar.high, bar.low, bar.close].every((item) => finite(item) && item > 0)
+      || !finite(bar.volume) || !Number.isSafeInteger(bar.volume) || bar.volume < 0
+      || Number(bar.low) > Math.min(Number(bar.open), Number(bar.close))
+      || Number(bar.high) < Math.max(Number(bar.open), Number(bar.close))) return null;
+    const day = bar.end_at.slice(0, 10);
+    const start = bar.start_at.slice(11, 19), end = bar.end_at.slice(11, 19);
+    if (interval === "1w") {
+      const date = new Date(`${day}T00:00:00Z`), weekday = (date.getUTCDay() + 6) % 7;
+      const monday = new Date(date.valueOf() - weekday * 86400000).toISOString().slice(0, 10);
+      const sunday = new Date(date.valueOf() + (6 - weekday) * 86400000).toISOString().slice(0, 10);
+      if (bar.date !== day || monday < daily.start_date || bar.start_at.slice(0, 10) < monday
+        || bar.complete !== (sunday <= daily.as_of_date) || start !== "09:30:00" || end !== "15:00:00") return null;
+    } else {
+      const starts: Record<string, string> = interval === "60m"
+        ? { "10:30:00": "09:30:00", "11:30:00": "10:30:00", "14:00:00": "13:00:00", "15:00:00": "14:00:00" }
+        : { "11:30:00": "09:30:00", "15:00:00": "13:00:00" };
+      if (bar.date !== bar.end_at || bar.start_at.slice(0, 10) !== day || starts[end] !== start || !bar.complete
+        || [0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay())
+        || Date.parse(bar.end_at) > Date.parse(value.retrieved_at as string)) return null;
+    }
+    previous = bar.end_at;
+  }
+  const bars = value.bars as IntervalChartData["bars"];
+  if (value.coverage.start_at !== bars[0].start_at || value.coverage.end_at !== bars.at(-1)!.end_at) return null;
+  const expected = [...new Map(daily.series.map((s) => [s.indicator_id, { kind: s.kind, ...s.parameters }])).values()];
+  if (!validateSeries(value as unknown as IntervalChartData, { ...daily, indicators: expected })) return null;
+  try { if (new TextEncoder().encode(JSON.stringify(value)).length > 256 * 1024) return null; } catch { return null; }
+  return value as unknown as IntervalChartData;
+}
+
 const object = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e15;
 const identifier = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_.-]{1,100}$/.test(value);
@@ -102,46 +174,7 @@ export function parseResearchChart(value: unknown, parameters: ChartParameters |
       || Number(bar.low) > Math.min(Number(bar.open), Number(bar.close)) || Number(bar.high) < Math.max(Number(bar.open), Number(bar.close))) return null;
     previous = bar.date;
   }
-  const ids = new Set<string>();
-  const instances = new Map<string, string>();
-  const fields = new Map<string, Set<string>>();
-  for (const series of value.series) {
-    if (!object(series) || !specification(series) || ids.has(series.id) || !Array.isArray(series.values) || !Array.isArray(series.statuses)
-      || series.values.length !== value.bars.length || series.statuses.length !== value.bars.length) return null;
-    ids.add(series.id);
-    const spec = `${series.kind}:${JSON.stringify(series.parameters, Object.keys(series.parameters).sort())}:${series.algorithm_version}`;
-    if (instances.has(series.indicator_id) && instances.get(series.indicator_id) !== spec) return null;
-    instances.set(series.indicator_id, spec);
-    if (!fields.has(series.indicator_id)) fields.set(series.indicator_id, new Set());
-    fields.get(series.indicator_id)!.add(series.field);
-    if (instances.size > 12) return null;
-    for (let index = 0; index < series.values.length; index++) {
-      const number = series.values[index]; const state = series.statuses[index];
-      if (!["available", "insufficient_history", "undefined", "calculation_error"].includes(state)
-        || (state === "available" ? !finite(number) : number !== null)) return null;
-      if (number !== null && ((series.kind === "rsi" || series.kind === "adx") && (number < 0 || number > 100)
-        || (series.kind === "atr" || series.kind === "volume") && number < 0
-        || series.kind === "vwma" && number <= 0
-        || series.kind === "obv" && !Number.isSafeInteger(number)
-        || series.field === "volume_shares" && !Number.isInteger(number))) return null;
-      if (["adx", "obv"].includes(series.kind) && state === "undefined") return null;
-    }
-  }
-  for (const series of value.series as ChartSeries[]) {
-    if (fields.get(series.indicator_id)!.size !== Object.keys(definitions[series.kind]).length) return null;
-  }
-  if (new Set(instances.values()).size !== instances.size) return null;
-  if (parameters.indicators !== undefined) {
-    if (!Array.isArray(parameters.indicators) || parameters.indicators.length < 1 || parameters.indicators.length > 12) return null;
-    const expected = new Set<string>();
-    for (const item of parameters.indicators) {
-      if (!object(item) || typeof item.kind !== "string" || !Object.hasOwn(algorithms, item.kind)) return null;
-      const params = Object.fromEntries(Object.entries(item).filter(([name]) => name !== "kind"));
-      expected.add(`${item.kind}:${JSON.stringify(params, Object.keys(params).sort())}:${algorithms[item.kind]}`);
-    }
-    if (expected.size !== parameters.indicators.length || expected.size !== instances.size
-      || [...instances.values()].some((spec) => !expected.has(spec))) return null;
-  }
+  if (!validateSeries(value as unknown as ResearchChartData, parameters)) return null;
   return value as unknown as ResearchChartData;
 }
 
@@ -162,4 +195,48 @@ export function lineSegments(values: readonly (number | null)[], x: (index: numb
   const flush = () => { if (current.length) result.push(current.join(" ")); current = []; };
   values.forEach((value, index) => { if (value === null) flush(); else current.push(`${x(index)},${y(value)}`); });
   flush(); return result;
+}
+
+function validateSeries(value: Pick<ResearchChartData, "bars" | "series">, parameters: ChartParameters): boolean {
+  const ids = new Set<string>();
+  const instances = new Map<string, string>();
+  const fields = new Map<string, Set<string>>();
+  for (const series of value.series) {
+    if (!object(series) || !specification(series) || ids.has(series.id) || !Array.isArray(series.values) || !Array.isArray(series.statuses)
+      || series.values.length !== value.bars.length || series.statuses.length !== value.bars.length) return false;
+    ids.add(series.id);
+    const spec = `${series.kind}:${JSON.stringify(series.parameters, Object.keys(series.parameters).sort())}:${series.algorithm_version}`;
+    if (instances.has(series.indicator_id) && instances.get(series.indicator_id) !== spec) return false;
+    instances.set(series.indicator_id, spec);
+    if (!fields.has(series.indicator_id)) fields.set(series.indicator_id, new Set());
+    fields.get(series.indicator_id)!.add(series.field);
+    if (instances.size > 12) return false;
+    for (let index = 0; index < series.values.length; index++) {
+      const number = series.values[index]; const state = series.statuses[index];
+      if (!["available", "insufficient_history", "undefined", "calculation_error"].includes(state)
+        || (state === "available" ? !finite(number) : number !== null)) return false;
+      if (number !== null && ((series.kind === "rsi" || series.kind === "adx") && (number < 0 || number > 100)
+        || (series.kind === "atr" || series.kind === "volume") && number < 0
+        || series.kind === "vwma" && number <= 0
+        || series.kind === "obv" && !Number.isSafeInteger(number)
+        || series.field === "volume_shares" && !Number.isInteger(number))) return false;
+      if (["adx", "obv"].includes(series.kind) && state === "undefined") return false;
+    }
+  }
+  for (const series of value.series as ChartSeries[]) {
+    if (fields.get(series.indicator_id)!.size !== Object.keys(definitions[series.kind]).length) return false;
+  }
+  if (new Set(instances.values()).size !== instances.size) return false;
+  if (parameters.indicators !== undefined) {
+    if (!Array.isArray(parameters.indicators) || parameters.indicators.length < 1 || parameters.indicators.length > 12) return false;
+    const expected = new Set<string>();
+    for (const item of parameters.indicators) {
+      if (!object(item) || typeof item.kind !== "string" || !Object.hasOwn(algorithms, item.kind)) return false;
+      const params = Object.fromEntries(Object.entries(item).filter(([name]) => name !== "kind"));
+      expected.add(`${item.kind}:${JSON.stringify(params, Object.keys(params).sort())}:${algorithms[item.kind]}`);
+    }
+    if (expected.size !== parameters.indicators.length || expected.size !== instances.size
+      || [...instances.values()].some((spec) => !expected.has(spec))) return false;
+  }
+  return true;
 }

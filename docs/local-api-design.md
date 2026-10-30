@@ -92,6 +92,7 @@ $apiReply.result.answer
 | GET `/v1/sessions/{id}` | 当前状态、已用额度；忙时不读正在修改的研究槽 | 200 |
 | POST `.../{id}/messages` | body仅 `request_id`、`question` | 200 |
 | GET `.../{id}/result` | 显式历史查看；0模型/0分析，不消耗问题额度 | 200 |
+| GET `.../{id}/chart?research_id=...&interval=1w\|60m\|120m` | 当前会话单股研究绑定的独立图表；不消耗模型或研究额度 | 200 |
 | POST `.../{id}/cancel` | body仅 `request_id`，对准当前轮发取消信号 | 202 |
 | POST `.../{id}/reset`，body `{}` | 清研究状态，旧请求编号退役，额度不退 | 200 |
 | DELETE `.../{id}` | 删除空闲会话及其状态 | 204 |

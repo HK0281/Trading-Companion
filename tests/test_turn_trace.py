@@ -23,6 +23,20 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "chart_binding_invalid": "独立图表接口的快照绑定失败，不产生研究轮次。",
+    "chart_busy": "独立图表接口的并发限制，不占模型或研究额度。",
+    "chart_hourly_invalid": "图表专用分钟批次校验失败，不进入研究证据。",
+    "chart_hourly_limit": "图表专用分钟响应超出大小限制，不是研究结果码。",
+    "chart_hourly_pair_missing": "2小时图缺少同日完整配对，不影响原研究。",
+    "chart_hourly_source_unsupported": "来源能力声明中的小时线限制，不执行研究。",
+    "chart_hourly_transport": "图表专用固定来源传输失败，不调用模型。",
+    "chart_insufficient_history": "独立周期图没有研究窗口内的可用柱。",
+    "chart_interval_invalid": "图表周期查询无效，不执行研究轮次。",
+    "chart_market_unsupported": "图表来源能力不覆盖该市场。",
+    "chart_only_series": "独立周期图的成功视图码，不是研究结论。",
+    "chart_research_not_found": "图表请求缺少当前会话有效快照。",
+    "chart_timeout": "图表专用8秒协作截止，不是模型轮次超时。",
+    "ready": "图表来源能力声明的可用状态，不产生研究轮次。",
     "budget_exhausted": "独立技术评估的整轮未运行预算标记，不是产品轮次结果。",
     "scope_actual_indicators": "独立技术评估发现实际计算指标越界，不是产品返回码。",
     "scope_confirmed_indicators": "独立技术评估发现确认指标与预期不符，不是产品返回码。",

@@ -1,9 +1,137 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResearchChart } from "../src/ResearchChart";
-import { chartScale, lineSegments, parseResearchChart, validChartDate, type ChartParameters, type ChartSeries, type ResearchChartData } from "../src/charts";
+import { chartScale, lineSegments, parseResearchChart, parseIntervalChart, validChartDate,
+  type ChartParameters, type ChartSeries, type ResearchChartData, type IntervalChartData, type ChartInterval } from "../src/charts";
 
 afterEach(() => vi.unstubAllGlobals());
+
+function capabilities(hourly = false) {
+  return { version: "research-chart-capabilities-v1", research_id: request, intervals: {
+    "1w": { enabled: true, code: "ready" },
+    "60m": { enabled: hourly, code: hourly ? "ready" : "chart_hourly_source_unsupported" },
+    "120m": { enabled: hourly, code: hourly ? "ready" : "chart_hourly_source_unsupported" },
+  } };
+}
+
+function intervalFixture(daily: ResearchChartData, interval: ChartInterval = "1w"): IntervalChartData {
+  const hourly = interval !== "1w", start = "2026-09-25T09:30:00+08:00";
+  const end = hourly ? `2026-09-25T${interval === "60m" ? "10:30" : "11:30"}:00+08:00` : "2026-09-25T15:00:00+08:00";
+  return { ...daily, version: "research-chart-interval-v1", code: "chart_only_series", interval, timezone: "Asia/Shanghai",
+    retrieved_at: "2026-09-26T02:00:00Z", coverage: { start_at: start, end_at: end, bar_count: 1 },
+    bars: [{ date: hourly ? end : "2026-09-25", start_at: start, end_at: end, complete: hourly,
+      open: 10, high: 14, low: 9, close: 13, volume: 300 }],
+    series: daily.series.map((s) => ({ ...s, values: [null], statuses: ["insufficient_history"] })),
+  };
+}
+
+function continuousHourlyFixture(daily: ResearchChartData): IntervalChartData {
+  const value = intervalFixture(daily, "60m");
+  value.bars = [["09:30", "10:30"], ["10:30", "11:30"], ["13:00", "14:00"], ["14:00", "15:00"]].map(([start, end]) => ({
+    ...value.bars[0], date: `2026-09-25T${end}:00+08:00`,
+    start_at: `2026-09-25T${start}:00+08:00`, end_at: `2026-09-25T${end}:00+08:00`,
+  }));
+  value.series = value.series.map((series) => ({ ...series,
+    values: Array(4).fill(null), statuses: Array(4).fill("insufficient_history"),
+  }));
+  value.coverage = { start_at: value.bars[0].start_at, end_at: value.bars.at(-1)!.end_at, bar_count: 4 };
+  return value;
+}
+
+describe("independent chart intervals", () => {
+  it("accepts adjacent morning and afternoon hourly bars while rejecting duplicates and reverse order", async () => {
+    const daily = { ...fixture(), source: "tencent", price_adjustment: "unadjusted", data_authenticity: "provider_reported" } as ResearchChartData;
+    const value = continuousHourlyFixture(daily);
+    expect(parseIntervalChart(value, daily, "60m")).toEqual(value);
+    const duplicate = structuredClone(value); duplicate.bars[1] = { ...duplicate.bars[0] };
+    expect(parseIntervalChart(duplicate, daily, "60m")).toBeNull();
+    const reversed = structuredClone(value); reversed.bars.reverse();
+    expect(parseIntervalChart(reversed, daily, "60m")).toBeNull();
+    const { container } = render(<ResearchChart value={daily} parameters={{ ...parameters, source: "tencent" }} reportRequestId={request}
+      capabilities={capabilities(true)} loadInterval={vi.fn().mockResolvedValue(value)} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "1小时" })));
+    expect(screen.getByRole("group", { name: "互动1小时图" })).toBeVisible();
+    expect(container.querySelectorAll(".chart-volume")).toHaveLength(4);
+    expect(screen.queryByText(/所选周期暂不可用/)).not.toBeInTheDocument();
+  });
+
+  it("refreshes the authenticity warning and cancels old interval work when the same research snapshot changes", async () => {
+    const daily = fixture();
+    let resolve: (value: unknown) => void = () => {};
+    const load = vi.fn().mockImplementation(() => new Promise((done) => { resolve = done; }));
+    const { rerender } = render(<ResearchChart value={daily} parameters={parameters} reportRequestId={request}
+      capabilities={capabilities()} loadInterval={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "周线" }));
+    const updated = { ...daily, data_authenticity: "unverified_csv" } as ResearchChartData;
+    rerender(<ResearchChart value={updated} parameters={parameters} reportRequestId={request}
+      capabilities={capabilities()} loadInterval={load} />);
+    expect(load.mock.calls[0][1].aborted).toBe(true);
+    expect(screen.getByText("CSV 输入 · 真实性未核验").closest("p")).toHaveClass("chart-warning");
+    expect(screen.queryByText("人工样例 · 非真实行情")).not.toBeInTheDocument();
+    await act(async () => resolve(intervalFixture(daily)));
+    expect(plot()).toBeVisible(); expect(screen.queryByRole("group", { name: "互动周线图" })).not.toBeInTheDocument();
+    expect(screen.getByText("CSV 输入 · 真实性未核验")).toBeVisible();
+  });
+
+  it("defaults to daily without a request and keeps source capability restrictions", async () => {
+    const load = vi.fn().mockResolvedValue(intervalFixture(fixture()));
+    render(<ResearchChart value={fixture()} parameters={parameters} reportRequestId={request} capabilities={capabilities()} loadInterval={load} />);
+    expect(screen.getByRole("button", { name: "日线" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "1小时" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "2小时" })).toBeDisabled();
+    expect(load).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "周线" })));
+    expect(load).toHaveBeenCalledOnce();
+    expect(screen.getByRole("group", { name: "互动周线图" })).toBeVisible();
+    expect(screen.getByText(/本周未完/)).toBeVisible();
+    expect(screen.getByText("人工样例 · 非真实行情")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "日线" }));
+    expect(plot()).toBeVisible(); expect(load).toHaveBeenCalledOnce();
+  });
+
+  it("discards cancelled old responses and falls back on failure without damaging daily", async () => {
+    const daily = { ...fixture(), source: "tencent", price_adjustment: "unadjusted", data_authenticity: "provider_reported" } as ResearchChartData;
+    let resolve: (value: unknown) => void = () => {};
+    const load = vi.fn().mockImplementationOnce(() => new Promise((done) => { resolve = done; }))
+      .mockResolvedValueOnce(intervalFixture(daily, "120m")).mockRejectedValueOnce(new Error("private"));
+    const { unmount } = render(<ResearchChart value={daily} parameters={{ ...parameters, source: "tencent" }} reportRequestId={request}
+      capabilities={capabilities(true)} loadInterval={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "1小时" }));
+    expect(screen.getByRole("button", { name: "1小时" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "1小时" })).toHaveTextContent("1小时…");
+    expect(screen.getByText(/正在加载1小时/)).toBeVisible();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "2小时" })));
+    expect(load.mock.calls[0][1].aborted).toBe(true);
+    expect(screen.getByRole("group", { name: "互动2小时图" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "2小时" })).toHaveAttribute("aria-busy", "false");
+    await act(async () => resolve(intervalFixture(daily, "60m")));
+    expect(screen.getByRole("group", { name: "互动2小时图" })).toBeVisible();
+    expect(screen.getByText(/分钟数据有延迟、非实时/)).toBeVisible();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "周线" })));
+    expect(plot()).toBeVisible(); expect(screen.getByText(/所选周期暂不可用/)).toBeVisible();
+    expect(screen.queryByText("private")).not.toBeInTheDocument();
+    unmount(); expect(load.mock.calls[2][1].aborted).toBe(true);
+  });
+
+  it("rejects cross-research, timestamp, source, window, field and size pollution", () => {
+    const daily = fixture();
+    expect(parseIntervalChart(intervalFixture(daily), daily, "1w")).not.toBeNull();
+    for (const mutate of [
+      (v: IntervalChartData) => { v.request_id = "other"; },
+      (v: IntervalChartData) => { v.source = "tencent"; },
+      (v: IntervalChartData) => { v.bars[0].end_at = "2026-09-25T15:00:00Z"; },
+      (v: IntervalChartData) => { v.bars[0].complete = true; },
+      (v: IntervalChartData) => { v.bars[0].start_at = "2026-09-20T09:30:00+08:00"; },
+      (v: IntervalChartData) => { v.series[0].unit = "shares"; },
+      (v: IntervalChartData) => { v.series[0].parameters.window = 4; },
+      (v: IntervalChartData) => { v.coverage.bar_count = 2; },
+      (v: IntervalChartData) => { (v as unknown as Record<string, unknown>).extra = "x".repeat(256 * 1024); },
+    ]) {
+      const candidate = intervalFixture(structuredClone(daily)); mutate(candidate);
+      expect(parseIntervalChart(candidate, daily, "1w")).toBeNull();
+    }
+  });
+});
 
 const request = "chart-request-1";
 const parameters: ChartParameters = { instrument_id: "000001.SZ", start_date: "2026-09-21", as_of_date: "2026-09-25", source: "csv",
@@ -376,8 +504,9 @@ describe("research chart component", () => {
       expect(screen.getByRole("option", { name: label })).toBeInTheDocument();
     }
     fireEvent.keyDown(plot(), { key: "End" });
-    expect(readout()).toHaveTextContent("另有 5 条线");
-    expect(readout().querySelectorAll("dl > div")).toHaveLength(5);
+    expect(readout()).toHaveTextContent("另有 1 条线");
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(9);
+    expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("BOLL 中轨");
     fireEvent.click(screen.getByRole("checkbox", { name: "BOLL(3,2)" }));
     expect(readout()).not.toHaveTextContent("另有");
     expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("MACD DIF");
@@ -413,15 +542,24 @@ describe("research chart component", () => {
       observe() {} disconnect() {}
     });
     const data = fixture(); data.bars[3].volume = 1e15;
-    data.series.push({ ...data.series[0], indicator_id: "sma(window=4)", id: "sma(window=4):value", parameters: { window: 4 } });
+    for (const window of [4, 5, 6, 7]) data.series.push({ ...data.series[0],
+      indicator_id: `sma(window=${window})`, id: `sma(window=${window}):value`, parameters: { window } });
     render(<ResearchChart value={data} parameters={{ ...parameters, indicators: undefined }} reportRequestId={request} />);
     fireEvent.keyDown(plot(), { key: "End" });
-    expect(readout().querySelectorAll("dl > div")).toHaveLength(8);
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(9);
+    expect(readout()).toHaveTextContent("SMA5"); expect(readout()).toHaveTextContent("另有 2 条线");
     act(() => resize([{ contentRect: { width: 300 } } as ResizeObserverEntry], {} as ResizeObserver));
     expect(readout()).toHaveTextContent("另有 3 条线");
-    expect(readout().querySelectorAll("dl > div")).toHaveLength(5);
+    expect(readout().querySelectorAll("dl > div")).toHaveLength(8);
+    expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("SMA4");
+    expect(readout()).toHaveTextContent("RSI2"); expect(readout()).not.toHaveTextContent("SMA5");
     expect(readout()).toHaveTextContent("1E15 股");
+    act(() => resize([{ contentRect: { width: 960 } } as ResizeObserverEntry], {} as ResizeObserver));
+    expect(readout()).toHaveTextContent("SMA5"); expect(readout()).toHaveTextContent("另有 2 条线");
+    act(() => resize([{ contentRect: { width: 300 } } as ResizeObserverEntry], {} as ResizeObserver));
     fireEvent.change(screen.getByLabelText("独立指标"), { target: { value: "" } });
+    expect(readout()).not.toHaveTextContent("RSI2"); expect(readout()).toHaveTextContent("另有 3 条线");
+    for (const name of ["SMA5", "SMA6", "SMA7"]) fireEvent.click(screen.getByRole("checkbox", { name }));
     expect(readout()).not.toHaveTextContent("另有");
     expect(readout()).toHaveTextContent("SMA3"); expect(readout()).toHaveTextContent("SMA4");
     expect(readout().querySelectorAll("dl > div")).toHaveLength(7);

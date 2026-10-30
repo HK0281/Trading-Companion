@@ -9,7 +9,7 @@ from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.multi_contracts import DEFAULT_INDICATORS, IndicatorSpec, MultiIndicatorRequest, validate_research_conditions
 from trading_companion.technical_selection import select_complementary_indicators
-from trading_companion.research_intent import _dates
+from trading_companion.research_intent import _dates, _normalize_null_strings
 from trading_companion.product_scope import (
     ProductScope, _WEEKLY_INDICATOR, _INDICATOR_CUE, _indicator, _EXPLICIT_TECHNICAL, indicator_text,
     _positive_scope, _broadens_only, _ONLY, is_natural_technical_request,
@@ -215,7 +215,10 @@ def _candidate(response, question, directory=None):
     draft = response.tool_calls[0].arguments
     keys = {"intent", "instrument_mentions", "research_kinds", "date_expression", "outlook_expression",
             "wants_risk", "clarification_reason"}
-    if (draft.keys() != keys or draft["intent"] not in ("research", "clarify", "unsupported")
+    if draft.keys() != keys:
+        raise InputIssue("failed", "invalid_product_intent", "研究计划字段不符合约定，未查询数据。")
+    draft, defaults = _normalize_null_strings(draft)
+    if (draft["intent"] not in ("research", "clarify", "unsupported")
             or type(draft["wants_risk"]) is not bool
             or draft["clarification_reason"] not in (None, "instrument", "date", "request")):
         raise InputIssue("failed", "invalid_product_intent", "研究计划字段不符合约定，未查询数据。")
@@ -237,7 +240,7 @@ def _candidate(response, question, directory=None):
                          "模型提取了问题中没有的名称、代码或日期，请重述研究对象；未使用模型记忆补码。")
     # An optional model hint cannot grant a risk calculation. Derive it from the
     # actual request below instead of asking the user to fix a harmless model flag.
-    return draft
+    return draft, defaults
 
 
 def _mask_mentions(question, mentions):
@@ -447,7 +450,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
                         + ",".join(_required_kinds(question)) + ". Shanghai reference date: " + reference_date.isoformat()),
             ToolMessage("user", question)], tools=(PRODUCT_INTENT_TOOL,))
         base = replace(base, model_response=response)
-        draft = _candidate(response, question, directory)
+        draft, normalization_defaults = _candidate(response, question, directory)
+        base = replace(base, applied_defaults=normalization_defaults)
         if (draft["intent"] == "unsupported" or re.search(r"全市场|组合管理|仓位分配", question)
                 or re.search(r"选股|筛选股票|推荐股票|选出|挑选", question) and len(draft["instrument_mentions"]) < 2):
             return replace(base, status="out_of_scope", code="product_request_out_of_scope",
@@ -483,6 +487,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
             objective = ResearchObjective("decision", objective.horizon or "未来20个交易日")
         date_text = re.sub(vague_period, "", mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
+        defaults = (*normalization_defaults, *defaults)
         if decision and (outlook is None or outlook.horizon is None):
             defaults += ("horizon:20_trading_sessions",)
         if not indicator_phrases and selection.profile != "balanced":
@@ -525,7 +530,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
     except DataValidationError:
         return replace(base, code="product_directory_unusable", message="证券目录过期、时间异常或为非许可夹具，未执行研究。", context=None)
     except (ModelCallError, ModelRequestError, ModelConfigurationError):
-        return replace(base, code="product_model_unavailable", message="没有取得有效的研究理解结果，未自动重试或执行研究。", context=None)
+        return replace(base, code="product_model_unavailable", message="没有取得有效的研究理解结果，未执行研究。", context=None)
     except (InvalidRequestError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
         return replace(base, status="needs_clarification", code="invalid_product_parameters",
                        message="证券范围、日期或研究条件无效，请重述问题；没有静默修改条件。", context=None)

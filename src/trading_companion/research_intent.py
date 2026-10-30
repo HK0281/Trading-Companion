@@ -207,7 +207,19 @@ def _count(text: str) -> int:
     return total + (pending or 0)
 
 
-def _candidate(response: ToolModelResponse, question: str) -> dict:
+def _normalize_null_strings(arguments: dict) -> tuple[dict, tuple[str, ...]]:
+    """Accept only fixed null spellings in nullable string fields, without mutating model output."""
+    normalized = dict(arguments)
+    count = 0
+    for key in ("date_expression", "outlook_expression", "clarification_reason"):
+        value = normalized.get(key)
+        if type(value) is str and value.strip().casefold() in ("", "null", "none", "无"):
+            normalized[key] = None
+            count += 1
+    return normalized, (f"model_null_string_normalized:{count}",) if count else ()
+
+
+def _candidate(response: ToolModelResponse, question: str) -> tuple[dict, tuple[str, ...]]:
     if (response.status != "tool_calls" or len(response.tool_calls) != 1
             or response.tool_calls[0].name != INTENT_TOOL_NAME):
         raise InputIssue("failed", "invalid_intent_response", "模型未返回完整、可校验的请求理解结果；没有查询行情。")
@@ -215,6 +227,7 @@ def _candidate(response: ToolModelResponse, question: str) -> dict:
     required = {"intent", "instrument_mentions", "date_expression", "indicator_mentions", "clarification_reason"}
     if (required - arguments.keys() or arguments.keys() - (required | {"outlook_expression"})):
         raise InputIssue("failed", "invalid_intent_response", "请求理解字段不符合约定；没有查询行情。")
+    arguments, defaults = _normalize_null_strings(arguments)
     if (arguments["intent"] not in ("research", "knowledge", "unsupported", "clarify")
             or arguments["clarification_reason"] not in (None, "instrument", "date", "indicator", "request")):
         raise InputIssue("failed", "invalid_intent_response", "请求理解类别不符合约定；没有查询行情。")
@@ -232,7 +245,7 @@ def _candidate(response: ToolModelResponse, question: str) -> dict:
     if any(phrase not in question for phrase in copied):
         raise InputIssue("needs_clarification", "ungrounded_intent",
                          "模型提取了原问题中不存在的名称或条件；请重述研究问题，没有使用模型记忆补码。")
-    return arguments
+    return arguments, defaults
 
 
 def _local_date_expression(question: str) -> str | None:
@@ -380,7 +393,8 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         result = replace(result, model_calls_attempted=1)
         response = model.complete(messages, tools=(INTENT_TOOL,))
         result = replace(result, model_response=response)
-        draft = _candidate(response, question)
+        draft, normalization_defaults = _candidate(response, question)
+        result = replace(result, applied_defaults=normalization_defaults)
         draft = {**draft, 'indicator_mentions': _ground_indicator_mentions(question, draft['indicator_mentions'])}
         result = replace(result, intent=draft["intent"])
         if _UNSUPPORTED_CAPABILITY.search(question):
@@ -427,7 +441,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
         historical_question = mask_outlook_expressions(date_question)
         start, cutoff, defaults = _dates(historical_expression, historical_question, reference)
         conditions = ResearchConditions(start, cutoff, indicators, source, reference,
-                                        (*defaults, *indicator_defaults), objective)
+                                        (*normalization_defaults, *defaults, *indicator_defaults), objective)
         result = replace(result, conditions=conditions, applied_defaults=conditions.applied_defaults)
         if not mentions:
             result = replace(result, clarification_resumable=True)
@@ -460,7 +474,7 @@ def prepare_research_question(question: str, *, model: ToolCapableModel, directo
     except (ModelCallError, ModelRequestError, ModelConfigurationError) as error:
         return replace(result, status="failed", code="intent_model_unavailable",
                        failure_code=error.code if isinstance(error, ModelCallError) else "model_request_or_configuration_error",
-                       message="本轮未取得有效的请求理解结果，没有查询行情或自动重试。")
+                       message="本轮未取得有效的请求理解结果，没有查询行情。")
     except (InvalidRequestError, ValueError, OverflowError):
         return replace(result, status="needs_clarification", code="invalid_research_parameters",
                        message="日期、指标或所选来源的证券范围不符合限制，请明确条件；不会静默修改。")

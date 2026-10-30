@@ -150,8 +150,10 @@ class ControlUnitTests(OfflineTests):
         control.start()
         delegate = Mock(complete=Mock(side_effect=ModelCallError("timeout", "private")))
         model = ControlledToolModel(delegate, control)
-        with self.assertRaises(ModelCallError):
+        with self.assertRaises(ModelCallError) as failure:
             model.complete([], tools=())
+        self.assertEqual(failure.exception.code, "timeout")
+        self.assertIsNone(control.to_dict()["stop_code"])
         with self.assertRaises(TurnStopped) as caught:
             model.complete([], tools=())
         self.assertEqual(caught.exception.code, "model_call_budget_exhausted")
@@ -209,7 +211,108 @@ class ControlUnitTests(OfflineTests):
         self.assertEqual(request_timeout(15), 15)
 
 
+class ModelRetryTests(OfflineTests):
+    def test_timeout_or_connection_error_retries_once_and_preserves_partial_usage(self):
+        response = ToolModelResponse("complete", "offline", usage=TokenUsage(10, 5, 15))
+        for code in ("timeout", "connection_error"):
+            with self.subTest(code=code):
+                control = self.control()
+                control.start()
+                delegate = Mock(complete=Mock(side_effect=[ModelCallError(code, "private"), response]))
+                model = ControlledToolModel(delegate, control)
+                messages = [ToolMessage("user", "offline")]
+                self.assertIs(model.complete(messages, tools=()), response)
+                self.assertEqual(delegate.complete.call_count, 2)
+                self.assertEqual(delegate.complete.call_args_list[0], delegate.complete.call_args_list[1])
+                runtime = control.to_dict()
+                self.assertEqual((runtime["model_calls_attempted"], runtime["responses_received"]), (2, 1))
+                self.assertEqual(runtime["reported_usage"], {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+                self.assertFalse(runtime["usage_complete_for_attempts"])
+
+    def test_two_transport_failures_keep_the_failure_code_without_a_third_attempt(self):
+        for code in ("timeout", "connection_error"):
+            with self.subTest(code=code):
+                control = self.control()
+                control.start()
+                failure = ModelCallError(code, "private")
+                delegate = Mock(complete=Mock(side_effect=[failure, failure, ToolModelResponse("complete", "unused")]))
+                with self.assertRaises(ModelCallError) as caught:
+                    ControlledToolModel(delegate, control).complete([], tools=())
+                self.assertEqual(caught.exception.code, code)
+                self.assertEqual(delegate.complete.call_count, 2)
+                runtime = control.to_dict()
+                self.assertEqual(runtime["model_calls_attempted"], 2)
+                self.assertEqual(runtime["responses_received"], 0)
+                self.assertTrue(all(value is None for value in runtime["reported_usage"].values()))
+                self.assertFalse(runtime["usage_complete_for_attempts"])
+
+    def test_non_transport_errors_and_unusable_responses_are_not_retried(self):
+        errors = ("invalid_response", "unsupported_response", "unknown_tool", "authentication_error", "rate_limited", "provider_error")
+        for code in errors:
+            with self.subTest(code=code):
+                control = self.control()
+                control.start()
+                delegate = Mock(complete=Mock(side_effect=ModelCallError(code, "private")))
+                with self.assertRaises(ModelCallError):
+                    ControlledToolModel(delegate, control).complete([], tools=())
+                delegate.complete.assert_called_once()
+        for status in ("incomplete", "refused"):
+            with self.subTest(status=status):
+                control = self.control()
+                control.start()
+                response = ToolModelResponse(status, "offline")
+                delegate = Mock(complete=Mock(return_value=response))
+                self.assertIs(ControlledToolModel(delegate, control).complete([], tools=()), response)
+                delegate.complete.assert_called_once()
+
+    def test_deadline_or_cancellation_after_failure_prevents_retry(self):
+        for stop in ("turn_deadline_exceeded", "turn_cancelled"):
+            with self.subTest(stop=stop):
+                control = self.control()
+                control.start()
+                def fail(*args, **kwargs):
+                    if stop == "turn_cancelled":
+                        control.cancel()
+                    else:
+                        self.clock.advance(90)
+                    raise ModelCallError("timeout", "private")
+                delegate = Mock(complete=Mock(side_effect=fail))
+                with self.assertRaises(TurnStopped) as caught:
+                    ControlledToolModel(delegate, control).complete([], tools=())
+                self.assertEqual(caught.exception.code, stop)
+                delegate.complete.assert_called_once()
+                self.assertEqual(control.to_dict()["model_calls_attempted"], 1)
+
+
 class TurnIntegrationTests(OfflineTests):
+    def test_retried_understanding_counts_both_attempts_without_repeating_analysis(self):
+        success = HookModel(usage=TokenUsage(10, 5, 15))
+        attempts = 0
+        def complete(messages, *, tools):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise ModelCallError("timeout", "private")
+            return success.complete(messages, tools=tools)
+        control = self.control(profile="research_workflow", model_calls=4)
+        read = CsvDailyBarSource.read_daily_bars
+        with patch.object(CsvDailyBarSource, "read_daily_bars", autospec=True, side_effect=read) as fetch:
+            result = self.natural(model=Mock(complete=Mock(side_effect=complete)), control=control)
+        self.assertEqual(result.code, "research_completed")
+        self.assertEqual((result.model_calls_attempted, result.analyses_used), (4, 1))
+        self.assertEqual(result.runtime["responses_received"], 3)
+        self.assertEqual(result.runtime["observed_tokens"], 45)
+        self.assertFalse(result.runtime["usage_complete_for_attempts"])
+        fetch.assert_called_once()
+
+    def test_repeated_understanding_timeouts_keep_the_existing_public_failure(self):
+        model = Mock(complete=Mock(side_effect=ModelCallError("timeout", "private")))
+        result = self.natural(model=model, control=self.control())
+        self.assertEqual((result.code, result.failure_code), ("intent_model_unavailable", "timeout"))
+        self.assertEqual((result.model_calls_attempted, result.analyses_used), (2, 0))
+        self.assertNotIn("自动重试", result.message)
+        self.assertEqual(model.complete.call_count, 2)
+
     def test_cancel_before_start_makes_no_model_or_market_calls(self):
         control = self.control()
         control.cancel()
@@ -481,6 +584,30 @@ class TurnIntegrationTests(OfflineTests):
 
 
 class TransportAndTerminalTests(OfflineTests):
+    def test_deepseek_retry_uses_45_seconds_then_remaining_turn_time(self):
+        import requests
+        control = self.control()
+        control.start()
+        self.clock.advance(10)
+        response = Mock(status_code=200)
+        response.json.return_value = {"model": "offline-model", "choices": [{"finish_reason": "stop", "message": {
+            "role": "assistant", "content": "offline"}}]}
+        waits = []
+        def post(*args, **kwargs):
+            waits.append(kwargs["timeout"])
+            if len(waits) == 1:
+                self.clock.advance(45)
+                raise requests.exceptions.Timeout()
+            return response
+        metered = _ConversationModel(DeepSeekToolModel(DeepSeekConfig("offline-model", "dummy-not-real")), 15)
+        with bind_turn(control), patch("requests.post", side_effect=post):
+            result = ControlledToolModel(metered, control).complete([ToolMessage("user", "offline")], tools=())
+        self.assertEqual(result.status, "complete")
+        self.assertEqual(waits, [45, 35])
+        self.assertEqual(metered.forwarded, 2)
+        self.assertEqual(control.to_dict()["model_calls_attempted"], 2)
+        response.close.assert_called_once()
+
     def test_runtime_demo_passes_all_five_cases_in_separate_process(self):
         process = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m", "trading_companion.turn_control_demo"],
                                  capture_output=True, text=True, encoding="utf-8", timeout=10,

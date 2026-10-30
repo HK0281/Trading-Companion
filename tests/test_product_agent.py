@@ -5,6 +5,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from trading_companion.model import ModelCallError
 from trading_companion.product_agent import run_product_research_turn
 from trading_companion.product_plan import PRODUCT_INTENT_TOOL_NAME
 from trading_companion.research_session import ResearchSession
@@ -86,6 +87,32 @@ class ProductAgentTests(unittest.TestCase):
         self.assertEqual(len(self.factory.reads), 1)
         self.assertEqual({item.kind for item in result.product_bundle.evidence}, set(result.product_plan.kinds) | {"risk"})
         self.assertEqual(self.model.calls[1][1], ())
+
+    def test_answer_timeout_retries_with_the_same_evidence_without_fetching_again(self):
+        def timeout_once():
+            if len(model.calls) == 2:
+                raise ModelCallError("timeout", "private")
+        model = ProductModelFixture(on_synthesis=timeout_once)
+        result = self.run_turn(model=model)
+        self.assertEqual(result.code, "company_research_completed")
+        self.assertEqual(result.product_answer.status, "accepted")
+        self.assertEqual(result.model_calls_attempted, 3)
+        self.assertEqual(model.calls[1], model.calls[2])
+        self.assertEqual(len(self.data.calls), 1)
+        self.assertEqual(result.runtime["responses_received"], 2)
+        self.assertFalse(result.runtime["usage_complete_for_attempts"])
+
+    def test_repeated_answer_timeout_retains_facts_and_the_existing_failure_code(self):
+        def timeout():
+            raise ModelCallError("timeout", "private")
+        model = ProductModelFixture(on_synthesis=timeout)
+        result = self.run_turn(model=model)
+        self.assertEqual(result.product_answer.code, "answer_facts_only")
+        self.assertIn("answer_model_unavailable", [reason["code"] for reason in result.product_answer.quality["reasons"]])
+        self.assertEqual((len(model.calls), result.model_calls_attempted), (3, 3))
+        self.assertEqual(len(self.data.calls), 1)
+        self.assertIsNotNone(result.product_bundle)
+        self.assertNotIn("private", result.display_answer)
 
     def test_three_stock_comparison_keeps_identities_and_uses_three_analysis_budget(self):
         model = ProductModelFixture(("平安银行", "浦发银行", "招商银行"))

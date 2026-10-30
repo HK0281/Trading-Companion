@@ -415,15 +415,19 @@ class ModelTraceBoundaryTests(unittest.TestCase):
             self.assertFalse(models["usage_complete_for_attempts"])
 
     def test_timeout_and_invalid_provider_body_are_sends_without_valid_response(self):
+        expected_attempts = []
         for provider, model in self.adapters:
             for effect in (requests.exceptions.Timeout(PRIVATE), Mock(status_code=200, json=Mock(return_value={PRIVATE: PRIVATE}))):
                 with self.subTest(provider=provider, effect=type(effect).__name__):
                     options = {"side_effect": effect} if isinstance(effect, Exception) else {"return_value": effect}
                     with patch("requests.post", **options), self.assertRaises(ModelCallError):
                         self.invoke(provider, model)
-        for record in read_records(self.path):
+                    expected_attempts.append(2 if isinstance(effect, requests.exceptions.Timeout) else 1)
+        records = read_records(self.path)
+        self.assertEqual(len(records), len(expected_attempts))
+        for record, attempts in zip(records, expected_attempts):
             models = record["models"]
-            self.assertEqual((models["attempted"], models["provider_requests_started"], models["responses_received"]), (1, 1, 0))
+            self.assertEqual((models["attempted"], models["provider_requests_started"], models["responses_received"]), (attempts, attempts, 0))
             self.assertIsNone(models["reported_usage"]["total_tokens"])
             self.assertNotIn(PRIVATE, json.dumps(record))
 

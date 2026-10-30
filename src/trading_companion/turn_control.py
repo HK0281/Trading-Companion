@@ -8,7 +8,7 @@ from threading import Lock
 from time import monotonic
 from typing import Callable
 
-from trading_companion.model import ModelConfigurationError, TokenUsage
+from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
 from trading_companion.turn_trace import trace_model_attempt, trace_model_response
 
 
@@ -123,6 +123,12 @@ class TurnControl:
                 raise TurnStopped(self._stop_code)
             self._model_calls += 1
 
+    def can_retry_model(self) -> bool:
+        """Keep the original transport failure when no attempt allowance remains."""
+        with self._lock:
+            self._check()
+            return self._model_calls < self.limits.model_calls
+
     def reserve_analysis(self):
         with self._lock:
             self._check()
@@ -220,13 +226,19 @@ class ControlledToolModel:
         self.delegate, self.control = delegate, control
 
     def complete(self, messages, *, tools):
-        self.control.reserve_model()
-        with trace_model_attempt():
+        for attempt in range(2):
+            self.control.reserve_model()
             try:
-                response = self.delegate.complete(messages, tools=tools)
-            except Exception:
-                self.control.checkpoint()
-                raise
-            trace_model_response(response)
-            self.control.observe_response(response.usage)
-            return response
+                with trace_model_attempt():
+                    try:
+                        response = self.delegate.complete(messages, tools=tools)
+                    except Exception:
+                        self.control.checkpoint()
+                        raise
+                    trace_model_response(response)
+                    self.control.observe_response(response.usage)
+                    return response
+            except ModelCallError as error:
+                if (attempt or error.code not in ("timeout", "connection_error")
+                        or not self.control.can_retry_model()):
+                    raise

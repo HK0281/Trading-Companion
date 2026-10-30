@@ -158,6 +158,41 @@ class DirectoryTests(GuardedTests):
 
 
 class IntentTests(GuardedTests):
+    def test_fixed_null_strings_are_normalized_only_in_nullable_string_fields(self):
+        for field in ("date_expression", "outlook_expression", "clarification_reason"):
+            for value in ("null", " None ", "nUlL", "无", "", " \t\n"):
+                with self.subTest(field=field, value=value):
+                    values = intent_arguments()
+                    values[field] = value
+                    result = self.prepare(values=values)
+                    self.assertEqual(result.status, "ready", result.message)
+                    self.assertIn("model_null_string_normalized:1", result.applied_defaults)
+                    self.assertEqual(result.conditions.applied_defaults, result.applied_defaults)
+
+    def test_null_string_count_does_not_mutate_raw_arguments_or_count_real_nulls(self):
+        values = intent_arguments(expression="null", reason="无")
+        values["outlook_expression"] = "None"
+        original = deepcopy(values)
+        result = self.prepare(values=values)
+        self.assertEqual(result.status, "ready")
+        self.assertIn("model_null_string_normalized:3", result.applied_defaults)
+        self.assertEqual(result.model_response.tool_calls[0].arguments, original)
+        self.assertEqual(values, original)
+        unchanged = self.prepare(values=intent_arguments(expression=None))
+        self.assertFalse(any(item.startswith("model_null_string_normalized") for item in unchanged.applied_defaults))
+
+    def test_null_tolerance_keeps_unrecognized_and_invented_expressions_rejected(self):
+        for field in ("date_expression", "outlook_expression"):
+            for value in ("2025-01-01", "nil", "n/a", "null date"):
+                with self.subTest(field=field, value=value):
+                    values = intent_arguments()
+                    values[field] = value
+                    result = self.prepare(values=values)
+                    self.assertEqual(result.code, "ungrounded_intent")
+                    self.assertIsNone(result.request)
+        result = self.prepare(values=intent_arguments(reason="nil"))
+        self.assertEqual(result.code, "invalid_intent_response")
+
     def test_model_receives_raw_question_before_directory_resolution_and_returns_one_candidate(self):
         fake = FakeToolModel([interpretation()])
         model = Mock()

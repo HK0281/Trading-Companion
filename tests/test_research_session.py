@@ -300,16 +300,18 @@ class SelectionResumeTests(GuardedTests):
         self.assertEqual(model.responses_consumed, 2)
         self.assertIsNone(self.session.pending)
 
-    def test_model_and_source_failures_cannot_automatically_retry_consumed_selection(self):
+    def test_transport_retries_and_source_failures_do_not_restore_consumed_selection(self):
         for stage in ("proposal", "source", "explanation"):
             self.session = ResearchSession()
             self.begin()
             model = Mock()
-            model.complete.side_effect = ([ModelCallError("timeout", SECRET)] if stage == "proposal" else
-                                          [proposal(), ModelCallError("timeout", SECRET)] if stage == "explanation" else
+            failure = ModelCallError("timeout", SECRET)
+            model.complete.side_effect = ([failure, failure] if stage == "proposal" else
+                                          [proposal(), failure, failure] if stage == "explanation" else
                                           [proposal()])
             with patch.object(CsvDailyBarSource, "read_daily_bars", side_effect=DataSourceError(SECRET)) if stage == "source" else nullcontext():
                 result = self.turn("平安银行", model=model)
+            self.assertEqual(model.complete.call_count, {"source": 1, "proposal": 2, "explanation": 3}[stage])
             self.assertIsNone(self.session.pending)
             self.assertNotIn(SECRET, json.dumps(result.to_dict()))
             repeated = self.turn("平安银行")

@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from trading_companion.model import ModelCallError, TokenUsage
 from trading_companion.tool_model import ToolCall, ToolModelResponse
+from trading_companion.turn_control import ControlledToolModel, TurnControl
 from trading_companion.turn_trace import (
     JsonlTraceSink, TraceLimits, TurnTrace, _CODES, _EVENT_CODES, trace_message, trace_model_attempt, trace_model_response,
     trace_outcome, trace_phase, trace_provider_request, trace_run_id,
@@ -480,6 +481,26 @@ class TraceStorageTests(unittest.TestCase):
         self.assertEqual(models["reported_usage"], {"prompt_tokens": 16, "completion_tokens": 4, "total_tokens": 104})
         self.assertEqual(models["responses_with_complete_usage"], 1)
         self.assertFalse(models["usage_complete_for_attempts"])
+
+    def test_retry_records_separate_failed_and_successful_attempts_with_unknown_usage(self):
+        control = TurnControl()
+        control.start()
+        def failed_request(*args, **kwargs):
+            trace_provider_request("deepseek", "offline-model")
+            if delegate.complete.call_count == 1:
+                raise ModelCallError("timeout", PRIVATE)
+            return ToolModelResponse("complete", "offline", usage=TokenUsage(10, 5, 15), provider="deepseek", is_mock=False)
+        delegate = Mock(complete=Mock(side_effect=failed_request))
+        with self.scope():
+            ControlledToolModel(delegate, control).complete([], tools=())
+        record = read_records(self.directory)[0]
+        models = record["models"]
+        self.assertEqual((models["attempted"], models["provider_requests_started"]), (2, 2))
+        self.assertEqual(models["events"][0]["error_code"], "timeout")
+        self.assertTrue(all(value is None for value in models["events"][0]["usage"].values()))
+        self.assertEqual(models["events"][1]["usage"]["total_tokens"], 15)
+        self.assertFalse(models["usage_complete_for_attempts"])
+        self.assertNotIn(PRIVATE, json.dumps(record))
 
     def test_distinct_private_surfaces_are_excluded_by_field_allowlists(self):
         from trading_companion.agent import AgentTurnResult

@@ -24,7 +24,7 @@ TOOL_OUTPUT_TOKENS = 1500
 class DeepSeekConfig:
     model: str
     api_key: str = field(repr=False)
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = 45.0
     max_output_tokens: int = 512
 
     def __post_init__(self) -> None:
@@ -120,7 +120,7 @@ def _post_chat(config: DeepSeekConfig, body: dict[str, object]) -> object:
             response.close()
         return payload
     except requests.exceptions.Timeout:
-        raise ModelCallError("timeout", "Model request timed out; no automatic retry was made") from None
+        raise ModelCallError("timeout", "Model request timed out") from None
     except requests.exceptions.JSONDecodeError:
         raise ModelCallError("invalid_response", "Model provider returned invalid JSON") from None
     except requests.exceptions.RequestException:

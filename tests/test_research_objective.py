@@ -264,10 +264,13 @@ class NaturalObjectiveTests(unittest.TestCase):
     def test_new_field_keeps_verbatim_and_type_validation(self):
         result = self.prepare("分析中际旭创", outlook="下个月", include_outlook=True)
         self.assertEqual(result.code, "ungrounded_intent")
-        for value in (False, 7, [], ""):
+        for value in (False, 7, []):
             with self.subTest(value=value):
                 result = self.prepare("分析中际旭创", outlook=value, include_outlook=True)
                 self.assertEqual(result.code, "invalid_intent_response")
+        result = self.prepare("分析中际旭创", outlook="", include_outlook=True)
+        self.assertEqual(result.code, "research_input_ready")
+        self.assertIn("model_null_string_normalized:1", result.applied_defaults)
         result = self.prepare("分析中际旭创", changes={"future_price": 100})
         self.assertEqual(result.code, "invalid_intent_response")
 

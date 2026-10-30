@@ -42,6 +42,10 @@
 
 模型通过 `interpret_research_question` 返回候选字段：`intent`、`instrument_mentions`、`date_expression`、`indicator_mentions`、`clarification_reason`。
 
+2026-10-30空值兼容：`date_expression`、`outlook_expression` 和 `clarification_reason` 这三个可空字符串字段，去首尾空白并忽略大小写后仅将 `null`、`none`、`无`、空字符串视为 `None`；其他写法不推测。`applied_defaults`（记录程序补全与规范化的字段）增加 `model_null_string_normalized:N`，其中N为本次转换的字段数，真正的空值不计数。原始模型响应保持不变；非空表达仍须来自原文，模型编造的日期继续拒绝。[公司研究计划](company-research-design.md)使用相同规则。
+
+该兼容修复不改变分类或路由规则，保留 `technical-parameter-grounding-v1` 身份；[规则登记](../data/evaluation/intent-rule-baselines-v1.json)仅更新两个理解入口的当前源码摘要，并将更新前的完整记录保留到 `previous_rules`。旧304题、标注及划分不改；旧阈值锁与参考报告仍会因源码总摘要不同而拒绝复用。
+
 - 研究名称及参数表达必须逐字来自用户原文，不接受模型额外补出的名称、代码、URL或置信度字段。
 - “平安”不能被模型直接改成“平安银行”或 `000001.SZ`；这些字符串不在原文中时会被阻断。
 - 模型的意图是候选，不是执行许可；合法JSON和模型自信都不能替代程序校验。

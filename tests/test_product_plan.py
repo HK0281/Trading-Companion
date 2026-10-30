@@ -102,6 +102,40 @@ class ProductPlanTests(unittest.TestCase):
                 self.assertEqual(plan.model_calls_attempted, 0)
                 model.complete.assert_not_called()
 
+    def test_fixed_null_strings_in_nullable_fields_allow_the_d20_question(self):
+        question = "分析中芯国际最近的走势，只看SMA3"
+        for field in ("date_expression", "outlook_expression", "clarification_reason"):
+            for value in ("null", " None ", "nUlL", "无", "", " \t\n"):
+                with self.subTest(field=field, value=value):
+                    values = _arguments(["中芯国际"], ["technical"], **{field: value})
+                    plan, model = self.prepare(question, values)
+                    self.assertEqual(plan.status, "ready", plan.message)
+                    self.assertEqual([item.instrument_id for item in plan.securities], ["688981.SH"])
+                    self.assertEqual(plan.kinds, ("technical",))
+                    self.assertEqual([item.indicator_id for item in plan.indicators], ["sma(window=3)"])
+                    self.assertIn("model_null_string_normalized:1", plan.applied_defaults)
+                    self.assertEqual(model.complete.call_count, 1)
+
+    def test_null_string_count_preserves_the_original_model_response(self):
+        values = _arguments(expression="NULL", outlook="none", clarification_reason="无")
+        plan, _ = self.prepare(values=values)
+        self.assertEqual(plan.status, "ready")
+        self.assertIn("model_null_string_normalized:3", plan.applied_defaults)
+        self.assertEqual(plan.model_response.tool_calls[0].arguments, values)
+        self.assertEqual(values["date_expression"], "NULL")
+        unchanged, _ = self.prepare()
+        self.assertFalse(any(item.startswith("model_null_string_normalized") for item in unchanged.applied_defaults))
+
+    def test_null_tolerance_does_not_accept_invented_dates_or_other_spellings(self):
+        for field in ("date_expression", "outlook_expression"):
+            for value in ("2025-01-01", "nil", "n/a", "null date"):
+                with self.subTest(field=field, value=value):
+                    plan, _ = self.prepare(values=_arguments(**{field: value}))
+                    self.assertEqual(plan.code, "ungrounded_product_intent")
+                    self.assertEqual(plan.securities, ())
+        plan, _ = self.prepare(values=_arguments(clarification_reason="nil"))
+        self.assertEqual(plan.code, "invalid_product_intent")
+
     def test_fixture_directory_cannot_authorize_live_configuration(self):
         plan, model = self.prepare(source="tencent", development=False, responses=[])
         self.assertEqual(plan.code, "product_directory_unusable")

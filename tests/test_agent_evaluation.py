@@ -413,12 +413,13 @@ class LivePathMockTests(GuardedTests):
             self.assertEqual(self.post.call_count, 2)
             self.assertEqual(report["cases"][0]["observed"]["explanation_status"], "not_performed")
 
-    def test_live_timeout_stops_all_cases_without_printing_provider_exception(self):
+    def test_live_timeout_retries_once_then_stops_all_cases_without_printing_provider_exception(self):
         self.post.side_effect = requests.exceptions.Timeout(SECRET)
         code, report = self.live(case="all")
         self.assertEqual((code, report["status"]), (1, "failed"))
         self.assertEqual(report["summary"]["not_run"], 3)
-        self.post.assert_called_once()
+        self.assertEqual(self.post.call_count, 2)
+        self.assertEqual(self.post.call_args_list[0], self.post.call_args_list[1])
         self.assertNotIn(SECRET, json.dumps(report))
 
     def test_live_missing_usage_remains_null_not_zero(self):

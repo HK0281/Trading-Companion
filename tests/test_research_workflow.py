@@ -423,9 +423,12 @@ class ResearchWorkflowIntegrationTests(unittest.TestCase):
         self.assertNotIn("短线偏强", str(result.conversation_answer))
 
     def test_model_error_after_primary_retains_facts_not_private_provider_text(self):
-        result = self.turn(WorkflowScriptModel(("primary", "error")))
+        model = WorkflowScriptModel(("primary", "error", "error"))
+        result = self.turn(model)
         self.assertEqual(result.status, "limited")
         self.assertEqual(result.failure_code, "timeout")
+        self.assertEqual(result.model_calls_attempted, 4)
+        self.source_mock.assert_called_once()
         self.assertIsNotNone(result.research_result)
         self.assertNotIn(PRIVATE, json.dumps(public_turn(result)))
 

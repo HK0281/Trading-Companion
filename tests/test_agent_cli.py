@@ -268,7 +268,8 @@ class ConversationTests(GuardedTests):
             raise ModelCallError("timeout", PRIVATE)
         model.complete.side_effect = complete
         code, output, _ = self.chat([QUESTION, "把SMA3改成5日", "这里RSI为什么高", "/last", "/exit"], model=model)
-        self.assertEqual((code, model.complete.call_count), (0, 4))
+        self.assertEqual((code, model.complete.call_count), (0, 5))
+        self.assertEqual(model.complete.call_args_list[-2], model.complete.call_args_list[-1])
         self.assertIn("no_current_result", output)
         self.assertIn("[completed/saved_result_shown]", output)
         self.assertNotIn(PRIVATE, output)
@@ -337,7 +338,8 @@ class ConversationTests(GuardedTests):
             raise ModelCallError("timeout", PRIVATE)
         model.complete.side_effect = fail_amendment
         code, output, _ = self.chat([QUESTION, "把SMA3改成5日", "把RSI2改成3日", "/exit"], model=model)
-        self.assertEqual((code, model.complete.call_count), (0, 4))
+        self.assertEqual((code, model.complete.call_count), (0, 5))
+        self.assertEqual(model.complete.call_args_list[-2], model.complete.call_args_list[-1])
         failure_display = output.split("[failed/model_unavailable]")[1]
         self.assertNotIn("收盘价：", failure_display)
         self.assertNotIn(PRIVATE, output)
@@ -632,11 +634,12 @@ class ProviderPathTests(GuardedTests):
         self.assertNotIn("收盘价：", output)
         self.assertNotIn("人工样例 / 非真实行情", output)
 
-    def test_http_timeout_is_sanitized_and_not_retried(self):
+    def test_http_timeout_is_sanitized_and_retried_once(self):
         self.post.side_effect = requests.exceptions.Timeout(PRIVATE)
         code, output, _ = self.live_cli([QUESTION, "/exit"])
         self.assertEqual(code, 0)
-        self.post.assert_called_once()
+        self.assertEqual(self.post.call_count, 2)
+        self.assertEqual(self.post.call_args_list[0], self.post.call_args_list[1])
         self.assertNotIn(PRIVATE, output)
         self.assertIn("intent_model_unavailable", output)
 

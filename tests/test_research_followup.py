@@ -428,7 +428,9 @@ class FollowupTests(GuardedTests):
             answer = self.turn("这里RSI为什么高", model=model)
             self.assertEqual(answer.code, "followup_model_unavailable")
             self.assertNotIn(PRIVATE, json.dumps(answer.to_dict()))
-            self.assertEqual((answer.model_calls_attempted, answer.analyses_used), (1, 0))
+            expected = 2 if isinstance(error, ModelCallError) else 1
+            self.assertEqual((answer.model_calls_attempted, answer.analyses_used), (expected, 0))
+            self.assertEqual(model.complete.call_count, expected)
             self.assertEqual(self.turn("查看上次结果").code, "saved_result_shown")
 
     def test_relation_operand_and_claim_corruption_cannot_bypass_revalidation(self):

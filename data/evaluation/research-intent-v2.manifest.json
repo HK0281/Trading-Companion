@@ -1,0 +1,1461 @@
+{
+  "version": "research-intent-evaluation-v2",
+  "author": "codex",
+  "annotation_status": "reviewed",
+  "reviewer": "claude",
+  "reviewed_at": "2026-10-31",
+  "count": 240,
+  "splits": {
+    "dev": 155,
+    "holdout": 85
+  },
+  "corpus_sha256": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+  "split_sha256": "d0fac66db3cdd7726d71fb082e7df9d990ef113a6f5e6a21b05e8637a6c26891",
+  "baseline": {
+    "commit": "bb6bc34cd5ad2b5f8cd0f02ed851c5e8bb369297",
+    "rule_baseline_version": "index-scenario-ui-v1",
+    "source_digest": "9a38e39bb66e9d3648dea4a688a566b85c189a5f5543386ac26162e2f66c6fb3"
+  },
+  "reviews": {
+    "V2001": {
+      "status": "approved",
+      "row_sha256": "84af02c3a446dd4ec3f67ae493c242cb8d668b6bd46ec9e52d4915705a502d4d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2002": {
+      "status": "approved",
+      "row_sha256": "98b02864a40a18fa57914e974a76d7053ffeb902e897d91095ae8e41cb8b4f83",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2003": {
+      "status": "approved",
+      "row_sha256": "32f1785ec1ad436a3f475655460550ec46cd4ba80bb1ab2c76932fb019e9b2ce",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2004": {
+      "status": "approved",
+      "row_sha256": "19376ffc01e3166647fedeb0e423aadfafca6aff78c857c907cde9832a81c353",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2005": {
+      "status": "approved",
+      "row_sha256": "58b4ccca44a731c4cf6d0cefc71e2c72f40da0e55f858680ccab47146f598084",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2006": {
+      "status": "approved",
+      "row_sha256": "9ed9c5e39055ce8cd5b685e958c5a11104147222913eee3cbbb0addee30cce2b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2007": {
+      "status": "approved",
+      "row_sha256": "f95b7bfe5a9cad7cc1c3452eaa53d9e6aaee886dba649a5863a28e6f965d2e5c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2008": {
+      "status": "approved",
+      "row_sha256": "c473c9029bc0288adf0f43930e497f96025ea1e370c70ca59e6f0e235f426311",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2009": {
+      "status": "approved",
+      "row_sha256": "1f9d8f7b1a670a36244e8df03153b9e1b8d39586c6963eb8e71460e61a248dad",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2010": {
+      "status": "approved",
+      "row_sha256": "9088f1d9d758f9ac7113f3c07d4bb8d6cfc3edb776db5125fcc66f9ac4b9c4c2",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2011": {
+      "status": "approved",
+      "row_sha256": "81e60406c1ecd188173274508d0c62da8a789bb3169a06a31a597b323059fc66",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2012": {
+      "status": "approved",
+      "row_sha256": "ee1a6df2a153774b488336e748e10a65267424fd830b1610fc4c733684cb723f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2013": {
+      "status": "approved",
+      "row_sha256": "aedc69064c024c7e690cc753dbb6dd4613fab2d065023f0538deb0c2f2d0e697",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2014": {
+      "status": "approved",
+      "row_sha256": "0f5f3d6d743a3021ecaa06f882d92040275a928fbd75c8750c4b40a9b38f7468",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2015": {
+      "status": "approved",
+      "row_sha256": "798e3f09e794c7d36e65b2513f9de88f6b56e037d3f73007b5d01b4f890de055",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2016": {
+      "status": "approved",
+      "row_sha256": "87ee20dce53cf06df4952b003133e1ba6925e8599faffa5a6bb4150b44a15ec4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2017": {
+      "status": "approved",
+      "row_sha256": "1ccc49a2f3a8fe0596ef7042402e7be07d61675fe1b3ac76d2454cb0dc43120f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2018": {
+      "status": "approved",
+      "row_sha256": "e84af43d9f9ca8193324bf44193523c22b08c689b48d12ada949c2f38f021783",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2019": {
+      "status": "approved",
+      "row_sha256": "fd6ef55c708f9e4698674b03f53e9035ad7332510d8e590bc3fca14ed1fc40b5",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2020": {
+      "status": "approved",
+      "row_sha256": "9542f71a54d1b2a746af854ee3a1c9e791f405d5e315ef5b1e377bbec0e7c792",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2021": {
+      "status": "approved",
+      "row_sha256": "7cb4696a1bbc51894c2049f523f8610ac907b253ff4ef4573a7bf8dcd2022191",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2022": {
+      "status": "approved",
+      "row_sha256": "a1fb6b818f73d1498f0856791292fb13c3745aa4876c3603e070efdf42be6a85",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2023": {
+      "status": "approved",
+      "row_sha256": "d7cb305fe842fcd913fcc2867d92bbd45831fa6327be215b8c68e62507faec92",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2024": {
+      "status": "approved",
+      "row_sha256": "0ee193ff421315a4e08cead6c311b83985d9cd8b201a9a67f9360010fcb04932",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2025": {
+      "status": "approved",
+      "row_sha256": "e10271bb6d341a9748efd45ac49cad2c2fa7a5de6f4fc5a169481b2bbbfa7cf4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2026": {
+      "status": "approved",
+      "row_sha256": "775d63275ad72b5eabc59dbb5521008d0f3574a9b87bc5d55a70ea5be38c4111",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2027": {
+      "status": "approved",
+      "row_sha256": "64af81a69fa6ae652ee1ebda3b33686e725db8e5ee5b3a7ecaa535ad21dcb749",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2028": {
+      "status": "approved",
+      "row_sha256": "89f67af9358b01344a41fb3b74a7633aed7d3c29ca7e2a134a4ab5eb34cb94e6",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2029": {
+      "status": "approved",
+      "row_sha256": "4b6c70f18558410c596c99219a694d8b7bbabae61615b76e70cd5c5d6451b16b",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2030": {
+      "status": "approved",
+      "row_sha256": "838d0b6d1f43e3a5045d95f05bb2b2e993cb658a983ad2126f133fd7c8df1ec6",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2031": {
+      "status": "approved",
+      "row_sha256": "858aab1d3ec2f0d59fd6b371c63574b8e4e4977e5c2a65dd147b37e38f305adb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2032": {
+      "status": "approved",
+      "row_sha256": "c7298e8f879f22224aa6e2ae2baa0583abd9d0ec95f92dff021147fc50daa6db",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2033": {
+      "status": "approved",
+      "row_sha256": "1b62c98cfa4bcef459577ad1664ba1d7585d73436ba5753f01715d8ed04dcaf2",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2034": {
+      "status": "approved",
+      "row_sha256": "2b5af47f6a7f59a8ecc58a430da1aa0895d426dcb2aa7d2bd6f17ac0c720280c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2035": {
+      "status": "approved",
+      "row_sha256": "f1df7afc05510001b23d2ab9122f16f4c86e765604c2c40c39ee929a28d7248f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2036": {
+      "status": "approved",
+      "row_sha256": "a4b2002a8b591f5ae5c48dc6de9a3a6ba96fe2f0d6c693a6b66e66b91cd7ea18",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2037": {
+      "status": "approved",
+      "row_sha256": "a930807d9672e7b5dbdabea76dac90642a809d7a481975f90ab609665c6bdbdb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2038": {
+      "status": "approved",
+      "row_sha256": "9d45c4bfee6f0a71d685a0878877fb4c279a0189d2b02038bf9ae5fb2b407fe3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2039": {
+      "status": "approved",
+      "row_sha256": "b3930f6205db866496ba0291c5201f914ade8a9743bfbfafbe2a2cab914b307d",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2040": {
+      "status": "approved",
+      "row_sha256": "c59be4614fdcd58ecc46aedc02776382d6423d321227eff1bdce4f94ded35d8d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2041": {
+      "status": "approved",
+      "row_sha256": "6c4e6ec269d20492b85b4cf55daa4774446d9b93fba347eab0efcce886797bb0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2042": {
+      "status": "approved",
+      "row_sha256": "2456682c1de1cb08df91ebc780cc941ce744e94b3084ca7325d8d9f12ee68919",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2043": {
+      "status": "approved",
+      "row_sha256": "a56a4934692f85c4abef44f94963a1c4baeb1627944e42fd00bccc7ebb04caf7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2044": {
+      "status": "approved",
+      "row_sha256": "d239dc4c8a6ad8fa76452b6237d6ea0c26e81aafd97aa190ad05a019309c4ce1",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2045": {
+      "status": "approved",
+      "row_sha256": "9a92f6fe9663f01b99ec332aee8b440c28758159d29164fcff1cdbc130565f7f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2046": {
+      "status": "approved",
+      "row_sha256": "ae82914f691941fd3d3b75dd7e5b82d9fcd3a6e33ee80541f5c9d3d08abe6f05",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2047": {
+      "status": "approved",
+      "row_sha256": "c4b0267b4bb75216c208eab38f8022859958d01b459d20eeba567557606deeea",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2048": {
+      "status": "approved",
+      "row_sha256": "a81acf75e17884c8611eaff68d6aea5c183a9be74e299215fa1f7a02131db429",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2049": {
+      "status": "approved",
+      "row_sha256": "7c239de7587b56d7fd57ca81536c626362c73f378c0aed70fc2aa98004a6aa10",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2050": {
+      "status": "approved",
+      "row_sha256": "df9fc59b86a8b9a3156e0c29b2dd9255a3f71abfccbe40d84ace695e9aa5c36e",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2051": {
+      "status": "approved",
+      "row_sha256": "248059715a4a3712489bbc37b16e501ea648ae102f6f376b9a395c4811fd8431",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2052": {
+      "status": "approved",
+      "row_sha256": "6404e8d7886fb6d4911e75e071894bc92e187683dec3bd2c292662f3005c1622",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2053": {
+      "status": "approved",
+      "row_sha256": "dbde500fa243998f3460aadb5fe6d29130959528add555c2e5559e5a68ba2e3d",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2054": {
+      "status": "approved",
+      "row_sha256": "806f0ff0875f07341155ff83af102f26bee01720c5225d779457ac85d0cc21c3",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2055": {
+      "status": "approved",
+      "row_sha256": "daac12188328849f16bdc8e742648f16db32f6928a669ec19c8688fccbe655c1",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2056": {
+      "status": "approved",
+      "row_sha256": "2b6414cffa07d1871d830374d63965c266b88073c53de6a7a23491a2cf13954b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2057": {
+      "status": "approved",
+      "row_sha256": "3c22b1080a1743b3c1f60db582f57c25a8ed7f32dd3fc297152dea813341ada0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2058": {
+      "status": "approved",
+      "row_sha256": "d22779fb4759a2e1d1802236ef3c4daaf6acaa551d0027ab8bcdeabe600d5f85",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2059": {
+      "status": "approved",
+      "row_sha256": "104a66975bce9f2de59cfdcfbc82c4f8c82bd9faec1a15e868517b97b823af5b",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2060": {
+      "status": "approved",
+      "row_sha256": "52a18af4939fc08ae1e19f485fc208c0677b16962e1f289d2fca93a098b5d7f3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2061": {
+      "status": "approved",
+      "row_sha256": "324611137d934053df1bf15cf97331491aaf93a4b7a199b74fdfbcbf026f5e9d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2062": {
+      "status": "approved",
+      "row_sha256": "fe960f3ef36f12991619725d4c3e1e382b34179af5a1ce09d8233ce257876ee5",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2063": {
+      "status": "approved",
+      "row_sha256": "ebbc857ed7fcb3841a29b0451628bcfb32b23a9dc71d0194a6a1fd411fb5bdbb",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2064": {
+      "status": "approved",
+      "row_sha256": "d66481c2ea324a46c4c661293aef85196580056f5696369015052269037e1840",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2065": {
+      "status": "approved",
+      "row_sha256": "da79c921a95ab003c5ce498e587598671ab18143252e1e406a7768ef1627ee19",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2066": {
+      "status": "approved",
+      "row_sha256": "25e7a026c675dbfab77743cc2d71f643924cd46cb138d9f5d564c80cccb98fd3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2067": {
+      "status": "approved",
+      "row_sha256": "0898f14ac2cced86c6a1342fd649b9a55a39f228585cb7541e29ed2973693a95",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2068": {
+      "status": "approved",
+      "row_sha256": "f168eee983c67da2dc2cd26917f5a6f7ba66aa88becf85a65a424ccb8da65df5",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2069": {
+      "status": "approved",
+      "row_sha256": "8969261340a408708202a7facac1fe3cf0e2575cf199dce6132b9470aeda0a02",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2070": {
+      "status": "approved",
+      "row_sha256": "d8b6595ec9a5da37277640e31f0393fbc27f940319d6ba560eba61194c569241",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2071": {
+      "status": "approved",
+      "row_sha256": "e8bdd23ec42afb4769f9be50d98fa7a2341ee3cd1b38df696c49c2a4c6d8236e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2072": {
+      "status": "approved",
+      "row_sha256": "bf94e78e362b28ee1329ad3eb25fb09f443f82b0cb38c8fdff739a24bc5679cc",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2073": {
+      "status": "approved",
+      "row_sha256": "2d051aa4cc05ffa3ebbe45f7161854d7fa5f1fd763887f278308ef37f71c2d50",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2074": {
+      "status": "approved",
+      "row_sha256": "99ed1ecbecf177aa3000c80000720e752f340498b9f589c105b885b366733ec7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2075": {
+      "status": "approved",
+      "row_sha256": "8e9270fde2eec72270d9f21ef63417d16d6f8de340fabc55c2069f8b506ab0d8",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2076": {
+      "status": "approved",
+      "row_sha256": "a888eee3da634401e80e5a8d6d8f677cd55bac1a0a9b69478e1f08269d60dd39",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2077": {
+      "status": "approved",
+      "row_sha256": "51000983470fa1822164f2b443555354c9edf9a5fb432f828fdb200a3adb3ba4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2078": {
+      "status": "approved",
+      "row_sha256": "ba6e4f4b6598365b4f2c82c1a8feea293b6fdb55f19269d206cd651eee797ee5",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2079": {
+      "status": "approved",
+      "row_sha256": "7b991051c70e23096b6a10846a3f358a9be6cfa5e0508162e1115e91dfbf6210",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2080": {
+      "status": "approved",
+      "row_sha256": "1c19c5ebd76a5a1c0c4a7fab8c36b61d20dca1bc684f32828f28f9b1b1e536ba",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2081": {
+      "status": "approved",
+      "row_sha256": "5ede1e6ca43cfa36be187e7d23bb9de2cc5d6cdf762a78129b1b9d894f7d3aa7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2082": {
+      "status": "approved",
+      "row_sha256": "0e87452419bc193e64e8024eeab69cba9886622319fd292175055fa2f78f55a8",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2083": {
+      "status": "approved",
+      "row_sha256": "c0be794710940abe420db634513d7af97420335eadcc6c60ce80e0d588f4633d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2084": {
+      "status": "approved",
+      "row_sha256": "810135f4c977757e335cafc21e57a105fa8a7cbf40b287f59672c965932ea58c",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2085": {
+      "status": "approved",
+      "row_sha256": "e53d6fc9dc5e2a716d6bd92637e90a645bbe78b7fd0a16e30a58d562a0728982",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2086": {
+      "status": "approved",
+      "row_sha256": "c43b46d4f37d5a4d6543050d9cb16e90300434f2d3e06ef56a7bf0b71d6008cc",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2087": {
+      "status": "approved",
+      "row_sha256": "2cf8b40af3ce52faef7d978914cac8ac9c45ca259e09901bdded2205998784b9",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2088": {
+      "status": "approved",
+      "row_sha256": "cae8e821aa841e8b121973bcedf4fee8b369fc7516e40ea839e9cea2706af878",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2089": {
+      "status": "approved",
+      "row_sha256": "96ce5c897cbbdab171162941c0bb147f9899f9b9f02957ff1bfbcaae4eaf0d83",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2090": {
+      "status": "approved",
+      "row_sha256": "f7ddf91ffb2ca539825010810e13cccbd14562979a208a32e2de9e9fba7db7ef",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2091": {
+      "status": "approved",
+      "row_sha256": "e720db2782f931b88e0897a71532d3e51660cc76d7b1b6a9ffc62056d24db4bb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2092": {
+      "status": "approved",
+      "row_sha256": "3df1a7d554dea980a2faa41dd79032c6cbb104b98272bd182fa922b7de3c7a68",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2093": {
+      "status": "approved",
+      "row_sha256": "05bde468379e0c8ef26f62cf992d232a0c041e71b6a5ad6a4bb8d334ffb7f10b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2094": {
+      "status": "approved",
+      "row_sha256": "a213ea67218ddc90f5a6eb5392cf09cdb48cf27dc8230b9fa1c34319c37e2488",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2095": {
+      "status": "approved",
+      "row_sha256": "6fca7285e820df61b2ac5143df3faa7cf4490783d6176beaec340cabe8c9fc35",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2096": {
+      "status": "approved",
+      "row_sha256": "4d8610725346345e3187d9728ecf5b57b8157655d16f5fcb6e8bf506c50f79cd",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2097": {
+      "status": "approved",
+      "row_sha256": "e696c66ce8ef65d7ba53a9af7281ef4e7989d9b0d85a793b1c40e4f296b01c09",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2098": {
+      "status": "approved",
+      "row_sha256": "2ff2031d64a40a07c764f1b5731c238019998c84afb080d46ba26d1b78efbbc2",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2099": {
+      "status": "approved",
+      "row_sha256": "9a35abc3cd57be368d822ca65afedb94825727fec61e1b80e5ad90225e848915",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2100": {
+      "status": "approved",
+      "row_sha256": "c695dcd7bb73952e353a7be6063655af03c97deef0f4ed361aecc0c84ac1977c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2101": {
+      "status": "approved",
+      "row_sha256": "9305df15fdc638b64655b91900380e858754f8535757fcb5d4ada2bf6cc5d4a7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2102": {
+      "status": "approved",
+      "row_sha256": "b38a3331af8e04d7a7d57bec29a4020ce82334e43223fef594084347e1ab5f59",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2103": {
+      "status": "approved",
+      "row_sha256": "01ae677dd4c90e53db2895e1bacb270804b4082a01f7ddba880777204e339e7b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2104": {
+      "status": "approved",
+      "row_sha256": "a2e62fe51b940a387956d1b84953be448e587b2b1674057b213ca56cb5390dc2",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2105": {
+      "status": "approved",
+      "row_sha256": "6a249832c37f52e4639da0d6814bccc259a2e7d984d79dacb7bc1a782e1bbc4f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2106": {
+      "status": "approved",
+      "row_sha256": "e005e95f8f5737f56608d7fb85d71a2e3f8a2e6a050ed7ea42ada6d0b0e34180",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2107": {
+      "status": "approved",
+      "row_sha256": "61c86802e892f481296ccd7b4613a5d66c4ecf0ed9ac3bad3d4317e4e48a0c95",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2108": {
+      "status": "approved",
+      "row_sha256": "0bd2db377b87f6725bf987cdb4ce046e7276c2ffbc54208cb977a66993356d3a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2109": {
+      "status": "approved",
+      "row_sha256": "ff293fb42de7e105804509e679627b63d47c47bf2e922853f5e677829368f3f4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2110": {
+      "status": "approved",
+      "row_sha256": "97291478d2738fc3f3750056b7740306c0c26e1b9a76eff9cac67e7e175ef72f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2111": {
+      "status": "approved",
+      "row_sha256": "7be4780b276b7eb01e5b5b72c1b24cc52f0806e27977cd266ce6f17eef09ed93",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2112": {
+      "status": "approved",
+      "row_sha256": "416fe7f6c98ca17d9e6a9c13515ce09aebe408c49f69c2ee3f4312c4cc4731c9",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2113": {
+      "status": "approved",
+      "row_sha256": "1f2951fc33e488e4b5924911634f9becf5153f16720d16dc4ae6534bec0a64bf",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2114": {
+      "status": "approved",
+      "row_sha256": "eae5d2cd4a41d7ff705fa1e6346f029dc347d9a07b4ee37dc8ce06322a04cecc",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2115": {
+      "status": "approved",
+      "row_sha256": "7400f363efb4b0d8cb49f97a86dc4cdc78f10edd0a3182d8890830da5ff4e1b8",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2116": {
+      "status": "approved",
+      "row_sha256": "7baafcce5c0d30ccdc2846df37b7ce27c283fd5ace11a27ae5aff8d13cdbf2cd",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2117": {
+      "status": "approved",
+      "row_sha256": "9f85ad4bf421fbac5904b89d70c8b9789126a17ddda947401c43d9d9c3ffd8b9",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2118": {
+      "status": "approved",
+      "row_sha256": "02f700cee46688c03444ac5c7958b4530487415ce5dc682f7e603d41cdabb150",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2119": {
+      "status": "approved",
+      "row_sha256": "a84224018cbc755c0ae1bbfacc2755d6e996b62986ceb929521f995d630995b0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2120": {
+      "status": "approved",
+      "row_sha256": "243dc5c5bf0f939983e34d1f7e69acab7ca8addfde95a3c4e1669acb19b9e15a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2121": {
+      "status": "approved",
+      "row_sha256": "af50b659c051723755d0713193e1095a26bcdee90f228f043688edd1a1ed0fdc",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2122": {
+      "status": "approved",
+      "row_sha256": "6165653ffcb4e046123b313b8174e49aeae0e796ffbd66c64f19005048017d18",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2123": {
+      "status": "approved",
+      "row_sha256": "cfe953e30527a70b072ad149231f5c038872f0add36319498cc565e0c164d7b2",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2124": {
+      "status": "approved",
+      "row_sha256": "7818b5d00af46e1e1642cc1ffde11c041f462262f92618ba20fd05bab6ded21f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2125": {
+      "status": "approved",
+      "row_sha256": "84a14b018747d6708ad385b69242e1342810f9a62ff21266052617b20827c493",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2126": {
+      "status": "approved",
+      "row_sha256": "7a5ad231981e02ddbc20f3a52d35f4f4072354b691f2745127dbb6817965f2fa",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2127": {
+      "status": "approved",
+      "row_sha256": "fece115e60941e4c83d3dac7ec06d14de4ce055c14d446b569be5bec1e3f77a0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2128": {
+      "status": "approved",
+      "row_sha256": "bc07044208186bcafd263b2e9fc776fcca5990cd07d7531a85e209b0aad957b4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2129": {
+      "status": "approved",
+      "row_sha256": "1139862ecc91a6bd799fd6ffbaf81d2e8cf23e9b7031f6b333973e57c27e255a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2130": {
+      "status": "approved",
+      "row_sha256": "4af20d999bb5b27b78ec491fde99b5d474f1ef915b57cf79eee15ae4b090928a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2131": {
+      "status": "approved",
+      "row_sha256": "15ff8fe194293ea424e77525ef532f9a3e02b36c1b9bad12d082976e0d31ddf9",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2132": {
+      "status": "approved",
+      "row_sha256": "2ed15158295d218f9b488b5edc16d26ec1319461ce35d0c7ddea020f67644c20",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2133": {
+      "status": "approved",
+      "row_sha256": "21bf01ab61c7a8370893b238ce602b08733321d2bfcad0c172b1e6cedadaa538",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2134": {
+      "status": "approved",
+      "row_sha256": "e61734df36e588efd50568d23a696db3a3cc597f5064b0d244c32fa5ad36bb7f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2135": {
+      "status": "approved",
+      "row_sha256": "d13d4b7fa90754e49a8113490723398a4fe873e48563f067b965dbc3bbc52e47",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2136": {
+      "status": "approved",
+      "row_sha256": "2b2c20bb62d2b7f1d879334edcf1067527591cdf5b7b38cb19daf1098e96fbf6",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2137": {
+      "status": "approved",
+      "row_sha256": "6ee77b5be9a8e9b2fb111e49d9c6f3575e6fdceebf0974512765a249daebadc3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2138": {
+      "status": "approved",
+      "row_sha256": "1a37d97d44e3ff38ff86081ff279ad2aa120ddf99fde9f33a177944c0acf717b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2139": {
+      "status": "approved",
+      "row_sha256": "89043c37d490751e49723c21524226965ff815bd82ebfb45d030897597002513",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2140": {
+      "status": "approved",
+      "row_sha256": "154f2e787543bf83e7c14618b974415fbd8dd38fe4807fa647005b1a49e0c7eb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2141": {
+      "status": "approved",
+      "row_sha256": "a85779c25bc905ac16caa9075065b6714de642b1daf306d7df83457622fb9509",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2142": {
+      "status": "approved",
+      "row_sha256": "5608b2cbdbebfe0dbffa90b854178e33f94d4607f6532865a2b31adc0861b020",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2143": {
+      "status": "approved",
+      "row_sha256": "026f0ab4d943c5d6754b35bd2f07910ea2d881bfdf9888fe340b19df084a8f87",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2144": {
+      "status": "approved",
+      "row_sha256": "b7a73e66d829e4d51b4dfc7c9c128eef2f33c0fa8dcd81785b1b99736cf230ed",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2145": {
+      "status": "approved",
+      "row_sha256": "0a5a5eb07d300341a6151c65d5c47c244b638212c5eeff3efb2dea1661c5556c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2146": {
+      "status": "approved",
+      "row_sha256": "0b1558ac7b686f4a9fcf64d94070d8151ce8bee51f178bba400b5bd9836e793a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2147": {
+      "status": "approved",
+      "row_sha256": "3845259f2c32ecb0cc88531897c637412e9efa606763536d6d144019070ed18e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2148": {
+      "status": "approved",
+      "row_sha256": "de61a5149d11f0888c8f2ef54d43b4e2cccff99155f92e0edbfdb7b336f1b1eb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2149": {
+      "status": "approved",
+      "row_sha256": "077bd592c96305204ac7b153b8108a5d2aaccfb3d7dc6e2b49118c35bd437878",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2150": {
+      "status": "approved",
+      "row_sha256": "8514bb6e61fefeada549e10361e190d10bd3066833d3cb415d1a7c5e1dfe2d86",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2151": {
+      "status": "approved",
+      "row_sha256": "8c354ae1d7ecf49054f01f496f8875465973af4deeb21e4b656cafc480a44665",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2152": {
+      "status": "approved",
+      "row_sha256": "9d4fe0a49e81ed2bc74015b70ea6d43ac170d74ad204d2e62490fd10f5495aa0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2153": {
+      "status": "approved",
+      "row_sha256": "d58e40c2c20189d0fbb9bf595afa0b7e7096574556caf05f0a87a6e61468de2f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2154": {
+      "status": "approved",
+      "row_sha256": "6985767eda7b40e672cfa799646550be321daa7258204eeba2d5bf5a7bc42124",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2155": {
+      "status": "approved",
+      "row_sha256": "61335f2faaf435ba93f35573eeb5cbf5bcfca575bf272696f6f5372bfb733e74",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2156": {
+      "status": "approved",
+      "row_sha256": "6cb3ac5684a5cb012ae01336b843896ebe24bb2075b15db52a04a978dcd2525d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2157": {
+      "status": "approved",
+      "row_sha256": "c9aa887aca37b160ec9bdbacfa1e4424a550514b5008d86c5e3e1fc1d7e90d1b",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2158": {
+      "status": "approved",
+      "row_sha256": "86891169d8f1c73e7705c9bfc178ccc2cdaa3c1e83c78e05ac558c9e43f8fa38",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2159": {
+      "status": "approved",
+      "row_sha256": "9374767474311feb7772cfd7f016f1ea3de6ae7e6c9339c6200cf50152618ecd",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2160": {
+      "status": "approved",
+      "row_sha256": "7e539a29fa203f088cd2a5d59f8b2fc75b487a3f912f71dd66289c259904d23d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2161": {
+      "status": "approved",
+      "row_sha256": "5cc84b8621e6656a74e602501ac0c57544995a39bef064d7dd33504d6100f56f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2162": {
+      "status": "approved",
+      "row_sha256": "357184e14e1548f88ba982468535af4a0d72a7277ba7153af3b76522956ac046",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2163": {
+      "status": "approved",
+      "row_sha256": "d7c18fba9427f66959a619a17fd7fce41f4cc316a6c48f004cd054898e24603e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2164": {
+      "status": "approved",
+      "row_sha256": "577a0eabc267eb3bb7495fa5ab1ee3fbed95b89349381a0a53f357902ef41382",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2165": {
+      "status": "approved",
+      "row_sha256": "7997c65b2a5111e17868500331718a6b93175583962d41823ff6fbca244f9e2a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2166": {
+      "status": "approved",
+      "row_sha256": "a03f081130bff782cabde0106e64e570e44467935ecf4f3d3224017df69d5e8e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2167": {
+      "status": "approved",
+      "row_sha256": "a00e126f40d5a51e4f3588d2d3cecca05175a894a95b604585c2c79f4762babb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2168": {
+      "status": "approved",
+      "row_sha256": "c8a4b43d4720ce62bcbad796cf89a9a807c8ad224569efec3aab2d6b67132e36",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2169": {
+      "status": "approved",
+      "row_sha256": "199066d652fcbd1a373ed3eeecde45dc2ea225ff3864d2d6d1d964e4d5655615",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2170": {
+      "status": "approved",
+      "row_sha256": "2edc07237bd846baa31dc528e2693deb388959f322f9bc41a707d13f4735f0fa",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2171": {
+      "status": "approved",
+      "row_sha256": "d5e66e89b1212f9e54a2088e8e0693c11ea6536f0f59c56e07e815add1ae98ae",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2172": {
+      "status": "approved",
+      "row_sha256": "193c5b033c9209cd825d13afe5a8cba54a45671104b0886640f92e96b8e25023",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2173": {
+      "status": "approved",
+      "row_sha256": "d8af378fbe5221dd0251e261451c5bf039881783898e4a1844147485cad72db1",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2174": {
+      "status": "approved",
+      "row_sha256": "526003156aeac0f3fa9ce25f48cb2f1da7cf1b294b555980597184df07dd0dc0",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2175": {
+      "status": "approved",
+      "row_sha256": "b9f28fa983f0408e385ddfe6f83de3d9f94905370b6e9da4a97da97e77e6d475",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2176": {
+      "status": "approved",
+      "row_sha256": "bc6e6e3cab5f12e3ad84fdb37045fc257aae4bb365ae24af998d0c2280861c3c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2177": {
+      "status": "approved",
+      "row_sha256": "fe4c21c509c49fbc336bfa5fd87f9f41b40ff54e5948d5a73bca03148778441c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2178": {
+      "status": "approved",
+      "row_sha256": "28d9c623ff3b431894660979ac3a5a79bf9c2c3c82531abd3dd98c308a8d55d3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2179": {
+      "status": "approved",
+      "row_sha256": "2a38061855d5acb07c531a2a67741554da086e9c68a01d00ed701e5297e8d280",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2180": {
+      "status": "approved",
+      "row_sha256": "6be7faf0bc44cd25230333aa2bacc3fd949ef4b3fe0e0689db1c8c2330453f21",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2181": {
+      "status": "approved",
+      "row_sha256": "61c91bd05d3752a39c0b405a8930d6bdd36b912b28a1ebd51dcf72cbc5b5346e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2182": {
+      "status": "approved",
+      "row_sha256": "5554cf01b336a4683f32c64f888f3abeb355692cf6f6a32a8187d8daab10bf7e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2183": {
+      "status": "approved",
+      "row_sha256": "56f14ee876a05b38884174acf3663c0f42cc9bee00e2cc7c3745b74ffac78bbe",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2184": {
+      "status": "approved",
+      "row_sha256": "1e064518ce86b21a9c79e496e37886cad8ec5aa648bcfbe7cc32e02f4e156076",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2185": {
+      "status": "approved",
+      "row_sha256": "b4c856ec598c220630cc0878a630db3b98fba6626f27e6561793c6053a4f1e63",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2186": {
+      "status": "approved",
+      "row_sha256": "e1463a5dab5a892cf2f16ceb90f2bf7dbac870814c2ff110882aeb456731357e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2187": {
+      "status": "approved",
+      "row_sha256": "63bfecb08f7d7e8b7828174e12342ae94ab4ad2f2c21add0316ab94bde672442",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2188": {
+      "status": "approved",
+      "row_sha256": "51e6778805227c208b9e375fae37db349f0fc7c202ccee128766a74bda008238",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2189": {
+      "status": "approved",
+      "row_sha256": "cd472ec701e34af15247aa36f7eb4c04ce2468ff09d368385f3231aa09ea9109",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2190": {
+      "status": "approved",
+      "row_sha256": "ecccabde48b940b3765d874b9b196ea19810110d05e57e1d24f8b76a0f93ea5e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2191": {
+      "status": "approved",
+      "row_sha256": "27ed7bc56813e663462128bb9e241b2b07d02640cb1d455214be4593fe5b72ed",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2192": {
+      "status": "approved",
+      "row_sha256": "f3fc86a580e25105100002b03886f13dcf730a884b32618144b15e09d41ecf5c",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2193": {
+      "status": "approved",
+      "row_sha256": "94aec8b6c067b63fb7efaa6e92bf460ce3d8c9a4d2fe4fbfc6d4493279f071bf",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2194": {
+      "status": "approved",
+      "row_sha256": "e76b16f8013cf70ad43dbb1a78e8295e81551a424425595cffc056fa9ddbab83",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2195": {
+      "status": "approved",
+      "row_sha256": "6a43429cefc5d8d5507294b0c4c988cd95bb09fdeb45a7648e7967cadc6d409a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2196": {
+      "status": "approved",
+      "row_sha256": "7e249778059c685ca56275e72bcfbe7f9a8a070f93e97f63bc591079c4a8bf9a",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2197": {
+      "status": "approved",
+      "row_sha256": "3779d591441c17149ce99323ffcc95d3c65a5d50a282c2bab213a659e64bfd5f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2198": {
+      "status": "approved",
+      "row_sha256": "c13b1a344aa89cd89c35f5fe8b328000f2341c9120db5c3e7ee20b7b47e9e2fc",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2199": {
+      "status": "approved",
+      "row_sha256": "3a6494584dca3d02188052c68dc4635f4b46b20ea4a107988ea8a97e5f34c4da",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2200": {
+      "status": "approved",
+      "row_sha256": "89c36f8b8ff24f8a7d1ad6d83ff392e6d60fc4e58b0ebb7f791656a0f7f24aed",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2201": {
+      "status": "approved",
+      "row_sha256": "20fb3123e5561c922023b3ca6b5dd5a07cec4c991d60469b08ea31443b6430c9",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2202": {
+      "status": "approved",
+      "row_sha256": "eae19f729eceae113c37e504e5773d4048cb6d09629c8a9981aeca642bc6c690",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2203": {
+      "status": "approved",
+      "row_sha256": "f18a41f3cfda578c0b14061567f7d3331bc261800a2ce0f9373d0c86977756bf",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2204": {
+      "status": "approved",
+      "row_sha256": "95de6000ffce785f6bf1e32e14ec9fbfc869185deda365cdfa951f34bfd931f9",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2205": {
+      "status": "approved",
+      "row_sha256": "7a02fcedba7b31b906eb11dbb253f89f54f512152d37dfd65caa05d07c04278f",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2206": {
+      "status": "approved",
+      "row_sha256": "36a661109f3073c9e4fd1a59a89cc929c497d0e307505f189be82bbea257249d",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2207": {
+      "status": "approved",
+      "row_sha256": "b6cfd80912ba778b13f2d4bde52d4a27a6b1d5392ab64297ccbfc9247adab4c7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2208": {
+      "status": "approved",
+      "row_sha256": "b543fbcb39fb73b6f0e9ed197a12a867167bbacd58721e0ddd27a0656392d416",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2209": {
+      "status": "approved",
+      "row_sha256": "c9705728038123407b9b263eb2aa87de4ed212c7951a8822d6573318b17da4bb",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2210": {
+      "status": "approved",
+      "row_sha256": "0a23410c2b8a917e2017611f2a220502bddce1823a948da19c6642a2582e010a",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2211": {
+      "status": "approved",
+      "row_sha256": "cae12cae5889342ac8d320e766dcb40a894880be5f26f4e9f22eb8ba72e0081e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2212": {
+      "status": "approved",
+      "row_sha256": "2e2de32ba463a4ea859487f1114327da028841d5694b139f22920f23feab9ee6",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2213": {
+      "status": "approved",
+      "row_sha256": "4127c3fdcfbfbb31b088c72deb459dd0d7c32cd5315f4f92b7ecb68a2453a653",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2214": {
+      "status": "approved",
+      "row_sha256": "887f31a69e1227b14d2985d8b533989db51cd5a508f6c9eaea5a37697db5a8b5",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2215": {
+      "status": "approved",
+      "row_sha256": "0761e08e25344f4ab94596aa196559f015a0f6e5d78837b4829cb487d816a506",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2216": {
+      "status": "approved",
+      "row_sha256": "3e8d0330bca7a1cef04447165dee57c7575c72bb5c27c7c57fc03039dd074b52",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2217": {
+      "status": "approved",
+      "row_sha256": "ec5a0ab7aa31af11275864e1b442b06810dc60214bdfeaecfb6d0b8d82f54d67",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2218": {
+      "status": "approved",
+      "row_sha256": "cea10d1ad85a69d52e043fed3503e5db41e546262ceec34c091027b60a2279e1",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2219": {
+      "status": "approved",
+      "row_sha256": "75b4b3d3c12ac1cee2afdf99e7318dcbc5fa70779d3ba49f0b9333cd62eb87f3",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2220": {
+      "status": "approved",
+      "row_sha256": "20b1868ec72fbbee2b19a8b537dc34a00ac9feb098a2f7ba75f3b26d383a059e",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2221": {
+      "status": "approved",
+      "row_sha256": "77364e1b39a5cc14f18fac43cda3c153dc3651d2b981799c3f02e3ecfcfd5ef4",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2222": {
+      "status": "approved",
+      "row_sha256": "ff00c45b586473a1fcd92f619b2cc7c70059beae7bd7fb5912d49f13b4ea50e1",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2223": {
+      "status": "approved",
+      "row_sha256": "9b8e9dbf1176379fc8de502def4409f9ae612d1c2f91362886dd08b962dbd7c7",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2224": {
+      "status": "approved",
+      "row_sha256": "9a8382445fd3487461d0f736a62e8c825201bf1531a3849f314d4b95b40cfe89",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2225": {
+      "status": "approved",
+      "row_sha256": "d3bf28320cd2ae41a057f78b7335ac85134c87655d50523eeb3e936ef00a0170",
+      "reviewer": "claude",
+      "note": "#341 按家庭逐题审阅通过（task 机械合并为 stock_research）"
+    },
+    "V2226": {
+      "status": "approved",
+      "row_sha256": "4de9d461af092f99f26986a02c0b8b05756cd9f6d9ba75dc11c73b8d163eb196",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2227": {
+      "status": "approved",
+      "row_sha256": "55d8a4d5ee75b5e3cf5296acc0adc272ab7708a9770856073af0ee8da0fbde6e",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2228": {
+      "status": "approved",
+      "row_sha256": "39f6ef5f1c0fb41b42a96db03abdb6213a3771490ead724dce1b37954064bd40",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2229": {
+      "status": "approved",
+      "row_sha256": "df126613cf972c1bbd0dec065d6e172dbe9ba33ff35eb704b133a333b3266f3c",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2230": {
+      "status": "approved",
+      "row_sha256": "a23a57c5f22373d430f542d465aeddd859237c3e2db87b6b5952845b8b48e2b9",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2231": {
+      "status": "approved",
+      "row_sha256": "1ae3f2a5a82b588d18c0377c91a5ddcd2528db6e48e6670b03da7de26f99ba99",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2232": {
+      "status": "approved",
+      "row_sha256": "4c83697a25436f6d96135e542b4be22629b25c2aacc83223b51df2978542966a",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2233": {
+      "status": "approved",
+      "row_sha256": "2129412c05354e55f6a7a20daf1835d3c47a5a9b973496d79f7ab69e96d1331d",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2234": {
+      "status": "approved",
+      "row_sha256": "73b7fb769f6af2ea8b5cb295cf6fcbac4dfdc5e6c30331cbec839be1ed53ed08",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2235": {
+      "status": "approved",
+      "row_sha256": "91bb1db4e3e050f70f98dd8a28e85b6eaabe1a3514528474522744bbe04bde0c",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2236": {
+      "status": "approved",
+      "row_sha256": "2ac786a63617ba82ee829d4d0304adb98078075b00afc0a823b72fbae4184d7c",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2237": {
+      "status": "approved",
+      "row_sha256": "8acd62369a8e17b328970ee4873d5dec804e88b7a3ee08b684da0bf9838a0519",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2238": {
+      "status": "approved",
+      "row_sha256": "0fc1b0616e1a731c6a8eb09a81045d9fc66b039f3bca1da630e5bf9d4c6b552e",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2239": {
+      "status": "approved",
+      "row_sha256": "5e7af154bf0d5452041225416f503e34fbb170db417123092481788b50a339d1",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    },
+    "V2240": {
+      "status": "approved",
+      "row_sha256": "f7de5fb9ed2bb576a942d9aaa7f8d6fe00bc4750f530e2b35ab4ea58899d7c0f",
+      "reviewer": "claude",
+      "note": "#344 复审：按 #341 意见修订后通过"
+    }
+  }
+}

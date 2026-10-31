@@ -167,6 +167,17 @@ The 144-question development set selects a confidence threshold, which is export
 
 Offline runs and previews read no credentials and make no network requests. Live evaluation requires reviewed labels, explicit classifiers, a call limit and a price file; holdout also requires a reviewed development threshold lock. Live calls require separate user authorization and are run by Claude. See the design for lock export, holdout, ablation, cost assumptions and the fixed evidence gates for proposing a future product integration.
 
+### Research intent v2: draft corpus and rule observations
+
+The separate [v2 evaluation](docs/research-intent-evaluation-v2-design.md) adds 240 draft cases (155 development / 85 holdout), including disclosed failures and multi-turn state. Stocks share one research task; ratings and direction remain separate from authorization for price plans. It also checks trusted subjects, horizons and exclusions; protocol faults have separate execution assertions and do not alter normal intent labels. The [review checklist](docs/research-intent-v2-annotation-review.md) awaits individual Claude approval; formal scoring is blocked until then. Existing 304-case data and historical results remain unchanged.
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_intents.py --plan-only
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_intents.py --annotation-review
+```
+
+This step observes production rules and a limited set of existing scripted sessions offline. Missing observations count as incomplete; scripted execution is not real-model quality. There is no live/paid or holdout run option, and product routing remains unchanged. Development baseline results follow reviewed labels in a separate delivery.
+
 ## Scope & limits
 
 - No brokerage connection, orders or fund management. Trading remains with the user.

@@ -91,6 +91,8 @@ class ResearchSession:
         self._result_current = False
         self.product_pending = None
         self.product_saved = None
+        self.index_pending = None
+        self.index_saved = None
         self.screening_saved = None
         self._turn_lock = Lock()
         self._turn_parent = None
@@ -107,6 +109,7 @@ class ResearchSession:
         working._pending_edit = self._pending_edit
         working._result_current = self._result_current
         working.product_pending, working.product_saved = self.product_pending, self.product_saved
+        working.index_pending, working.index_saved = self.index_pending, self.index_saved
         working.screening_saved = self.screening_saved
         working._turn_parent = self
         working.latest_research = self.latest_research
@@ -120,6 +123,7 @@ class ResearchSession:
         self._pending_edit = working._pending_edit
         self._result_current = working._result_current
         self.product_pending, self.product_saved = working.product_pending, working.product_saved
+        self.index_pending, self.index_saved = working.index_pending, working.index_saved
         self.screening_saved = working.screening_saved
         self.latest_research = working.latest_research
         self._publication_sequence = working._publication_sequence
@@ -145,6 +149,8 @@ class ResearchSession:
         return self._confirmed
 
     def clear(self) -> None:
+        self.index_pending = None
+        self.index_saved = None
         self.latest_research = None
         self._subject_current = False
         self.product_pending = None
@@ -223,6 +229,7 @@ class ResearchSession:
         return ResultLookup("ready", "saved_result_ready", "已校验保存结果；未重新取数。", deepcopy(saved), self._result_current)
 
     def clear_pending(self) -> None:
+        self.index_pending = None
         self._pending = None
         self._pending_edit = None
         self.product_pending = None
@@ -252,6 +259,11 @@ class ResearchSession:
         return True
 
     def to_dict(self) -> dict[str, object]:
+        if self.index_pending is not None:
+            return {'state': 'awaiting_index', 'pending': {'kind': 'index_identity',
+                'created_at': self.index_pending.created_at.isoformat(),
+                'expires_at': (self.index_pending.created_at + PENDING_LIFETIME).isoformat()},
+                'confirmed': None, 'saved_result': None}
         pending = self._pending
         confirmed = self._confirmed
         base = None if confirmed is None else {

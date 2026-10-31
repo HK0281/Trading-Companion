@@ -1,0 +1,683 @@
+{
+  "provenance": "人工重构 #302 所述标题、数字精度和局限说明问题；行情也是人工构造，并非 Claude 的真实 DeepSeek 原始输出。真实原稿未保存，待审核方补充。",
+  "snapshot": {
+    "version": "index-evidence-snapshot-v1",
+    "index_snapshot": {
+      "version": "index-snapshot-v1",
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2026-08-01",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "sma",
+            "window": 20
+          },
+          {
+            "kind": "rsi",
+            "window": 14
+          },
+          {
+            "kind": "macd",
+            "fast": 12,
+            "slow": 26,
+            "signal": 9
+          }
+        ]
+      },
+      "request_id": "review-302-reconstructed",
+      "benchmark_defaulted": false,
+      "horizon": null,
+      "retrieved_at": "2026-09-26T00:00:00+00:00",
+      "data_authenticity": "synthetic",
+      "bars": [
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-03",
+          "open_price": 3901.334,
+          "high_price": 3908.4,
+          "low_price": 3891.8,
+          "close_price": 3900.0,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-04",
+          "open_price": 3899.4739999999997,
+          "high_price": 3906.54,
+          "low_price": 3889.94,
+          "close_price": 3898.14,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-05",
+          "open_price": 3897.6139999999996,
+          "high_price": 3904.68,
+          "low_price": 3888.08,
+          "close_price": 3896.2799999999997,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-06",
+          "open_price": 3895.7539999999995,
+          "high_price": 3902.8199999999997,
+          "low_price": 3886.22,
+          "close_price": 3894.4199999999996,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-07",
+          "open_price": 3888.654,
+          "high_price": 3895.7200000000003,
+          "low_price": 3879.1200000000003,
+          "close_price": 3887.32,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-10",
+          "open_price": 3886.794,
+          "high_price": 3893.86,
+          "low_price": 3877.26,
+          "close_price": 3885.46,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-11",
+          "open_price": 3884.9339999999997,
+          "high_price": 3892.0,
+          "low_price": 3875.4,
+          "close_price": 3883.6,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-12",
+          "open_price": 3883.0739999999996,
+          "high_price": 3890.14,
+          "low_price": 3873.54,
+          "close_price": 3881.74,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-13",
+          "open_price": 3875.9739999999997,
+          "high_price": 3883.04,
+          "low_price": 3866.44,
+          "close_price": 3874.64,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-14",
+          "open_price": 3874.1139999999996,
+          "high_price": 3881.18,
+          "low_price": 3864.58,
+          "close_price": 3872.7799999999997,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-17",
+          "open_price": 3872.254,
+          "high_price": 3879.32,
+          "low_price": 3862.7200000000003,
+          "close_price": 3870.92,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-18",
+          "open_price": 3870.394,
+          "high_price": 3877.46,
+          "low_price": 3860.86,
+          "close_price": 3869.06,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-19",
+          "open_price": 3863.294,
+          "high_price": 3870.36,
+          "low_price": 3853.76,
+          "close_price": 3861.96,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-20",
+          "open_price": 3861.4339999999997,
+          "high_price": 3868.5,
+          "low_price": 3851.9,
+          "close_price": 3860.1,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-21",
+          "open_price": 3859.5739999999996,
+          "high_price": 3866.64,
+          "low_price": 3850.04,
+          "close_price": 3858.24,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-24",
+          "open_price": 3857.7139999999995,
+          "high_price": 3864.7799999999997,
+          "low_price": 3848.18,
+          "close_price": 3856.3799999999997,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-25",
+          "open_price": 3850.614,
+          "high_price": 3857.6800000000003,
+          "low_price": 3841.0800000000004,
+          "close_price": 3849.28,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-26",
+          "open_price": 3848.754,
+          "high_price": 3855.82,
+          "low_price": 3839.2200000000003,
+          "close_price": 3847.42,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-27",
+          "open_price": 3846.894,
+          "high_price": 3853.96,
+          "low_price": 3837.36,
+          "close_price": 3845.56,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-28",
+          "open_price": 3845.0339999999997,
+          "high_price": 3852.1,
+          "low_price": 3835.5,
+          "close_price": 3843.7,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-08-31",
+          "open_price": 3837.9339999999997,
+          "high_price": 3845.0,
+          "low_price": 3828.4,
+          "close_price": 3836.6,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-01",
+          "open_price": 3836.0739999999996,
+          "high_price": 3843.14,
+          "low_price": 3826.54,
+          "close_price": 3834.74,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-02",
+          "open_price": 3834.214,
+          "high_price": 3841.28,
+          "low_price": 3824.6800000000003,
+          "close_price": 3832.88,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-03",
+          "open_price": 3832.354,
+          "high_price": 3839.42,
+          "low_price": 3822.82,
+          "close_price": 3831.02,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-04",
+          "open_price": 3825.254,
+          "high_price": 3832.32,
+          "low_price": 3815.7200000000003,
+          "close_price": 3823.92,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-07",
+          "open_price": 3823.394,
+          "high_price": 3830.46,
+          "low_price": 3813.86,
+          "close_price": 3822.06,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-08",
+          "open_price": 3821.5339999999997,
+          "high_price": 3828.6,
+          "low_price": 3812.0,
+          "close_price": 3820.2,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-09",
+          "open_price": 3819.6739999999995,
+          "high_price": 3826.74,
+          "low_price": 3810.14,
+          "close_price": 3818.3399999999997,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-10",
+          "open_price": 3812.5739999999996,
+          "high_price": 3819.64,
+          "low_price": 3803.04,
+          "close_price": 3811.24,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-11",
+          "open_price": 3810.714,
+          "high_price": 3817.78,
+          "low_price": 3801.1800000000003,
+          "close_price": 3809.38,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-14",
+          "open_price": 3808.854,
+          "high_price": 3815.92,
+          "low_price": 3799.32,
+          "close_price": 3807.52,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-15",
+          "open_price": 3806.9939999999997,
+          "high_price": 3814.06,
+          "low_price": 3797.46,
+          "close_price": 3805.66,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-16",
+          "open_price": 3799.894,
+          "high_price": 3806.96,
+          "low_price": 3790.36,
+          "close_price": 3798.56,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-17",
+          "open_price": 3798.0339999999997,
+          "high_price": 3805.1,
+          "low_price": 3788.5,
+          "close_price": 3796.7,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-18",
+          "open_price": 3796.1739999999995,
+          "high_price": 3803.24,
+          "low_price": 3786.64,
+          "close_price": 3794.8399999999997,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-21",
+          "open_price": 3794.314,
+          "high_price": 3801.38,
+          "low_price": 3784.78,
+          "close_price": 3792.98,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-22",
+          "open_price": 3787.214,
+          "high_price": 3794.28,
+          "low_price": 3777.6800000000003,
+          "close_price": 3785.88,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-23",
+          "open_price": 3785.354,
+          "high_price": 3792.42,
+          "low_price": 3775.82,
+          "close_price": 3784.02,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-24",
+          "open_price": 3783.4939999999997,
+          "high_price": 3790.56,
+          "low_price": 3773.96,
+          "close_price": 3782.16,
+          "volume": null,
+          "amount": null
+        },
+        {
+          "instrument_id": "000001.SH",
+          "trade_date": "2026-09-25",
+          "open_price": 3781.6339999999996,
+          "high_price": 3788.7,
+          "low_price": 3772.1,
+          "close_price": 3780.2999999999997,
+          "volume": null,
+          "amount": null
+        }
+      ]
+    },
+    "index_snapshot_sha256": "361fc08fa7a40bc43708dfc11a1268e795e3d3b5bf1574630dbee8fd964605d7",
+    "evidence": [
+      {
+        "id": "E1",
+        "instrument_id": "000001.SH",
+        "label": "最新完整日收盘点位",
+        "raw_value": 3780.3,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "close_price",
+        "display_value": "3780.30",
+        "display": "最新完整日收盘点位：3780.30点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": null,
+        "timeframe": "daily"
+      },
+      {
+        "id": "E2",
+        "instrument_id": "000001.SH",
+        "label": "研究窗口内最近至多120条日线最低点",
+        "raw_value": 3772.1,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "window_low",
+        "display_value": "3772.10",
+        "display": "研究窗口内最近至多120条日线最低点：3772.10点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": null,
+        "timeframe": "daily"
+      },
+      {
+        "id": "E3",
+        "instrument_id": "000001.SH",
+        "label": "研究窗口内最近至多120条日线最高点",
+        "raw_value": 3908.4,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "window_high",
+        "display_value": "3908.40",
+        "display": "研究窗口内最近至多120条日线最高点：3908.40点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": null,
+        "timeframe": "daily"
+      },
+      {
+        "id": "E4",
+        "instrument_id": "000001.SH",
+        "label": "日线SMA(20)",
+        "raw_value": 3808.45,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "value",
+        "display_value": "3808.45",
+        "display": "日线SMA(20)：3808.45点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": "sma(window=20)",
+        "timeframe": "daily"
+      },
+      {
+        "id": "E5",
+        "instrument_id": "000001.SH",
+        "label": "日线RSI(14)",
+        "raw_value": 0.0,
+        "unit": "index_points",
+        "date": "2026-09-25",
+        "field": "value",
+        "display_value": "0.00",
+        "display": "日线RSI(14)：0.00（指标读数）",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": "rsi(window=14)",
+        "timeframe": "daily"
+      },
+      {
+        "id": "E6",
+        "instrument_id": "000001.SH",
+        "label": "日线MACD(12,26,9) DIF",
+        "raw_value": -22.04,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "dif",
+        "display_value": "-22.04",
+        "display": "日线MACD(12,26,9) DIF：-22.04点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": "macd(fast=12,slow=26,signal=9)",
+        "timeframe": "daily"
+      },
+      {
+        "id": "E7",
+        "instrument_id": "000001.SH",
+        "label": "日线MACD(12,26,9) DEA",
+        "raw_value": -22.16,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "dea",
+        "display_value": "-22.16",
+        "display": "日线MACD(12,26,9) DEA：-22.16点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": "macd(fast=12,slow=26,signal=9)",
+        "timeframe": "daily"
+      },
+      {
+        "id": "E8",
+        "instrument_id": "000001.SH",
+        "label": "日线MACD(12,26,9) 柱值",
+        "raw_value": 0.25,
+        "unit": "index_point",
+        "date": "2026-09-25",
+        "field": "histogram",
+        "display_value": "0.25",
+        "display": "日线MACD(12,26,9) 柱值：0.25点",
+        "content_kind": "fact",
+        "kind": "technical",
+        "source": "csv",
+        "indicator_id": "macd(fast=12,slow=26,signal=9)",
+        "timeframe": "daily"
+      }
+    ],
+    "limitations": [
+      "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+      "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+      "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+      "支撑压力为历史点位候选，不保证未来触达或突破有效。",
+      "周线SMA(20)：历史不足或计算不可用",
+      "周线RSI(14)：历史不足或计算不可用",
+      "周线MACD(12,26,9) DIF：历史不足或计算不可用",
+      "周线MACD(12,26,9) DEA：历史不足或计算不可用",
+      "周线MACD(12,26,9) 柱值：历史不足或计算不可用"
+    ]
+  },
+  "answers": [
+    {
+      "version": "index-answer-v1",
+      "instrument_id": "000001.SH",
+      "direction": "偏空",
+      "conviction": "低",
+      "horizon": null,
+      "blocks": [
+        {
+          "title": "结论",
+          "text": "当前技术观察偏空，把握低。后续变化仍需重新研究。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "当前情况",
+          "text": "完整日线收盘3780.30点。日线SMA20为3808.45点。",
+          "evidence_ids": [
+            "E1",
+            "E4"
+          ],
+          "numbers": [
+            {
+              "text": "3780.30点",
+              "ref": "E1"
+            },
+            {
+              "text": "3808.4504999999954点",
+              "ref": "E4"
+            }
+          ]
+        },
+        {
+          "title": "技术依据",
+          "text": "日线RSI14读数为0.00。日线MACD的DIF为-22.04点。",
+          "evidence_ids": [
+            "E5",
+            "E6"
+          ]
+        },
+        {
+          "title": "情景与观察重点",
+          "text": "若后续收盘走强，应重新评估当前判断。若持续走弱，需关注下行风险。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "限制与反向证据",
+          "text": "本轮不含成交量、资金流、板块或宏观信息。不能保证后续走势。",
+          "evidence_ids": [
+            "E1"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "index-answer-v1",
+      "instrument_id": "000001.SH",
+      "direction": "偏空",
+      "conviction": "低",
+      "horizon": null,
+      "blocks": [
+        {
+          "title": "总体判断",
+          "text": "当前偏空，把握低。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "当前情况",
+          "text": "完整日线收盘3780.30点。完整日线收盘999999点。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "技术结构说明",
+          "text": "日线SMA20为3808.45点。日线RSI14读数为0.00。",
+          "evidence_ids": [
+            "E4",
+            "E5"
+          ]
+        },
+        {
+          "title": "观察重点",
+          "text": "走势与当前观察相反时应重新评估。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "局限",
+          "text": "未取得成交量数据，无法判断量能。经济与政策不在本轮研究范围。",
+          "evidence_ids": [
+            "E1"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { formatNumber, parseConversation, parsePresentation, unavailableLabel, u
 import { CompanyParagraphs, CompanyCoverageNote, parseCompanyAnswer } from "./ProductResearch";
 import { KnowledgeSources } from "./KnowledgeSources";
 import { parseScreeningResult, ScreeningResults } from "./ScreeningResults";
+import { IndexResearch } from "./IndexResearch";
 
 export function ReadableText({ text }: { text: string }) {
   // Render as text nodes; provider or source content never becomes executable HTML.
@@ -19,6 +20,7 @@ export function ResponseContent({ turn }: { turn: PublicTurn }) {
     || presentation.indicator_ids.includes(field.indicator_id));
   const unavailable = fields.filter((field) => field.status !== "available");
   const company = parseCompanyAnswer(turn.company_research);
+  if (turn.index_research != null) return <IndexResearch turn={turn} />;
   if (turn.screening != null) {
     const screening = parseScreeningResult(turn.screening);
     return screening ? <ScreeningResults data={screening} activityDefault={turn.applied_defaults.includes("screening:activity_shortlist")} />

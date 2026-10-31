@@ -3,7 +3,7 @@ import { chartScale, lineSegments, parseResearchChart, parseChartCapabilities, p
   type ChartParameters, type ChartSeries, type ResearchChartData, type DisplayChartData, type ChartInterval } from "./charts";
 import "./charts.css";
 
-const unitNames = { "CNY/share": "元/股", shares: "股", index_points: "点", multiple: "倍" };
+const unitNames = { "CNY/share": "元/股", shares: "股", index_points: "点", index_point: "点", multiple: "倍" };
 const statusNames = { available: "可用", insufficient_history: "历史不足", undefined: "未定义", calculation_error: "计算失败" };
 const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumSignificantDigits: 7 }).format(value);
 const priceKind = (series: ChartSeries) => ["sma", "ema", "boll", "vwma"].includes(series.kind);
@@ -37,6 +37,8 @@ const dateLabel = (date: string, narrow = false) => date.length > 10
   ? `${date.slice(narrow ? 5 : 0, 10)} ${date.slice(11, 16)}` : narrow ? date.slice(5) : date;
 
 function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; intervalControls: ReactNode }) {
+  const indexChart = data.version.startsWith("index-");
+  const priceUnit = indexChart ? "点" : "元/股";
   const id = useId();
   const plot = useRef<HTMLDivElement>(null);
   const activePointer = useRef<number | null>(null);
@@ -68,7 +70,7 @@ function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; in
   const x = (index: number) => left + (index + .5) / bars.length * (right - left);
   const bodyWidth = Math.max(.7, Math.min(12, (right - left) / bars.length * .65));
   const price = chartScale([...bars.flatMap((item) => [item.high, item.low]), ...overlay.flatMap((series) => series.values.slice(offset).filter((item): item is number => item !== null))], 28, 230);
-  const volumeMax = Math.max(1, ...bars.map((item) => item.volume));
+  const volumeMax = Math.max(1, ...bars.flatMap((item) => item.volume === null ? [] : [item.volume]));
   const volumeY = (value: number) => 332 - value / volumeMax * 65;
   const indicator = chartScale(fieldValues.filter((value): value is number => value !== null), 397, 487, true);
   const dates = [...new Set(width < 560 ? [0, bars.length - 1] : [0, Math.floor((bars.length - 1) / 2), bars.length - 1])];
@@ -89,7 +91,7 @@ function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; in
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const announce = (index: number) => setAnnouncement(`${data.bars[index].date}，收盘 ${format(data.bars[index].close)} 元/股`);
+  const announce = (index: number) => setAnnouncement(`${data.bars[index].date}，收盘 ${format(data.bars[index].close)} ${priceUnit}`);
   const moveKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -129,10 +131,10 @@ function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; in
       </select></label>
     </div>
     <div className="chart-choices">{intervalControls}
-    {!!groups.length && <fieldset className="chart-overlays"><legend>价格叠加 · 元/股</legend>{groups.map((group) => <label key={group.indicator_id}>
+    {!!groups.length && <fieldset className="chart-overlays"><legend>{indexChart ? "点位" : "价格"}叠加 · {priceUnit}</legend>{groups.map((group) => <label key={group.indicator_id}>
       <input type="checkbox" checked={!hidden.includes(group.indicator_id)} onChange={() => toggle(group.indicator_id)} />{instanceName(group)}
     </label>)}</fieldset>}</div>
-    <div className="chart-plot" ref={plot} tabIndex={0} role="group" aria-label={`互动${intervalNames[data.version === "research-chart-v1" ? "1d" : data.interval]}图`} aria-describedby={`${id}-keys`}
+    <div className="chart-plot" ref={plot} tabIndex={0} role="group" aria-label={`互动${intervalNames["interval" in data ? data.interval : "1d"]}图`} aria-describedby={`${id}-keys`}
       onKeyDown={moveKey} onFocus={() => {
         if (activePointer.current === null) { setKeyboardFocused(true); announce(selected); }
       }} onBlur={() => setKeyboardFocused(false)}>
@@ -162,25 +164,25 @@ function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; in
         onLostPointerCapture={(event) => {
           if (activePointer.current === event.pointerId) { activePointer.current = null; setPointerVisible(false); }
         }}>
-        <title id={`${id}-title`}>{data.instrument_id} 历史{data.version === "research-chart-v1" ? "日" : intervalNames[data.interval]} K 线、成交量{field ? "及独立指标" : ""}</title>
+        <title id={`${id}-title`}>{data.instrument_id} 历史{"interval" in data ? intervalNames[data.interval] : "日"} K 线{indexChart ? "" : "、成交量"}{field ? "及独立指标" : ""}</title>
         <desc id={`${id}-desc`}>红涨、绿跌、灰平，以收盘对开盘比较。价格、成交量和副图分轴；缺项断线。十字线选择交易日，浮层显示读数。</desc>
         {[price.max, (price.min + price.max) / 2, price.min].map((value, index) => <g key={index}>
           <line x1={left} x2={right} y1={price.project(value)} y2={price.project(value)} className="chart-grid" />
           <text x={left - 8} y={price.project(value) + 4} textAnchor="end" className="chart-tick">{format(value)}</text>
         </g>)}
-        <text x={left} y="16" className="chart-axis-label">价格 · 元/股</text>
+        <text x={left} y="16" className="chart-axis-label">{indexChart ? "点位" : "价格"} · {priceUnit}</text>
         {bars.map((item, index) => <g key={item.date} className={tone(item.open, item.close)}>
           <line x1={x(index)} x2={x(index)} y1={price.project(item.high)} y2={price.project(item.low)} className="chart-wick" />
           {item.open === item.close ? <line x1={x(index) - bodyWidth / 2} x2={x(index) + bodyWidth / 2} y1={price.project(item.close)} y2={price.project(item.close)} className="chart-wick" />
             : <rect x={x(index) - bodyWidth / 2} y={Math.min(price.project(item.open), price.project(item.close))}
               width={bodyWidth} height={Math.max(.7, Math.abs(price.project(item.open) - price.project(item.close)))} className="chart-candle" />}
-          <rect x={x(index) - bodyWidth / 2} y={volumeY(item.volume)} width={bodyWidth} height={332 - volumeY(item.volume)} className="chart-volume" />
+          {item.volume !== null && <rect x={x(index) - bodyWidth / 2} y={volumeY(item.volume)} width={bodyWidth} height={332 - volumeY(item.volume)} className="chart-volume" />}
         </g>)}
         {overlay.map((series) => <SeriesLine key={series.id} values={series.values.slice(offset)} x={x} y={price.project}
           className={`chart-colour-${data.series.indexOf(series) % 6}`} />)}
-        <text x={left} y="256" className="chart-axis-label">成交量 · 股</text>
-        <text x={left - 8} y="274" textAnchor="end" className="chart-tick">{format(volumeMax)}</text>
-        <text x={left - 8} y="335" textAnchor="end" className="chart-tick">0</text>
+        <text x={left} y="256" className="chart-axis-label">{indexChart ? "成交量单位未核实，暂不展示" : "成交量 · 股"}</text>
+        {!indexChart && <><text x={left - 8} y="274" textAnchor="end" className="chart-tick">{format(volumeMax)}</text>
+        <text x={left - 8} y="335" textAnchor="end" className="chart-tick">0</text></>}
         <line x1={left} x2={right} y1="332" y2="332" className="chart-grid" />
         {field && <g>
           <text x={left} y="382" className="chart-axis-label">{name(field)} · {unitNames[field.unit]}</text>
@@ -206,7 +208,7 @@ function ChartWorkspace({ data, intervalControls }: { data: DisplayChartData; in
         {"complete" in bar && !bar.complete && <p>本周未完（截至 {data.as_of_date}）</p>}
         {"start_at" in bar && <p className="chart-time-range" title={`${bar.start_at} — ${bar.end_at}`}>{dateLabel(String(bar.start_at), true)} — {dateLabel(String(bar.end_at), true)}</p>}
         <dl>{[["开", bar.open], ["高", bar.high], ["低", bar.low], ["收", bar.close], ["量", bar.volume]].map(([label, value]) => <div key={label}>
-          <dt>{label}</dt><dd>{readoutNumber(Number(value))} {label === "量" ? "股" : "元/股"}</dd>
+          <dt>{label}</dt><dd>{value === null ? "— 单位未核实" : `${readoutNumber(Number(value))} ${label === "量" ? "股" : priceUnit}`}</dd>
         </div>)}
           {shownSeries.map((series) => <div key={series.id}>
             <dt className={`chart-colour-${priceKind(series) ? data.series.indexOf(series) % 6 : 0}`} title={name(series)}>{name(series)}</dt>
@@ -256,7 +258,7 @@ function IntervalWorkspace({ daily, historical, capabilityValue, loadInterval }:
       setFailed(true); setInterval("1d"); setLoaded(null);
     } finally { if (revision.current === current) setLoading(false); }
   };
-  const current = data.version === "research-chart-v1" ? "1d" : data.interval;
+  const current = "interval" in data ? data.interval : "1d";
   const saved = historical || daily.context === "saved";
   const hourly = current === "60m" || current === "120m";
   const controls = <div className="chart-intervals" role="group" aria-label="K线周期">
@@ -274,7 +276,7 @@ function IntervalWorkspace({ daily, historical, capabilityValue, loadInterval }:
       {" · 来源："}{data.source === "csv" ? "CSV" : data.source === "tencent" ? "腾讯" : "AKShare / 东方财富"}
       {" · 复权："}{data.price_adjustment === "unknown" ? "未知" : "不复权"}{hourly ? " · 分钟数据有延迟、非实时 · 上海时间" : current === "1d" ? " · 历史日线，非实时" : " · 历史周线，非实时"}
     </p>
-    {data.version !== "research-chart-v1" && <p className="chart-period-note">实际覆盖 {dateLabel(data.coverage.start_at)} — {dateLabel(data.coverage.end_at)}（上海时间）。指标按{intervalNames[current]}条数重算，空值表示历史不足或无可用读数。
+    {"interval" in data && <p className="chart-period-note">实际覆盖 {dateLabel(data.coverage.start_at)} — {dateLabel(data.coverage.end_at)}（上海时间）。指标按{intervalNames[current]}条数重算，空值表示历史不足或无可用读数。
       {current === "1w" && data.bars.some((bar) => !bar.complete) && ` 本周未完（截至快照 ${data.as_of_date}）。`}</p>}
     {!capabilities?.["60m"].enabled && <p className="chart-period-note">当前来源暂不支持小时线；日线和可用周线仍可查看。</p>}
     {loading && <p role="status" className="chart-period-note">正在加载{intervalNames[interval]}，仍可切回日线…</p>}

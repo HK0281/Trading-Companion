@@ -146,7 +146,8 @@ class StructuredProviderRequestTests(unittest.TestCase):
     def test_every_production_no_tool_caller_requires_json_and_plain_text_is_separate(self):
         # This inventory must change explicitly when a new no-tool caller is added.
         expected = {'open_knowledge': 'GENERAL_KNOWLEDGE_INSTRUCTION', 'product_answer': 'PRODUCT_ANSWER_INSTRUCTION',
-                    'product_decision_answer': 'INSTRUCTION', 'product_narrative_answer': 'INSTRUCTION'}
+                    'product_decision_answer': 'INSTRUCTION', 'product_narrative_answer': 'INSTRUCTION',
+                    'index_answer': 'INSTRUCTION'}
         root = Path('src/trading_companion')
         callers = set()
         for path in root.glob('*.py'):

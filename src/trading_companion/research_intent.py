@@ -58,6 +58,7 @@ _LOCAL_DATE = re.compile(
     + _DATE_RELATIVE.pattern + r"|(?:最近|近期)(?!\s*[0-9零一二两三四五六七八九十百几数半+＋－.点-]))(?![0-9-])")
 _DATE_SUFFIX = re.compile(r"\s*(?:半|多|左右|以内|以上|以下|底|末|初|上旬|中旬|下旬|"
                           r"(?:之|以)?(?:前|后|内|外)|起|至|到|~|～)")
+_VAGUE_PERIOD = re.compile(r"(?:近期|近来|近日|最近|目前|现在)(?!\s*[0-9零一二两三四五六七八九十百几数半+＋－.点-])")
 _INDICATOR_CUE = re.compile(
     r"(?<![0-9.+＋－-])[+＋－-]?(?:[0-9]+(?:\.[0-9]+)?|[零一二两三四五六七八九十百]+)\s*(?:日|天)\s*"
     r"(?:指数移动平均线|简单移动平均线|均线|EMA|SMA|RSI|ATR|ADX|VWMA)(?!\s*(?:[（(]|[+＋－-]?[0-9]))|"
@@ -246,6 +247,13 @@ def _candidate(response: ToolModelResponse, question: str) -> tuple[dict, tuple[
         raise InputIssue("needs_clarification", "ungrounded_intent",
                          "模型提取了原问题中不存在的名称或条件；请重述研究问题，没有使用模型记忆补码。")
     return arguments, defaults
+
+
+def historical_date_inputs(expression, question):
+    """Share the product B2 vague-period rule; quantified dates stay visible."""
+    if expression is not None and _VAGUE_PERIOD.fullmatch(expression.strip()):
+        expression = None
+    return expression, _VAGUE_PERIOD.sub(' ', question)
 
 
 def _local_date_expression(question: str) -> str | None:

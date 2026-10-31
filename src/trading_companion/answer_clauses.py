@@ -2,11 +2,13 @@
 import re
 
 
-def has_empty_slot(text, removed_spans=()):
+def has_empty_slot(text, removed_spans=(), *, subject_required=False):
     """Recognize definite missing operands, without judging general Chinese prose."""
     # Citation cleanup preserves spaces. Only a clause-initial preposition plus
     # a missing object/copula/unit or a bare preposition is unambiguous here.
     boundary = r'(?:^|[，,；;。！？!?\n])\s*'
+    if subject_required and re.match(r'^\s*(?:处于|位于|处在|均处|均位于|仅作|只作|仅为|显示|表明|说明|意味着)', text):
+        return True
     if (re.search(boundary + r'(?:自|至|从|到|在|于|为)(?:'
         r'\s*(?=[，,；;。！？!?]|$)|[ \t]+(?=为|是|元(?:/股)?))', text)
         or re.search(boundary + r'自[ \t]+(?:向上突破|向下跌破|升破|跌破|站稳)', text)):

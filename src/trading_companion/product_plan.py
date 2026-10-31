@@ -485,9 +485,8 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
                           if "indicator:" + spec.kind not in excluded_indicators))
         remaining, _ = _mask_mentions(positive, indicator_phrases)
         historical_expression = draft["date_expression"]
-        vague_period = r"(?:近期|近来|近日|最近)(?!\s*[0-9一二两三四五六七八九十百半])"
-        if historical_expression is not None and re.fullmatch(vague_period, historical_expression):
-            historical_expression = None
+        from trading_companion.research_intent import historical_date_inputs
+        historical_expression, _ = historical_date_inputs(historical_expression, '')
         if historical_expression is not None and extract_outlook(historical_expression) is not None:
             if mask_outlook_expressions(historical_expression).strip():
                 raise InputIssue("needs_clarification", "product_conflicting_dates", "请分别说明历史数据区间与未来展望期限。")
@@ -499,7 +498,7 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
         decision = wants_decision(positive)
         if decision:
             objective = ResearchObjective("decision", objective.horizon)
-        date_text = re.sub(vague_period, "", mask_outlook_expressions(remaining))
+        historical_expression, date_text = historical_date_inputs(historical_expression, mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
         defaults = (*normalization_defaults, *defaults, 'plan_method:atr_reference_plan_v2')
         if objective.horizon is not None:

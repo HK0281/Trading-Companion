@@ -322,7 +322,10 @@ def reading_candidates(text, context, instrument, records):
         prefixes[prefix.start('kind')] = (IndicatorSpec(kind, window=int(prefix['window'])).indicator_id,
             'weekly' if prefix['period'] == '周' or re.search(r'周线(?:的)?\s*$', text[:prefix.start()]) else 'daily')
     for match in _MENTION.finditer(text):
-        reading = re.match(r'\s*(?:的?(?:值|读数|数值))?\s*(?:约|为|是|在|报)?\s*(?P<number>[+\-]?\d+(?:\.\d+)?)\s*(?:元(?:/股)?|点|%)', text[match.end():])
+        unit = r'(?:元(?:/股)?|点|%)'
+        if context.get('instrument_kind') == 'index':
+            unit = r'(?:元(?:/股)?|点|%|(?=[，,。；;！!?？\s]|$))'
+        reading = re.match(r'\s*(?:的?(?:值|读数|数值))?\s*(?:约|为|是|在|报)?\s*(?P<number>[+\-]?\d+(?:\.\d+)?)\s*' + unit, text[match.end():])
         if not reading:
             continue
         spec, prefix_period = prefixes.get(match.start('kind'), (_spec(match), None))

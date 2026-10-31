@@ -104,7 +104,7 @@ def is_window_edit(question: str) -> bool:
     return re.match(r"(?:(?:请帮我|请|帮我)\s*)?(?:改成|改为|换成|换为|调整为)\s*[0-9]+\s*(?:日|天)", text) is not None
 
 
-def replace_indicator(request: MultiIndicatorRequest, question: str) -> MultiIndicatorRequest:
+def replace_indicator(request: MultiIndicatorRequest, question: str, *, request_factory=MultiIndicatorRequest):
     """Change one existing instance; preserve every other field and allocate a fresh run ID."""
     text = unicodedata.normalize("NFKC", question).strip()
     match = _EDIT.fullmatch(text) if text and all(char.isprintable() for char in text) else None
@@ -136,8 +136,8 @@ def replace_indicator(request: MultiIndicatorRequest, question: str) -> MultiInd
             raise _issue("indicator_edit_duplicate", "修改后会与已有指标重复；没有静默合并或删除，请明确新的指标组合。")
         indicators = tuple(replacement if spec == target else spec for spec in request.indicators)
         # Construct a new request so evidence from the old run cannot share its namespace.
-        return MultiIndicatorRequest(request.instrument_id, request.start_date, request.as_of_date,
-                                     indicators, source=request.source)
+        return request_factory(request.instrument_id, request.start_date, request.as_of_date,
+                               indicators, source=request.source)
     except InputIssue:
         raise
     except (InvalidRequestError, ValueError, OverflowError):

@@ -81,7 +81,7 @@ def _rounded(value, original, shown, *, price=False, diagnostic=None):
     return significant >= 2 and error <= quantum and error <= abs(original)*Decimal("0.02")
 
 
-def check_claim(item, *, instrument, context, section, index, path='', stats=None, expected_plan=None):
+def check_claim(item, *, instrument, context, section, index, path='', stats=None, expected_plan=None, sentence_guard=None):
     """Return clean sentences, associated model IDs, issues and sentence counts."""
     from trading_companion.answer_diagnostics import diagnostic_event, diagnostics_enabled
     from trading_companion.answer_numeric_bindings import bindings_for, check_numbers, resolve_ref, InvalidBinding
@@ -150,7 +150,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         wrong_company |= any(c != instrument[:6] for c in mentioned_codes)
         wrong_company |= any(s["instrument_id"] != instrument and re.search(
             r"(?<!\d)" + re.escape(s["instrument_id"][:6]) + r"(?![\d.元万亿%])", sentence) for s in context["securities"])
-        if unsafe(sentence) or wrong_company:
+        if unsafe(sentence) or wrong_company or sentence_guard is not None and not sentence_guard(sentence):
             issues.append(Issue(HARD, section, position))
         elif any(not ch.isprintable() and ch != "\t" for ch in sentence):
             issues.append(Issue(STRUCTURE, section, position, sentence))
@@ -180,7 +180,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
                             diagnostic_event('rejected_clause', instrument_id=instrument, section=section,
                                 path=f'{path}.text.sentence[{position}].clause[{start}]', sentence=part, code=part_code)
                     recovered = independent_remainder(sentence, kept_parts)
-                    if recovered:
+                    if recovered and (sentence_guard is None or sentence_guard(recovered)):
                         # Recheck without the original offsets/bindings; references were already checked
                         # on each retained original span. Never count the verification pass twice.
                         final_code, _ = check_numbers(recovered, records, context, instrument, expected_plan=expected_plan)

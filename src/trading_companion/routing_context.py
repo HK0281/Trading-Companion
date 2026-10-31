@@ -29,6 +29,13 @@ def independent_task(question, directory=None):
         return False
     if new_question(question):
         return True
+    from trading_companion.market_scope import market_reply_code, _text, _mentions
+    if market_reply_code(question, directory=directory) == 'market_research_unavailable':
+        text = _text(question)
+        mentions = _mentions(text)
+        if any(text.strip('。.!！') not in (*item.aliases, item.instrument_id, item.symbol)
+               for _, _, item in mentions if item is not None) or not any(item for _, _, item in mentions):
+            return True
     from trading_companion.decision_horizon import is_horizon_reply
     if is_horizon_reply(question, directory):
         return False
@@ -104,6 +111,8 @@ def checked_subject(session, *, directory, reference_date, development, now):
     subject = latest_subject(session)
     if subject is None:
         return (), "missing_research_subject"
+    if subject.kind == 'index':
+        return (), 'research_subject_is_index'
     if session.latest_research is not None and not session._subject_current:
         return (), "no_current_research_subject"
     if subject.published_at > now:

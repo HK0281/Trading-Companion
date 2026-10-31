@@ -21,6 +21,7 @@ from trading_companion.routing_context import independent_task, latest_subject, 
 
 
 class RouteKind(str, Enum):
+    INDEX_RESEARCH = 'index_research'
     GENERAL_KNOWLEDGE = "general_knowledge"
     SCREENING_EDIT = "screening_edit"
     SCREENING = "screening"
@@ -62,14 +63,16 @@ class RoutingSessionView:
     latest_kind: str | None = None
     latest_current: bool = True
     latest_shared: bool = False
+    index_pending: bool | None = None
 
     @property
     def pending_count(self) -> int:
-        return sum(item is not None for item in (self.product_pending, self.pending, self.pending_edit))
+        return sum(item is not None for item in (self.product_pending, self.pending, self.pending_edit, self.index_pending))
 
     @classmethod
     def capture(cls, session: ResearchSession) -> "RoutingSessionView":
         return cls(product_pending=True if session.product_pending is not None else None,
+            index_pending=True if session.index_pending is not None else None,
             product_horizon_pending=getattr(session.product_pending, 'stage', None) == 'horizon',
             pending=True if session.pending is not None else None,
             pending_edit=True if session.pending_edit is not None else None,
@@ -188,7 +191,11 @@ def _company_pending(value: _MatchInput) -> bool:
 
 
 def _market(value: _MatchInput) -> bool:
-    return market_reply_code(value.question, directory=value.context.directory) is not None
+    from trading_companion.market_scope import index_continuation
+    context = value.context
+    return (market_reply_code(value.question, directory=context.directory) is not None
+            or context.session.index_pending is not None and not independent_task(value.question, context.directory)
+            or index_continuation(value.question, latest_kind=context.session.latest_kind, directory=context.directory))
 
 
 def _technical_pending(value: _MatchInput) -> bool:
@@ -259,7 +266,7 @@ ROUTE_SPECS = _ordered_specs((
     RouteSpec(IntentKind.GENERAL_KNOWLEDGE, RouteKind.GENERAL_KNOWLEDGE, 11, "knowledge.general", _general_enabled),
     RouteSpec(IntentKind.KNOWLEDGE_DISABLED, RouteKind.LOCAL_REPLY, 12, "knowledge.disabled", _general_disabled),
     RouteSpec(IntentKind.SCREENING, RouteKind.SCREENING, 20, "screening.new", _screening),
-    RouteSpec(IntentKind.MARKET_RESEARCH, RouteKind.LOCAL_REPLY, 25, "research.market", _market),
+    RouteSpec(IntentKind.MARKET_RESEARCH, RouteKind.INDEX_RESEARCH, 25, "research.market", _market),
     RouteSpec(IntentKind.COMPANY_CLARIFICATION, RouteKind.COMPANY_RESEARCH, 30, "clarification.company", _company_pending),
     RouteSpec(IntentKind.TECHNICAL_CLARIFICATION, RouteKind.TECHNICAL_RESEARCH, 31, "clarification.technical", _technical_pending),
     RouteSpec(IntentKind.INDICATOR_CLARIFICATION, RouteKind.TECHNICAL_RESEARCH, 32, "clarification.indicator", _indicator_pending),
@@ -286,6 +293,8 @@ def route_research_request(question: str, *, context: RoutingContext,
     for spec in ROUTE_SPECS:
         if spec.matches(value):
             if spec.intent in (IntentKind.COMMAND, IntentKind.HISTORY):
+                if spec.intent == IntentKind.HISTORY and value.context.session.latest_kind == 'index':
+                    return RouteDecision(RouteKind.INDEX_RESEARCH, spec.rule_id, spec.intent)
                 # Preserve the old no-pending command's observed clock read. This
                 # is not an authorization check and cannot renew a saved list.
                 if not context.history and context.session.pending_count == 0:

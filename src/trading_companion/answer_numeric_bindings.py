@@ -17,7 +17,7 @@ RELAXATION_COUNTERS = ('ignored_nonnumeric_bindings', 'ignored_binding_fields',
 CLAUSE_COUNTERS = ('generated_clauses', 'retained_clauses', 'deleted_clauses', 'partially_retained_sentences')
 UNITS = {'CNY/share': 'price', 'cny': 'amount', 'percent': 'percent',
          'percentage_points': 'points', 'ratio': 'ratio', 'shares': 'shares', 'count': 'count',
-         'index_points': 'index'}
+         'index_points': 'index', 'index_point': 'index_price'}
 PLAN_UNITS = {key: 'CNY/share' for key in ('reference_entry', 'reference_stop', 'target_1', 'target_2',
               'reference_close', 'exit_below', 'observe_below', 'observe_above', 'atr')}
 PLAN_UNITS.update(reward_risk_1='ratio', reward_risk_2='ratio', atr_multiple='ratio')
@@ -160,7 +160,23 @@ def bindings_for(text, numbers, *, context=None, instrument=None, stats=None):
             continue
         found = list(re.finditer(re.escape(binding['text']), text))
         if not found:
-            raise InvalidBinding('binding_text_not_in_block')
+            if (context is not None and context.get('instrument_kind') == 'index'
+                    and not set(binding) - {'text', 'ref', 'field'}):
+                # Recover only display-equivalent ordinary index numbers,
+                # retaining the explicit ref, field and unit checks below.
+                from trading_companion.evidence_numbers import same_display_number
+                candidates, _ = _bound_atoms(binding, context, instrument, strict=True)
+                literal = re.fullmatch(r'\s*([-+]?\d+(?:\.\d+)?)\s*(点)?\s*', binding['text'])
+                if (literal and candidates and all(a.plan_id is None and a.kind in ('index', 'index_price') for a in candidates)
+                        and any(same_display_number(literal[1], a.value) for a in candidates)):
+                    forms = {m[0] for m in re.finditer(r'(?<![\d.])[-+]?\d+(?:\.\d+)?(?:点)?', text)
+                             if (not literal[2] or m[0].endswith('点'))
+                             and same_display_number(m[0].removesuffix('点'), literal[1])}
+                    if len(forms) == 1:
+                        binding = {**binding, 'text': forms.pop()}
+                        found = list(re.finditer(re.escape(binding['text']), text))
+            if not found:
+                raise InvalidBinding('binding_text_not_in_block')
         for match in found:
             invalid = any(match.start() < end and match.end() > start
                           and (match.start(), match.end()) != (start, end) for start, end, _, _ in spans)
@@ -176,6 +192,9 @@ def _masked(text, context, records):
     normalized = unicodedata.normalize('NFKC', text).replace('−', '-')
     # NFKC can change length (e.g. a ligature); binding offsets use normalized slices separately.
     masked = normalized
+    if context.get('instrument_kind') == 'index':
+        for name in sorted(context.get('identity_names', ()), key=len, reverse=True):
+            masked = masked.replace(name, ' ' * len(name))
     for match in DATE.finditer(normalized):
         try:
             day = date(*(int(x) for x in match.groups())).isoformat()
@@ -272,7 +291,14 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
             left = len(unicodedata.normalize('NFKC', sentence[:max(0, start-offset)]))
             right = len(unicodedata.normalize('NFKC', sentence[:end-offset]))
             local_spans.append((left, right, binding, bad or start < offset or end > offset+len(sentence)))
-    tokens = list(NUMBER.finditer(masked))
+    index_context = context.get('instrument_kind') == 'index'
+    def matches(value, atom, shown, diagnostic=None):
+        if index_context and atom.kind in ('index', 'index_price'):
+            from trading_companion.evidence_numbers import same_display_number
+            return same_display_number(value, atom.value)
+        return _rounded(value, atom.value, shown, price=atom.kind == 'price', diagnostic=diagnostic)
+    token_pattern = re.compile(NUMBER.pattern.replace('亿股|万股|股)?', '亿股|万股|股|点)?')) if index_context else NUMBER
+    tokens = list(token_pattern.finditer(masked))
     for start, end, binding, bad in local_spans:
         if bad:
             return reject('ambiguous_overlapping_binding', BINDING_INVALID)
@@ -301,7 +327,7 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         kind = ('percent' if suffix == '%' else 'points' if suffix == '个百分点' else
                 'amount' if suffix in ('亿元', '万元') else 'ratio' if suffix == '倍' else
                 'shares' if suffix in ('股', '万股', '亿股') else 'price' if suffix == '元/股' else
-                'yuan' if suffix == '元' else None)
+                'yuan' if suffix == '元' else 'index_price' if suffix == '点' and index_context else None)
         value, direction_error = _direction(normalized[:match.start()], split[1], shown * FACTOR.get(suffix, 1), kind)
         detail = dict(token=token, shown=str(shown), value=str(value), kind=kind, unit=suffix,
                       start=match.start(), end=match.end(), binding=bool(bindings), candidates=[])
@@ -334,6 +360,12 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                     detail['reason'] = error.reason
                     detail['ordinary_numeric'] = False
             restriction = restrictions.get(match.start())
+            if index_context and restriction is None:
+                # Dimensionless RSI/ADX readings cannot become an index price merely
+                # because the same number appears in evidence.
+                candidates = [a for a in candidates if a.kind != 'index']
+            if index_context and re.search(r'收盘(?:点位|价)?\s*(?:为|是|约|在|[:：])?\s*$', normalized[:match.start()]):
+                candidates = [a for a in candidates if a.field in ('close_price', 'latest_close')]
             # A dated close can stand for an entry only when it is EXACTLY this
             # stock's supplied reference_entry. Stops/targets retain their roles.
             if plan_field == 'reference_entry':
@@ -352,9 +384,11 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                 candidates = expanded
             if restriction is not None:
                 daily, weekly = restriction
-                allowed = daily if any(a.evidence_id in daily and _rounded(value, a.value, shown, price=a.kind == 'price')
+                allowed = daily if any(a.evidence_id in daily and matches(value, a, shown)
                                        for a in candidates) else weekly
                 candidates = [a for a in candidates if a.evidence_id in allowed]
+                if index_context and suffix == '点' and candidates and all(a.kind == 'index' for a in candidates):
+                    kind = 'index'
             group = []
             for atom in candidates:
                 d = dict(evidence_id=atom.evidence_id, value=str(atom.value), kind=atom.kind,
@@ -377,7 +411,7 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                         tolerance = Decimal(1).scaleb(shown.as_tuple().exponent) * FACTOR.get(suffix, 1) / 2
                         ok = abs(value-atom.value) <= tolerance and (value == 0 or atom.value == 0 or (value > 0) == (atom.value > 0))
                     else:
-                        ok = _rounded(value, atom.value, shown, price=atom.kind == 'price', diagnostic=d)
+                        ok = matches(value, atom, shown, diagnostic=d)
                     d['reason'] = 'matched' if ok else 'numeric_out_of_tolerance'
                     if ok:
                         group.append(atom)

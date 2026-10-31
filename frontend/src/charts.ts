@@ -1,14 +1,14 @@
 /** Bounded, request-bound browser validation. Historical points are not evidence IDs. */
 export type ChartParameters = { instrument_id: string; start_date: string; as_of_date: string; source?: string; indicators?: unknown };
 export type ChartStatus = "available" | "insufficient_history" | "undefined" | "calculation_error";
-export type ChartUnit = "CNY/share" | "index_points" | "shares" | "multiple";
-export interface ChartBar { date: string; open: number; high: number; low: number; close: number; volume: number }
+export type ChartUnit = "CNY/share" | "index_points" | "index_point" | "shares" | "multiple";
+export interface ChartBar { date: string; open: number; high: number; low: number; close: number; volume: number | null }
 export interface ChartSeries {
   id: string; indicator_id: string; kind: string; parameters: Record<string, number>; algorithm_version: string;
   field: string; label: string; unit: ChartUnit; start_effect_warning: boolean; values: (number | null)[]; statuses: ChartStatus[];
 }
 export interface ResearchChartData {
-  version: "research-chart-v1"; status: "available"; code: "aligned_research_series";
+  version: "research-chart-v1" | "index-chart-v1"; status: "available"; code: "aligned_research_series";
   validation_scope: "request_bound_aligned_series_not_full_historical_evidence";
   request_id: string; instrument_id: string; start_date: string; as_of_date: string;
   source: "csv" | "tencent" | "akshare_eastmoney"; price_adjustment: "unknown" | "unadjusted";
@@ -19,7 +19,7 @@ export interface ResearchChartData {
 
 export type ChartInterval = "1w" | "60m" | "120m";
 export interface IntervalChartData extends Omit<ResearchChartData, "version" | "code" | "validation_scope" | "bars"> {
-  version: "research-chart-interval-v1"; code: "chart_only_series"; interval: ChartInterval; timezone: "Asia/Shanghai";
+  version: "research-chart-interval-v1" | "index-chart-interval-v1"; code: "chart_only_series"; interval: ChartInterval; timezone: "Asia/Shanghai";
   coverage: { start_at: string; end_at: string; bar_count: number };
   bars: (ChartBar & { start_at: string; end_at: string; complete: boolean })[];
 }
@@ -40,7 +40,9 @@ export function parseChartCapabilities(value: unknown, daily: ResearchChartData)
 }
 
 export function parseIntervalChart(value: unknown, daily: ResearchChartData, interval: ChartInterval): IntervalChartData | null {
-  if (!object(value) || value.version !== "research-chart-interval-v1" || value.status !== "available"
+  const index = daily.version === "index-chart-v1";
+  if (!object(value) || value.version !== (index ? "index-chart-interval-v1" : "research-chart-interval-v1") || value.status !== "available"
+    || index && (interval !== "1w" || value.instrument_kind !== "index" || value.price_unit !== "index_point" || value.volume_status !== "unit_unverified")
     || value.code !== "chart_only_series" || value.interval !== interval || value.timezone !== "Asia/Shanghai"
     || !["request_id", "instrument_id", "start_date", "as_of_date", "source", "price_adjustment", "data_authenticity"]
       .every((key) => value[key] === daily[key as keyof ResearchChartData])
@@ -49,7 +51,7 @@ export function parseIntervalChart(value: unknown, daily: ResearchChartData, int
     || value.retrieved_at === null || !timestamp(value.retrieved_at)
     || interval !== "1w" && (value.source !== "tencent" || value.data_authenticity !== "provider_reported")
     || !Array.isArray(value.bars) || !value.bars.length || value.bars.length > (interval === "1w" ? 53 : 320)
-    || !Array.isArray(value.series) || !value.series.length || value.series.length > 48
+    || !Array.isArray(value.series) || !index && !value.series.length || value.series.length > 48
     || !object(value.coverage) || value.coverage.bar_count !== value.bars.length) return null;
   let previous = "";
   for (const bar of value.bars) {
@@ -60,7 +62,7 @@ export function parseIntervalChart(value: unknown, daily: ResearchChartData, int
       || bar.start_at < previous || bar.start_at > bar.end_at || typeof bar.complete !== "boolean"
       || bar.start_at.slice(0, 10) < daily.start_date || bar.end_at.slice(0, 10) > daily.as_of_date
       || ![bar.open, bar.high, bar.low, bar.close].every((item) => finite(item) && item > 0)
-      || !finite(bar.volume) || !Number.isSafeInteger(bar.volume) || bar.volume < 0
+      || (index ? bar.volume !== null : !finite(bar.volume) || !Number.isSafeInteger(bar.volume) || bar.volume < 0)
       || Number(bar.low) > Math.min(Number(bar.open), Number(bar.close))
       || Number(bar.high) < Math.max(Number(bar.open), Number(bar.close))) return null;
     const day = bar.end_at.slice(0, 10);
@@ -84,7 +86,7 @@ export function parseIntervalChart(value: unknown, daily: ResearchChartData, int
   const bars = value.bars as IntervalChartData["bars"];
   if (value.coverage.start_at !== bars[0].start_at || value.coverage.end_at !== bars.at(-1)!.end_at) return null;
   const expected = [...new Map(daily.series.map((s) => [s.indicator_id, { kind: s.kind, ...s.parameters }])).values()];
-  if (!validateSeries(value as unknown as IntervalChartData, { ...daily, indicators: expected })) return null;
+  if (!validateSeries(value as unknown as IntervalChartData, { ...daily, indicators: expected }, index)) return null;
   try { if (new TextEncoder().encode(JSON.stringify(value)).length > 256 * 1024) return null; } catch { return null; }
   return value as unknown as IntervalChartData;
 }
@@ -123,7 +125,7 @@ function timestamp(value: unknown): value is string | null {
     && Number.isFinite(Date.parse(value));
 }
 
-function specification(value: Record<string, unknown>): value is Record<string, unknown> & ChartSeries {
+function specification(value: Record<string, unknown>, index = false): value is Record<string, unknown> & ChartSeries {
   const kind = value.kind;
   if (typeof kind !== "string" || !Object.hasOwn(algorithms, kind) || value.algorithm_version !== algorithms[kind]
     || !object(value.parameters) || typeof value.indicator_id !== "string" || value.indicator_id.length > 180) return false;
@@ -145,15 +147,20 @@ function specification(value: Record<string, unknown>): value is Record<string, 
     return name === names[index] && extra === undefined && /^(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/.test(text ?? "")
       && Number(text) === params[name] && (name === "stddev_multiplier" || text === String(params[name]));
   })) return false;
-  return typeof value.field === "string" && Object.hasOwn(definitions[kind], value.field) && value.unit === definitions[kind][value.field]
+  const unit = typeof value.field === "string" ? definitions[kind][value.field] : undefined;
+  return typeof value.field === "string" && Object.hasOwn(definitions[kind], value.field)
+    && (!index || !["volume", "obv", "vwma"].includes(kind)) && value.unit === (index && unit === "CNY/share" ? "index_point" : unit)
     && value.id === `${value.indicator_id}:${value.field}` && typeof value.label === "string" && value.label.length > 0 && value.label.length <= 200
     && typeof value.start_effect_warning === "boolean";
 }
 
 /** Invalid charts fail locally; they must never invalidate the confirmed answer. */
 export function parseResearchChart(value: unknown, parameters: ChartParameters | null, reportRequestId: string | undefined): ResearchChartData | null {
+  const index = object(value) && value.version === "index-chart-v1";
   if (!object(value) || !parameters || !identifier(reportRequestId) || value.request_id !== reportRequestId
-    || value.version !== "research-chart-v1" || value.status !== "available" || value.code !== "aligned_research_series"
+    || value.version !== (index ? "index-chart-v1" : "research-chart-v1") || value.status !== "available" || value.code !== "aligned_research_series"
+    || index && (value.instrument_kind !== "index" || value.price_unit !== "index_point" || value.volume_status !== "unit_unverified"
+      || !["000001.SH", "399001.SZ", "000300.SH", "399006.SZ", "000688.SH"].includes(String(value.instrument_id)))
     || value.validation_scope !== "request_bound_aligned_series_not_full_historical_evidence"
     || typeof value.instrument_id !== "string" || !/^\d{6}\.(SH|SZ|BJ)$/.test(value.instrument_id)
     || value.instrument_id !== parameters.instrument_id || value.start_date !== parameters.start_date || value.as_of_date !== parameters.as_of_date
@@ -163,18 +170,20 @@ export function parseResearchChart(value: unknown, parameters: ChartParameters |
     || parameters.source !== undefined && value.source !== parameters.source
     || !timestamp(value.retrieved_at) || !timestamp(value.saved_at) || typeof value.context !== "string" || !["current", "saved"].includes(value.context)
     || value.context === "saved" && value.saved_at === null || value.context === "current" && value.saved_at !== null) return null;
-  if (value.source === "csv" ? value.price_adjustment !== "unknown" || value.data_authenticity !== "synthetic" && value.data_authenticity !== "unverified_csv"
+  if (value.source === "csv" ? value.price_adjustment !== (index ? "unadjusted" : "unknown") || value.data_authenticity !== "synthetic" && (index || value.data_authenticity !== "unverified_csv")
     : value.price_adjustment !== "unadjusted" || value.data_authenticity !== "provider_reported") return null;
-  if (!Array.isArray(value.bars) || value.bars.length < 1 || value.bars.length > 366 || !Array.isArray(value.series) || value.series.length < 1 || value.series.length > 48) return null;
+  if (index && value.source !== "csv" && value.source !== "tencent") return null;
+  if (!Array.isArray(value.bars) || value.bars.length < 1 || value.bars.length > 366 || !Array.isArray(value.series) || !index && value.series.length < 1 || value.series.length > 48) return null;
   let previous = "";
   for (const bar of value.bars) {
     if (!object(bar) || !validChartDate(bar.date) || bar.date <= previous || bar.date < value.start_date || bar.date > value.as_of_date
       || ![bar.open, bar.high, bar.low, bar.close].every((item) => finite(item) && item > 0)
-      || !finite(bar.volume) || !Number.isInteger(bar.volume) || bar.volume < 0
+      || (index ? bar.volume !== null : !finite(bar.volume) || !Number.isInteger(bar.volume) || bar.volume < 0)
       || Number(bar.low) > Math.min(Number(bar.open), Number(bar.close)) || Number(bar.high) < Math.max(Number(bar.open), Number(bar.close))) return null;
     previous = bar.date;
   }
-  if (!validateSeries(value as unknown as ResearchChartData, parameters)) return null;
+  if (!validateSeries(value as unknown as ResearchChartData, parameters, index)) return null;
+  if (index && new TextEncoder().encode(JSON.stringify(value)).length > 256 * 1024) return null;
   return value as unknown as ResearchChartData;
 }
 
@@ -197,12 +206,12 @@ export function lineSegments(values: readonly (number | null)[], x: (index: numb
   flush(); return result;
 }
 
-function validateSeries(value: Pick<ResearchChartData, "bars" | "series">, parameters: ChartParameters): boolean {
+function validateSeries(value: Pick<ResearchChartData, "bars" | "series">, parameters: ChartParameters, index = false): boolean {
   const ids = new Set<string>();
   const instances = new Map<string, string>();
   const fields = new Map<string, Set<string>>();
   for (const series of value.series) {
-    if (!object(series) || !specification(series) || ids.has(series.id) || !Array.isArray(series.values) || !Array.isArray(series.statuses)
+    if (!object(series) || !specification(series, index) || ids.has(series.id) || !Array.isArray(series.values) || !Array.isArray(series.statuses)
       || series.values.length !== value.bars.length || series.statuses.length !== value.bars.length) return false;
     ids.add(series.id);
     const spec = `${series.kind}:${JSON.stringify(series.parameters, Object.keys(series.parameters).sort())}:${series.algorithm_version}`;
@@ -228,14 +237,15 @@ function validateSeries(value: Pick<ResearchChartData, "bars" | "series">, param
   }
   if (new Set(instances.values()).size !== instances.size) return false;
   if (parameters.indicators !== undefined) {
-    if (!Array.isArray(parameters.indicators) || parameters.indicators.length < 1 || parameters.indicators.length > 12) return false;
+    if (!Array.isArray(parameters.indicators) || !index && parameters.indicators.length < 1 || parameters.indicators.length > 12) return false;
     const expected = new Set<string>();
     for (const item of parameters.indicators) {
       if (!object(item) || typeof item.kind !== "string" || !Object.hasOwn(algorithms, item.kind)) return false;
+      if (index && ["volume", "obv", "vwma"].includes(item.kind)) continue;
       const params = Object.fromEntries(Object.entries(item).filter(([name]) => name !== "kind"));
       expected.add(`${item.kind}:${JSON.stringify(params, Object.keys(params).sort())}:${algorithms[item.kind]}`);
     }
-    if (expected.size !== parameters.indicators.length || expected.size !== instances.size
+    if ((!index && expected.size !== parameters.indicators.length) || expected.size !== instances.size
       || [...instances.values()].some((spec) => !expected.has(spec))) return false;
   }
   return true;

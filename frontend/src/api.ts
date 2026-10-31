@@ -52,6 +52,7 @@ export interface PublicTurn {
   conversation?: unknown;
   research_workflow?: unknown;
   company_research?: unknown;
+  index_research?: unknown;
   knowledge?: unknown;
   screening?: unknown;
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
@@ -251,7 +252,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     chart: (session, researchId, interval, signal) => {
       if (!/^[A-Za-z0-9_.-]{1,100}$/.test(researchId) || !["1w", "60m", "120m"].includes(interval)) throw new ConnectionError();
       return request(path(session) + `/chart?research_id=${encodeURIComponent(researchId)}&interval=${interval}`,
-        (value): value is Record<string, unknown> => record(value) && value.version === "research-chart-interval-v1"
+        (value): value is Record<string, unknown> => record(value) && (value.version === "research-chart-interval-v1" || value.version === "index-chart-interval-v1")
           && ["available", "unavailable"].includes(String(value.status)), { session, signal, bounded: true });
     },
     cancel: async (session, id) => { await request(path(session) + "/cancel",

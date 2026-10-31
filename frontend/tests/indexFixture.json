@@ -1,0 +1,615 @@
+{
+  "turn": {
+    "status": "completed",
+    "code": "index_research_completed",
+    "message": "指数研究已完成。",
+    "stage": "index_research",
+    "answer": "本次以上证指数作为大盘观察基准。\n\n结论：人工示例暂不判断方向；此处用于演示指数研究的展示方式。\n\n当前情况：2026-09-25完整日线收盘1496.80点。\n\n情景：若后续收盘走强可重新研究，走弱则关注下行风险，不能据此保证后续趋势。\n\n观察重点：核对历史点位与指标，若后续走势与当前观察相反应重新评估。",
+    "index_research": {
+      "version": "index-research-v1",
+      "request_id": "1b85f9cc669f4eb09342ef005e5ef440",
+      "instrument_kind": "index",
+      "instrument_id": "000001.SH",
+      "name": "上证指数",
+      "benchmark_defaulted": true,
+      "price_unit": "index_point",
+      "start_date": "2026-09-01",
+      "as_of_date": "2026-09-25",
+      "latest_date": "2026-09-25",
+      "source": "csv",
+      "data_authenticity": "synthetic",
+      "retrieved_at": "2026-09-26T04:00:00+00:00",
+      "context": "current",
+      "saved_at": null,
+      "direction": "暂不判断",
+      "conviction": "低",
+      "horizon": null,
+      "conviction_note": "模型自评，未经历史校准",
+      "origin": "model",
+      "blocks": [
+        {
+          "title": "结论",
+          "text": "人工示例暂不判断方向；此处用于演示指数研究的展示方式。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "当前情况",
+          "text": "2026-09-25完整日线收盘1496.80点。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "情景",
+          "text": "若后续收盘走强可重新研究，走弱则关注下行风险，不能据此保证后续趋势。",
+          "evidence_ids": [
+            "E1"
+          ]
+        },
+        {
+          "title": "观察重点",
+          "text": "核对历史点位与指标，若后续走势与当前观察相反应重新评估。",
+          "evidence_ids": [
+            "E1"
+          ]
+        }
+      ],
+      "quality": {
+        "version": "index-answer-quality-v1",
+        "generated_sentences": 4,
+        "retained_sentences": 4,
+        "deleted_sentences": 0,
+        "retained_paragraphs": 4,
+        "rejected_paragraphs": 0,
+        "partially_retained_sentences": 0,
+        "repair_attempts": 0,
+        "partial": false
+      },
+      "evidence": [
+        {
+          "id": "E1",
+          "instrument_id": "000001.SH",
+          "label": "最新完整日收盘点位",
+          "raw_value": 1496.8,
+          "unit": "index_point",
+          "date": "2026-09-25",
+          "field": "close_price",
+          "display_value": "1496.80",
+          "display": "最新完整日收盘点位：1496.80点",
+          "content_kind": "fact",
+          "kind": "technical",
+          "source": "csv",
+          "indicator_id": null,
+          "timeframe": "daily"
+        },
+        {
+          "id": "E2",
+          "instrument_id": "000001.SH",
+          "label": "研究窗口内最近至多120条日线最低点",
+          "raw_value": 1479.6,
+          "unit": "index_point",
+          "date": "2026-09-25",
+          "field": "window_low",
+          "display_value": "1479.60",
+          "display": "研究窗口内最近至多120条日线最低点：1479.60点",
+          "content_kind": "fact",
+          "kind": "technical",
+          "source": "csv",
+          "indicator_id": null,
+          "timeframe": "daily"
+        },
+        {
+          "id": "E3",
+          "instrument_id": "000001.SH",
+          "label": "研究窗口内最近至多120条日线最高点",
+          "raw_value": 1508.0,
+          "unit": "index_point",
+          "date": "2026-09-25",
+          "field": "window_high",
+          "display_value": "1508.00",
+          "display": "研究窗口内最近至多120条日线最高点：1508.00点",
+          "content_kind": "fact",
+          "kind": "technical",
+          "source": "csv",
+          "indicator_id": null,
+          "timeframe": "daily"
+        },
+        {
+          "id": "E4",
+          "instrument_id": "000001.SH",
+          "label": "日线SMA(3)",
+          "raw_value": 1495.6,
+          "unit": "index_point",
+          "date": "2026-09-25",
+          "field": "value",
+          "display_value": "1495.60",
+          "display": "日线SMA(3)：1495.60点",
+          "content_kind": "fact",
+          "kind": "technical",
+          "source": "csv",
+          "indicator_id": "sma(window=3)",
+          "timeframe": "daily"
+        },
+        {
+          "id": "E5",
+          "instrument_id": "000001.SH",
+          "label": "日线RSI(2)",
+          "raw_value": 70.87,
+          "unit": "index_points",
+          "date": "2026-09-25",
+          "field": "value",
+          "display_value": "70.87",
+          "display": "日线RSI(2)：70.87（指标读数）",
+          "content_kind": "fact",
+          "kind": "technical",
+          "source": "csv",
+          "indicator_id": "rsi(window=2)",
+          "timeframe": "daily"
+        }
+      ],
+      "limitations": [
+        "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+        "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+        "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+        "支撑压力为历史点位候选，不保证未来触达或突破有效。",
+        "周线SMA(3)：历史不足或计算不可用",
+        "周线RSI(2)：历史不足或计算不可用"
+      ],
+      "plan_notice": null
+    },
+    "parameters": {
+      "instrument_id": "000001.SH",
+      "start_date": "2026-09-01",
+      "as_of_date": "2026-09-25",
+      "source": "csv",
+      "indicators": [
+        {
+          "kind": "sma",
+          "window": 3
+        },
+        {
+          "kind": "rsi",
+          "window": 2
+        }
+      ]
+    },
+    "chart": {
+      "version": "index-chart-v1",
+      "status": "available",
+      "code": "aligned_research_series",
+      "validation_scope": "request_bound_aligned_series_not_full_historical_evidence",
+      "request_id": "1b85f9cc669f4eb09342ef005e5ef440",
+      "instrument_id": "000001.SH",
+      "start_date": "2026-09-01",
+      "as_of_date": "2026-09-25",
+      "source": "csv",
+      "instrument_kind": "index",
+      "price_unit": "index_point",
+      "volume_status": "unit_unverified",
+      "price_adjustment": "unadjusted",
+      "data_authenticity": "synthetic",
+      "retrieved_at": "2026-09-26T04:00:00+00:00",
+      "context": "current",
+      "saved_at": null,
+      "bars": [
+        {
+          "date": "2026-09-01",
+          "open": 1493.0,
+          "high": 1502.0,
+          "low": 1485.0,
+          "close": 1495.0,
+          "volume": null
+        },
+        {
+          "date": "2026-09-02",
+          "open": 1494.2,
+          "high": 1503.2,
+          "low": 1486.2,
+          "close": 1496.2,
+          "volume": null
+        },
+        {
+          "date": "2026-09-03",
+          "open": 1495.4,
+          "high": 1504.4,
+          "low": 1487.4,
+          "close": 1497.4,
+          "volume": null
+        },
+        {
+          "date": "2026-09-04",
+          "open": 1487.6,
+          "high": 1496.6,
+          "low": 1479.6,
+          "close": 1489.6,
+          "volume": null
+        },
+        {
+          "date": "2026-09-07",
+          "open": 1491.2,
+          "high": 1500.2,
+          "low": 1483.2,
+          "close": 1493.2,
+          "volume": null
+        },
+        {
+          "date": "2026-09-08",
+          "open": 1492.4,
+          "high": 1501.4,
+          "low": 1484.4,
+          "close": 1494.4,
+          "volume": null
+        },
+        {
+          "date": "2026-09-09",
+          "open": 1493.6,
+          "high": 1502.6,
+          "low": 1485.6,
+          "close": 1495.6,
+          "volume": null
+        },
+        {
+          "date": "2026-09-10",
+          "open": 1494.8,
+          "high": 1503.8,
+          "low": 1486.8,
+          "close": 1496.8,
+          "volume": null
+        },
+        {
+          "date": "2026-09-11",
+          "open": 1496.0,
+          "high": 1505.0,
+          "low": 1488.0,
+          "close": 1498.0,
+          "volume": null
+        },
+        {
+          "date": "2026-09-14",
+          "open": 1490.6,
+          "high": 1499.6,
+          "low": 1482.6,
+          "close": 1492.6,
+          "volume": null
+        },
+        {
+          "date": "2026-09-15",
+          "open": 1491.8,
+          "high": 1500.8,
+          "low": 1483.8,
+          "close": 1493.8,
+          "volume": null
+        },
+        {
+          "date": "2026-09-16",
+          "open": 1493.0,
+          "high": 1502.0,
+          "low": 1485.0,
+          "close": 1495.0,
+          "volume": null
+        },
+        {
+          "date": "2026-09-17",
+          "open": 1494.2,
+          "high": 1503.2,
+          "low": 1486.2,
+          "close": 1496.2,
+          "volume": null
+        },
+        {
+          "date": "2026-09-18",
+          "open": 1495.4,
+          "high": 1504.4,
+          "low": 1487.4,
+          "close": 1497.4,
+          "volume": null
+        },
+        {
+          "date": "2026-09-21",
+          "open": 1499.0,
+          "high": 1508.0,
+          "low": 1491.0,
+          "close": 1501.0,
+          "volume": null
+        },
+        {
+          "date": "2026-09-22",
+          "open": 1491.2,
+          "high": 1500.2,
+          "low": 1483.2,
+          "close": 1493.2,
+          "volume": null
+        },
+        {
+          "date": "2026-09-23",
+          "open": 1492.4,
+          "high": 1501.4,
+          "low": 1484.4,
+          "close": 1494.4,
+          "volume": null
+        },
+        {
+          "date": "2026-09-24",
+          "open": 1493.6,
+          "high": 1502.6,
+          "low": 1485.6,
+          "close": 1495.6,
+          "volume": null
+        },
+        {
+          "date": "2026-09-25",
+          "open": 1494.8,
+          "high": 1503.8,
+          "low": 1486.8,
+          "close": 1496.8,
+          "volume": null
+        }
+      ],
+      "series": [
+        {
+          "id": "sma(window=3):value",
+          "indicator_id": "sma(window=3)",
+          "kind": "sma",
+          "parameters": {
+            "window": 3
+          },
+          "algorithm_version": "sma-close-v1",
+          "field": "value",
+          "label": "SMA(3)",
+          "unit": "index_point",
+          "start_effect_warning": false,
+          "values": [
+            null,
+            null,
+            1496.2,
+            1494.4000000000003,
+            1493.4000000000003,
+            1492.4000000000003,
+            1494.4000000000003,
+            1495.6000000000004,
+            1496.8000000000004,
+            1495.8000000000004,
+            1494.8000000000004,
+            1493.8000000000004,
+            1495.0000000000007,
+            1496.2000000000005,
+            1498.2000000000005,
+            1497.2000000000005,
+            1496.2000000000007,
+            1494.4000000000008,
+            1495.600000000001
+          ],
+          "statuses": [
+            "insufficient_history",
+            "insufficient_history",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available"
+          ]
+        },
+        {
+          "id": "rsi(window=2):value",
+          "indicator_id": "rsi(window=2)",
+          "kind": "rsi",
+          "parameters": {
+            "window": 2
+          },
+          "algorithm_version": "rsi-wilder-flat50-v1",
+          "field": "value",
+          "label": "RSI(2)",
+          "unit": "index_points",
+          "start_effect_warning": false,
+          "values": [
+            null,
+            null,
+            100.0,
+            13.333333333333501,
+            51.85185185185222,
+            62.857142857143195,
+            74.50980392156738,
+            84.33734939758999,
+            91.15646258503395,
+            18.533886583679088,
+            39.83656792645588,
+            60.49631120053697,
+            76.5805168986087,
+            87.09182555336425,
+            96.50465847724162,
+            23.198619095850074,
+            37.74845923476336,
+            54.85404734551335,
+            70.86537472874153
+          ],
+          "statuses": [
+            "insufficient_history",
+            "insufficient_history",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available",
+            "available"
+          ]
+        }
+      ]
+    },
+    "report": {
+      "request_id": "1b85f9cc669f4eb09342ef005e5ef440",
+      "fields": [],
+      "limitations": [
+        "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+        "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+        "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+        "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+      ]
+    },
+    "market_context": null,
+    "candidates": [],
+    "applied_defaults": [
+      "benchmark:上证指数"
+    ],
+    "model_calls_attempted": 2,
+    "analyses_used": 1,
+    "runtime": {
+      "version": "turn-control-v1",
+      "state": "finished",
+      "stop_code": null,
+      "elapsed_ms": 32,
+      "limits": {
+        "timeout_seconds": 90.0,
+        "model_calls": 3,
+        "analyses": 1,
+        "observed_tokens": 24000
+      },
+      "model_calls_attempted": 2,
+      "analyses_used": 1,
+      "responses_received": 2,
+      "observed_tokens": 0,
+      "reported_usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null
+      },
+      "responses_with_complete_consistent_usage": 0,
+      "usage_complete_for_attempts": false,
+      "token_policy": "observed_threshold_not_preflight_or_billing_cap",
+      "deadline_policy": "cooperative_checkpoints_not_hard_interrupt"
+    },
+    "validation_scope": "index_bound_numbers_and_technical_relations_not_prose_entailment"
+  },
+  "weekly": {
+    "request_id": "1b85f9cc669f4eb09342ef005e5ef440",
+    "instrument_id": "000001.SH",
+    "start_date": "2026-09-01",
+    "as_of_date": "2026-09-25",
+    "source": "csv",
+    "price_adjustment": "unadjusted",
+    "data_authenticity": "synthetic",
+    "retrieved_at": "2026-09-26T04:00:00+00:00",
+    "context": "current",
+    "saved_at": null,
+    "instrument_kind": "index",
+    "price_unit": "index_point",
+    "volume_status": "unit_unverified",
+    "version": "index-chart-interval-v1",
+    "status": "available",
+    "code": "chart_only_series",
+    "interval": "1w",
+    "timezone": "Asia/Shanghai",
+    "coverage": {
+      "start_at": "2026-09-07T09:30:00+08:00",
+      "end_at": "2026-09-25T15:00:00+08:00",
+      "bar_count": 3
+    },
+    "bars": [
+      {
+        "date": "2026-09-11",
+        "start_at": "2026-09-07T09:30:00+08:00",
+        "end_at": "2026-09-11T15:00:00+08:00",
+        "complete": true,
+        "open": 1491.2,
+        "high": 1505.0,
+        "low": 1483.2,
+        "close": 1498.0,
+        "volume": null
+      },
+      {
+        "date": "2026-09-18",
+        "start_at": "2026-09-14T09:30:00+08:00",
+        "end_at": "2026-09-18T15:00:00+08:00",
+        "complete": true,
+        "open": 1490.6,
+        "high": 1504.4,
+        "low": 1482.6,
+        "close": 1497.4,
+        "volume": null
+      },
+      {
+        "date": "2026-09-25",
+        "start_at": "2026-09-21T09:30:00+08:00",
+        "end_at": "2026-09-25T15:00:00+08:00",
+        "complete": false,
+        "open": 1499.0,
+        "high": 1508.0,
+        "low": 1483.2,
+        "close": 1496.8,
+        "volume": null
+      }
+    ],
+    "series": [
+      {
+        "id": "sma(window=3):value",
+        "indicator_id": "sma(window=3)",
+        "kind": "sma",
+        "parameters": {
+          "window": 3
+        },
+        "algorithm_version": "sma-close-v1",
+        "field": "value",
+        "label": "SMA(3)",
+        "unit": "index_point",
+        "start_effect_warning": false,
+        "values": [
+          null,
+          null,
+          1497.3999999999999
+        ],
+        "statuses": [
+          "insufficient_history",
+          "insufficient_history",
+          "available"
+        ]
+      },
+      {
+        "id": "rsi(window=2):value",
+        "indicator_id": "rsi(window=2)",
+        "kind": "rsi",
+        "parameters": {
+          "window": 2
+        },
+        "algorithm_version": "rsi-wilder-flat50-v1",
+        "field": "value",
+        "label": "RSI(2)",
+        "unit": "index_points",
+        "start_effect_warning": true,
+        "values": [
+          null,
+          null,
+          0.0
+        ],
+        "statuses": [
+          "insufficient_history",
+          "insufficient_history",
+          "available"
+        ]
+      }
+    ]
+  }
+}

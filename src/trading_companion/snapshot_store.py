@@ -178,6 +178,15 @@ def _public_data(bundle):
 
 
 def _source_boundary(data, observed_at):
+    if data['version'] == 'index-evidence-snapshot-v1':
+        from trading_companion.index_snapshot import validate_snapshot
+        result = validate_snapshot({k: v for k, v in data.items() if k not in ('trading_enabled', 'snapshot_policy')})
+        retrieved = _timestamp(result.retrieved_at)
+        if retrieved > observed_at:
+            raise SnapshotStoreError('snapshot_source_time_in_future')
+        return dict(policy='source_retrieval_times_not_publication_dates', latest_at=retrieved, unknown_count=0,
+            sources=[dict(instrument_id=result.request.instrument_id, source=result.request.source,
+                records=len(result.bars), earliest_at=retrieved, latest_at=retrieved, unknown_count=0)])
     groups = defaultdict(list)
     for company in data["companies"]:
         instrument = company["instrument_id"]
@@ -205,6 +214,12 @@ def _source_boundary(data, observed_at):
 
 
 def _metadata(payload):
+    if payload['version'] == 'index-evidence-snapshot-v1':
+        raw = payload['index_snapshot']
+        return dict(version=payload['version'], snapshot_id=payload['snapshot_id'], observed_at=payload['observed_at'],
+            source_retrieval=payload['source_retrieval'], instrument_kind='index',
+            instrument_id=raw['parameters']['instrument_id'], as_of=raw['parameters']['as_of_date'],
+            snapshot_policy=SNAPSHOT_POLICY, evidence_count=len(payload['evidence']), technical_snapshots=1)
     plan = payload["plan"]
     return {"version": VERSION, "snapshot_id": payload["snapshot_id"], "observed_at": payload["observed_at"],
             "source_retrieval": payload["source_retrieval"], "securities": plan["securities"],
@@ -286,10 +301,13 @@ class ResearchSnapshotStore:
             raise SnapshotStoreError("snapshot_corrupt")
         try:
             payload = json.loads(raw, object_pairs_hook=_unique, parse_constant=_constant)
-            if (type(payload) is not dict or payload.keys() != {
+            index_payload = type(payload) is dict and payload.get('version') == 'index-evidence-snapshot-v1'
+            expected_keys = ({'version', 'index_snapshot', 'index_snapshot_sha256', 'evidence', 'limitations', 'trading_enabled', 'snapshot_policy',
+                              'snapshot_id', 'observed_at', 'source_retrieval'} if index_payload else {
                     "version", "plan", "companies", "trading_enabled", "snapshot_policy",
-                    "snapshot_id", "observed_at", "source_retrieval"}
-                    or payload["version"] != VERSION or payload["snapshot_id"] != snapshot_id
+                    "snapshot_id", "observed_at", "source_retrieval"})
+            if (type(payload) is not dict or payload.keys() != expected_keys
+                    or not index_payload and payload["version"] != VERSION or payload["snapshot_id"] != snapshot_id
                     or payload["snapshot_policy"] != SNAPSHOT_POLICY or payload["trading_enabled"] is not False
                     or _timestamp(payload["observed_at"]) != row[2]):
                 raise SnapshotStoreError("snapshot_corrupt")
@@ -312,7 +330,18 @@ class ResearchSnapshotStore:
             raise
         except (ValueError, TypeError, AttributeError, KeyError, IndexError, RecursionError, OverflowError):
             raise SnapshotStoreError("invalid_snapshot_bundle") from None
-        snapshot_id = _hash(body)
+        return self._save_data(data)
+
+    def save_index(self, result) -> str:
+        from trading_companion.index_snapshot import snapshot_data
+        try:
+            data = dict(**snapshot_data(result), trading_enabled=False, snapshot_policy=SNAPSHOT_POLICY)
+            return self._save_data(data)
+        except (ValueError, TypeError, AttributeError, KeyError, IndexError, OverflowError):
+            raise SnapshotStoreError('invalid_snapshot_bundle') from None
+
+    def _save_data(self, data):
+        snapshot_id = _hash(_encode(data))
         with self._lock:
             self._ensure_open()
             try:

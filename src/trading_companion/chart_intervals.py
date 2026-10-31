@@ -12,6 +12,7 @@ from trading_companion.daily_bar import DailyBar
 from trading_companion.multi_contracts import ALGORITHM_VERSIONS, IndicatorSpec, MultiIndicatorRequest
 from trading_companion.research_report import FIELD_LABELS, indicator_field_units, indicator_label
 from trading_companion.technical_insights import group_daily_weeks
+from trading_companion.ohlc_weeks import aggregate_prices
 from trading_companion.tencent_adapter import to_tencent_symbol
 
 VERSION = "research-chart-interval-v1"
@@ -44,6 +45,9 @@ class ChartBinding:
 
 def bind_chart(turn, data_mode):
     """Resolve only a validated single-stock projection from a completed local record."""
+    if turn.get('index_research') is not None:
+        from trading_companion.index_chart import bind_index_chart
+        return bind_index_chart(turn, data_mode)
     try:
         if turn.get("status") not in ("completed", "limited"):
             raise ValueError()
@@ -102,6 +106,9 @@ def bind_chart(turn, data_mode):
 
 
 def capabilities(binding, data_mode):
+    from trading_companion.index_chart import IndexChartBinding, index_capabilities
+    if type(binding) is IndexChartBinding:
+        return index_capabilities(binding)
     code = "ready"
     try:
         to_tencent_symbol(binding.request.instrument_id)
@@ -118,10 +125,11 @@ def weekly_bars(binding):
     output = []
     request = binding.request
     for monday, rows in group_daily_weeks(binding.bars, start_date=request.start_date, as_of_date=request.as_of_date):
+        prices = aggregate_prices(rows)
         output.append(ChartBar(datetime.combine(rows[0].trade_date, time(9, 30), SHANGHAI),
             datetime.combine(rows[-1].trade_date, time(15), SHANGHAI),
-            calculations.NumericBar(rows[0].open_price, max(row.high_price for row in rows),
-                min(row.low_price for row in rows), rows[-1].close_price, sum(row.volume_shares for row in rows)),
+            calculations.NumericBar(prices.open_price, prices.high_price,
+                prices.low_price, prices.close_price, sum(row.volume_shares for row in rows)),
             monday + timedelta(days=6) <= request.as_of_date))
     if not output:
         raise ChartUnavailable("chart_insufficient_history")

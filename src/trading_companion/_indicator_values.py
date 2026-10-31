@@ -7,11 +7,14 @@ from statistics import mean, pstdev
 from typing import Literal
 
 @dataclass(frozen=True)
-class NumericBar:
+class PriceValues:
     open_price: float
     high_price: float
     low_price: float
     close_price: float
+
+@dataclass(frozen=True)
+class NumericBar(PriceValues):
     volume_shares: int
 
 RelativeVolumeStatus = Literal["available", "insufficient_history", "undefined"]

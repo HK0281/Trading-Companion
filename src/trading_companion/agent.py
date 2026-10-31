@@ -63,6 +63,9 @@ class AgentTurnResult:
     product_answer: object | None = field(default=None, repr=False)
     product_bundle: object | None = field(default=None, repr=False)
     product_plan: object | None = field(default=None, repr=False)
+    index_result: object | None = field(default=None, repr=False)
+    index_answer: object | None = field(default=None, repr=False)
+    index_research: dict | None = field(default=None, repr=False)
     screening_result: object | None = field(default=None, repr=False)
     screening_defaulted: bool = False
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)
@@ -120,6 +123,10 @@ class AgentTurnResult:
     @property
     def display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
+        if self.index_answer is not None and self.index_result is not None:
+            text = self.index_answer.text(self.index_result)
+            notice = self.index_research.get('plan_notice') if self.index_research else None
+            return text + ('\n\n' + notice if notice else '')
         if self.screening_result is not None:
             return self.message
         if self.product_answer is not None:
@@ -242,7 +249,7 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
         runtime.start()
         working = session._fork_for_turn() if session is not None else None
         if working is not None and replace_pending and any(
-                item is not None for item in (working.pending, working.pending_edit, working.product_pending)):
+                item is not None for item in (working.pending, working.pending_edit, working.product_pending, working.index_pending)):
             working._replacing_pending = True
             working.clear_pending()
 
@@ -252,10 +259,10 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
             if not stopped:
                 if working._replacing_pending and not (
                         outcome.status == "completed" or outcome.status == "limited" and (
-                            _has_research(outcome) or outcome.product_bundle is not None and bool(outcome.product_bundle.evidence)
+                            _has_research(outcome) or outcome.index_result is not None or outcome.product_bundle is not None and bool(outcome.product_bundle.evidence)
                             or outcome.screening_result is not None and outcome.screening_result.status == "empty")
                         or outcome.status == "needs_clarification" and any(item is not None for item in
-                            (working.pending, working.pending_edit, working.product_pending))):
+                            (working.pending, working.pending_edit, working.product_pending, working.index_pending))):
                     return
                 session._publish_turn(working)
 
@@ -319,6 +326,10 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
         raise ModelConfigurationError("Workflow mode must be selected by trusted application code")
     if session is not None and type(session) is not ResearchSession:
         raise ModelConfigurationError("Use a trusted per-conversation research session")
+    from trading_companion.index_agent import owns_index_request, run_index_research_turn
+    if owns_index_request(question, session, directory):
+        return run_index_research_turn(question, model=model, directory=directory, session=session, source=source,
+            development_source=development_source, now=current_time, reference_date=reference_date, control=control)
     from trading_companion.routing_context import replaces_pending
     return _controlled(lambda checked_model, working: _run_natural(
         question, model=checked_model, directory=directory, source=source,

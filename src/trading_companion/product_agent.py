@@ -256,6 +256,10 @@ def _execute(question, *, session, model, directory, now, reference_date, source
 def run_product_research_turn(question, *, session, model, directory, now, source, data_service,
                               reference_date=None, development_source=None, control=None, source_factory=None,
                               market_background_source=None, background_clock=None):
+    from trading_companion.index_agent import owns_index_request, run_index_research_turn
+    if owns_index_request(question, session, directory):
+        return run_index_research_turn(question, model=model, directory=directory, session=session, now=now,
+            source=source, development_source=development_source, reference_date=reference_date, control=control)
     if data_service is None:
         raise ModelConfigurationError("Company research requires an explicit trusted data service")
     return _controlled(lambda controlled, working: _execute(question, session=working, model=controlled,

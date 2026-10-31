@@ -2,6 +2,8 @@
 
 A Chinese-language research agent for China's A-share market, with application-controlled tools, checked evidence, and trading decisions kept with the human.
 
+Index trend research now has an independent daily/weekly workflow for 上证指数、深证成指、沪深300、创业板指 and 科创50. “大盘” uses an explicitly labelled 上证 benchmark; ambiguous “科创板指数” asks for the exact identity. Index prices use points, and unverified quantities remain unavailable. Index point plans and hourly charts are separate upcoming batches. [Index scope, evidence and compatibility (Chinese)](docs/index-research-design.md)
+
 Price-plan questions now ask for a holding horizon before collecting data: choose 短线（1-2周）, 中线（1-3个月） or 长线（半年以上）. Clicking a choice continues the original question. Explicit horizons such as “未来4个月” are retained; long-term plans use complete-week ATR14 and require approximately one year of history. Direction-only research and excluded price plans do not ask. [Holding-horizon rules (Chinese)](docs/holding-horizon-design.md) · [117-turn v7 comparison](docs/request-routing-horizon-deltas.md)
 
 Natural technical questions now share the checked v3 narrative workflow, including shortlist research and indicator edits. “只看SMA3” keeps that exact indicator set: no implicit ATR or extra MA20/MA60. Excluded domains display “按要求未研究”; an unavailable reference plan does not discard a valid answer. Legacy tasks and structured entry points remain available. [Scope and compatibility](docs/technical-shared-narrative-design.md) · [117-turn v6 comparison](docs/request-routing-technical-deltas.md)
@@ -25,15 +27,18 @@ flowchart TD
         S["Screening<br/>edits and shortlist continuation"]
         C["Company research"]
         T["Technical research"]
+        I["Index research<br/>daily / complete-week evidence"]
     end
     R --> K
     R --> S
     R --> C
     R --> T
+    R --> I
     K --> V["Path-specific evidence checks<br/>at most one company-answer repair"]
     S --> V
     C --> V
     T --> V
+    I --> V
     V --> P["Cancel-safe publication"]
     B["TurnControl<br/>budgets, deadline, cancellation"] -.-> X
     B -.-> P
@@ -43,7 +48,7 @@ flowchart TD
     P -.-> H["Optional checked-evidence archive"]
 ```
 
-Executors use controlled models and read-only tools as needed. Dashed arrows show shared controls or optional facilities. The collection pool serves company evidence and Tencent screening batches; Eastmoney pagination stays sequential, as do technical calculations and model calls. Fixed knowledge answers can use zero model calls and zero data reads. The single model repair applies to company answers. Traces store bounded metadata; the optional archive stores evidence, without chat or model answers. Local clarification/conflict replies and the full flow are covered in the [current architecture](docs/architecture.md#2026-10-28当前已实现的处理链路) and [routing design](docs/request-routing-design.md).
+Executors use controlled models and read-only tools as needed. Dashed arrows show shared controls or optional facilities. The collection pool serves company evidence and Tencent screening batches; Eastmoney pagination stays sequential, as do technical calculations and model calls. Fixed knowledge answers can use zero model calls and zero data reads. Company and index answers allow at most one model repair. Traces store bounded metadata; the optional archive stores evidence, without chat or model answers. Local clarification/conflict replies and the full flow are covered in the [current architecture](docs/architecture.md#2026-10-28当前已实现的处理链路) and [routing design](docs/request-routing-design.md).
 
 DeepSeek structured answers have a 4,096-token output allowance; requests declaring tools keep a 1,500-token cap. Length-limited answers get a distinct diagnostic and at most one concise rewrite. Small JSON punctuation errors can be repaired locally before the existing evidence checks. Technical research accepts multiple proposals in one response and executes them in order within the unchanged six-tool and six-model-attempt limits, recording rejected and unexecuted calls. [Answer boundaries](docs/natural-research-narrative-design.md) · [Batch execution](docs/bounded-research-workflow-design.md)
 

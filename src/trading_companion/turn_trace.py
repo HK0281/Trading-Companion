@@ -48,6 +48,9 @@ service_closed session_message_limit request_id_conflict request_id_retired requ
 research_completed partial_research explanation_rejected company_research_completed company_research_limited
 general_knowledge_answered general_knowledge_disabled indicator_knowledge_answered routing_state_conflict
 market_research_unavailable market_index_unsupported market_tasks_need_selection market_scope_unsupported
+research_subject_is_index index_identity_required index_saved_unavailable index_research_completed index_research_facts_only
+index_technical_excluded index_indicators_required index_clarification_expired index_selection_mismatch index_current_unavailable
+index_source_unsupported index_intent_invalid index_intent_ungrounded index_data_unavailable index_model_unavailable
 session_reset session_cancelled research_cancelled no_saved_result saved_result saved_question_answered
 no_confirmed_research no_pending_clarification no_pending_indicator_edit
 clarification_configuration_changed clarification_directory_changed clarification_expired
@@ -101,7 +104,7 @@ _OPERATIONS = frozenset("""
 research workflow execute daily_bars company_section company_collect directory market_context_load market_background answer_validation
 screening_snapshot knowledge_search tool_history tool_request tool_scope research_response workflow_response
 indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule local_date_expression rewrite_decision model_rewrite
-daily_source daily_records
+daily_source daily_records index_daily
 """.split())
 _EVENT_STATUSES = ("ok", "limited", "rejected", "failed", "stopped", "skipped", "unfinished")
 _TOOLS = {"analyze_daily_indicators": "primary_analysis_completed", "get_indicator_knowledge": "indicator_knowledge_returned",
@@ -164,6 +167,7 @@ def _source_identity(operation, function, args):
         return {"profile": "eastmoney_company", "financial": "eastmoney_financial"}.get(kind), "network"
     for module, name, source, access in (
         ("tencent_adapter", "TencentDailyBarSource", "tencent", "network"),
+        ("index_source", "TencentIndexSource", "tencent", "network"),
         ("akshare_adapter", "AkshareDailyBarSource", "akshare_eastmoney", "network"),
         ("data_source", "CsvDailyBarSource", "csv", "local"),
         ("workflow_tools", "_SnapshotSource", "research_snapshot", "snapshot"),
@@ -192,8 +196,8 @@ def _result_metadata(operation, result):
         draft = response.tool_calls[0].arguments if response is not None and response.tool_calls else {}
         applied = draft.get("intent") != "research" or draft.get("clarification_reason") is not None
         return ("ok", "rule_applied") if applied else ("skipped", "rule_not_needed")
-    if operation in ("daily_bars", "knowledge_search"):
-        if operation == "daily_bars" and type(result) in (list, tuple):
+    if operation in ("daily_bars", "index_daily", "knowledge_search"):
+        if operation in ("daily_bars", "index_daily") and type(result) in (list, tuple):
             empty = not result
         elif operation == "knowledge_search" and _known(result, "knowledge_retrieval", "KnowledgeRetrieval"):
             empty = not result.hits

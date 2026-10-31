@@ -6,6 +6,7 @@ from math import isfinite
 from statistics import mean
 
 from trading_companion.daily_bar import DailyBar
+from trading_companion.ohlc_weeks import group_weeks, aggregate_prices
 from trading_companion import indicators as calculations
 from trading_companion.multi_contracts import Fact, IndicatorSpec, MultiIndicatorRequest, MultiIndicatorResult
 from trading_companion.research_report import build_research_report, indicator_label
@@ -85,15 +86,7 @@ def group_daily_weeks(bars, *, start_date: date, as_of_date: date):
         raise ValueError("Valid date boundaries are required")
     bars = tuple(bars)
     _validate_bars(bars)
-    groups = {}
-    for bar in bars:
-        if not start_date <= bar.trade_date <= as_of_date:
-            continue
-        monday = bar.trade_date - timedelta(days=bar.trade_date.weekday())
-        if monday < start_date:
-            continue
-        groups.setdefault(monday, []).append(bar)
-    return tuple((monday, tuple(rows)) for monday, rows in groups.items())
+    return group_weeks(bars, start_date=start_date, as_of_date=as_of_date)
 
 
 def aggregate_completed_weeks(bars, *, start_date: date, as_of_date: date) -> tuple[DailyBar, ...]:
@@ -102,10 +95,11 @@ def aggregate_completed_weeks(bars, *, start_date: date, as_of_date: date) -> tu
     for monday, rows in group_daily_weeks(bars, start_date=start_date, as_of_date=as_of_date):
         if monday + timedelta(days=6) > as_of_date:
             continue
+        prices = aggregate_prices(rows)
         output.append(DailyBar(
-            rows[0].instrument_id, rows[-1].trade_date, rows[0].open_price,
-            max(row.high_price for row in rows), min(row.low_price for row in rows),
-            rows[-1].close_price, sum(row.volume_shares for row in rows),
+            rows[0].instrument_id, rows[-1].trade_date, prices.open_price,
+            prices.high_price, prices.low_price,
+            prices.close_price, sum(row.volume_shares for row in rows),
             sum(row.amount_cny for row in rows),
         ))
     return tuple(output)

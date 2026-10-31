@@ -125,6 +125,10 @@ class DecisionDemoModel:
         self.legacy = ConversationDemoModel()
 
     def complete(self, messages, *, tools):
+        from trading_companion.index_demo import index_demo_response
+        index_response = index_demo_response(messages, tools)
+        if index_response is not None:
+            return index_response
         if tools and tools[0].name == PRODUCT_INTENT_TOOL_NAME:
             from trading_companion.followup_demo import QUESTION as TECHNICAL_QUESTION, FOLLOWUP
             question = messages[-1].content.strip()

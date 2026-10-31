@@ -1,5 +1,6 @@
 """Price facts derived from the already checked daily snapshot; never fetch quotes."""
 from decimal import Decimal
+from trading_companion.evidence_numbers import display_number
 
 
 def price_context_evidence(result, *, allow_extra_means=True):
@@ -21,7 +22,7 @@ def price_context_evidence(result, *, allow_extra_means=True):
 
     def add(key, label, value, selected, *, unit="CNY/share", day=None, field="close_price"):
         value = Decimal(str(value))
-        display = f"{value:.2f}" + ("%" if unit == "percent" else "元/股")
+        display = display_number(value) + ("%" if unit == "percent" else "元/股")
         output.append(ProductEvidence(f"{request.request_id}|price_context:{key}", request.instrument_id,
             "technical", label, display, request.source, (day or latest.trade_date).isoformat(),
             publication_precision="date", data_authenticity=result.data_authenticity,

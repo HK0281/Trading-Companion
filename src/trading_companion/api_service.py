@@ -129,6 +129,22 @@ class _Entry:
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
     """Explicit allowlist; never use the Agent's debug-oriented to_dict() here."""
+    if result.index_result is not None and result.index_research is not None:
+        from trading_companion.index_chart import daily_chart
+        from trading_companion.index_contracts import LIMITATIONS
+        view = deepcopy(result.index_research)
+        data = result.index_result
+        try:
+            chart = daily_chart(data, context=view['context'],
+                saved_at=datetime.fromisoformat(view['saved_at']) if view['saved_at'] else None)
+        except (ValueError, TypeError):
+            chart = dict(version='index-chart-v1', status='unavailable', code='chart_integrity_mismatch')
+        return dict(status=result.status, code=result.code, message=result.message, stage=result.stage,
+            answer=result.display_answer, index_research=view, parameters=data.request.parameters(), chart=chart,
+            report=dict(request_id=data.request.request_id, fields=[], limitations=list(LIMITATIONS)),
+            market_context=None, candidates=[], applied_defaults=['benchmark:上证指数'] if data.request.benchmark_defaulted else [],
+            model_calls_attempted=result.model_calls_attempted, analyses_used=result.analyses_used,
+            runtime=deepcopy(result.runtime), validation_scope='index_bound_numbers_and_technical_relations_not_prose_entailment')
     if result.stage == "screening":
         return {"status": result.status, "code": result.code, "message": result.message, "stage": result.stage,
             "answer": result.display_answer or result.message, "report": None, "parameters": None,
@@ -480,7 +496,12 @@ class ResearchApiService:
                     research_source=screening_research_source, development=self._development_source is not None),
                     clock=self._wall_clock)
                 trace_route(decision)
-                if decision.kind == RouteKind.LOCAL_REPLY:
+                if decision.kind == RouteKind.INDEX_RESEARCH:
+                    from trading_companion.index_agent import run_index_research_turn
+                    result = run_index_research_turn(question, model=entry.model, directory=directory, session=entry.session,
+                        source=self._research_source, development_source=self._development_source, now=timestamp,
+                        reference_date=self._reference_date, control=control)
+                elif decision.kind == RouteKind.LOCAL_REPLY:
                     if decision.intent == IntentKind.MARKET_RESEARCH:
                         from trading_companion.market_scope import market_reply_code
                         code = market_reply_code(question, directory=directory)
@@ -524,6 +545,14 @@ class ResearchApiService:
             trace_phase("projection")
             saved = self._saved_for_view(entry, result, directory, timestamp)
             projected = public_turn(result, saved=saved)
+            if (self._snapshot_store is not None and result.index_result is not None
+                    and result.session_event == 'index_research' and projected.get('index_research') is not None
+                    and result.runtime is not None and result.runtime.get('stop_code') is None):
+                try:
+                    projected['index_research']['snapshot_id'] = self._snapshot_store.save_index(result.index_result)
+                    projected['index_research']['snapshot_status'] = 'saved'
+                except Exception:
+                    projected['index_research']['snapshot_status'] = 'unavailable'
             if (self._snapshot_store is not None and result.product_bundle is not None
                     and result.product_bundle.evidence and result.session_event == "company_research"
                     and result.runtime is not None and result.runtime.get("stop_code") is None
@@ -622,7 +651,8 @@ class ResearchApiService:
         try:
             chart_remaining(deadline, self._clock)
             if interval == "1w":
-                bars = weekly_bars(binding)
+                from trading_companion.index_chart import IndexChartBinding, weekly_chart
+                bars = () if type(binding) is IndexChartBinding else weekly_bars(binding)
                 retrieved = datetime.fromisoformat(binding.snapshot["retrieved_at"]) if binding.snapshot["retrieved_at"] else self._wall_clock()
             else:
                 if base is None:
@@ -638,7 +668,8 @@ class ResearchApiService:
                     bars, retrieved = base[1]
                 if interval == "120m":
                     bars = two_hour_bars(bars)
-            value = build_interval_chart(binding, interval, bars, retrieved)
+            value = (weekly_chart(binding) if interval == '1w' and type(binding) is IndexChartBinding
+                     else build_interval_chart(binding, interval, bars, retrieved))
             chart_remaining(deadline, self._clock)
         except ChartUnavailable as error:
             value = {"version": INTERVAL_VERSION, "status": "unavailable", "code": error.code}

@@ -24,6 +24,7 @@ INDICES = (
     IndexIdentity("000688.SH", "科创50", "sh000688", ("上证科创板50成份指数", "科创50指数", "科创50", "科创五十")),
 )
 MARKET_MESSAGES = {
+    "index_identity_required": "请明确要研究的指数名称：上证指数、深证成指、沪深300、创业板指或科创50。“科创板指数”不能唯一确认是科创50；未查询行情。",
     "market_research_unavailable": "已识别为指数研究问题。指数分析还在接入中，当前版本尚未提供；未查询行情，也未使用此前股票的研究结果。",
     "market_index_unsupported": "当前暂不支持该指数，未查询行情，也未使用此前股票的研究结果。",
     "market_tasks_need_selection": "本次包含多个研究对象或任务，请先明确要研究的一个指数或一只股票；未查询行情。",
@@ -33,11 +34,11 @@ MARKET_MESSAGES = {
 }
 _UNSUPPORTED = re.compile(r"(?:上证(?:50|180|380)|中证(?:500|1000|2000)|深证100|北证50)(?:指数)?|恒生(?:科技)?指数|恐慌指数")
 _TIME_WORDS = r"今天|今日|现在|当前|最新|近期|最近|未来"
-_OBSERVATION_WORDS = r"走势|行情|点位|后市|日线|周线|怎么样|怎么走|怎么看|支撑|压力|止损|止盈|目标"
+_OBSERVATION_WORDS = r"走势|行情|点位|后市|日线|周线|怎么样|怎么走|怎么看|支撑|压力|止损|止盈|目标|能买吗|能买|值得买吗"
 _OBSERVATION_PREFIX = r"\s*的?\s*(?:(?:" + _TIME_WORDS + r")\s*的?\s*)?"
 _MARKET = re.compile(
     r"大盘(?!股|蓝筹|风格)|A\s*股整体|(?:股票|宽基|大盘|A\s*股)\s*指数|"
-    r"(?:A\s*股|创业板)(?=" + _OBSERVATION_PREFIX + r"(?:" + _OBSERVATION_WORDS + r"))", re.I)
+    r"科创板指数|(?:A\s*股(?:市场)?|创业板)(?=" + _OBSERVATION_PREFIX + r"(?:" + _OBSERVATION_WORDS + r"))", re.I)
 _FUND = re.compile(r"\s*(?:型)?(?:ETF|基金|期货|期权)", re.I)
 _CONCEPT = re.compile(r"是什么|什么是|什么叫|定义|含义|概念|原理|怎么算|怎么计算|如何计算|计算公式|计算方法|上市规则")
 _OBSERVATION = re.compile(_TIME_WORDS + "|" + _OBSERVATION_WORDS)
@@ -93,7 +94,7 @@ def _mentions(text):
 
 
 def market_reply_code(question, *, directory=None):
-    """Temporary capability replies; this neither executes research nor consumes state."""
+    """Read-only scope recognition. The historical success marker is resolved by market_selection."""
     text = _text(question)
     if text is None:
         return None
@@ -123,6 +124,8 @@ def market_reply_code(question, *, directory=None):
         return None
     if company:
         return "market_tasks_need_selection" if own_task else None
+    if re.search(r'(?:再|然后|接着|同时)(?:分析|研究|看看)', text):
+        return "market_tasks_need_selection"
     if _BROAD.search(text):
         return "market_scope_unsupported"
     identities = {index.instrument_id for _, _, index in spans if index is not None}
@@ -131,3 +134,33 @@ def market_reply_code(question, *, directory=None):
     if any(_UNSUPPORTED.fullmatch(text[start:end]) for start, end, _ in spans):
         return "market_index_unsupported"
     return "market_research_unavailable"
+
+
+def market_selection(question, *, directory=None):
+    """Resolve one index, or a fixed rejection. Bare numeric stock codes never enter."""
+    code = market_reply_code(question, directory=directory)
+    if code != 'market_research_unavailable':
+        return None, False, code
+    text = _text(question)
+    spans = _mentions(text)
+    indices = {item.instrument_id: item for _, _, item in spans if item is not None}
+    if len(indices) != 1 or any(item is None for _, _, item in spans):
+        return None, False, 'index_identity_required'
+    index = next(iter(indices.values()))
+    defaulted = index.instrument_id == '000001.SH' and any(
+        re.search(r'大盘(?!股|蓝筹)|A\s*股', text[start:end], re.I)
+        for start, end, item in spans if item is not None)
+    return index, defaulted, None
+
+
+def index_continuation(question, *, latest_kind, directory=None):
+    if latest_kind != 'index' or type(question) is not str or _text(question) is None:
+        return False
+    if directory is not None and directory.mentioned_spans(question):
+        return False
+    from trading_companion.indicator_knowledge import parse_knowledge_question
+    from trading_companion.open_knowledge import is_general_knowledge_question
+    if parse_knowledge_question(question) is not None or is_general_knowledge_question(question, directory=directory):
+        return False
+    from trading_companion.routing_context import continuation_question, new_question
+    return not new_question(question) and continuation_question(question)

@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from trading_companion.research_intent_evaluation_cases import load_corpus, annotation_review
-from trading_companion.research_intent_evaluation import build_plan, evaluate, write_report
+from trading_companion.research_intent_evaluation import build_plan, build_v2_plan, diagnose_baseline, evaluate, write_report
 from trading_companion.typesafe_jev import ClassifierError
 
 
@@ -18,6 +18,8 @@ def main(argv=None):
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--plan-only", action="store_true")
     actions.add_argument("--annotation-review", action="store_true")
+    actions.add_argument("--v2-plan-only", action="store_true", help="查看新协议指纹和调用上限；不调用模型")
+    actions.add_argument("--diagnose-baseline", action="store_true", help="仅离线复现五道开发集失败题")
     parser.add_argument("--split", choices=("dev",), default="dev")
     parser.add_argument("--report-dir")
     options = parser.parse_args(argv)
@@ -25,8 +27,13 @@ def main(argv=None):
         if options.annotation_review:
             print(annotation_review(*load_corpus()), end="")
             return 0
-        report = build_plan(split=options.split) if options.plan_only else evaluate(split=options.split)
-        if options.report_dir and not options.plan_only and report["status"] == "completed":
+        if options.v2_plan_only:
+            report = build_v2_plan()
+        elif options.diagnose_baseline:
+            report = diagnose_baseline()
+        else:
+            report = build_plan(split=options.split) if options.plan_only else evaluate(split=options.split)
+        if options.report_dir and report["status"] == "completed":
             report["artifacts"] = write_report(report, options.report_dir)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ClassifierError, RecursionError):
         report = {"status": "invalid_request", "code": "intent_input_invalid"}

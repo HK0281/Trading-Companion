@@ -85,6 +85,27 @@ class RuleTests(unittest.TestCase):
 
 
 class ExecutionTests(unittest.TestCase):
+    def test_failed_target_retains_unexpected_model_attempt_without_fabricating_success(self):
+        result = probe('什么是市净率', [])
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['reason'], 'research_internal_error')
+        self.assertEqual(result['failed_step']['model_calls'], 1)
+        self.assertEqual(result['failed_step']['intent_calls'], 0)
+        self.assertEqual(result['failed_step']['error_type'], 'AssertionError')
+        self.assertTrue(result['failed_step']['fixture_error'])
+        self.assertEqual(result['fields'], {})
+        self.assertNotIn('traceback', json.dumps(result))
+
+    def test_new_protocol_plan_is_preparation_without_predictions_or_live_model(self):
+        plan = evaluation.build_v2_plan()
+        self.assertEqual(plan['requested_model'], 'deepseek-flash')
+        self.assertEqual(plan['max_attempts_per_target'], 1)
+        self.assertEqual(plan['paid_calls'], 0)
+        self.assertEqual(plan['prediction_rows'], 0)
+        self.assertFalse(plan['live_enabled'])
+        self.assertFalse(plan['eligible_for_switch'])
+        self.assertEqual(len(plan['tool_sha256']), 64)
+
     def test_network_attempt_is_blocked_even_if_executor_swallows_it(self):
         import socket
         def swallowed(*args):

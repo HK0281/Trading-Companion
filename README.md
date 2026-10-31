@@ -180,6 +180,8 @@ This step observes production rules and a limited set of existing scripted sessi
 
 The [reviewed-corpus development baseline](docs/research-intent-v2-rule-baseline.md) records 155 cases: rule task accuracy is 119/155; fixed execution has 42 observed, 5 failed and 108 unmeasured cases, including 5 strict-scope violations. Both layers have unobserved intent fields, so all-field joint accuracy is 0/155; this report does not approve a product switch. Full per-case data and the evaluator entry-point fix are documented with source fingerprints; no holdout or live evaluation was run.
 
+The separate [v2 intent contract](docs/research-intent-v2-contract.md) adds strict, grounded interpretation and trusted subject binding without changing product routing. Fixed tests cover scope, vetoes, identity and stale conditions; new CLI preparation and failure-diagnosis modes make no live calls or holdout predictions. The five baseline failures remain recorded separately from the reported real-model MACD validation failure.
+
 ## Scope & limits
 
 - No brokerage connection, orders or fund management. Trading remains with the user.

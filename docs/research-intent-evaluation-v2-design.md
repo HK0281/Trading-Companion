@@ -1,5 +1,7 @@
 # 研究意图 v2：题库与现有规则基线
 
+第1步题库及基线已由Claude审核提交；以下保留原始设计口径。第2步首批的独立协议、校验和五题失败定位见[意图单v2说明](research-intent-v2-contract.md)，尚未接入产品或运行真实模型/留出预测。
+
 本批落实 agentbus #332、#338、#339 的第1步，只交付**待复核题库、复核表、离线评估器和自测**。产品继续使用 `index-scenario-ui-v1`；没有接入新理解模型、改变线上分流或新增付费入口。正式开发集基线须在 Claude 逐题批准并提交首批文件后另跑、另审。
 
 入口：[评估脚本](../scripts/evaluate_research_intents.py)；[240题草稿](../data/evaluation/research-intent-v2.jsonl)；[逐题复核清单](research-intent-v2-annotation-review.md)；[复核状态清单](../data/evaluation/research-intent-v2.manifest.json)。复核状态清单（manifest）保存题库、划分及每题的内容指纹，题目或标准答案变更后必须重新审核。草稿按审核 #341 修订，题号V2001–V2230保持不变，新增V2231–V2240。

@@ -23,6 +23,28 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "invalid_intent_v2": "尚未接入正式入口的离线v2协议格式错误。",
+    "invalid_intent_input": "离线v2语义接口输入无效，不是正式研究结果。",
+    "invalid_intent_context": "离线v2接口拒绝非程序上下文，不产生研究轮次。",
+    "ungrounded_intent_v2": "离线v2原文片段未通过核对，不执行研究。",
+    "low_confidence_intent_v2": "离线v2低把握响应的协议检查结果。",
+    "missing_plan_evidence": "离线v2价位请求缺原文或可信待办依据。",
+    "missing_objective_evidence": "离线v2评级方向目标缺依据。",
+    "missing_scope_evidence": "离线v2严格范围缺依据。",
+    "subject_fields_conflict": "离线v2对象出处字段互相矛盾。",
+    "explicit_subject_not_bound": "离线v2有本句对象却试图借用旧对象。",
+    "mixed_subject_types": "离线v2股票与指数身份混用。",
+    "index_identity_invalid": "离线v2指数片段不在白名单原文跨度中。",
+    "omitted_subject": "离线v2漏掉本句其他证券。",
+    "too_many_subjects": "离线v2对象数量超出限制。",
+    "ungrounded_exclusion": "离线v2排除项缺明确否定依据。",
+    "scope_conflict": "离线v2肯定范围与排除范围冲突。",
+    "ungrounded_strict_scope": "离线v2严格范围标记缺限制表达。",
+    "omitted_strict_scope": "离线v2漏掉原文严格范围。",
+    "omitted_indicator": "离线v2漏掉明确要求的指标参数。",
+    "task_fields_conflict": "离线v2任务与对象或价位字段冲突。",
+    "missing_clarification_reason": "离线v2澄清任务未给受限原因。",
+    "invalid_historical_window": "离线v2历史窗口超限或含未来数据。",
     **{code: "本机对话记录库与历史接口的错误码；记录失败不改变已形成的研究轮次。" for code in (
         "conversation_full", "conversation_mode_mismatch", "conversation_not_found", "invalid_memory_limit",
         "invalid_memory_path", "invalid_memory_result", "invalid_memory_time", "invalid_memory_user",

@@ -19,12 +19,19 @@ class FixedModel(ScriptedWorkflowModel):
     def __init__(self):
         super().__init__()
         self.calls, self.intent_calls = 0, 0
+        self.last_tools, self.error_type = [], None
 
     def complete(self, messages, *, tools):
         self.calls += 1
+        self.last_tools = [t.name for t in tools]
         if tools and any("interpret" in t.name for t in tools):
             self.intent_calls += 1
-        return super().complete(messages, tools=tools)
+        try:
+            return super().complete(messages, tools=tools)
+        except Exception as error:
+            # Fixed synthetic diagnostics only; never save provider text or traceback.
+            self.error_type = type(error).__name__
+            raise
 
     def _respond(self, phase, messages, tools):
         if phase == "company_answer":
@@ -112,7 +119,11 @@ def _fixed_execution(state, probe):
                     result = service.message(credentials["session_id"], credentials["access_token"], uuid4().hex,
                                              step["question"])["result"]
                 except ApiProblem as error:
-                    return {"status": "failed", "reason": error.code, "steps": observations, "fields": {}}
+                    return {"status": "failed", "reason": error.code, "steps": observations, "fields": {},
+                            "failed_step": {"question": step["question"], "model_calls": model.calls - before,
+                                "intent_calls": model.intent_calls - before_intent, "tools": model.last_tools,
+                                "fixture_error": model.failed, "error_type": model.error_type,
+                                "script_phases": step["script"]["phases"]}}
                 # Inspect program-owned checked state, not text guessed from the answer.
                 entry = service._entry(credentials["session_id"], credentials["access_token"])
                 session = entry.session

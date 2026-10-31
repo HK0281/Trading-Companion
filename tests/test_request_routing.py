@@ -50,7 +50,7 @@ class RequestRoutingTests(unittest.TestCase):
 
     def test_unique_intents_priorities_and_reasons_can_share_an_executor(self):
         self.assertEqual(tuple(spec.intent for spec in routing.ROUTE_SPECS), tuple(routing.IntentKind))
-        self.assertEqual([spec.priority for spec in routing.ROUTE_SPECS], [0, 1, 5, 10, 11, 12, 20, 30, 31, 32, 40, 50, 60, 70])
+        self.assertEqual([spec.priority for spec in routing.ROUTE_SPECS], [0, 1, 5, 10, 11, 12, 20, 25, 30, 31, 32, 40, 50, 60, 70])
         self.assertGreater(sum(spec.kind == routing.RouteKind.TECHNICAL_RESEARCH for spec in routing.ROUTE_SPECS), 1)
         first, second = routing.ROUTE_SPECS[:2]
         for changed in (replace(second, priority=first.priority), replace(second, intent=first.intent),

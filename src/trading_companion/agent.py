@@ -24,6 +24,7 @@ from trading_companion.research_context import contextual_outlook_expression, ob
 from trading_companion.research_edit import indicator_selection, is_indicator_edit, is_window_edit
 from trading_companion.research_update import is_condition_update
 from trading_companion.indicator_knowledge import KnowledgeAnswer, parse_knowledge_question
+from trading_companion.market_scope import MARKET_MESSAGES, market_reply_code
 from trading_companion.open_knowledge import (
     GeneralKnowledgeAnswer, answer_general_knowledge, is_general_knowledge_question,
 )
@@ -347,18 +348,29 @@ def run_general_knowledge_turn(question: str, *, model: ToolCapableModel, sessio
         model=model, control=control, default_calls=1, input_mode="natural", session=session)
 
 
-def run_routing_reply_turn(code: str, *, model: ToolCapableModel, session: ResearchSession,
-                           control: TurnControl | None = None) -> AgentTurnResult:
-    """Fixed local replies share cancellation/locking, and never consume pending state."""
-    messages = {
+def _routing_reply(code):
+    messages = {**MARKET_MESSAGES,
         "general_knowledge_disabled": "当前未开启一般知识问答功能；未调用模型或查询研究资料。固定指标定义仍可直接询问，例如“RSI是什么”。",
         "routing_state_conflict": "当前会话同时存在多个待澄清问题，请回复“取消”清除待澄清，或用“新对话”重新开始；未调用模型或查询资料。",
     }
-    if code not in messages or type(session) is not ResearchSession:
+    if code not in messages:
+        raise ModelConfigurationError("Use an application-owned local reply code")
+    return AgentTurnResult(
+        status="out_of_scope" if code in MARKET_MESSAGES and code != "market_tasks_need_selection" else "needs_clarification",
+        code=code, message=messages[code], stage="clarification", input_mode="natural", session_event="routing_reply")
+
+
+def _market_reply(question, directory):
+    code = market_reply_code(question, directory=directory)
+    return _routing_reply(code) if code is not None else None
+
+
+def run_routing_reply_turn(code: str, *, model: ToolCapableModel, session: ResearchSession,
+                           control: TurnControl | None = None) -> AgentTurnResult:
+    """Fixed local replies share cancellation/locking, and never consume pending state."""
+    if code not in MARKET_MESSAGES.keys() | {"general_knowledge_disabled", "routing_state_conflict"} or type(session) is not ResearchSession:
         raise ModelConfigurationError("Use an application-owned local reply code and research session")
-    return _controlled(lambda checked, working: AgentTurnResult(
-        status="needs_clarification", code=code, message=messages[code], stage="clarification",
-        input_mode="natural", session_event="routing_reply"),
+    return _controlled(lambda checked, working: _routing_reply(code),
         model=model, control=control, default_calls=0, input_mode="natural", session=session)
 
 
@@ -382,6 +394,9 @@ def _run_natural(question, *, model, directory, source, development_source, refe
                                    input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge)
         if workflow and is_general_knowledge_question(question, directory=directory):
             return _run_general_knowledge(question, model=model, directory=directory)
+        market = _market_reply(question, directory)
+        if market is not None:
+            return market
         if contextual_outlook_expression(question) is not None:
             return AgentTurnResult(status="needs_clarification", code="no_confirmed_research", input_mode="natural",
                                    message="你希望展望哪只股票？请提供名称，例如“分析平安银行下个月的走势”。")
@@ -475,6 +490,9 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
             input_mode="natural", message="仅解释项目维护的指标定义；未查询行情。", knowledge_answer=knowledge), "knowledge")
     if workflow and is_general_knowledge_question(question, directory=directory):
         return attach(_run_general_knowledge(question, model=model, directory=directory), "knowledge")
+    market = _market_reply(question, directory)
+    if market is not None and not is_result_view(question):
+        return market
     outlook_expression = contextual_outlook_expression(question)
     if outlook_expression is not None and session.pending is None and session.pending_edit is None:
         prepared = session.prepare_outlook(outlook_expression, question=question, directory=directory,

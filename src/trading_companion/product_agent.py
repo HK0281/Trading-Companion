@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta, timezone
 import re
 
-from trading_companion.agent import AgentTurnResult, _controlled
+from trading_companion.agent import AgentTurnResult, _controlled, _market_reply
 from trading_companion.model import ModelConfigurationError
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.multi_contracts import IndicatorSpec
@@ -117,6 +117,9 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         session.clear() if reset else session.clear_pending()
         return AgentTurnResult(status="cancelled", code="session_reset" if reset else "research_cancelled",
             stage="clarification", input_mode="natural", message="会话已清空。" if reset else "已取消待澄清的研究。")
+    market = _market_reply(question, directory)
+    if market is not None:
+        return market
     saved = saved_product(session, directory=directory, now=now, source=source,
                           development=development_source is not None, reference_date=reference)
     from trading_companion.research_instruments import research_spans

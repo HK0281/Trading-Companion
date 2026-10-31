@@ -11,6 +11,7 @@ from trading_companion.knowledge_retrieval import (
     KnowledgeHit, KnowledgeRetrieval, KnowledgeRetriever, default_knowledge_retriever,
 )
 from trading_companion.security_directory import SecurityDirectory
+from trading_companion.market_scope import market_reply_code
 from trading_companion.tool_model import (
     MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
@@ -58,6 +59,7 @@ _NO_MATCH_NOTICE = "本地知识库暂未覆盖这个主题；以下是通用概
 
 _TOPIC = re.compile(
     r"(?<![A-Za-z])(?:P/?E|P/?B|EPS|ROE|ROA|PEG|DCF|SMA|EMA|MACD|RSI|ATR|BOLL|KDJ|OBV|ADX|VWMA|\*?ST)(?![A-Za-z])|"
+    r"上证(?:综合)?指数|上证综指|沪指|深证成(?:份指数|指)|深成指|沪深300(?:指数)?|创业板(?:指数|指)|科创50(?:指数)?|指数|"
     r"T\s*\+\s*[01]|A\s*股|股票|证券|股市|市场|投资|交易|估值|市盈率|市净率|市销率|市现率|"
     r"每股收益|净资产|净利润|财报|财务|报表|资产负债|利润表|现金流|营业收入|营收|毛利|净利|"
     r"财务指标|基本面|公告|新闻|研报|前复权|后复权|复权|除权|除息|分红|股息|配股|增发|回购|股本|股价|市值|"
@@ -158,6 +160,8 @@ def is_general_knowledge_question(question: str, *, directory: SecurityDirectory
             if re.fullmatch(r"[0-9]{6}", text[start:end]) and _QUANTITY_UNIT.match(text[end:]):
                 continue
             return False
+    if market_reply_code(text, directory=directory) is not None:
+        return False
     if _CODE.search(text) or _SAVED_OR_SPECIFIC.search(text) or _DIRECT_TRADE.search(text):
         return False
     if _CURRENT.search(text) and _CURRENT_DATA.search(text) and not _DATA_METHOD.search(text):

@@ -1,5 +1,7 @@
 # 请求路由：明确意图、优先级与澄清所有权
 
+2026-10-30 指数误判保护（方案 #292、批准 #293）：当前规则为 `market-routing-guard-v1`，父版本为 `decision-horizon-v1`。新增优先级25的 `market_research` 意图，明确的指数问题先给出零模型、零行情的临时能力说明，不再续接旧股票或吞进单个股票待澄清。原会话与历史不被改写；完整指数研究及观察期限点位计划留给下一步。识别范围、反例和117轮比较见[指数误判保护记录](request-routing-market-guard-deltas.md)。下述14类意图、两个本地结果码等为历史设计；当前新增指数意图及固定能力说明，但不接入模型分类器。
+
 2026-10-29 参数边界更新：当前2a规则为`technical-parameter-grounding-v1`。带“近/最近/过去”的日数归日期，后置显式参数归指标；旧研究路径与产品共用，其他路由选择不变。[取舍及验证说明](technical-numeric-grounding-design.md)记录“近20日均线”和“20日均线”的区别。以下为历史父版本记录。
 
 2026-10-29 技术共用更新：当前规则为 `technical-shared-narrative-v1`。自然技术保留技术意图，使用共用执行器及v3正文；最近主体、名单单只、指标编辑与历史按实际保存载体续接。旧任务及禁用能力保留原分工。[范围与保存设计](technical-shared-narrative-design.md)、[v6差异](request-routing-technical-deltas.md)记录117轮中的31轮、382字段变化，其余86轮不变。v1～v5和原观察器冻结，下述B/B2为历史父版本。

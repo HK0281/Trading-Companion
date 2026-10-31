@@ -7,6 +7,7 @@ from enum import Enum
 import unicodedata
 
 from trading_companion.indicator_knowledge import parse_knowledge_question
+from trading_companion.market_scope import market_reply_code
 from trading_companion.open_knowledge import is_general_knowledge_question
 from trading_companion.product_agent import is_product_followup
 from trading_companion.product_plan import is_explicit_technical_request, wants_product_research
@@ -37,6 +38,7 @@ class IntentKind(str, Enum):
     GENERAL_KNOWLEDGE = "general_knowledge"
     KNOWLEDGE_DISABLED = "knowledge_disabled"
     SCREENING = "screening"
+    MARKET_RESEARCH = "market_research"
     COMPANY_CLARIFICATION = "company_clarification"
     TECHNICAL_CLARIFICATION = "technical_clarification"
     INDICATOR_CLARIFICATION = "indicator_clarification"
@@ -185,6 +187,10 @@ def _company_pending(value: _MatchInput) -> bool:
             and not independent_task(value.question, value.context.directory))
 
 
+def _market(value: _MatchInput) -> bool:
+    return market_reply_code(value.question, directory=value.context.directory) is not None
+
+
 def _technical_pending(value: _MatchInput) -> bool:
     return value.context.session.pending is not None and not independent_task(value.question, value.context.directory)
 
@@ -253,6 +259,7 @@ ROUTE_SPECS = _ordered_specs((
     RouteSpec(IntentKind.GENERAL_KNOWLEDGE, RouteKind.GENERAL_KNOWLEDGE, 11, "knowledge.general", _general_enabled),
     RouteSpec(IntentKind.KNOWLEDGE_DISABLED, RouteKind.LOCAL_REPLY, 12, "knowledge.disabled", _general_disabled),
     RouteSpec(IntentKind.SCREENING, RouteKind.SCREENING, 20, "screening.new", _screening),
+    RouteSpec(IntentKind.MARKET_RESEARCH, RouteKind.LOCAL_REPLY, 25, "research.market", _market),
     RouteSpec(IntentKind.COMPANY_CLARIFICATION, RouteKind.COMPANY_RESEARCH, 30, "clarification.company", _company_pending),
     RouteSpec(IntentKind.TECHNICAL_CLARIFICATION, RouteKind.TECHNICAL_RESEARCH, 31, "clarification.technical", _technical_pending),
     RouteSpec(IntentKind.INDICATOR_CLARIFICATION, RouteKind.TECHNICAL_RESEARCH, 32, "clarification.indicator", _indicator_pending),

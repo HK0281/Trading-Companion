@@ -481,8 +481,12 @@ class ResearchApiService:
                     clock=self._wall_clock)
                 trace_route(decision)
                 if decision.kind == RouteKind.LOCAL_REPLY:
-                    code = ("routing_state_conflict" if decision.intent == IntentKind.STATE_CONFLICT
-                            else "general_knowledge_disabled")
+                    if decision.intent == IntentKind.MARKET_RESEARCH:
+                        from trading_companion.market_scope import market_reply_code
+                        code = market_reply_code(question, directory=directory)
+                    else:
+                        code = {IntentKind.STATE_CONFLICT: "routing_state_conflict",
+                                IntentKind.KNOWLEDGE_DISABLED: "general_knowledge_disabled"}[decision.intent]
                     result = run_routing_reply_turn(code, model=entry.model, session=entry.session, control=control)
                 elif decision.kind == RouteKind.GENERAL_KNOWLEDGE:
                     result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)

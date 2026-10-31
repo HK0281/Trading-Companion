@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "decision-horizon-v1"
+VERSION = "market-routing-guard-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -16,6 +16,7 @@ SOURCES = (
     "indicator_knowledge.py", "open_knowledge.py", "intent_router_baseline.py",
     "product_scope.py", "product_indicator_edit.py",
     "decision_horizon.py", "trade_plan.py", "horizon_trade_plan.py", "product_decision_answer.py",
+    "market_scope.py",
 )
 
 

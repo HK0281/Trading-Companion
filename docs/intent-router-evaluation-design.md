@@ -1,5 +1,7 @@
 # 意图换说法评估：第二步2a
 
+2026-10-30 指数误判保护将当前生产规则升级为 `market-routing-guard-v1`，父版本 `decision-horizon-v1` 的完整登记追加到 `previous_rules`，新登记纳入 `market_scope.py` 的源码摘要。原304题、8类实验标签、标注、manifest和历史锁不改；旧规则锁／参考报告不能用于新版本。[指数分流边界](request-routing-market-guard-deltas.md)由独立产品测试覆盖。新增生产意图 `market_research` 尚未扩充为意图评估v2，也未调用真实分类模型。
+
 2026-10-30 当前规则升级`decision-horizon-v1`，父版本`technical-parameter-grounding-v1`完整移入previous_rules。原304题、划分、标注、历史manifest及旧锁均不改写；新登记加入期限与参考计划语义依赖的源码摘要。旧版锁和参考报告不能用于当前规则，即使固定题库输出相同。期限确认是正式执行器在取数前执行的确定性流程，不新增路由分类模型。
 
 2026-10-29 B2日期规则：当前版本升级为 `contextual-routing-b2-dates-v1`，父版本为 `contextual-routing-b-v1`。原题库、标注、划分、manifest及B的23个源码摘要均保留，B摘要单独存入规则描述的 `previous_rules`；新摘要反映日期补认及共用调用方的历史标记/日期标记清理。B的阈值锁与参考报告不能用于B2，即使304题的分类输出不变，也不能据此宣称规则相同。版本和源码摘要均按既有校验路径核对；[B2边界与基线](request-routing-b2-dates-deltas.md)说明细节。

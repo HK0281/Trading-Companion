@@ -3,7 +3,11 @@
 from copy import deepcopy
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -230,6 +234,35 @@ class AccountingTests(unittest.TestCase):
         self.assertEqual(len(report['rows']), 1)
         self.assertEqual(report['metrics']['layers']['A']['all']['joint_all_fields']['denominator'], 1)
         self.assertEqual(report['metrics']['layers']['A']['all']['joint_all_fields']['numerator'], 0)
+
+    def test_script_entry_point_loads_offline_guards_without_root_on_pythonpath(self):
+        row = self.sample()
+        row.update(id='independent-cancel', family_id='independent', split='dev', question='取消',
+                   context=context(), tags=['local'], probe=dict(steps=[step('取消', [])], unmeasured_reason=''))
+        script = Path(__file__).resolve().parents[1] / 'scripts/evaluate_research_intents.py'
+        bootstrap = '''
+import json, runpy, sys
+from pathlib import Path
+script = Path(sys.argv[1])
+root = script.parent.parent
+# Reproduce direct script startup without the repository root provided by a test runner.
+sys.path = [str(script.parent), str(root / 'src')] + [p for p in sys.path if p and Path(p).resolve() != root]
+namespace = runpy.run_path(str(script))
+from trading_companion import research_intent_evaluation as evaluation
+row = json.load(sys.stdin)
+manifest = dict(annotation_status='reviewed', corpus_sha256='independent', split_sha256='independent', baseline={})
+evaluation.load_corpus = lambda: ([row], manifest)
+raise SystemExit(namespace['main'](['--split', 'dev']))
+'''
+        environment = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
+        with TemporaryDirectory() as folder:
+            result = subprocess.run([sys.executable, '-X', 'utf8', '-B', '-c', bootstrap, str(script)],
+                input=json.dumps(row), cwd=folder, env=environment, capture_output=True, encoding='utf-8', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        execution = json.loads(result.stdout)['rows'][0]['B']
+        self.assertEqual(execution['status'], 'ok', execution)
+        self.assertEqual(execution['fields']['outcome'], 'local')
+        self.assertTrue(execution['fields']['zero_intent_calls'])
 
 
 if __name__ == '__main__':

@@ -2,6 +2,11 @@
 
 import argparse
 import json
+from pathlib import Path
+import sys
+
+# Direct script startup must also find the shared offline guards in scripts.verify.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from trading_companion.research_intent_evaluation_cases import load_corpus, annotation_review
 from trading_companion.research_intent_evaluation import build_plan, evaluate, write_report

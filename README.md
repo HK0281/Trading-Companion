@@ -178,6 +178,8 @@ The separate [v2 evaluation](docs/research-intent-evaluation-v2-design.md) adds 
 
 This step observes production rules and a limited set of existing scripted sessions offline. Missing observations count as incomplete; scripted execution is not real-model quality. There is no live/paid or holdout run option, and product routing remains unchanged. Development baseline results follow reviewed labels in a separate delivery.
 
+The [reviewed-corpus development baseline](docs/research-intent-v2-rule-baseline.md) records 155 cases: rule task accuracy is 119/155; fixed execution has 42 observed, 5 failed and 108 unmeasured cases, including 5 strict-scope violations. Both layers have unobserved intent fields, so all-field joint accuracy is 0/155; this report does not approve a product switch. Full per-case data and the evaluator entry-point fix are documented with source fingerprints; no holdout or live evaluation was run.
+
 ## Scope & limits
 
 - No brokerage connection, orders or fund management. Trading remains with the user.

@@ -58,9 +58,10 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, status)
 
     def test_default_limits_and_invalid_expansion(self):
-        self.assertEqual(ApiLimits().messages, 20)
-        for values in ({"sessions": 0}, {"sessions": 33}, {"messages": 21}, {"model_calls": True},
-                       {"concurrent_turns": 3}, {"lifetime_seconds": float("nan")}, {"lifetime_seconds": 1801}):
+        limits = ApiLimits()
+        self.assertEqual((limits.messages, limits.model_calls, limits.lifetime_seconds), (100, 400, 86400))
+        for values in ({"sessions": 0}, {"sessions": 33}, {"messages": 101}, {"model_calls": 401}, {"model_calls": True},
+                       {"concurrent_turns": 3}, {"lifetime_seconds": float("nan")}, {"lifetime_seconds": 86401}):
             with self.subTest(values=values), self.assertRaises(ModelConfigurationError):
                 ApiLimits(**values)
 
@@ -235,7 +236,7 @@ class ServiceTests(unittest.TestCase):
         self.problem("session_not_found", lambda: self.service.inspect(self.sid, self.token), 404)
 
     def test_expiration_is_absolute_and_access_does_not_renew_it(self):
-        self.seconds += 1799
+        self.seconds += ApiLimits().lifetime_seconds - 1
         self.service.inspect(self.sid, self.token)
         self.seconds += 1
         self.problem("session_not_found", lambda: self.service.inspect(self.sid, self.token), 404)
@@ -249,7 +250,7 @@ class ServiceTests(unittest.TestCase):
         self.service = self.build(limits=ApiLimits(sessions=1))
         self.service.create_session()
         self.problem("session_capacity", self.service.create_session, 429)
-        self.seconds += 1800
+        self.seconds += ApiLimits().lifetime_seconds
         self.assertIsNotNone(self.service.create_session())
 
     def test_message_allowance_does_not_block_history_or_reset(self):
@@ -384,7 +385,7 @@ class ServiceTests(unittest.TestCase):
     def test_expiring_inflight_session_signals_cancel_and_cleans_after_return(self):
         release, thread, results = self._blocked_service()
         try:
-            self.seconds += 1800
+            self.seconds += ApiLimits().lifetime_seconds
             self.problem("session_not_found", lambda: self.service.inspect(self.sid, self.token), 404)
         finally:
             release.set()

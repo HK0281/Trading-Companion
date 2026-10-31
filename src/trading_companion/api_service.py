@@ -23,7 +23,10 @@ from trading_companion.chart_intervals import (
 )
 from trading_companion.chart_hourly import read_tencent_hours, remaining as chart_remaining
 from trading_companion.market_context import build_market_context
+from trading_companion.conversation_memory import MAX_DIGESTS, TurnDigest, digest_turn, encode_digest, render_history
+from trading_companion.memory_store import LOCAL_USER, ConversationStore, MemoryStoreError
 from trading_companion.model import ModelCallError, ModelConfigurationError
+from trading_companion.tool_model import ToolMessage
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
@@ -71,24 +74,26 @@ class ApiProblem(Exception):
 @dataclass(frozen=True)
 class ApiLimits:
     sessions: int = 32
-    messages: int = 20
-    model_calls: int = 60
+    messages: int = 100
+    model_calls: int = 400
     concurrent_turns: int = 2
-    lifetime_seconds: float = 1800
+    lifetime_seconds: float = 86400
 
     def __post_init__(self):
-        for value, maximum in ((self.sessions, 32), (self.messages, 20), (self.model_calls, 60), (self.concurrent_turns, 2)):
+        for value, maximum in ((self.sessions, 32), (self.messages, 100), (self.model_calls, 400), (self.concurrent_turns, 2)):
             if type(value) is not int or not 1 <= value <= maximum:
                 raise ModelConfigurationError("API limits may only tighten positive local-development bounds")
         if (type(self.lifetime_seconds) not in (int, float) or not isfinite(self.lifetime_seconds)
-                or not 0 < self.lifetime_seconds <= 1800):
-            raise ModelConfigurationError("Session lifetime must be positive and at most 1800 seconds")
+                or not 0 < self.lifetime_seconds <= 86400):
+            raise ModelConfigurationError("Session lifetime must be positive and at most 86400 seconds")
 
 
 class _SessionModel:
     def __init__(self, delegate, limit):
         self.delegate, self.limit, self.forwarded = delegate, limit, 0
         self._lock = Lock()
+        # Program-built digest of earlier turns, set only while this session's turn runs.
+        self.history = None
 
     def complete(self, messages, *, tools):
         trace_model_identity(self.delegate)
@@ -96,6 +101,10 @@ class _SessionModel:
             if self.forwarded >= self.limit:
                 raise ModelCallError("api_session_call_limit", "Session model allowance exhausted")
             self.forwarded += 1
+        if self.history:
+            messages = list(messages)
+            leading = next((i for i, m in enumerate(messages) if m.role != "system"), len(messages))
+            messages.insert(leading, ToolMessage("system", self.history))
         return self.delegate.complete(messages, tools=tools)
 
 
@@ -125,6 +134,8 @@ class _Entry:
     chart_busy: bool = False
     chart_cache: dict = field(default_factory=dict, repr=False)
     chart_base_cache: dict = field(default_factory=dict, repr=False)
+    digests: list = field(default_factory=list, repr=False)
+    conversation_id: str | None = None
 
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
@@ -253,8 +264,12 @@ class ResearchApiService:
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
-                 chart_hourly_loader=None):
+                 chart_hourly_loader=None, conversation_store=None, conversation_context=False):
         self.limits = ApiLimits() if limits is None else limits
+        if (conversation_store is not None and not isinstance(conversation_store, ConversationStore)
+                or type(conversation_context) is not bool):
+            raise ModelConfigurationError("Use trusted conversation memory configuration")
+        self._conversation_store, self._conversation_context = conversation_store, conversation_context
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
@@ -325,7 +340,8 @@ class ResearchApiService:
             raise ApiProblem(404, "session_not_found", "会话不存在、已失效或访问凭据不匹配。")
         return entry
 
-    def create_session(self, *, provider=None):
+    def create_session(self, *, provider=None, conversation_id=None):
+        restored = self._restored_digests(conversation_id) if conversation_id is not None else []
         with self._lock:
             self._prune()
             if self._closed:
@@ -340,11 +356,108 @@ class ResearchApiService:
             except Exception:
                 raise ApiProblem(503, "model_configuration_error", "服务端模型配置不可用，请在服务端检查。") from None
             session_id, token = uuid4().hex, token_urlsafe(32)
-            self._entries[session_id] = _Entry(token, self._clock(), _SessionModel(model, self.limits.model_calls), selected)
+            entry = _Entry(token, self._clock(), _SessionModel(model, self.limits.model_calls), selected)
+            # Only conclusions return; pending choices, saved evidence and charts stay with the old session.
+            entry.digests, entry.conversation_id = restored, conversation_id
+            self._entries[session_id] = entry
             return {"session_id": session_id, "access_token": token, "token_type": "bearer",
                     "expires_in_seconds": self.limits.lifetime_seconds,
-                    "provider": selected, "data_mode": self.data_mode,
+                    "provider": selected, "data_mode": self.data_mode, "conversation_id": conversation_id,
                     "limits": {"messages": self.limits.messages, "model_calls": self.limits.model_calls}}
+
+    @property
+    def memory_enabled(self):
+        return self._conversation_store is not None
+
+    # Local history is one user's own record; the store interface keeps a user id for every row.
+    def _store(self):
+        if self._conversation_store is None:
+            raise ApiProblem(404, "memory_disabled", "本服务未开启对话记录。")
+        return self._conversation_store
+
+    def _memory_problem(self, error):
+        if error.code == "conversation_not_found":
+            return ApiProblem(404, "conversation_not_found", "历史对话不存在或已删除。")
+        return ApiProblem(503, "memory_store_unavailable", "本地对话记录暂不可用。")
+
+    def _restored_digests(self, conversation_id):
+        try:
+            stored = self._store().load(LOCAL_USER, conversation_id)
+        except MemoryStoreError as error:
+            raise self._memory_problem(error) from None
+        if stored["data_mode"] != self.data_mode:
+            raise ApiProblem(409, "conversation_mode_mismatch", "该历史对话属于其他数据模式，不能在当前模式继续。")
+        digests = []
+        for turn in stored["turns"][-MAX_DIGESTS:]:
+            try:
+                digests.append(TurnDigest.from_dict(turn["digest"]))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                continue
+        return digests
+
+    def conversations(self):
+        if self._conversation_store is None:
+            return {"enabled": False, "conversations": []}
+        try:
+            return {"enabled": True, "conversations": self._conversation_store.list(LOCAL_USER, data_mode=self.data_mode)}
+        except MemoryStoreError as error:
+            raise self._memory_problem(error) from None
+
+    def conversation(self, conversation_id):
+        try:
+            stored = self._store().load(LOCAL_USER, conversation_id)
+        except MemoryStoreError as error:
+            raise self._memory_problem(error) from None
+        if stored["data_mode"] != self.data_mode:
+            raise ApiProblem(404, "conversation_not_found", "历史对话不存在或已删除。")
+        stored["turns"] = [{k: v for k, v in turn.items() if k != "digest"} for turn in stored["turns"]]
+        return stored
+
+    def delete_conversation(self, conversation_id):
+        self.conversation(conversation_id)
+        try:
+            self._store().delete(LOCAL_USER, conversation_id)
+        except MemoryStoreError as error:
+            raise self._memory_problem(error) from None
+        with self._lock:
+            # A deleted record must not keep reappearing through an open session.
+            for entry in self._entries.values():
+                if entry.conversation_id == conversation_id:
+                    entry.conversation_id, entry.digests = None, []
+
+    def clear_conversations(self):
+        try:
+            removed = self._store().clear(LOCAL_USER, data_mode=self.data_mode)
+        except MemoryStoreError as error:
+            raise self._memory_problem(error) from None
+        with self._lock:
+            for entry in self._entries.values():
+                entry.conversation_id, entry.digests = None, []
+        return {"deleted": removed}
+
+    def _remember(self, entry, request_id, question, projected, asked_at):
+        """Append to local history; failure never changes the already formed answer."""
+        try:
+            digest = digest_turn(question, projected)
+        except (ValueError, TypeError, AttributeError):
+            return None
+        store, conversation_id = self._conversation_store, entry.conversation_id
+        if store is None:
+            return digest, conversation_id
+        for attempt in (0, 1):
+            try:
+                if conversation_id is None:
+                    conversation_id = store.create(LOCAL_USER, provider=entry.provider,
+                                                   data_mode=self.data_mode, title=question)
+                store.append(LOCAL_USER, conversation_id, request_id=request_id, asked_at=asked_at,
+                             question=question, result=projected, digest=encode_digest(digest))
+                return digest, conversation_id
+            except MemoryStoreError as error:
+                # A conversation deleted or filled meanwhile continues as a new record.
+                if attempt or error.code not in ("conversation_not_found", "conversation_full"):
+                    return digest, entry.conversation_id
+                conversation_id = None
+        return digest, entry.conversation_id
 
     def _view(self, entry):
         return {"state": "busy" if entry.control is not None else entry.session.to_dict()["state"],
@@ -447,7 +560,8 @@ class ResearchApiService:
             return replay
         trace_control(control, entry.provider)
         problem, response, staged_context = None, None, None
-        reset_contexts = False
+        reset_contexts, remembered = False, None
+        entry.model.history = render_history(entry.digests) if self._conversation_context and not history else None
         try:
             trace_phase("directory")
             timestamp = self._wall_clock()
@@ -537,6 +651,10 @@ class ResearchApiService:
             projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
             reset_contexts = result.code == "session_reset"
             response = {"request_id": request_id, "replayed": False, "result": projected}
+            if not history and not reset_contexts:
+                remembered = self._remember(entry, request_id, question, projected, timestamp)
+            if remembered is not None and remembered[1] is not None:
+                response["conversation_id"] = remembered[1]
         except ApiProblem as error:
             problem = error
         except Exception:
@@ -545,9 +663,14 @@ class ResearchApiService:
             problem = ApiProblem(500, "research_internal_error", "本轮服务处理失败；没有自动重试，请检查服务端。")
         finally:
             with self._lock:
+                entry.model.history = None
                 if reset_contexts:
                     entry.market_contexts.clear()
                     self._clear_charts(entry)
+                    entry.digests, entry.conversation_id = [], None
+                elif problem is None and remembered is not None:
+                    entry.digests = [*entry.digests, remembered[0]][-MAX_DIGESTS:]
+                    entry.conversation_id = remembered[1]
                 if problem is None and staged_context is not None:
                     key, value = staged_context
                     if len(entry.market_contexts) < self.limits.messages or key in entry.market_contexts:
@@ -672,6 +795,7 @@ class ResearchApiService:
             if entry.control is not None:
                 raise ApiProblem(409, "session_busy", "请先取消并等待当前请求结束，再重置会话。")
             entry.session.clear()
+            entry.digests, entry.conversation_id = [], None
             entry.market_contexts.clear()
             self._clear_charts(entry)
             for record in entry.records.values():

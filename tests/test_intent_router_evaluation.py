@@ -188,7 +188,7 @@ class IntentEvaluationTests(unittest.TestCase):
             self.assertEqual(report['metrics']['providers']['jev']['cost']['unknown_requests'],1)
 
     def test_rule_versions_reject_old_locks_and_cross_rule_references(self):
-        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'market-routing-guard-v1')
+        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'conversation-memory-v1')
         with tempfile.TemporaryDirectory() as root:
             root=Path(root)
             source=save(self.dev,root/'dev.json')

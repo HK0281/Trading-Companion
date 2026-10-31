@@ -16,6 +16,15 @@ const samples = (development: boolean) => [
 const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要补充",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
 
+const savedTime = (value: string) => {
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return "";
+  const today = new Date();
+  return time.toDateString() === today.toDateString()
+    ? time.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : time.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+};
+
 function Icon({ name, className = "" }: { name: string; className?: string }) {
   const paths: Record<string, string> = {
     chart: "M4 19h16M6 15l4-5 4 2 5-7M15 5h4v4", plus: "M12 5v14M5 12h14",
@@ -84,6 +93,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const [question, setQuestion] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<"reset" | "end" | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const draftRevision = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null), latest = useRef<HTMLElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
@@ -180,6 +190,24 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           <a key={entry.id} href={`#message-${entry.id}`} onClick={() => { followBottom.current = false; setNavigationOpen(false); }}>
             <span>{String(index + 1).padStart(2, "0")}</span>{entry.question}</a>)}</nav>}
       </section>
+      {state.conversations !== null && <section className="conversation-index saved-conversations" aria-label="历史对话">
+        <span className="sidebar-caption">历史对话 · 保存在本机</span>
+        {!state.conversations.length ? <p className="empty-index">提问后会自动保存在这里</p> : <ul>{state.conversations.map((item) =>
+          <li key={item.conversation_id} className={item.conversation_id === state.conversationId ? "current" : ""}>
+            <button type="button" className="saved-open" disabled={locked || !!state.pendingId}
+              aria-current={item.conversation_id === state.conversationId ? "true" : undefined}
+              onClick={() => { setNavigationOpen(false); followBottom.current = true;
+                void controller.openConversation(item.conversation_id); }}>
+              <span className="saved-title">{item.title}</span>
+              <small>{savedTime(item.updated_at)} · {item.turns} 轮</small></button>
+            <button type="button" className="saved-delete" aria-label={`删除历史对话：${item.title}`} disabled={locked}
+              onClick={() => setDeleting(item.conversation_id)}>×</button>
+            {deleting === item.conversation_id && <div className="confirm-panel" role="group" aria-label="确认删除历史对话">
+              <p>删除这段历史对话？删除后无法恢复。</p>
+              <button type="button" disabled={locked} onClick={() => { setDeleting(null); void controller.deleteConversation(item.conversation_id); }}>确认删除</button>
+              <button type="button" onClick={() => setDeleting(null)}>返回</button></div>}
+          </li>)}</ul>}
+      </section>}
       <div className="sidebar-bottom">
         {session && <>
           <button className="history-button" type="button" disabled={locked} onClick={() => { setNavigationOpen(false); followBottom.current = true; void controller.history(); }}>
@@ -194,7 +222,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               <div><dt>数据</dt><dd>{health ? sourceLabel(health.data_mode) : "—"}</dd></div></dl>
             <p>来源由服务启动固定；失败不自动切换。不能通过对话切换。</p>
           </section>
-          {session && <div className="session-actions"><p>会话 {session.shortId} · 创建后 30 分钟到期。刷新会丢失当前记录；重置不退额度。</p>
+          {session && <div className="session-actions"><p>会话 {session.shortId} · 创建后 24 小时到期。{state.conversations !== null
+            ? "对话记录保存在本机，刷新后可在「历史对话」中找回；" : "刷新会丢失当前记录；"}重置不退额度。</p>
             <button type="button" disabled={loading} onClick={() => void controller.inspect()}>检查会话状态</button>
             <button type="button" disabled={locked} onClick={() => setConfirmation("reset")}>清空研究条件</button>
             <button type="button" disabled={locked} onClick={() => setConfirmation("end")}>结束会话</button></div>}
@@ -277,7 +306,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             <button className="primary send-button" type="submit" aria-label={phase === "working" ? "正在研究" : "发送问题"}
               disabled={!canSend || !characters || characters > 2000}><Icon name="arrow" /></button></div>
         </form>
-        <div className="composer-hint"><span>Enter 发送 · Shift + Enter 换行</span><span>会话仅保留在当前页面</span></div>
+        <div className="composer-hint"><span>Enter 发送 · Shift + Enter 换行</span><span>{state.conversations !== null ? "对话记录保存在本机" : "会话仅保留在当前页面"}</span></div>
         {exhausted && <p className="error-text">本次对话的问题额度已用完；仍可查看历史，点击「新对话」后可继续。</p>}
       </div></div>
     </main>

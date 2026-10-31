@@ -63,10 +63,14 @@ def _scope_allowed(sentence, request, directory):
         return False
     if directory is not None and directory.mentioned_spans(sentence.replace(request.instrument_id, '')):
         return False
+    # Only remove a complete nonnumeric disclaimer from the trade-word scan;
+    # a disclaimer cannot authorize a later target, recommendation or price.
+    disclaimer = r'(?:不构成|并非|而非|不是|不作为)(?:任何)?(?:交易建议|买卖(?:或评级)?建议|目标(?:价|位|价格|点位))'
+    trade_text = re.sub(disclaimer + r'(?:或(?:交易建议|目标(?:价|位|价格|点位)))*(?=[，,；;。！？!?]|$)', '', sentence)
     if re.search(r'(?:\d|[零一二三四五六七八九十百千万亿])\s*(?:美元|港元|欧元|元)|'
                  r'买入|增持|减持|卖出|止损|止盈|入场|目标(?:价|位|价格|点位|[12一二])|'
                  r'(?:评级|建议|应当|应该|继续|值得|维持|给予|推荐|操作).{0,6}持有|持有.{0,4}(?:评级|建议)|'
-                 r'加仓|减仓|建仓|清仓|抄底|做多|做空|买进|卖出|建议.{0,4}(?:买|卖)', sentence):
+                 r'加仓|减仓|建仓|清仓|抄底|做多|做空|买进|卖出|建议.{0,4}(?:买|卖)', trade_text):
         return False
     unsupported = r'成交量|量能|放量|缩量|资金流|财报|营收|利润|宏观|经济|美股|外资|海外|汇率|利率|央行|降息|降准|政策|全市场|所有股票|成份股|板块'
     # Split assertions on commas and contrast/conjunctions so a preceding
@@ -74,16 +78,77 @@ def _scope_allowed(sentence, request, directory):
     for clause in re.split(r'[，,；;。]|但是|但|然而|不过|而且|同时|并且|且|并(?!未|不)|因为|由于|因此|因而|所以', sentence):
         if not re.search(unsupported, clause):
             continue
+        unable = r'(?:无法|不能|不足以)(?:据此)?(?:对[^，,；;。]{1,20}?(?:作出)?)?(?:判断|确认|推断|评估)'
         missing = re.search(r'不含|不包含|不包括|未(?:取得|获取|提供|纳入|研究|核实)|尚未|缺少|缺乏|'
-                            r'没有.{0,12}(?:数据|信息|证据)|(?:无法|不能|不足以)(?:据此)?(?:判断|确认|推断|评估)|'
+                            r'没有.{0,12}(?:数据|信息|证据)|' + unable + r'|'
                             r'单位未核实|不作.{0,6}(?:判断|归因)|不在.{0,8}(?:范围|研究)|未经.{0,6}核实', clause)
         if not missing:
             return False
         # A limitation can discuss absence, not assert the opposite after it.
-        judgment_missing = re.match(r'^\s*(?:本轮|目前|现有(?:资料|证据))?\s*(?:无法|不能|不足以)(?:据此)?(?:判断|确认|推断|评估)', clause)
+        judgment_missing = re.match(r'^\s*(?:本轮|目前|现有(?:资料|证据))?\s*' + unable, clause)
         if not judgment_missing and re.search(r'转为|正在|已经|已改善|已回流|已增长|已下降|提振|推动|导致|受益于', clause):
             return False
     return True
+
+
+def _price_relations_allowed(sentence, context):
+    """Check explicit current-price sides of BOLL; conditional scenarios stay hypothetical."""
+    from decimal import Decimal
+    close = next(r['raw_value'] for r in context['evidence'] if r['field'] == 'close_price')
+    hypothetical = False
+    for fragment in re.finditer(r'[^，,；;。]+[，,；;。]?', sentence):
+        clause = fragment[0]
+        conditional = hypothetical or bool(re.search(r'若|如果|假如|一旦|未来', clause))
+        hypothetical = conditional and clause[-1] not in '；;。'
+        if conditional:
+            continue
+        # The current evidence has no standalone completed-week close fact.
+        if re.search(r'周线收盘(?:参考)?(?:点位|价)?(?:为|是)?\s*\d', clause):
+            return False
+        relation = re.search(r'(?:价格|现价|收盘(?:点位|价)?)(?:位于|处于|在)'
+                             r'(日线|周线)(?:BOLL|布林带)?(中轨|上轨|下轨)(上方|下方)', clause)
+        if relation is None:
+            continue
+        period = relation[1]
+        parts = [(relation[2], relation[3])]
+        parts.extend(re.findall(r'[、与和](?:BOLL|布林带)?(中轨|上轨|下轨)(上方|下方)', clause[relation.end():]))
+        for field, side in parts:
+            values = {Decimal(str(r['raw_value'])) for r in context['evidence']
+                if (r.get('indicator_id') or '').startswith('boll(')
+                and r['timeframe'] == ('weekly' if period == '周线' else 'daily')
+                and r['field'] == {'中轨': 'middle', '上轨': 'upper', '下轨': 'lower'}[field]}
+            if len(values) != 1:
+                return False
+            level = values.pop()
+            if not (Decimal(str(close)) > level if side == '上方' else Decimal(str(close)) < level):
+                return False
+    return True
+
+
+def _clean_transitions(original, text, *, missing_before, request, directory):
+    """Remove an orphan discourse word only when the remaining sentence is self-contained."""
+    sources = re.findall(r'[^。！？!?\n]+[。！？!?]?', original)
+    previous, kept, removed = -1, [], 0
+    for sentence in re.findall(r'[^。！？!?\n]+[。！？!?]?', text):
+        position = next((i for i in range(previous+1, len(sources)) if sources[i].strip() == sentence.strip()), None)
+        gap = missing_before if previous == -1 else False
+        gap |= position is None or position > previous+1
+        transition = re.match(r'^\s*(不过|然而|但是|但|因此|所以|因而|由此)[，,\s]*', sentence)
+        if gap and transition:
+            remainder = sentence[transition.end():]
+            subject = r'(?:本轮|日线|周线|价格|现价|收盘|指数|' + re.escape(request.index.name) + ')'
+            if (transition[1] in ('不过', '然而', '但是', '但') and re.match(subject, remainder)
+                    and _scope_allowed(remainder, request, directory)):
+                sentence = remainder
+            else:
+                removed += 1
+                if position is not None:
+                    previous = position
+                continue
+        kept.append(sentence)
+        if position is not None:
+            previous = position
+    return ''.join(kept), removed
 
 
 @dataclass(frozen=True)
@@ -113,6 +178,7 @@ def validate_answer(payload, result, *, directory=None):
             or type(payload.get('blocks')) is not list or not 1 <= len(payload['blocks']) <= 6):
         return None
     blocks, generated, retained, rejected, partial_sentences = [], 0, 0, 0, 0
+    missing_before = False
     for position, block in enumerate(payload['blocks']):
         original = block.get('text') if type(block) is dict else None
         title = _title(block.get('title')) if type(block) is dict else None
@@ -120,6 +186,7 @@ def validate_answer(payload, result, *, directory=None):
                 or not _scope_allowed(block['title'], request, directory)):
             generated += len(re.findall(r'[^。！？!?\n]+[。！？!?]?', original)) if type(original) is str else 0
             rejected += 1
+            missing_before = True
             continue
         # Titles are displayed too; check the original before mapping so they
         # cannot hide invented values or cross-object assertions.
@@ -128,21 +195,29 @@ def validate_answer(payload, result, *, directory=None):
         if not title_text or title_issues:
             generated += len(re.findall(r'[^。！？!?\n]+[。！？!?]?', original))
             rejected += 1
+            missing_before = True
             continue
         def guard(sentence):
             if title == '结论' and any(word in sentence and word != payload['direction'] for word in DIRECTIONS):
                 return False
-            return _scope_allowed(sentence, request, directory)
+            return _scope_allowed(sentence, request, directory) and _price_relations_allowed(sentence, context)
         stats = {}
         text, ids, _, count, kept = check_claim(block, instrument=request.instrument_id, context=context,
             section='summary', index=position, stats=stats, sentence_guard=guard)
         generated += count
+        if text:
+            text, removed = _clean_transitions(original, text, missing_before=missing_before,
+                request=request, directory=directory)
+            kept -= removed
         if not text or title == '结论' and payload['direction'] not in text:
             rejected += 1
+            missing_before = True
             continue
         retained += kept
         partial_sentences += stats.get('partially_retained_sentences', 0)
         blocks.append((title, text, tuple(ids)))
+        original_sentences = re.findall(r'[^。！？!?\n]+[。！？!?]?', original)
+        missing_before = bool(original_sentences and not text.endswith(original_sentences[-1].strip()))
     if not any(title == '结论' for title, _, _ in blocks):
         return None
     quality = IndexAnswerQuality(generated, retained, generated-retained, len(blocks), rejected, partial_sentences)

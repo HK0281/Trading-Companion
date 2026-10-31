@@ -211,5 +211,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
         # Whole-block citations may include deleted numbers. Only validated
         # retained fragments contribute numeric sources after clause recovery.
         used_ids = safe_source_ids
-    fallback_ids = [own[0]['id']] if partially_retained else [r['id'] for r in own]
+    # Nonnumeric index limitations need a bounded anchor, not every indicator:
+    # more than 20 fallback citations would fail the next public recheck.
+    fallback_ids = [own[0]['id']] if partially_retained or context.get('instrument_kind') == 'index' else [r['id'] for r in own]
     return "".join(safe), list(dict.fromkeys(used_ids or fallback_ids)), issues, generated, len(safe)

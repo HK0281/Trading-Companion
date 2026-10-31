@@ -323,9 +323,13 @@ def reading_candidates(text, context, instrument, records):
             'weekly' if prefix['period'] == '周' or re.search(r'周线(?:的)?\s*$', text[:prefix.start()]) else 'daily')
     for match in _MENTION.finditer(text):
         unit = r'(?:元(?:/股)?|点|%)'
+        reading_prefix = r'\s*(?:的?(?:值|读数|数值))?\s*(?:约|为|是|在|报)?\s*'
         if context.get('instrument_kind') == 'index':
-            unit = r'(?:元(?:/股)?|点|%|(?=[，,。；;！!?？\s]|$))'
-        reading = re.match(r'\s*(?:的?(?:值|读数|数值))?\s*(?:约|为|是|在|报)?\s*(?P<number>[+\-]?\d+(?:\.\d+)?)\s*' + unit, text[match.end():])
+            # Bare RSI/ADX readings can end at an enumeration comma or a Chinese
+            # verb (RSI自28.33回升). Their actual unit is still checked below.
+            unit = r'(?:元(?:/股)?|点|%|(?![\d.A-Za-z]))'
+            reading_prefix = r'\s*(?:的?(?:值|读数|数值)|的)?\s*(?:约|为|是|在|报|自|从)?\s*'
+        reading = re.match(reading_prefix + r'(?P<number>[+\-]?\d+(?:\.\d+)?)\s*' + unit, text[match.end():])
         if not reading:
             continue
         spec, prefix_period = prefixes.get(match.start('kind'), (_spec(match), None))

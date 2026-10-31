@@ -175,6 +175,14 @@ def bindings_for(text, numbers, *, context=None, instrument=None, stats=None):
                     if len(forms) == 1:
                         binding = {**binding, 'text': forms.pop()}
                         found = list(re.finditer(re.escape(binding['text']), text))
+                    elif not forms:
+                        # A valid same-index annotation absent from the prose is
+                        # metadata, not a reason to discard otherwise checked text.
+                        # Unknown/foreign refs, wrong fields, units and values
+                        # cannot reach here because they were checked above.
+                        if stats is not None:
+                            stats['ignored_unused_index_bindings'] = stats.get('ignored_unused_index_bindings', 0) + 1
+                        continue
             if not found:
                 raise InvalidBinding('binding_text_not_in_block')
         for match in found:
@@ -195,6 +203,13 @@ def _masked(text, context, records):
     if context.get('instrument_kind') == 'index':
         for name in sorted(context.get('identity_names', ()), key=len, reverse=True):
             masked = masked.replace(name, ' ' * len(name))
+        window_label = '最近至多120条日线'
+        if any(r.get('instrument_id') == context.get('instrument_id')
+               and r.get('field') in ('window_low', 'window_high') and window_label in r.get('label', '')
+               for r in records):
+            # This exact cap is application-authored evidence metadata. Other
+            # counts, asserted sample sizes and ordinary values stay visible.
+            masked = re.sub(re.escape(window_label), lambda m: ' ' * len(m[0]), masked)
     for match in DATE.finditer(normalized):
         try:
             day = date(*(int(x) for x in match.groups())).isoformat()
@@ -346,9 +361,10 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
             candidates, group_ids, fallback = all_atoms, [], False
             try:
                 if binding is not None:
-                    candidates, group_ids = _bound_atoms(binding, context, instrument, strict=protected, stats=stats)
+                    candidates, group_ids = _bound_atoms(binding, context, instrument,
+                        strict=protected or index_context, stats=stats)
             except InvalidBinding as error:
-                if (not protected and not level_binding and binding.get('derive') is None and error.reason in
+                if (not index_context and not protected and not level_binding and binding.get('derive') is None and error.reason in
                         ('invalid_ref_type', 'ref_not_supplied', 'ref_has_no_numeric_value')):
                     candidates = [a for a in all_atoms if a.plan_id is None]
                     fallback = True
@@ -360,12 +376,35 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                     detail['reason'] = error.reason
                     detail['ordinary_numeric'] = False
             restriction = restrictions.get(match.start())
+            if index_context:
+                role = None
+                before = normalized[:match.start()]
+                if re.search(r'收盘(?:点位|价)?\s*(?:为|是|约|在|[:：])?\s*$', before):
+                    role = 'close_price'
+                else:
+                    window = re.search(r'(?:研究窗口|窗口|研究区间)[^，,；;。]{0,35}'
+                                       r'(最低点|低点|最高点|高点)(?:为|是|约|在|[:：])?\s*$', before)
+                    if window:
+                        role = 'window_low' if window[1] in ('最低点', '低点') else 'window_high'
+                if role:
+                    role_refs = {a.evidence_id for a in all_atoms if a.field == role}
+                    restriction = (role_refs, set())
+                if restriction is not None and not protected and not error_code and binding is not None:
+                    expected = [a for a in all_atoms if a.evidence_id in set.union(*restriction)
+                        and a.plan_id is None and matches(value, a, shown)]
+                    # Reconcile a misplaced citation only when the prose itself
+                    # names a checked field/indicator/period with this exact value.
+                    # Explicit fields, derivations and unknown refs remain strict.
+                    if (expected and not binding.get('derive') and 'field' not in binding
+                            and all(a.plan_id is None for a in candidates)
+                            and not any(a.evidence_id in set.union(*restriction) and matches(value, a, shown)
+                                        for a in candidates)):
+                        candidates, group_ids = expected, []
+                        count('index_context_binding_recoveries')
             if index_context and restriction is None:
                 # Dimensionless RSI/ADX readings cannot become an index price merely
                 # because the same number appears in evidence.
                 candidates = [a for a in candidates if a.kind != 'index']
-            if index_context and re.search(r'收盘(?:点位|价)?\s*(?:为|是|约|在|[:：])?\s*$', normalized[:match.start()]):
-                candidates = [a for a in candidates if a.field in ('close_price', 'latest_close')]
             # A dated close can stand for an entry only when it is EXACTLY this
             # stock's supplied reference_entry. Stops/targets retain their roles.
             if plan_field == 'reference_entry':

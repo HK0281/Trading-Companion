@@ -378,6 +378,11 @@ class ScenarioFlowTests(unittest.TestCase):
             first = client.post(path, headers=headers, json=dict(request_id='a'*32, question='现在A股能买吗')).json()['result']
             self.assertEqual(first['code'], 'index_horizon_required')
             self.assertEqual(first['model_calls_attempted'], 0)
+            from trading_companion.decision_horizon import OPTIONS
+            self.assertEqual(first['clarification_options'], [dict(value=v, label=l, reply=r) for v,l,r in OPTIONS])
+            replay = client.post(path, headers=headers, json=dict(request_id='a'*32, question='现在A股能买吗')).json()
+            self.assertTrue(replay['replayed'])
+            self.assertEqual(replay['result'], first)
             body = dict(request_id='b'*32, question='中线')
             second = client.post(path, headers=headers, json=body).json()['result']
             self.assertEqual(second['index_research']['scenario_plan']['purpose'], 'wait')

@@ -105,6 +105,33 @@ def _price_relations_allowed(sentence, context):
         # The current evidence has no standalone completed-week close fact.
         if re.search(r'周线收盘(?:参考)?(?:点位|价)?(?:为|是)?\s*\d', clause):
             return False
+        # "X and Y are lower observation references" asserts the side of
+        # every explicitly named level, including mixed daily/weekly clauses.
+        previous_end = 0
+        for reference in re.finditer(r'(?:作为|为|是)(上方|下方)观察参考', clause):
+            levels = list(re.finditer(r'(?:(日线|周线)(?:BOLL|布林带)?)?(中轨|上轨|下轨)'
+                                     r'(?:为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*点',
+                                     clause[previous_end:reference.start()]))
+            previous_end = reference.end()
+            if not levels:
+                continue
+            if close is None:
+                return False
+            period = None
+            for level in levels:
+                period = level[1] or period
+                if period is None:
+                    return False
+                values = {Decimal(str(r['raw_value'])) for r in context['evidence']
+                    if (r.get('indicator_id') or '').startswith('boll(')
+                    and r.get('instrument_id') == context.get('instrument_id')
+                    and r['timeframe'] == ('weekly' if period == '周线' else 'daily')
+                    and r['field'] == {'中轨': 'middle', '上轨': 'upper', '下轨': 'lower'}[level[2]]}
+                if len(values) != 1 or Decimal(level[3]) not in values:
+                    return False
+                number = values.pop()
+                if not (number > Decimal(str(close)) if reference[1] == '上方' else number < Decimal(str(close))):
+                    return False
         relation = re.search(r'(?:价格|现价|收盘(?:点位|价)?)(?:位于|处于|在)'
                              r'(日线|周线)(?:BOLL|布林带)?(中轨|上轨|下轨)(上方|下方)', clause)
         if relation is None:

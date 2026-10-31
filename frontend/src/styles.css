@@ -273,6 +273,10 @@ textarea::placeholder { color: #a1aaa0; }
 .reference-plan { width: 100%; border-collapse: collapse; }
 .reference-plan caption { text-align: left; font-weight: 600; padding: 8px 0; }
 .reference-plan th, .reference-plan td { padding: 6px 10px; text-align: left; }
+.index-scenario { overflow-wrap: anywhere; }
+.index-scenario h5 { margin: 0 0 10px; }
+.index-scenario .reference-plan th { width: 60%; font-weight: 500; }
+.index-scenario .reference-plan td { font-variant-numeric: tabular-nums; }
 @media (max-width: 540px) { .verdict-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .research-verdict { padding: 12px; } }
 .research-narratives { line-height: 1.8; }
 .narrative-conclusion { font-size: 1.08em; }

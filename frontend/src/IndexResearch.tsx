@@ -1,5 +1,6 @@
 import type { PublicTurn } from "./api";
 import { validChartDate } from "./charts";
+import { IndexScenario } from "./IndexScenario";
 
 const indices: Record<string, string> = { "000001.SH": "上证指数", "399001.SZ": "深证成指", "000300.SH": "沪深300", "399006.SZ": "创业板指", "000688.SH": "科创50" };
 const record = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -7,6 +8,7 @@ type Evidence = { id: string; label: string; raw_value: number; unit: string; da
 type Quality = { version: string; generated_sentences: number; retained_sentences: number; deleted_sentences: number;
   retained_paragraphs: number; rejected_paragraphs: number; partially_retained_sentences: number; repair_attempts: number; partial: boolean };
 export type IndexResearchData = { request_id: string; name: string; instrument_id: string; benchmark_defaulted: boolean;
+  source: string; start_date: string; as_of_date: string; origin: string; scenario_plan?: unknown;
   direction: string; conviction: string; conviction_note: string; horizon: string | null; latest_date: string;
   data_authenticity: string; context: string; blocks: { title: string; text: string; evidence_ids: string[] }[];
   evidence: Evidence[]; limitations: string[]; plan_notice: string | null; quality?: Quality };
@@ -80,6 +82,7 @@ export function IndexResearch({ turn }: { turn: PublicTurn }) {
       <small>依据：{block.evidence_ids.map((id) => data.evidence.find((e) => e.id === id)!).map((e) => `${e.label}（${e.date}）`).join("、")}</small>
     </section>)}
     {data.plan_notice && <p className="data-note" role="note">{data.plan_notice}</p>}
+    {data.scenario_plan !== undefined && <IndexScenario value={data.scenario_plan} research={data} />}
     <details><summary>数据范围与局限</summary><ul>{data.limitations.map((s, i) => <li key={i}>{s}</li>)}</ul></details>
   </div>;
 }

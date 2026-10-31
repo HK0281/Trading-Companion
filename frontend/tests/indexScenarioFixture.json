@@ -1,0 +1,2408 @@
+{
+  "provenance": "人工恒定指数行情；由程序计划计算和公开投影生成，非真实行情或真实模型样本。收盘100，日/完整周ATR为2；精度变体仅最后收盘为100.00000000000001。",
+  "views": {
+    "short_bull": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏多",
+        "conviction": "低",
+        "horizon": "未来10个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏多，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+          "purpose": "conditional_entry",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来10个交易日",
+          "horizon_profile": "short",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "bbf6792c2e92bed4c972bbe592c0e528029e6fa1bd1b8bc31d78582d0c09ff45",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "1.5",
+          "target_multiples": [
+            "1.5",
+            "2.5"
+          ],
+          "values": {
+            "reference_entry": "100.00",
+            "reference_stop": "97.00",
+            "target_1": "104.50",
+            "target_2": "107.50",
+            "reward_risk_1": "1.500000",
+            "reward_risk_2": "2.500000",
+            "atr": "2.0000",
+            "atr_multiple": "1.5"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S1_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "reference_entry",
+              "raw_value": "100.00",
+              "display_value": "100.00",
+              "label": "入场参考",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "入场参考：100.00"
+            },
+            {
+              "id": "S1_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "reference_stop",
+              "raw_value": "97.00",
+              "display_value": "97.00",
+              "label": "止损参考（跌破观察位）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止损参考（跌破观察位）：97.00"
+            },
+            {
+              "id": "S1_3",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "target_1",
+              "raw_value": "104.50",
+              "display_value": "104.50",
+              "label": "止盈1（目标1）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈1（目标1）：104.50"
+            },
+            {
+              "id": "S1_4",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "target_2",
+              "raw_value": "107.50",
+              "display_value": "107.50",
+              "label": "止盈2（目标2）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈2（目标2）：107.50"
+            },
+            {
+              "id": "S1_5",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "reward_risk_1",
+              "raw_value": "1.500000",
+              "display_value": "1.500000",
+              "label": "实际盈亏比1",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比1：1.500000"
+            },
+            {
+              "id": "S1_6",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "reward_risk_2",
+              "raw_value": "2.500000",
+              "display_value": "2.500000",
+              "label": "实际盈亏比2",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比2：2.500000"
+            },
+            {
+              "id": "S1_7",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "atr",
+              "raw_value": "2.0000",
+              "display_value": "2.0000",
+              "label": "ATR",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR：2.0000"
+            },
+            {
+              "id": "S1_8",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:conditional_entry",
+              "field": "atr_multiple",
+              "raw_value": "1.5",
+              "display_value": "1.5",
+              "label": "ATR倍数",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR倍数：1.5"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数入场参考为100.00点。",
+              "evidence_ids": [
+                "S1_1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "four_months": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏多",
+        "conviction": "低",
+        "horizon": "未来4个月",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏多，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+          "purpose": "conditional_entry",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来4个月",
+          "horizon_profile": "medium",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "d08f5e6a19c0bfc158dc5e9cf179311c0fa7d6e4bde39ebacca8a2c58072e90c",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "2.5",
+          "target_multiples": [
+            "2",
+            "3"
+          ],
+          "values": {
+            "reference_entry": "100.00",
+            "reference_stop": "95.00",
+            "target_1": "110.00",
+            "target_2": "115.00",
+            "reward_risk_1": "2.000000",
+            "reward_risk_2": "3.000000",
+            "atr": "2.0000",
+            "atr_multiple": "2.5"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S1_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "reference_entry",
+              "raw_value": "100.00",
+              "display_value": "100.00",
+              "label": "入场参考",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "入场参考：100.00"
+            },
+            {
+              "id": "S1_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "reference_stop",
+              "raw_value": "95.00",
+              "display_value": "95.00",
+              "label": "止损参考（跌破观察位）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止损参考（跌破观察位）：95.00"
+            },
+            {
+              "id": "S1_3",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "target_1",
+              "raw_value": "110.00",
+              "display_value": "110.00",
+              "label": "止盈1（目标1）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈1（目标1）：110.00"
+            },
+            {
+              "id": "S1_4",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "target_2",
+              "raw_value": "115.00",
+              "display_value": "115.00",
+              "label": "止盈2（目标2）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈2（目标2）：115.00"
+            },
+            {
+              "id": "S1_5",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "reward_risk_1",
+              "raw_value": "2.000000",
+              "display_value": "2.000000",
+              "label": "实际盈亏比1",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比1：2.000000"
+            },
+            {
+              "id": "S1_6",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "reward_risk_2",
+              "raw_value": "3.000000",
+              "display_value": "3.000000",
+              "label": "实际盈亏比2",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比2：3.000000"
+            },
+            {
+              "id": "S1_7",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "atr",
+              "raw_value": "2.0000",
+              "display_value": "2.0000",
+              "label": "ATR",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR：2.0000"
+            },
+            {
+              "id": "S1_8",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:d08f5e6a19c0bfc158dc5e9c:conditional_entry",
+              "field": "atr_multiple",
+              "raw_value": "2.5",
+              "display_value": "2.5",
+              "label": "ATR倍数",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR倍数：2.5"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数入场参考为100.00点。",
+              "evidence_ids": [
+                "S1_1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "long_bull": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏多",
+        "conviction": "低",
+        "horizon": "未来120个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏多，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+          "purpose": "conditional_entry",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来120个交易日",
+          "horizon_profile": "long",
+          "atr_timeframe": "weekly",
+          "atr_source_date": "2026-09-18",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "b32045d1a5778e92836c49a2c9e93918321065c6d2afadf792e471eab4b6b6bd",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "2",
+          "target_multiples": [
+            "2",
+            "3.5"
+          ],
+          "values": {
+            "reference_entry": "100.00",
+            "reference_stop": "96.00",
+            "target_1": "108.00",
+            "target_2": "114.00",
+            "reward_risk_1": "2.000000",
+            "reward_risk_2": "3.500000",
+            "atr": "2.0000",
+            "atr_multiple": "2"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S1_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "reference_entry",
+              "raw_value": "100.00",
+              "display_value": "100.00",
+              "label": "入场参考",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "入场参考：100.00"
+            },
+            {
+              "id": "S1_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "reference_stop",
+              "raw_value": "96.00",
+              "display_value": "96.00",
+              "label": "止损参考（跌破观察位）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "止损参考（跌破观察位）：96.00"
+            },
+            {
+              "id": "S1_3",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "target_1",
+              "raw_value": "108.00",
+              "display_value": "108.00",
+              "label": "止盈1（目标1）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "止盈1（目标1）：108.00"
+            },
+            {
+              "id": "S1_4",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "target_2",
+              "raw_value": "114.00",
+              "display_value": "114.00",
+              "label": "止盈2（目标2）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "止盈2（目标2）：114.00"
+            },
+            {
+              "id": "S1_5",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "reward_risk_1",
+              "raw_value": "2.000000",
+              "display_value": "2.000000",
+              "label": "实际盈亏比1",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "实际盈亏比1：2.000000"
+            },
+            {
+              "id": "S1_6",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "reward_risk_2",
+              "raw_value": "3.500000",
+              "display_value": "3.500000",
+              "label": "实际盈亏比2",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "实际盈亏比2：3.500000"
+            },
+            {
+              "id": "S1_7",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "atr",
+              "raw_value": "2.0000",
+              "display_value": "2.0000",
+              "label": "ATR",
+              "unit": "index_point",
+              "date": "2026-09-18",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "ATR：2.0000"
+            },
+            {
+              "id": "S1_8",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:b32045d1a5778e92836c49a2:conditional_entry",
+              "field": "atr_multiple",
+              "raw_value": "2",
+              "display_value": "2",
+              "label": "ATR倍数",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "weekly",
+              "display": "ATR倍数：2"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数入场参考为100.00点。",
+              "evidence_ids": [
+                "S1_1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "wait": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "震荡",
+        "conviction": "低",
+        "horizon": "未来10个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察震荡，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:wait",
+          "purpose": "wait",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来10个交易日",
+          "horizon_profile": "short",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "bbf6792c2e92bed4c972bbe592c0e528029e6fa1bd1b8bc31d78582d0c09ff45",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "1.5",
+          "target_multiples": [
+            "1.5",
+            "2.5"
+          ],
+          "values": {
+            "observe_below": "97.00",
+            "observe_above": "104.50"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S3_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:wait",
+              "field": "observe_below",
+              "raw_value": "97.00",
+              "display_value": "97.00",
+              "label": "下方观察位",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "下方观察位：97.00"
+            },
+            {
+              "id": "S3_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bbf6792c2e92bed4c972bbe5:wait",
+              "field": "observe_above",
+              "raw_value": "104.50",
+              "display_value": "104.50",
+              "label": "上方观察位",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "上方观察位：104.50"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数下方观察位为97.00点。",
+              "evidence_ids": [
+                "S3_1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "bear": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏空",
+        "conviction": "低",
+        "horizon": "未来40个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏空，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:5f207b299bb756a7add82e82:holding_exit",
+          "purpose": "holding_exit",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来40个交易日",
+          "horizon_profile": "medium",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "5f207b299bb756a7add82e8248f04a174c478570911423239ebb85328598a6b4",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "2.5",
+          "target_multiples": [
+            "2",
+            "3"
+          ],
+          "values": {
+            "reference_close": "100.00",
+            "exit_below": "95.00"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S2_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:5f207b299bb756a7add82e82:holding_exit",
+              "field": "reference_close",
+              "raw_value": "100.00",
+              "display_value": "100.00",
+              "label": "收盘参考",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "收盘参考：100.00"
+            },
+            {
+              "id": "S2_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:5f207b299bb756a7add82e82:holding_exit",
+              "field": "exit_below",
+              "raw_value": "95.00",
+              "display_value": "95.00",
+              "label": "退出观察位（跌破止损参考）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "退出观察位（跌破止损参考）：95.00"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数收盘参考为100.00点。",
+              "evidence_ids": [
+                "S2_1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "unknown": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "暂不判断",
+        "conviction": "低",
+        "horizon": "未来10个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察暂不判断，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": null,
+          "purpose": null,
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "unavailable",
+          "code": "index_direction_unavailable",
+          "horizon": "未来10个交易日",
+          "horizon_profile": "short",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "bbf6792c2e92bed4c972bbe592c0e528029e6fa1bd1b8bc31d78582d0c09ff45",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "1.5",
+          "target_multiples": [
+            "1.5",
+            "2.5"
+          ],
+          "values": null,
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "尚无通过核对的明确方向，未展示点位计划。",
+          "evidence": [],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 0,
+            "retained_sentences": 0,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 0,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": []
+        }
+      }
+    },
+    "long_insufficient": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2026-09-01",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2026-09-01",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏空",
+        "conviction": "低",
+        "horizon": "未来120个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏空，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。",
+          "周线ATR(14)：历史不足或计算不可用"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:a5e421d95d70d0879693efa2:holding_exit",
+          "purpose": "holding_exit",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "unavailable",
+          "code": "plan_long_history_insufficient",
+          "horizon": "未来120个交易日",
+          "horizon_profile": "long",
+          "atr_timeframe": "weekly",
+          "atr_source_date": null,
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "a5e421d95d70d0879693efa2fd80df56c15c4679287c88d36d95edfa06d52e29",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "2",
+          "target_multiples": [
+            "2",
+            "3.5"
+          ],
+          "values": null,
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "长线计划需要至少365自然日窗口及350日实际历史跨度。",
+          "evidence": [],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 0,
+            "retained_sentences": 0,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 0,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": []
+        }
+      }
+    },
+    "excluded_atr": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏多",
+        "conviction": "低",
+        "horizon": "未来10个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏多，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:4a60555a85c30f762ef970bb:conditional_entry",
+          "purpose": "conditional_entry",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "unavailable",
+          "code": "risk_atr_not_requested",
+          "horizon": "未来10个交易日",
+          "horizon_profile": "short",
+          "atr_timeframe": "daily",
+          "atr_source_date": null,
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "4a60555a85c30f762ef970bbd10f3227714bce233ee1b99ab6ddefb53c4ddb18",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "1.5",
+          "target_multiples": [
+            "1.5",
+            "2.5"
+          ],
+          "values": null,
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "范围未允许ATR14，未补充计划依赖。",
+          "evidence": [],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 0,
+            "retained_sentences": 0,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 0,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": []
+        }
+      }
+    },
+    "precision": {
+      "parameters": {
+        "instrument_id": "000001.SH",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "source": "csv",
+        "indicators": [
+          {
+            "kind": "atr",
+            "window": 14
+          }
+        ]
+      },
+      "report": {
+        "request_id": "index-hand-calculated",
+        "fields": [],
+        "limitations": []
+      },
+      "index_research": {
+        "version": "index-research-v1",
+        "request_id": "index-hand-calculated",
+        "instrument_kind": "index",
+        "instrument_id": "000001.SH",
+        "name": "上证指数",
+        "benchmark_defaulted": false,
+        "price_unit": "index_point",
+        "start_date": "2025-09-25",
+        "as_of_date": "2026-09-25",
+        "latest_date": "2026-09-25",
+        "source": "csv",
+        "data_authenticity": "synthetic",
+        "retrieved_at": "2026-09-26T04:00:00+00:00",
+        "context": "current",
+        "saved_at": null,
+        "direction": "偏多",
+        "conviction": "低",
+        "horizon": "未来10个交易日",
+        "conviction_note": "模型自评，未经历史校准",
+        "origin": "model",
+        "blocks": [
+          {
+            "title": "结论",
+            "text": "本轮技术观察偏多，把握低。",
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ],
+        "quality": {
+          "version": "index-answer-quality-v1",
+          "generated_sentences": 1,
+          "retained_sentences": 1,
+          "deleted_sentences": 0,
+          "retained_paragraphs": 1,
+          "rejected_paragraphs": 0,
+          "partially_retained_sentences": 0,
+          "repair_attempts": 0,
+          "partial": false
+        },
+        "evidence": [
+          {
+            "id": "E1",
+            "instrument_id": "000001.SH",
+            "label": "最新完整日收盘点位",
+            "raw_value": 100.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "close_price",
+            "display_value": "100.00",
+            "display": "最新完整日收盘点位：100.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E2",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最低点",
+            "raw_value": 99.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_low",
+            "display_value": "99.00",
+            "display": "研究窗口内最近至多120条日线最低点：99.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E3",
+            "instrument_id": "000001.SH",
+            "label": "研究窗口内最近至多120条日线最高点",
+            "raw_value": 101.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "window_high",
+            "display_value": "101.00",
+            "display": "研究窗口内最近至多120条日线最高点：101.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": null,
+            "timeframe": "daily"
+          },
+          {
+            "id": "E4",
+            "instrument_id": "000001.SH",
+            "label": "日线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-25",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "日线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "daily"
+          },
+          {
+            "id": "E5",
+            "instrument_id": "000001.SH",
+            "label": "周线ATR(14)",
+            "raw_value": 2.0,
+            "unit": "index_point",
+            "date": "2026-09-18",
+            "field": "value",
+            "display_value": "2.00",
+            "display": "周线ATR(14)：2.00点",
+            "content_kind": "fact",
+            "kind": "technical",
+            "source": "csv",
+            "indicator_id": "atr(window=14)",
+            "timeframe": "weekly"
+          }
+        ],
+        "limitations": [
+          "指数不可直接交易；本轮仅提供指数技术研究，不对应任何ETF或账户操作。",
+          "成交量和成交额单位尚未核实，量能指标不可用；未以零值替代。",
+          "未研究公司财报、资金流、全市场宽度、板块轮动或宏观归因。",
+          "支撑压力为历史点位候选，不保证未来触达或突破有效。"
+        ],
+        "plan_notice": null,
+        "scenario_plan": {
+          "version": "index-scenario-plan-v1",
+          "method": "index_atr_scenario_v1",
+          "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+          "purpose": "conditional_entry",
+          "instrument_kind": "index",
+          "instrument_id": "000001.SH",
+          "request_id": "index-hand-calculated",
+          "price_unit": "index_point",
+          "status": "available",
+          "code": "plan_ready",
+          "horizon": "未来10个交易日",
+          "horizon_profile": "short",
+          "atr_timeframe": "daily",
+          "atr_source_date": "2026-09-25",
+          "source_date": "2026-09-25",
+          "source": "csv",
+          "data_authenticity": "synthetic",
+          "input_snapshot_sha256": "bc59c27a4b78e5cee055b012b8d8b14ebf37daba4c82c19ce1a512a08bb2aa09",
+          "atr_algorithm": "atr-wilder-prior-close-v1",
+          "atr_multiple": "1.5",
+          "target_multiples": [
+            "1.5",
+            "2.5"
+          ],
+          "values": {
+            "reference_entry": "100.00000000000001",
+            "reference_stop": "97.01",
+            "target_1": "104.48",
+            "target_2": "107.47",
+            "reward_risk_1": "1.498327",
+            "reward_risk_2": "2.498327",
+            "atr": "2.0000",
+            "atr_multiple": "1.5"
+          },
+          "origin": "application",
+          "execution_allowed": false,
+          "note": "指数不可直接交易，点位为情景参考。",
+          "reason": "",
+          "evidence": [
+            {
+              "id": "S1_1",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "reference_entry",
+              "raw_value": "100.00000000000001",
+              "display_value": "100.00000000000001",
+              "label": "入场参考",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "入场参考：100.00000000000001"
+            },
+            {
+              "id": "S1_2",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "reference_stop",
+              "raw_value": "97.01",
+              "display_value": "97.01",
+              "label": "止损参考（跌破观察位）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止损参考（跌破观察位）：97.01"
+            },
+            {
+              "id": "S1_3",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "target_1",
+              "raw_value": "104.48",
+              "display_value": "104.48",
+              "label": "止盈1（目标1）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈1（目标1）：104.48"
+            },
+            {
+              "id": "S1_4",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "target_2",
+              "raw_value": "107.47",
+              "display_value": "107.47",
+              "label": "止盈2（目标2）",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "止盈2（目标2）：107.47"
+            },
+            {
+              "id": "S1_5",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "reward_risk_1",
+              "raw_value": "1.498327",
+              "display_value": "1.498327",
+              "label": "实际盈亏比1",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比1：1.498327"
+            },
+            {
+              "id": "S1_6",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "reward_risk_2",
+              "raw_value": "2.498327",
+              "display_value": "2.498327",
+              "label": "实际盈亏比2",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "实际盈亏比2：2.498327"
+            },
+            {
+              "id": "S1_7",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "atr",
+              "raw_value": "2.0000",
+              "display_value": "2.0000",
+              "label": "ATR",
+              "unit": "index_point",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR：2.0000"
+            },
+            {
+              "id": "S1_8",
+              "instrument_id": "000001.SH",
+              "content_kind": "index_scenario",
+              "kind": "technical",
+              "plan_id": "index-hand-calculated:index_atr_scenario_v1:bc59c27a4b78e5cee055b012:conditional_entry",
+              "field": "atr_multiple",
+              "raw_value": "1.5",
+              "display_value": "1.5",
+              "label": "ATR倍数",
+              "unit": "ratio",
+              "date": "2026-09-25",
+              "source": "csv",
+              "timeframe": "daily",
+              "display": "ATR倍数：1.5"
+            }
+          ],
+          "quality": {
+            "version": "index-answer-quality-v1",
+            "generated_sentences": 1,
+            "retained_sentences": 1,
+            "deleted_sentences": 0,
+            "retained_paragraphs": 1,
+            "rejected_paragraphs": 0,
+            "partially_retained_sentences": 0,
+            "repair_attempts": 0,
+            "partial": false
+          },
+          "blocks": [
+            {
+              "title": "情景",
+              "text": "指数入场参考为100.00000000000001点。",
+              "evidence_ids": [
+                "S1_1"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

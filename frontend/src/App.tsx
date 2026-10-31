@@ -49,6 +49,7 @@ function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart
     return () => clearInterval(timer);
   }, [turn, entry.history]);
   const horizonExpired = !!turn?.clarification_expires_at && Date.parse(turn.clarification_expires_at) <= now;
+  const horizonLabel = turn?.code === "index_horizon_required" ? "观察期限" : "持有期限";
   const structured = turn && parsePresentation(turn);
   return <article ref={elementRef} className={`exchange ${entry.history ? "historical" : ""}`} id={`message-${entry.id}`}>
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
@@ -70,8 +71,8 @@ function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart
             key={candidate.instrument_id} onClick={() => choose(candidate.instrument_id)}>
             {candidate.name} <span>{candidate.instrument_id}</span></button>)}
         </div>}
-        {turn.status === "needs_clarification" && !entry.history && turn.clarification_options && <div className="candidates" aria-label="持有期限">
-          <p>{horizonExpired ? "原期限选择已过期，请重新提出完整问题。" : "选择持有期限后自动继续研究。"}</p>
+        {turn.status === "needs_clarification" && !entry.history && turn.clarification_options && <div className="candidates" aria-label={horizonLabel}>
+          <p>{horizonExpired ? "原期限选择已过期，请重新提出完整问题。" : `选择${horizonLabel}后自动继续研究。`}</p>
           {turn.clarification_options.map(option => <button className="candidate" type="button" disabled={!canChoose || horizonExpired}
             key={option.value} onClick={() => chooseHorizon(option.reply)}>{option.label}</button>)}
         </div>}
@@ -272,7 +273,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
           </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} chooseHorizon={chooseHorizon} loadChart={controller.loadChart}
-            elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && index === state.entries.length - 1} />)}
+            elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && !state.cancelPending
+              && session.view.model_calls_forwarded < session.modelLimit && index === state.entries.length - 1} />)}
         </section>
       </div>
 

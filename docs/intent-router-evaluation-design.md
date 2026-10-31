@@ -1,5 +1,7 @@
 # 意图换说法评估：第二步2a
 
+2026-10-31 当前规则为 `index-scenario-ui-v1`，父版本 `index-scenario-v1` 完整追加保留。新增指数期限按钮公开字段及“BOLL点位为上下方观察参考”的关系核对，规则登记更新实际Python源码摘要；304题、117轮、题目划分及历史期望不改。前端计划显示与动态交互另行验证，本批不接入语义模型路由，也不宣称意图识别成绩改善。
+
 2026-10-30 指数误判保护将当前生产规则升级为 `market-routing-guard-v1`，父版本 `decision-horizon-v1` 的完整登记追加到 `previous_rules`，新登记纳入 `market_scope.py` 的源码摘要。原304题、8类实验标签、标注、manifest和历史锁不改；旧规则锁／参考报告不能用于新版本。[指数分流边界](request-routing-market-guard-deltas.md)由独立产品测试覆盖。新增生产意图 `market_research` 尚未扩充为意图评估v2，也未调用真实分类模型。
 
 2026-10-30 当前规则升级`decision-horizon-v1`，父版本`technical-parameter-grounding-v1`完整移入previous_rules。原304题、划分、标注、历史manifest及旧锁均不改写；新登记加入期限与参考计划语义依赖的源码摘要。旧版锁和参考报告不能用于当前规则，即使固定题库输出相同。期限确认是正式执行器在取数前执行的确定性流程，不新增路由分类模型。

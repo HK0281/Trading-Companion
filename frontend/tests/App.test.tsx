@@ -26,6 +26,7 @@ describe("research workspace", () => {
     api.send.mockImplementationOnce(async (_session, id) => horizonReply(id));
     send("平安银行现在能买吗");
     const button = await screen.findByRole("button", { name: new RegExp(`^${choice}（`) });
+    expect(screen.getByLabelText("持有期限")).toBeVisible();
     expect(screen.queryByLabelText("候选股票")).not.toBeInTheDocument();
     const pending = deferred<MessageResponse>();
     api.send.mockImplementationOnce(() => pending.promise);

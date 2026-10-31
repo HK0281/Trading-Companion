@@ -162,6 +162,7 @@ const message = (value: unknown): value is MessageResponse => {
     && (result.answer === null || text(result.answer)) && count(result.model_calls_attempted) && count(result.analyses_used)
     && strings(result.applied_defaults)
     && (result.clarification_options == null || result.status === "needs_clarification"
+      && ["decision_horizon_required", "index_horizon_required"].includes(String(result.code))
       && Array.isArray(result.clarification_options) && result.clarification_options.length === 3
       && result.clarification_options.every((option, index) => record(option)
         && Object.keys(option).sort().join() === "label,reply,value"

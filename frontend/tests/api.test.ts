@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, ConnectionError, createApi } from "../src/api";
-import { credentials, health, horizonReply, ID, idle, reply } from "./fixtures";
+import { credentials, health, horizonReply, indexHorizonReply, ID, idle, reply } from "./fixtures";
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status,
   headers: { "Content-Type": "application/json" } });
 
 describe("same-origin HTTP client", () => {
+  it("accepts index horizon options only on the real horizon reason", async () => {
+    const payload = indexHorizonReply();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(payload));
+    expect((await createApi(fetcher).send(credentials, ID, "问题")).result.clarification_options).toHaveLength(3);
+    payload.result.code = "index_identity_required";
+    fetcher.mockResolvedValueOnce(response(payload));
+    await expect(createApi(fetcher).send(credentials, ID, "问题")).rejects.toThrow(ConnectionError);
+  });
   it("accepts horizon choices and old responses without choices", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(horizonReply()))
       .mockResolvedValueOnce(response(reply()));

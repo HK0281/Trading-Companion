@@ -22,7 +22,7 @@ const fieldSets: Record<string, string[]> = {
 const ratings: Record<string, [string, string[]]> = { "买入": ["conditional_entry", ["偏多"]], "增持": ["conditional_entry", ["偏多"]],
   "持有": ["wait", ["偏多", "震荡"]], "减持": ["holding_exit", ["震荡", "偏空"]], "卖出": ["holding_exit", ["震荡", "偏空"]] };
 
-function horizonProfile(horizon: unknown): string | null {
+export function horizonProfile(horizon: unknown): string | null {
   if (["明天", "后天", "下周"].includes(String(horizon))) return "short";
   if (horizon === "下个月") return "medium";
   const match = typeof horizon === "string" && /^未来([1-9][0-9]{0,2})(个交易日|天|周|个月|年)$/.exec(horizon);
@@ -115,7 +115,7 @@ const unavailable: Record<string, string> = { plan_excluded: "本次研究未启
   risk_atr_not_requested: "本次未计算所需的波动指标。", risk_atr_unavailable: "最新波动指标不可用或历史窗口不足。",
   risk_nonpositive_reference: "未取得有效的正价格或历史波动。", risk_evidence_mismatch: "行情未通过来源和日期核对。",
   plan_price_grid_unavailable: "按价格网格舍入后无法形成有效计划。", decision_context_unusable: "未取得完整且通过核对的计划资料。" };
-function displayRatio(value: string) {
+export function displayRatio(value: string) {
   const [integer, fraction = ""] = value.split(".");
   const cents = BigInt(integer) * 100n + BigInt((fraction + "00").slice(0, 2)) + (Number(fraction[2] ?? "0") >= 5 ? 1n : 0n);
   const rounded = cents.toString().padStart(3, "0");

@@ -50,6 +50,12 @@ export function horizonReply(id = ID, expires = new Date(Date.now() + 900000).to
       { value: "long", label: "长线（半年以上）", reply: "长线" }], clarification_expires_at: expires });
   return value;
 }
+export function indexHorizonReply(id = ID, expires?: string): MessageResponse {
+  const value = horizonReply(id, expires);
+  Object.assign(value.result, { code: "index_horizon_required", parameters: null, report: null,
+    message: "你希望按短线（1-2周）、中线（1-3个月）还是长线（半年以上）观察？" });
+  return value;
+}
 export function marketContextReply(id = ID): MessageResponse {
   const value = chartReply(id);
   value.result.market_context = {

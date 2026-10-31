@@ -118,6 +118,9 @@ def main(argv=None) -> int:
     parser.add_argument("--open-browser", action=argparse.BooleanOptionalAction, default=False,
                         help="Open the local UI after successful startup (enabled by start.cmd)")
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
+    parser.add_argument("--memory-db", help="Local SQLite conversation history and earlier-turn digests (enabled by start.cmd)")
+    parser.add_argument("--no-memory", action="store_true",
+                        help="Disable conversation history, including the default enabled by start.cmd")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--no-trace", action="store_true",
                         help="Disable metadata tracing, including the default enabled by start.cmd")
@@ -132,8 +135,10 @@ def main(argv=None) -> int:
         args.trace_dir = None
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
-    if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db):
+    if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db or args.memory_db):
         parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
+    if args.no_memory:
+        args.memory_db = None
     if not args.demo:
         args.provider = args.provider or "deepseek"
         args.data = args.data or "tencent"
@@ -141,7 +146,7 @@ def main(argv=None) -> int:
         parser.error("Synthetic data does not accept a directory path")
     if (args.demo or args.data == "synthetic") and args.screening_coverage != "standard":
         parser.error("Synthetic mode uses fixed fixtures, not expanded live sampling")
-    service = development_service = snapshot_store = None
+    service = development_service = snapshot_store = memory_store = None
     try:
         ensure_data_mode_dependencies("synthetic" if args.demo else args.data)
         import uvicorn
@@ -191,13 +196,21 @@ def main(argv=None) -> int:
                 except SnapshotStoreError:
                     raise _StartupError("snapshot_store_unavailable",
                         "本地证据快照库不可用，请检查 --snapshot-db 指定的文件及访问权限。") from None
+            if args.memory_db:
+                from trading_companion.memory_store import MemoryStoreError, SqliteConversationStore
+                try:
+                    memory_store = SqliteConversationStore(Path(args.memory_db))
+                except MemoryStoreError:
+                    raise _StartupError("memory_store_unavailable",
+                        "本地对话记录库不可用，请检查 --memory-db 指定的文件及访问权限，或使用 --no-memory。") from None
             service = ResearchApiService(model_factory=models[args.provider], model_factories=models, directory_loader=loader,
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
                 market_context_loader=context_loader,
                 product_data_service=ResearchDataService(max_workers=args.collection_workers) if source is None else None,
                 snapshot_store=snapshot_store,
-                screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink)
+                screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink,
+                conversation_store=memory_store, conversation_context=memory_store is not None)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service(trace_sink=trace_sink)
     except DataModeDependencyError:
@@ -213,6 +226,8 @@ def main(argv=None) -> int:
             development_service.close()
         if snapshot_store is not None:
             snapshot_store.close()
+        if memory_store is not None:
+            memory_store.close()
         if isinstance(error, _StartupError):
             code, message = error.code, error.message
         elif isinstance(error, ModelConfigurationError):
@@ -223,7 +238,11 @@ def main(argv=None) -> int:
         print(f"[{code}] {message}", file=sys.stderr)
         print("正常模式不会自动退回测试数据；需要离线演示时显式使用 --demo。", file=sys.stderr)
         return 2
-    print("仅监听127.0.0.1、单进程；不下单，不保存聊天文件，不开放公网。")
+    print("仅监听127.0.0.1、单进程；不下单，不开放公网。")
+    if memory_store is not None:
+        print("对话记录保存在本机 SQLite 文件中，可在网页历史列表中删除；使用 --no-memory 可关闭。")
+    elif not args.demo:
+        print("对话记录未开启：不保存聊天内容，也不向模型提供前几轮摘要；start.cmd 默认开启。")
     if trace_sink is not None:
         print("本地运行记录已开启：仅运行元数据，有容量上限；不保存问题、答案、密钥或令牌。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
@@ -248,6 +267,8 @@ def main(argv=None) -> int:
             development_service.close()
         if snapshot_store is not None:
             snapshot_store.close()
+        if memory_store is not None:
+            memory_store.close()
     return 0
 
 

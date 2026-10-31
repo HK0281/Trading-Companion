@@ -13,7 +13,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from trading_companion import _indicator_values as kernel, indicators
 from trading_companion.api import create_app
-from trading_companion.api_service import ApiProblem, ResearchApiService
+from trading_companion.api_service import ApiLimits, ApiProblem, ResearchApiService
 from trading_companion.chart_hourly import MAX_RESPONSE_BYTES, parse_tencent_hours, read_tencent_hours
 from trading_companion.chart_intervals import (
     ChartUnavailable, SHANGHAI, bind_chart, build_interval_chart, capabilities, two_hour_bars, weekly_bars,
@@ -280,7 +280,7 @@ class ChartServiceTests(unittest.TestCase):
                 release, result, thread = self.start_background()
                 self.problem("chart_busy", self.get)
                 if action == "expire":
-                    self.seconds += 1801
+                    self.seconds += ApiLimits().lifetime_seconds + 1
                 elif action == "close":
                     self.service.close()
                 else:

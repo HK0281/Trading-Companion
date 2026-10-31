@@ -23,6 +23,11 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    **{code: "本机对话记录库与历史接口的错误码；记录失败不改变已形成的研究轮次。" for code in (
+        "conversation_full", "conversation_mode_mismatch", "conversation_not_found", "invalid_memory_limit",
+        "invalid_memory_path", "invalid_memory_result", "invalid_memory_time", "invalid_memory_user",
+        "memory_corrupt", "memory_disabled", "memory_result_too_large", "memory_schema_mismatch",
+        "memory_store_closed", "memory_store_unavailable")},
     "chart_binding_invalid": "独立图表接口的快照绑定失败，不产生研究轮次。",
     "chart_busy": "独立图表接口的并发限制，不占模型或研究额度。",
     "chart_hourly_invalid": "图表专用分钟批次校验失败，不进入研究证据。",

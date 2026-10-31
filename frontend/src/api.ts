@@ -10,6 +10,7 @@ export interface Health {
   trading_enabled: false;
   development_mode_available?: boolean;
   available_providers?: ModelProvider[];
+  memory_enabled?: boolean;
 }
 
 export const availableLiveProviders = (health: Health | null): LiveProvider[] =>
@@ -21,6 +22,7 @@ export interface SessionCredentials {
   provider: Health["provider"];
   data_mode: Health["data_mode"];
   limits: { messages: number; model_calls: number };
+  conversation_id?: string | null;
 }
 
 export interface SessionView {
@@ -73,12 +75,26 @@ export interface MessageResponse {
   request_id: string;
   replayed: boolean;
   result: PublicTurn;
+  conversation_id?: string | null;
+}
+
+export interface ConversationSummary {
+  conversation_id: string;
+  title: string;
+  provider: string;
+  created_at: string;
+  updated_at: string;
+  turns: number;
+}
+
+export interface StoredConversation extends Omit<ConversationSummary, "turns"> {
+  turns: { sequence: number; request_id: string; asked_at: string; question: string; result: PublicTurn }[];
 }
 
 export interface ResearchApi {
   readonly mode?: ApiMode;
   health(): Promise<Health>;
-  create(provider?: LiveProvider): Promise<SessionCredentials>;
+  create(provider?: LiveProvider, conversationId?: string): Promise<SessionCredentials>;
   inspect(session: SessionCredentials): Promise<SessionView>;
   send(session: SessionCredentials, id: string, question: string): Promise<MessageResponse>;
   history(session: SessionCredentials): Promise<MessageResponse>;
@@ -86,6 +102,9 @@ export interface ResearchApi {
   cancel(session: SessionCredentials, id: string): Promise<void>;
   reset(session: SessionCredentials): Promise<SessionView>;
   end(session: SessionCredentials): Promise<void>;
+  conversations?(): Promise<ConversationSummary[] | null>;
+  conversation?(id: string): Promise<StoredConversation>;
+  deleteConversation?(id: string): Promise<void>;
 }
 
 const errors: Record<string, string> = {
@@ -104,6 +123,10 @@ const errors: Record<string, string> = {
   provider_unavailable: "所选模型当前不可用，请重新连接并检查可用模型。",
   research_internal_error: "服务端处理失败，没有自动重试。",
   invalid_request: "请求格式不符合接口要求，没有自动重试。",
+  conversation_not_found: "这段历史对话不存在或已删除。",
+  conversation_mode_mismatch: "这段历史对话属于其他数据模式，不能在当前模式继续。",
+  memory_store_unavailable: "本机对话记录暂不可用；当前研究不受影响。",
+  memory_disabled: "本服务未开启对话记录。",
 };
 
 export class ApiError extends Error {
@@ -130,6 +153,8 @@ const mode = (value: unknown): value is Record<string, unknown> & Pick<Health, "
 const sessionView = (value: unknown): value is SessionView => record(value) && text(value.state)
   && (value.active_request_id === null || identifier(value.active_request_id))
   && count(value.messages_used) && count(value.model_calls_forwarded);
+const summary = (value: unknown): value is ConversationSummary => record(value) && identifier(value.conversation_id)
+  && text(value.title) && text(value.provider) && text(value.created_at) && text(value.updated_at) && count(value.turns);
 const message = (value: unknown): value is MessageResponse => {
   if (!record(value) || !identifier(value.request_id) || typeof value.replayed !== "boolean" || !record(value.result)) return false;
   const result = value.result;
@@ -231,16 +256,19 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
       && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"
         && (value.available_providers === undefined || Array.isArray(value.available_providers)
           && value.available_providers.every((item) => item === "fake")))),
-    create: async (provider) => {
-      if (provider !== undefined && (serviceMode === "development" || provider !== "deepseek" && provider !== "openai"))
+    create: async (provider, conversationId) => {
+      if (provider !== undefined && (serviceMode === "development" || provider !== "deepseek" && provider !== "openai")
+        || conversationId !== undefined && (serviceMode === "development" || !identifier(conversationId)))
         throw new ConnectionError();
       const session = await request("/v1/sessions", (value): value is SessionCredentials => mode(value)
         && record(value) && identifier(value.session_id) && text(value.access_token)
         && /^[A-Za-z0-9_-]{20,128}$/.test(value.access_token) && record(value.limits)
         && count(value.limits.messages) && count(value.limits.model_calls)
         && (provider === undefined || value.provider === provider)
-        && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"),
-      { method: "POST", body: provider === undefined ? {} : { provider } });
+        && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic")
+        && (conversationId === undefined || value.conversation_id === conversationId),
+      { method: "POST", body: { ...(provider === undefined ? {} : { provider }),
+        ...(conversationId === undefined ? {} : { conversation_id: conversationId }) } });
       credentialModes.set(session, serviceMode);
       return session;
     },
@@ -265,5 +293,24 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     },
     end: async (session) => { await request(path(session), (value): value is null => value === null,
       { method: "DELETE", session }); },
+    conversations: async () => {
+      if (serviceMode === "development") return null;
+      const value = await request("/v1/conversations", (item): item is { enabled: boolean; conversations: ConversationSummary[] } =>
+        record(item) && typeof item.enabled === "boolean" && Array.isArray(item.conversations)
+        && item.conversations.length <= 100 && item.conversations.every(summary));
+      return value.enabled ? value.conversations : null;
+    },
+    conversation: (id) => {
+      if (serviceMode === "development" || !identifier(id)) throw new ConnectionError();
+      return request(`/v1/conversations/${id}`, (value): value is StoredConversation => record(value)
+        && value.conversation_id === id && text(value.title) && Array.isArray(value.turns) && value.turns.length <= 500
+        && value.turns.every((turn) => record(turn) && count(turn.sequence) && identifier(turn.request_id)
+          && text(turn.asked_at) && text(turn.question)
+          && message({ request_id: turn.request_id, replayed: false, result: turn.result })), { long: true });
+    },
+    deleteConversation: async (id) => {
+      if (serviceMode === "development" || !identifier(id)) throw new ConnectionError();
+      await request(`/v1/conversations/${id}`, (value): value is null => value === null, { method: "DELETE" });
+    },
   };
 }

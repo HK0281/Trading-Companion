@@ -27,6 +27,7 @@ class EmptyRequest(BaseModel):
 
 class SessionRequest(EmptyRequest):
     provider: Literal["deepseek", "openai"] | None = None
+    conversation_id: Identifier | None = None
 
 
 class MessageRequest(EmptyRequest):
@@ -100,6 +101,7 @@ class MessageResponse(BaseModel):
     request_id: Identifier
     replayed: bool
     result: PublicTurn
+    conversation_id: Identifier | None = None
 
 
 def _problem(status, code, message):
@@ -225,11 +227,30 @@ def create_app(*, service: ResearchApiService | None = None,
         return {"status": "ok", "provider": service.provider, "data_mode": service.data_mode,
                 "available_providers": list(service.available_providers),
                 "scope": "local_single_process_not_production", "trading_enabled": False,
-                "development_mode_available": development_service is not None}
+                "development_mode_available": development_service is not None,
+                "memory_enabled": service.memory_enabled}
 
     @app.post("/v1/sessions", status_code=201)
     def create_session(body: SessionRequest):
-        return service.create_session(provider=body.provider)
+        return service.create_session(provider=body.provider, conversation_id=body.conversation_id)
+
+    # Same-origin loopback history of the single local user; no session token is needed to browse it.
+    @app.get("/v1/conversations")
+    def list_conversations():
+        return service.conversations()
+
+    @app.get("/v1/conversations/{conversation_id}")
+    def read_conversation(conversation_id: SessionPath):
+        return service.conversation(conversation_id)
+
+    @app.delete("/v1/conversations/{conversation_id}", status_code=204)
+    def delete_conversation(conversation_id: SessionPath):
+        service.delete_conversation(conversation_id)
+        return Response(status_code=204)
+
+    @app.delete("/v1/conversations")
+    def clear_conversations():
+        return service.clear_conversations()
 
     @app.get("/v1/sessions/{session_id}")
     def inspect_session(session_id: SessionPath, token: token_type):

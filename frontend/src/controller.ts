@@ -1,6 +1,6 @@
 /** In-memory browser state machine: credentials and unresolved work never enter persistent storage. */
-import { ApiError, ConnectionError, availableLiveProviders, type Health, type LiveProvider, type MessageResponse, type ResearchApi,
-  type SessionCredentials, type SessionView } from "./api";
+import { ApiError, ConnectionError, availableLiveProviders, type ConversationSummary, type Health, type LiveProvider,
+  type MessageResponse, type ResearchApi, type SessionCredentials, type SessionView } from "./api";
 
 export interface Entry {
   id: string;
@@ -24,6 +24,9 @@ export interface WorkspaceState {
   entries: Entry[];
   notice: string;
   noticeLevel: "info" | "error";
+  /** Local history list; null when the service keeps no conversation record. */
+  conversations: ConversationSummary[] | null;
+  conversationId: string | null;
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
@@ -44,7 +47,8 @@ export class ResearchController {
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
     health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
-    cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info" };
+    cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info",
+    conversations: null, conversationId: null };
 
   constructor(api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
@@ -121,6 +125,7 @@ export class ResearchController {
       const health = await this.api.health();
       this.acceptHealth(health);
       this.update({ notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
+      await this.refreshConversations();
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -145,6 +150,7 @@ export class ResearchController {
       this.pending = null;
       this.api = targetApi;
       this.update({ mode: target, health: null, session: null, pendingId: null, entries: [], phase: "idle",
+        conversationId: null, conversations: null,
         notice: `正在切换至${target === "development" ? "测试" : "正常"}模式…` });
       try {
         this.acceptHealth(await targetApi.health());
@@ -186,7 +192,7 @@ export class ResearchController {
       }
       this.credentials = null;
       this.pending = null;
-      this.update({ selectedProvider: target, session: null, pendingId: null, entries: [], phase: "idle",
+      this.update({ selectedProvider: target, session: null, pendingId: null, entries: [], phase: "idle", conversationId: null,
         notice: `已切换至${target === "deepseek" ? "DeepSeek" : "OpenAI"}，旧对话和草稿已清空。发送问题后才会开始研究。` });
       return true;
     } catch (error) {
@@ -198,14 +204,17 @@ export class ResearchController {
 
   private async createSession() {
     const selected = this.state.mode === "normal" ? this.state.selectedProvider : null;
-    const credentials = selected && this.state.health?.available_providers !== undefined
-      ? await this.api.create(selected) : await this.api.create();
+    const conversation = this.state.conversationId ?? undefined;
+    const provider = selected && this.state.health?.available_providers !== undefined ? selected : undefined;
+    const credentials = conversation ? await this.api.create(provider, conversation)
+      : provider ? await this.api.create(provider) : await this.api.create();
     if (credentials.provider !== (selected ?? this.state.health?.provider) || credentials.data_mode !== this.state.health?.data_mode)
       throw new ConnectionError();
     this.credentials = credentials;
+    // Continuing a saved conversation keeps its earlier entries on screen; a new one starts empty.
     this.update({ session: { shortId: credentials.session_id.slice(0, 8), limit: credentials.limits.messages,
-      modelLimit: credentials.limits.model_calls, view: emptyView() }, entries: [],
-      notice: "对话已建立。" });
+      modelLimit: credentials.limits.model_calls, view: emptyView() }, entries: conversation ? this.state.entries : [],
+      notice: conversation ? "已接着这段历史对话继续；会重新查询行情，不沿用旧价位。" : "对话已建立。" });
   }
 
   async send(question: string): Promise<boolean> {
@@ -245,6 +254,11 @@ export class ResearchController {
       const response = await this.api.send(credentials, pending.id, pending.question);
       this.amend(pending.id, { response });
       this.pending = null;
+      if (response.conversation_id && this.credentials === credentials) {
+        const created = response.conversation_id !== this.state.conversationId;
+        this.update({ conversationId: response.conversation_id });
+        if (created || this.state.conversations !== null) void this.refreshConversations();
+      }
       this.update({ phase: "idle", pendingId: null, notice: response.replayed
         ? "已取回原请求响应，没有再次调用模型。" : "本轮回答已完成。" });
       // Quota refresh is read-only and must not hide a received research result.
@@ -312,7 +326,8 @@ export class ResearchController {
     this.update({ loading: true });
     try {
       this.view(await this.api.reset(this.credentials));
-      this.update({ entries: [], notice: "研究条件与结果已清空，额度不退。离线脚本不会重启；重跑演示请结束后新建会话。" });
+      this.update({ entries: [], conversationId: null,
+        notice: "研究条件与结果已清空，额度不退。已保存的历史对话不受影响；之后的问题会记为新对话。" });
     } catch (error) { this.failure(error); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -330,7 +345,62 @@ export class ResearchController {
         }
       }
       this.forget();
-      this.update({ entries: [], notice: "已回到新对话。直接发送问题即可开始。" });
+      this.update({ entries: [], conversationId: null, notice: "已回到新对话。直接发送问题即可开始。" });
+      return true;
+    } catch (error) { this.failure(error); return false; }
+    finally { this.running = false; this.update({ loading: false }); }
+  }
+
+  async refreshConversations() {
+    const api = this.api;
+    if (!api.conversations || this.state.health?.memory_enabled !== true) {
+      this.update({ conversations: null });
+      return;
+    }
+    try {
+      const conversations = await api.conversations();
+      if (this.api === api) this.update({ conversations });
+    } catch {
+      // The history list is optional; research continues without it.
+    }
+  }
+
+  /** Show a saved conversation; the next question continues it in a fresh session. */
+  async openConversation(id: string): Promise<boolean> {
+    if (this.running || this.pending || this.state.phase !== "idle" || this.state.session?.view.state === "busy"
+      || !this.api.conversation) return false;
+    this.running = true;
+    this.update({ loading: true });
+    try {
+      const stored = await this.api.conversation(id);
+      if (this.credentials) {
+        try { await this.api.end(this.credentials); }
+        catch (error) {
+          if (!(error instanceof ApiError) || ![401, 404].includes(error.status)) throw error;
+        }
+      }
+      this.forget();
+      const entries: Entry[] = stored.turns.slice(-40).map((turn) => ({ id: turn.request_id, question: turn.question,
+        history: true, response: { request_id: turn.request_id, replayed: false, result: turn.result } }));
+      this.update({ entries, conversationId: stored.conversation_id,
+        notice: `已打开「${stored.title}」。以下是当时的结果；继续提问会接着这段对话，并重新查询行情。` });
+      return true;
+    } catch (error) { this.failure(error); return false; }
+    finally { this.running = false; this.update({ loading: false }); }
+  }
+
+  async deleteConversation(id: string): Promise<boolean> {
+    if (this.running || !this.api.deleteConversation) return false;
+    this.running = true;
+    this.update({ loading: true });
+    try {
+      await this.api.deleteConversation(id);
+      if (this.state.conversationId === id) {
+        const keep = this.pending !== null;
+        this.update({ conversationId: null, ...(keep ? {} : { entries: this.credentials ? this.state.entries : [] }) });
+      }
+      this.update({ notice: "已删除这段历史对话。" });
+      await this.refreshConversations();
       return true;
     } catch (error) { this.failure(error); return false; }
     finally { this.running = false; this.update({ loading: false }); }

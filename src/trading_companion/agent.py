@@ -385,6 +385,16 @@ def run_routing_reply_turn(code: str, *, model: ToolCapableModel, session: Resea
         model=model, control=control, default_calls=0, input_mode="natural", session=session)
 
 
+def run_conversation_recall_turn(text: str, *, model: ToolCapableModel, session: ResearchSession,
+                                 control: TurnControl | None = None) -> AgentTurnResult:
+    """Answer “what did we discuss” from program digests; no model, data or pending change."""
+    if type(text) is not str or not text or type(session) is not ResearchSession:
+        raise ModelConfigurationError("Use an application-built conversation recap and research session")
+    return _controlled(lambda checked, working: AgentTurnResult(status="completed", code="conversation_recall_answered",
+        message=text, stage="conversation", input_mode="natural", session_event="routing_reply"),
+        model=model, control=control, default_calls=0, input_mode="natural", session=session)
+
+
 def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time,
                  workflow=False):
     if session is not None:

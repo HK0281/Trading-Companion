@@ -31,9 +31,9 @@
       "research_edit.py": "5c75c7767814c1ab0d141a8258cb7563471647cb1ceeb97e2eb8972890bd3b02",
       "research_update.py": "98a716d36577b058767bb6f600db8723f6bb3de9323badd8b052829b11359a87",
       "research_objective.py": "00044de6a93a411cb38ea767d03105c2aca3028529a378e92b76daab5ebdbbd8",
-      "agent.py": "76b08508004f19b942c669e60fdb02d5a2c429cd2cf93804ca65e70313c6629f",
+      "agent.py": "9a46fe28cb6a0ad96997930ef0946f13ea1dc439e099efb7eb27067a7a335ddf",
       "agent_input.py": "6bbfbd2ff133447fa3bfaf9d503edc8d3deaafcc710e45f841414a3e0b36bb26",
-      "api_service.py": "c79ecb6f3a49e0a3fa61db345eff8fa2fab97d0a30a549f7addff0891e161cf8",
+      "api_service.py": "cc70f5dd8f6a3ee22df490a18cbc9eed3da05af33687f666cf040d9f8d9b29a9",
       "screening_intent.py": "74a519cf4966e7e0ee64d09c90e5f94ed6ff0ed36d55940ca39628279b819745",
       "screening_context.py": "903371f53d74dc6aea2449b16460616231f264c5bfc6ef6e835417c97c00e9ca",
       "screening_agent.py": "86bcc0d6ad7926ba4320b306fef5699e085de5cbd0b75a88144225ae3e618696",
@@ -64,7 +64,7 @@
       "evidence_numbers.py": "44de24b10ac4f4d052647fa95de955d54cf281fb268f0f3ac48bb731abbd86e1",
       "research_price_context.py": "a4b0a8cbbce5815fb5f1f8d4f394a2a0d454e5043350436d1a1b5961840f6186"
     },
-    "source_digest": "19619c40d78e7e25017011982526f2ea4bf03a554cbd8d1db1456184d6e309eb",
+    "source_digest": "ffa23ded13695a03fa48467e5e7015a1d39d132cbc0afb20ca3e6baec23738b8",
     "note": "Earlier-turn digests reach models only through the API session wrapper; routing rules unchanged. Original corpus, annotations and historical rule records retained."
   },
   "previous_rules": [

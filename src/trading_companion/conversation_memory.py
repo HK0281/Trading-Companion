@@ -164,3 +164,37 @@ def render_history(digests):
 
 def encode_digest(digest):
     return json.dumps(digest.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+_RECALL_CUE = re.compile(r"(?:刚才|刚刚|之前|前面|上一轮|此前|先前|一开始|最开始|这次对话|本次对话|我们)"
+                         r".{0,12}?(?:问|说|聊|提|给|讲|回答|研究|评级|结论|判断|研判)"
+                         r"|上一个问题|第一个问题|(?:回顾|总结|复述).{0,6}(?:对话|聊天|聊过)")
+_RECALL_ASK = re.compile(r"什么|哪些|哪个|哪只|几个|多少|吗|么|呢|回顾|总结|列一下|复述|记得")
+_NEW_RESEARCH = re.compile(r"怎么样|如何|基本面|财务|技术面|估值|新闻|公告|能买|能不能买|该买|要买|卖出|走势|行情|后市|现在|最新|重新|刷新|分析一下|研究一下|对比|比较|筛选|止损|止盈|价位|改成|换成")
+
+
+def is_recall_question(question):
+    """Only questions about the conversation itself; any new research request keeps its normal route."""
+    if type(question) is not str or not 1 <= len(question) <= 200:
+        return False
+    text = unicodedata.normalize("NFKC", question).strip()
+    return bool(_RECALL_CUE.search(text) and _RECALL_ASK.search(text) and not _NEW_RESEARCH.search(text))
+
+
+def recall_answer(digests):
+    """A program-written recap of earlier turns; no prices and no model call."""
+    digests = tuple(digests)[-MAX_DIGESTS:]
+    lines = []
+    for number, digest in enumerate(digests, 1):
+        line = f"{number}. 你问：“{digest.question}”"
+        detail = [_KINDS.get(digest.kind, "其他")]
+        if digest.subjects:
+            detail.append("对象：" + "、".join(digest.subjects))
+        rendered = [j.render() for j in digest.judgements if j.render()]
+        if rendered:
+            detail.append("当时研判：" + "；".join(rendered))
+        elif digest.note:
+            detail.append("系统回复：" + digest.note)
+        lines.append(line + "（" + "｜".join(detail) + "）")
+    return ("以下是本次对话之前几轮的记录（程序保存，不含价位和行情数字）：\n" + "\n".join(lines)
+            + "\n\n这些是当时的结论，行情可能已经变化；需要最新判断和价位时，请直接再问一次，会重新查询数据。")

@@ -13,7 +13,8 @@ from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
-from trading_companion.agent import AgentTurnResult, run_general_knowledge_turn, run_natural_research_turn, run_routing_reply_turn
+from trading_companion.agent import (AgentTurnResult, run_conversation_recall_turn, run_general_knowledge_turn,
+    run_natural_research_turn, run_routing_reply_turn)
 from trading_companion.answer_presentation import build_answer_presentation
 from trading_companion.agent_input import request_arguments
 from trading_companion.chart_projection import build_chart_projection
@@ -23,10 +24,11 @@ from trading_companion.chart_intervals import (
 )
 from trading_companion.chart_hourly import read_tencent_hours, remaining as chart_remaining
 from trading_companion.market_context import build_market_context
-from trading_companion.conversation_memory import MAX_DIGESTS, TurnDigest, digest_turn, encode_digest, render_history
+from trading_companion.conversation_memory import (MAX_DIGESTS, TurnDigest, digest_turn, encode_digest,
+    is_recall_question, recall_answer, render_history)
 from trading_companion.memory_store import LOCAL_USER, ConversationStore, MemoryStoreError
-from trading_companion.model import ModelCallError, ModelConfigurationError
-from trading_companion.tool_model import ToolMessage
+from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
+from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
@@ -92,8 +94,8 @@ class _SessionModel:
     def __init__(self, delegate, limit):
         self.delegate, self.limit, self.forwarded = delegate, limit, 0
         self._lock = Lock()
-        # Program-built digest of earlier turns, set only while this session's turn runs.
-        self.history = None
+        # Program-built digests of earlier turns, set only while this session's turn runs.
+        self.history = ()
 
     def complete(self, messages, *, tools):
         trace_model_identity(self.delegate)
@@ -101,11 +103,32 @@ class _SessionModel:
             if self.forwarded >= self.limit:
                 raise ModelCallError("api_session_call_limit", "Session model allowance exhausted")
             self.forwarded += 1
-        if self.history:
-            messages = list(messages)
-            leading = next((i for i, m in enumerate(messages) if m.role != "system"), len(messages))
-            messages.insert(leading, ToolMessage("system", self.history))
-        return self.delegate.complete(messages, tools=tools)
+        return self.delegate.complete(with_history(messages, self.history, tools=tools), tools=tools)
+
+
+def with_history(messages, digests, *, tools):
+    """Join earlier-turn digests to the single leading system message, newest kept first.
+
+    The protocol allows one leading system message and a bounded request size, so
+    the oldest digests are dropped until the request validates; with none fitting,
+    the original messages are sent unchanged.
+    """
+    digests = tuple(digests or ())
+    if not digests or type(messages) not in (list, tuple) or not messages:
+        return messages
+    for start in range(len(digests)):
+        history = render_history(digests[start:])
+        first = messages[0]
+        if first.role == "system":
+            joined = [ToolMessage("system", (first.content or "") + "\n\n" + history), *messages[1:]]
+        else:
+            joined = [ToolMessage("system", history), *messages]
+        try:
+            validate_tool_messages(joined, tools=tools)
+        except ModelRequestError:
+            continue
+        return joined
+    return messages
 
 
 @dataclass
@@ -577,14 +600,16 @@ class ResearchApiService:
         trace_control(control, entry.provider)
         problem, response, staged_context = None, None, None
         reset_contexts, remembered = False, None
-        entry.model.history = render_history(entry.digests) if self._conversation_context and not history else None
+        entry.model.history = tuple(entry.digests) if self._conversation_context and not history else ()
         try:
             trace_phase("directory")
             timestamp = self._wall_clock()
             directory = None
             routing_session = RoutingSessionView.capture(entry.session)
-            education_candidate = probe_general_knowledge(question, workflow=self._workflow_enabled, history=history,
-                                                          session=routing_session)
+            # Questions about this conversation itself are answered from program digests.
+            recall = bool(self._conversation_context and not history and entry.digests and is_recall_question(question))
+            education_candidate = not recall and probe_general_knowledge(
+                question, workflow=self._workflow_enabled, history=history, session=routing_session)
             if education_candidate:
                 try:
                     directory = trace_call("source", "directory", self._directory_loader, timestamp)
@@ -592,8 +617,12 @@ class ResearchApiService:
                     # A local identity hint may veto education; its availability or
                     # freshness must never authorize or block a generic explanation.
                     pass
-            decision = resolve_general_knowledge(question, candidate=education_candidate, directory=directory)
-            if decision is not None:
+            decision = None if recall else resolve_general_knowledge(
+                question, candidate=education_candidate, directory=directory)
+            if recall:
+                result = run_conversation_recall_turn(recall_answer(entry.digests), model=entry.model,
+                                                      session=entry.session, control=control)
+            elif decision is not None:
                 trace_route(decision)
                 result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
             else:
@@ -692,7 +721,7 @@ class ResearchApiService:
             problem = ApiProblem(500, "research_internal_error", "本轮服务处理失败；没有自动重试，请检查服务端。")
         finally:
             with self._lock:
-                entry.model.history = None
+                entry.model.history = ()
                 if reset_contexts:
                     entry.market_contexts.clear()
                     self._clear_charts(entry)

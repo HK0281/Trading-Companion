@@ -12,12 +12,13 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from trading_companion.api import create_app
-from trading_companion.api_service import ApiProblem, ResearchApiService
+from trading_companion.api_service import ApiProblem, ResearchApiService, with_history
 from trading_companion.conversation_memory import (
-    HEADER, MAX_DIGESTS, TurnDigest, digest_turn, encode_digest, render_history,
+    HEADER, MAX_DIGESTS, TurnDigest, digest_turn, encode_digest, is_recall_question, recall_answer, render_history,
 )
 from trading_companion.decision_demo import DecisionDemoModel, DemoCompanyData, load_decision_demo_source
 from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures, load_development_market_context
+from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.memory_store import LOCAL_USER, MAX_RESULT_BYTES, MemoryStoreError, SqliteConversationStore
 
 NOW = datetime(2026, 9, 26, 2, tzinfo=timezone.utc)
@@ -79,6 +80,19 @@ class DigestTests(unittest.TestCase):
         self.assertTrue(long.question.isprintable())
         with self.assertRaises(ValueError):
             digest_turn("x", None)
+
+    def test_recall_questions_are_only_about_the_conversation(self):
+        for question in ("你刚才给的评级是什么？", "我之前问了哪些股票", "我们刚才聊了什么", "回顾一下这次对话",
+                         "上一个问题是什么", "你前面的结论是什么"):
+            self.assertTrue(is_recall_question(question), question)
+        for question in ("刚才那只现在能买吗", "按之前的判断走势会怎样", "之前说的宁德时代止损在哪", "RSI是什么",
+                         "之前研究的那只股票基本面怎么样", "我们聊聊宁德时代吧", "刚才说的指数后市如何", "x" * 300, None):
+            self.assertFalse(is_recall_question(question), question)
+        text = recall_answer([digest_turn("平安银行现在能买吗", DECISION_RESULT)])
+        self.assertIn("1. 你问：“平安银行现在能买吗”", text)
+        self.assertIn("买入、偏多、把握低、中线", text)
+        self.assertIn("会重新查询数据", text)
+        self.assertNotIn("10.40", text)
 
     def test_history_is_marked_untrusted_and_bounded(self):
         self.assertIsNone(render_history([]))
@@ -202,7 +216,7 @@ class ServiceMemoryTests(unittest.TestCase):
         return self.service.message(*session, request_id or uuid4().hex, question)
 
     def history_messages(self):
-        return [m for call in self.calls for m in call if m.role == "system" and m.content.startswith(HEADER)]
+        return [m for call in self.calls for m in call if m.role == "system" and HEADER in m.content]
 
     def test_first_turn_has_no_history_and_later_turns_get_one_leading_digest(self):
         session = self.session()
@@ -210,12 +224,51 @@ class ServiceMemoryTests(unittest.TestCase):
         self.assertEqual(self.history_messages(), [])
         self.send(session, "中线")
         last = self.calls[-1]
-        injected = [i for i, m in enumerate(last) if m.role == "system" and m.content.startswith(HEADER)]
-        self.assertEqual(len(injected), 1)
-        self.assertTrue(all(m.role == "system" for m in last[:injected[0]]))
-        self.assertIn("平安银行现在能买吗", last[injected[0]].content)
-        self.assertNotIn("10.40", last[injected[0]].content)
-        self.assertIsNone(self.service._entries[session[0]].model.history)
+        # The provider protocol allows exactly one leading system message.
+        self.assertEqual([m.role for m in last].count("system"), 1)
+        self.assertEqual(last[0].role, "system")
+        self.assertIn(HEADER, last[0].content)
+        self.assertIn("平安银行现在能买吗", last[0].content)
+        self.assertNotIn("10.40", last[0].content)
+        validate_tool_messages(last, tools=())
+        self.assertEqual(self.service._entries[session[0]].model.history, ())
+
+    def test_digests_never_break_the_provider_request_limits(self):
+        digests = [digest_turn("问" * 150, DECISION_RESULT) for _ in range(MAX_DIGESTS)]
+        base = [ToolMessage("system", "说明"), ToolMessage("user", "问题")]
+        joined = with_history(base, digests, tools=())
+        validate_tool_messages(joined, tools=())
+        self.assertEqual(len(joined), 2)
+        # A request already near its size limit keeps only the newest digests that fit, or none.
+        def padded(size):
+            return [ToolMessage("system", "说明"), ToolMessage("user", "资" * size),
+                    ToolMessage("assistant", "料" * size), ToolMessage("user", "问" * size)]
+        large = padded(800)
+        validate_tool_messages(large, tools=())
+        trimmed = with_history(large, digests, tools=())
+        validate_tool_messages(trimmed, tools=())
+        kept = trimmed[0].content.count("- 用户问")
+        self.assertTrue(0 < kept < MAX_DIGESTS)
+        full = padded(1000)
+        validate_tool_messages(full, tools=())
+        self.assertIs(with_history(full, digests, tools=()), full)
+        no_system = [ToolMessage("user", "问题")]
+        self.assertEqual([m.role for m in with_history(no_system, digests[:1], tools=())], ["system", "user"])
+
+    def test_recall_is_answered_locally_without_model_or_state_change(self):
+        session = self.session()
+        self.send(session, "平安银行现在能买吗")
+        pending = self.service._entries[session[0]].session.product_pending
+        calls = len(self.calls)
+        response = self.send(session, "我刚才问了什么？")
+        self.assertEqual(response["result"]["code"], "conversation_recall_answered")
+        self.assertIn("平安银行现在能买吗", response["result"]["message"])
+        self.assertEqual(len(self.calls), calls)
+        self.assertIs(self.service._entries[session[0]].session.product_pending, pending)
+        self.assertEqual(response["result"]["model_calls_attempted"], 0)
+        # Without earlier turns, or with context off, the question keeps its normal route.
+        fresh = self.session()
+        self.assertNotEqual(self.send(fresh, "我刚才问了什么？")["result"]["code"], "conversation_recall_answered")
 
     def test_context_flag_off_keeps_history_but_sends_no_digest(self):
         self.service = self.build(conversation_context=False)

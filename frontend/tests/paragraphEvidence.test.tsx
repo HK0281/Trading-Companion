@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { parseCompanyAnswer } from "../src/ProductResearch";
 import { ResponseContent } from "../src/ResponseContent";
@@ -30,39 +30,36 @@ function fixture() {
 }
 
 describe("paragraph-level research evidence", () => {
-  it("keeps each paragraph readable and its own actual references collapsed", () => {
-    const { turn } = fixture(); render(<ResponseContent turn={turn} />);
+  it("keeps paragraphs readable without rendering their evidence or changing the payload", () => {
+    const { turn } = fixture(), original = structuredClone(turn);
+    render(<ResponseContent turn={turn} />);
     expect(screen.getByText("盈利提供了经营线索，但还需要看现金流。")).toBeVisible();
     expect(screen.getByText("价格位于均线之上，后续观察能否延续。")).toBeVisible();
-    expect(screen.getByText("依据 2")).toBeVisible(); expect(screen.getByText("依据 1")).toBeVisible();
-    expect(screen.getByText("营业收入：100亿元")).not.toBeVisible();
-    expect(screen.getByText("均线位置：收盘价高于SMA(20)")).not.toBeVisible();
+    expect(screen.queryByText(/^依据 \d/)).not.toBeInTheDocument();
+    expect(screen.queryByText("营业收入：100亿元")).not.toBeInTheDocument();
+    expect(screen.queryByText("均线位置：收盘价高于SMA(20)")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("第3段依据")).not.toBeInTheDocument();
     expect(screen.queryByText("另一篇资料标题")).not.toBeInTheDocument();
     expect(screen.queryByText("关键读数")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("依据 2"));
-    const first = within(screen.getByLabelText("第1段依据"));
-    expect(first.getByText("营业收入：100亿元")).toBeVisible(); expect(first.getByText("归母净利润：20亿元")).toBeVisible();
-    expect(first.getByText("报告期：2026-06-30")).toBeVisible();
-    expect(first.getByRole("link", { name: "查看来源" })).toHaveAttribute("href", "https://data.eastmoney.com/finance/000001.html");
-    expect(first.getByRole("link", { name: "查看来源" })).toHaveAttribute("rel", "noopener noreferrer");
-    expect(first.queryByText(/均线位置/)).not.toBeInTheDocument();
-    expect(screen.getByText("均线位置：收盘价高于SMA(20)")).not.toBeVisible();
+    expect(screen.queryByRole("link", { name: "查看来源" })).not.toBeInTheDocument();
+    expect(turn).toEqual(original);
   });
 
-  it("does not truncate the cited evidence when several facts share one source", () => {
+  it("preserves large evidence mappings without rendering their facts", () => {
     const { turn, company } = fixture();
     for (let index = 0; index < 6; index++) {
       const id = `fact-${index}`;
       company.evidence.push({ ...company.evidence[0], id, label: `指标${index}`, display: `${index}亿元` });
       company.paragraph_evidence[0].push(id);
     }
-    render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("依据 8"));
-    expect(screen.getByText("指标5：5亿元")).toBeVisible();
+    render(<ResponseContent turn={turn} />);
+    expect(parseCompanyAnswer(company)!.paragraph_evidence![0]).toHaveLength(8);
+    expect(screen.queryByText("依据 8")).not.toBeInTheDocument();
+    expect(screen.queryByText("指标5：5亿元")).not.toBeInTheDocument();
   });
 
-  it("keeps weekly and derived signal evidence behind the cited paragraph", () => {
+  it("keeps weekly and derived signal data valid without source disclosures", () => {
     const { turn, company } = fixture();
     company.paragraphs = ["日线与周线方向有分歧，先观察价格能否获得量能支持。"];
     company.paragraph_evidence = [["weekly", "support", "alignment"]];
@@ -74,14 +71,9 @@ describe("paragraph-level research evidence", () => {
     expect(parseCompanyAnswer(company)).not.toBeNull();
     render(<ResponseContent turn={turn} />);
     expect(screen.getByText(company.paragraphs[0])).toBeVisible();
-    expect(screen.getByText(/已完成周线偏弱/)).not.toBeVisible();
-    fireEvent.click(screen.getByText("依据 3"));
-    expect(screen.getAllByText("平安银行 · 技术分析")).toHaveLength(3);
-    expect(screen.getByText("周线方向：已完成周线偏弱。")).toBeVisible();
-    expect(screen.getByText("支撑候选：历史局部低点聚集区。")).toBeVisible();
-    expect(screen.getByText(/周线截至 2026-09-18/)).toBeVisible();
-    expect(screen.getByText(/日周核对 2026-09-25/)).toBeVisible();
-    expect(screen.getByText(/交易日 2026-09-25/)).toBeVisible();
+    expect(screen.queryByText(/已完成周线偏弱/)).not.toBeInTheDocument();
+    expect(screen.queryByText("依据 3")).not.toBeInTheDocument();
+    expect(parseCompanyAnswer(company)!.evidence).toEqual(company.evidence);
     expect(screen.queryByText("参数与执行记录")).not.toBeInTheDocument();
   });
 
@@ -110,7 +102,7 @@ describe("paragraph-level research evidence", () => {
     expect(parseCompanyAnswer(company)).toBeNull();
   });
 
-  it("separates current observation dates from dated rule publication", () => {
+  it("preserves current observation and rule publication metadata without displaying it", () => {
     const { turn, company } = fixture();
     company.paragraphs = ["当前背景与适用规则应分别核对。"];
     company.paragraph_evidence = [["observed", "rule"]];
@@ -121,19 +113,20 @@ describe("paragraph-level research evidence", () => {
         source: "application_market_rules", date: "2026-04-24", report_period: null,
         temporal_scope: "market_rule_explanation", url: "https://www.sse.com.cn/lawandrules/test" },
     ];
-    render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("依据 2"));
-    expect(screen.getByText(/观测日 2026-10-26/)).toBeVisible();
-    expect(screen.getByText(/规则发布日 2026-04-24/)).toBeVisible();
-    expect(screen.getByText("版本化交易规则")).toBeVisible();
+    render(<ResponseContent turn={turn} />);
+    expect(screen.getByText(company.paragraphs[0])).toBeVisible();
+    expect(screen.queryByText(/观测日 2026-10-26/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/规则发布日 2026-04-24/)).not.toBeInTheDocument();
+    expect(parseCompanyAnswer(company)!.evidence).toEqual(company.evidence);
     expect(screen.queryByText(/发布时间 2026-10-26/)).not.toBeInTheDocument();
   });
 
   it.each(["javascript:alert(1)", "https://data.eastmoney.com.evil.test/source", "http://data.eastmoney.com/source", "https://unknown.example/source"])(
-    "renders cited text without linking an untrusted URL: %s", (url) => {
+    "does not render hidden source HTML or links: %s", (url) => {
       const { turn, company } = fixture(); company.evidence[0].url = url; company.evidence[1].url = url;
       company.evidence[0].display = '<img src=x onerror="alert(1)">';
-      const { container } = render(<ResponseContent turn={turn} />); fireEvent.click(screen.getByText("依据 2"));
-      expect(screen.getByText(/img src=x/)).toBeVisible(); expect(container.querySelector("img")).toBeNull();
+      const { container } = render(<ResponseContent turn={turn} />);
+      expect(screen.queryByText(/img src=x/)).not.toBeInTheDocument(); expect(container.querySelector("img")).toBeNull();
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
     });
 });

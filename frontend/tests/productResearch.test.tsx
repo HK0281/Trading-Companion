@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CompanyCoverageNote, parseCompanyAnswer, sourceUrl } from "../src/ProductResearch";
 import { ResponseContent } from "../src/ResponseContent";
@@ -42,13 +42,15 @@ describe("company research conversations", () => {
     expect(screen.queryByText(data.answer!)).not.toBeInTheDocument();
   });
 
-  it("keeps references collapsed until requested, with report period and safe source link", () => {
-    render(<ResponseContent turn={turn()} />);
-    expect(screen.getByText("营业收入：100亿元")).not.toBeVisible();
-    fireEvent.click(screen.getByText("依据 1"));
-    expect(screen.getByText("营业收入：100亿元")).toBeVisible();
-    expect(screen.getByText("报告期：2026-06-30")).toBeVisible();
-    expect(screen.getByRole("link", { name: "查看来源" })).toHaveAttribute("rel", "noopener noreferrer");
+  it("hides references and source links while retaining the checked source data", () => {
+    const value = turn(), original = structuredClone(value);
+    render(<ResponseContent turn={value} />);
+    expect(screen.getByText("先看盈利和价格是否相互支持。")).toBeVisible();
+    expect(screen.queryByText("依据 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("营业收入：100亿元")).not.toBeInTheDocument();
+    expect(screen.queryByText("报告期：2026-06-30")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "查看来源" })).not.toBeInTheDocument();
+    expect(value).toEqual(original);
   });
 
   it.each(["javascript:alert(1)", "http://data.eastmoney.com/a", "https://evil.test/a", "https://data.eastmoney.com.evil.test/a",
@@ -56,14 +58,13 @@ describe("company research conversations", () => {
     expect(sourceUrl(url)).toBeNull();
   });
 
-  it("renders source content as text and disables an unsafe link", () => {
+  it("does not render hidden source content or unsafe links", () => {
     const data = turn();
     const company = data.company_research as { evidence: { display: string; url: string }[] };
     company.evidence[0].display = '<img src=x onerror="alert(1)">';
     company.evidence[0].url = "javascript:alert(1)";
     const { container } = render(<ResponseContent turn={data} />);
-    fireEvent.click(screen.getByText("依据 1"));
-    expect(screen.getByText(/img src=x/)).toBeVisible();
+    expect(screen.queryByText(/img src=x/)).not.toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });

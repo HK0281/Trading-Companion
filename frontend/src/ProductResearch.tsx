@@ -1,4 +1,4 @@
-/** Research paragraphs and their sources; untrusted source text stays in text nodes. */
+/** Checked research paragraphs; source metadata remains validated without display. */
 import { parseDecision, ResearchDecision } from "./ResearchDecision";
 import type { DecisionData } from "./ResearchDecision";
 import { parseNarratives, ResearchNarrative } from "./ResearchNarrative";
@@ -97,55 +97,11 @@ export function CompanyCoverageNote({ data }: { data: CompanyAnswer }) {
     {excluded.length > 0 && <p className="data-note" role="note">{excluded.join("、")}按要求未研究。</p>}
   </>;
 }
-const sources: Record<string, string> = { eastmoney_company: "东方财富", eastmoney_financial: "东方财富", eastmoney_news: "东方财富",
-  eastmoney_announcements: "东方财富公告", cninfo_announcements: "巨潮资讯", sina_company_news: "新浪财经", sina_news: "新浪财经",
-  tencent: "腾讯行情", akshare_eastmoney: "东方财富行情", csv: "开发样例", application_comparison: "程序比较",
-  sse: "上海证券交易所", szse: "深圳证券交易所", sse_szse: "沪深交易所", application_market_rules: "版本化交易规则" };
-
-const sourceGroupKey = (item: Evidence) => [item.instrument_id, item.kind, item.url ?? item.source,
-  item.report_period ?? "", item.temporal_scope, item.date ?? ""].join("|");
-const sourceDateLabel = (item: Evidence) => item.temporal_scope === "completed_week_derived" ? "周线截至"
-  : item.temporal_scope === "cross_timeframe_derived" ? "日周核对"
-  : item.temporal_scope === "current_context" ? "观测日"
-  : item.temporal_scope === "market_rule_explanation" ? "规则发布日"
-  : item.kind === "technical" || item.kind === "risk" ? "交易日" : "发布时间";
-
-function SourceList({ data, evidence, previewLimit = 5 }: { data: CompanyAnswer; evidence: Evidence[]; previewLimit?: number }) {
-  const groups = new Map<string, Evidence[]>();
-  for (const item of evidence) {
-    const key = sourceGroupKey(item);
-    groups.set(key, [...(groups.get(key) ?? []), item]);
-  }
-  return <div className="company-source-list">{[...groups].map(([key, items]) => {
-      const first = items[0], url = sourceUrl(first.url);
-      const company = data.securities.find(item => item.instrument_id === first.instrument_id);
-      return <section className="company-source" key={key}>
-        <div className="company-source-heading"><strong>{company?.name} · {kinds[first.kind]}</strong>
-          <span>{sources[first.source] ?? first.source}</span></div>
-        {first.report_period && <p>报告期：{first.report_period}</p>}
-        {items.slice(0, previewLimit).map(item => <p key={item.id}>{item.kind === "financial" || item.kind === "technical" ? `${item.label}：` : ""}{item.display}</p>)}
-        <small>{first.content_kind === "title" ? "标题资料" : first.content_kind === "snippet" ? "摘要资料" : first.temporal_scope === "current_context" ? "当前公司背景" : ""}
-          {first.date ? ` · ${sourceDateLabel(first)} ${first.date}` : ""}
-          {url && <> · <a href={url} target="_blank" rel="noopener noreferrer">查看来源</a></>}</small>
-      </section>;
-    })}</div>;
-}
-
 export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
-  const evidence = new Map(data.evidence.map(item => [item.id, item]));
   return <div className="conversation-response readable-text">
     {data.narratives && data.quality && <ResearchNarrative narratives={data.narratives} quality={data.quality} securities={data.securities} />}
-    {data.decision && <ResearchDecision data={data.decision} securities={data.securities}
-      renderEvidence={ids => <SourceList data={data} evidence={ids.map(id => evidence.get(id)!)} previewLimit={ids.length} />} />}
-    {(!data.narratives || data.narratives.length === 0) && data.paragraphs.map((paragraph, index) => {
-      const referenced = (data.paragraph_evidence?.[index] ?? []).map(id => evidence.get(id)!);
-      return <div className="company-paragraph" key={index}>
-        <p>{paragraph}</p>
-        {referenced.length > 0 && <details className="paragraph-evidence" aria-label={`第${index + 1}段依据`}>
-          <summary>依据 {referenced.length}</summary>
-          <SourceList data={data} evidence={referenced} previewLimit={referenced.length} />
-        </details>}
-      </div>;
-    })}
+    {data.decision && <ResearchDecision data={data.decision} securities={data.securities} />}
+    {(!data.narratives || data.narratives.length === 0) && data.paragraphs.map((paragraph, index) =>
+      <div className="company-paragraph" key={index}><p>{paragraph}</p></div>)}
   </div>;
 }

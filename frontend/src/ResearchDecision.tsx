@@ -143,8 +143,8 @@ function PlanTable({ plan }: { plan: Plan }) {
   </>;
 }
 
-export function ResearchDecision({ data, securities, renderEvidence }: { data: DecisionData;
-  securities: { name: string; instrument_id: string }[]; renderEvidence?: (ids: string[]) => React.ReactNode }) {
+export function ResearchDecision({ data, securities }: { data: DecisionData;
+  securities: { name: string; instrument_id: string }[] }) {
   return <div className="research-decisions">{data.decisions.map(d => {
     const name = securities.find(s => s.instrument_id === d.instrument_id)?.name ?? d.instrument_id;
     const plans = data.trade_plans.filter(p => p.instrument_id === d.instrument_id);
@@ -156,9 +156,8 @@ export function ResearchDecision({ data, securities, renderEvidence }: { data: D
           <div><dt>期限</dt><dd>{d.horizon ?? "未指定（未生成价位）"}</dd></div><div><dt>把握</dt><dd>{d.conviction}</dd></div></dl>
         <small>模型自评，未经历史校准；持有、增持或减持均以假如已有仓位为条件。</small>
       </> : <p className="data-note">本轮研判未形成；下方仅为程序计算的参考价位。期限：{d.horizon}</p>}
-      {d.reasons.length > 0 && <details><summary>研判依据</summary>{d.reasons.map((r, i) => <div key={i}><p>{r.text}</p>{renderEvidence?.(r.evidence_ids)}</div>)}</details>}
-      {d.reason_review && <p className="data-note" role="status">已保留 {d.reason_review.retained} 条依据，删除 {d.reason_review.deleted} 条未通过核对的依据。</p>}
-      {d.invalidation && <details><summary>研判失效或重评条件{d.invalidation_origin === "application" ? " · 程序参考计划" : ""}</summary><p>{d.invalidation.text}</p>{renderEvidence?.(d.invalidation.evidence_ids)}</details>}
+      {d.reason_review && <p className="data-note" role="status">部分研判理由未通过核对已移除。</p>}
+      {d.invalidation && <details><summary>研判失效或重评条件{d.invalidation_origin === "application" ? " · 程序参考计划" : ""}</summary><p>{d.invalidation.text}</p></details>}
       {selected && <PlanTable plan={selected} />}
       {d.status === "available" && ["减持", "卖出"].includes(d.rating ?? "") && !selected?.values && <p>如已持有：当前缺少有效退出价位。<br />空仓：观望。</p>}
     </section>;

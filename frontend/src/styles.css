@@ -1,6 +1,6 @@
 :root { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: #20292b; background: #fcfcfa; font-synthesis: none; line-height: 1.6; --accent: #28735c; --muted: #7b8585; --line: #e6eae6; }
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; overflow: hidden; }
+html, body, #root { height: 100%; overflow: clip; }
 body { margin: 0; }
 button, textarea, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -14,7 +14,7 @@ h1, h2, h3, h4, h5, p, dl { margin: 0; }
 dd { margin: 0; }
 code, .number { font-family: "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
 .icon { flex-shrink: 0; vertical-align: middle; }
-.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 100dvh; overflow: clip; }
 .sidebar { background: #1d2529; color: #d5dcda; border-right: 1px solid #182124; padding: 29px 18px 17px; display: flex; flex-direction: column; gap: 20px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .brand { display: flex; gap: 10px; align-items: center; color: #f1f5f2; font-size: 14px; font-weight: 650; line-height: 1.4; letter-spacing: -.25px; padding: 0 3px 15px; }
 .brand:hover { text-decoration: none; }
@@ -180,11 +180,6 @@ textarea::placeholder { color: #a1aaa0; }
 .company-paragraph { margin-bottom: 16px; }
 .company-paragraph:last-child { margin-bottom: 0; }
 .company-paragraph > p { margin: 0; }
-.paragraph-evidence { margin-top: 4px; font-size: 11px; line-height: 1.7; color: #7a8c6e; }
-.paragraph-evidence > summary { width: fit-content; cursor: pointer; padding: 2px 0; }
-.paragraph-evidence > summary:hover { color: #49683b; }
-.paragraph-evidence > summary:focus-visible { outline: 2px solid #8ba87a; outline-offset: 3px; border-radius: 2px; }
-.paragraph-evidence .company-source-list { padding: 8px 0 2px; }
 .response-origin { display: block; font-size: 10px; color: #88967d; margin-top: 18px; }
 .answer-attachments { margin-top: 23px; border-top: 1px solid var(--line); }
 .disclosure { border-bottom: 1px solid var(--line); }

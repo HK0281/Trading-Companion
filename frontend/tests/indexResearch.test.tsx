@@ -11,13 +11,17 @@ const turn = fixture.turn as unknown as PublicTurn;
 const daily = () => parseResearchChart(turn.chart, turn.parameters, turn.report?.request_id)!;
 
 describe("独立指数研究", () => {
-  it("显示默认基准、人工标记、方向和段落证据", () => {
+  it("显示默认基准、人工标记和正文，隐藏段落依据但保留数据", () => {
     expect(parseIndexResearch(turn.index_research, turn)).not.toBeNull();
     render(<IndexResearch turn={turn} />);
     expect(screen.getByText("本次以上证指数作为大盘观察基准。")).toBeVisible();
     expect(screen.getByText("人工指数样例，非真实行情")).toBeVisible();
     expect(screen.getByRole("heading", { name: /上证指数 · 暂不判断/ })).toBeVisible();
-    expect(screen.getAllByText(/依据：/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/依据：/)).not.toBeInTheDocument();
+    const data = parseIndexResearch(turn.index_research, turn)!;
+    for (const block of data.blocks) expect(screen.getByText(block.text)).toBeVisible();
+    expect(data.blocks[0].evidence_ids.length).toBeGreaterThan(0);
+    expect(data.evidence.length).toBeGreaterThan(0);
   });
 
   it("拒绝跨对象、编号、日期、来源、单位或段落引用污染", () => {

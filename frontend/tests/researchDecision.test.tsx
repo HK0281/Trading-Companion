@@ -69,8 +69,9 @@ describe("reference decisions", () => {
     expect(screen.getByRole("table", { name: /关键价位区间/ })).toBeVisible();
     expect(screen.getByText(/人工样例，非真实行情/)).toBeVisible();
     expect(screen.getByText(/止盈 2/)).toBeVisible();
-    fireEvent.click(screen.getByText("研判依据"));
-    expect(screen.getAllByText(/人工演示固定采用偏多研判/)[0]).toBeVisible();
+    expect(screen.queryByText("研判依据")).not.toBeInTheDocument();
+    expect(data.decision!.decisions[0].reasons.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "查看来源" })).not.toBeInTheDocument();
   });
 
   it("keeps an unavailable verdict honest while showing application levels", () => {
@@ -114,11 +115,13 @@ describe("reference decisions", () => {
     expect(parseCompanyAnswer(payload)).toBeNull();
   });
 
-  it("keeps source-derived prose as text nodes", () => {
+  it("keeps invalidation prose as text nodes while hiding verdict reasons", () => {
     const payload = fresh();
     payload.decisions[0].reasons[0].text = '<img src=x onerror="alert(1)">';
+    payload.decisions[0].invalidation!.text = '<img src=x onerror="alert(2)">';
     const { container } = render(<CompanyParagraphs data={parseCompanyAnswer(payload)!} />);
-    fireEvent.click(screen.getByText("研判依据"));
+    expect(screen.queryByText("研判依据")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(/研判失效或重评条件/));
     expect(screen.getByText(/img src=x/)).toBeVisible();
     expect(container.querySelector("img")).toBeNull();
   });
@@ -130,7 +133,7 @@ describe("reference decisions", () => {
     expect(screen.getByRole("table", { name: /ATR 参考计划/ })).toBeVisible();
   });
 
-  it("retains a v3 verdict with one reason and shows deletion counts and program condition origin", () => {
+  it("retains a v3 verdict, partial-removal notice and program condition without evidence counts", () => {
     const payload = fresh();
     payload.decisions[0].reasons = payload.decisions[0].reasons.slice(0, 1);
     Object.assign(payload.decisions[0], {
@@ -141,11 +144,19 @@ describe("reference decisions", () => {
     expect(data).not.toBeNull();
     render(<CompanyParagraphs data={data!} />);
     expect(screen.getByText("买入")).toBeVisible();
-    expect(screen.getByText(/已保留 1 条依据，删除 1 条/)).toBeVisible();
+    expect(screen.getByText("部分研判理由未通过核对已移除。")).toBeVisible();
+    expect(screen.queryByText(/已保留.*条依据/)).not.toBeInTheDocument();
     expect(screen.getByRole("status")).not.toHaveTextContent("answer_numeric_unmatched");
     expect(data!.decision!.decisions[0].reason_review!.codes).toEqual(["answer_numeric_unmatched"]);
     expect(screen.getByText(/研判失效或重评条件 · 程序参考计划/)).toBeVisible();
     expect(screen.queryByText(/999999/)).not.toBeInTheDocument();
+  });
+
+  it.each(["reason", "invalidation"])("still rejects hidden %s evidence outside the supplied scope", kind => {
+    const payload = fresh();
+    const claim = kind === "reason" ? payload.decisions[0].reasons[0] : payload.decisions[0].invalidation!;
+    claim.evidence_ids = ["unknown-evidence"];
+    expect(parseCompanyAnswer(payload)).toBeNull();
   });
 
   it("keeps the historical v2 minimum and rejects dishonest deletion metadata", () => {

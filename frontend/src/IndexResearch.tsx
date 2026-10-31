@@ -79,7 +79,6 @@ export function IndexResearch({ turn }: { turn: PublicTurn }) {
     {data.quality?.partial && <p className="data-note" role="note">部分内容未通过核对已移除</p>}
     {data.blocks.map((block, i) => <section className="insight readable-text" key={i}>
       <h5>{block.title}</h5><p>{block.text}</p>
-      <small>依据：{block.evidence_ids.map((id) => data.evidence.find((e) => e.id === id)!).map((e) => `${e.label}（${e.date}）`).join("、")}</small>
     </section>)}
     {data.plan_notice && <p className="data-note" role="note">{data.plan_notice}</p>}
     {data.scenario_plan !== undefined && <IndexScenario value={data.scenario_plan} research={data} />}

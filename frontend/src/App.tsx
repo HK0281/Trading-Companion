@@ -16,6 +16,13 @@ const samples = (development: boolean) => [
 const statuses: Record<string, string> = { completed: "已完成", limited: "部分可用", needs_clarification: "需要补充",
   failed: "未完成", rejected: "范围受限", cancelled: "已取消" };
 
+function scrollToMessage(container: HTMLElement | null, message: HTMLElement | null) {
+  if (!container || !message) return;
+  // Scroll the message pane only; native anchors/scrollIntoView also move outer ancestors.
+  const top = container.scrollTop + message.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
+  container.scrollTo?.({ top: Math.max(0, top), behavior: "auto" });
+}
+
 const savedTime = (value: string) => {
   const time = new Date(value);
   if (Number.isNaN(time.getTime())) return "";
@@ -117,12 +124,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   useEffect(() => { void controller.load(); }, [controller]);
   useEffect(() => { if (!locked) textarea.current?.focus(); }, [locked, session?.shortId]);
   useEffect(() => {
-    const container = scrollArea.current, message = latest.current;
-    if (followBottom.current && container && message) {
-      // Scroll the message pane only; scrollIntoView would also move the document on mobile.
-      const top = container.scrollTop + message.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
-      container.scrollTo?.({ top: Math.max(0, top), behavior: "auto" });
-    }
+    if (followBottom.current) scrollToMessage(scrollArea.current, latest.current);
   }, [state.entries]);
   useEffect(() => {
     if (textarea.current) {
@@ -188,7 +190,10 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
       <div className="nav-item active"><Icon name="chat" /><span>研究对话</span><span className="nav-badge">A 股</span></div>
       <section className="conversation-index" aria-label="本次对话记录"><span className="sidebar-caption">本次对话</span>
         {!state.entries.length ? <p className="empty-index">你的研究会显示在这里</p> : <nav>{state.entries.map((entry, index) =>
-          <a key={entry.id} href={`#message-${entry.id}`} onClick={() => { followBottom.current = false; setNavigationOpen(false); }}>
+          <a key={entry.id} href={`#message-${entry.id}`} onClick={event => {
+            event.preventDefault(); followBottom.current = false; setNavigationOpen(false);
+            scrollToMessage(scrollArea.current, document.getElementById(`message-${entry.id}`));
+          }}>
             <span>{String(index + 1).padStart(2, "0")}</span>{entry.question}</a>)}</nav>}
       </section>
       {state.conversations !== null && <section className="conversation-index saved-conversations" aria-label="历史对话">

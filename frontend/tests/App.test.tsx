@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { ApiError, ConnectionError, type Health, type MessageResponse } from "../src/api";
 import { ResearchController } from "../src/controller";
@@ -21,6 +21,33 @@ function send(question = "分析平安银行") {
 }
 
 describe("research workspace", () => {
+  it.each([{ detail: 1, top: 240, initial: 500, expected: 616 }, { detail: 0, top: -400, initial: 50, expected: 0 }])(
+    "scrolls only the message pane on sidebar activation %j and closes navigation", async ({ detail, top, initial, expected }) => {
+      const { container } = await workspace();
+      container.id = "root";
+      send("第一条研究"); await screen.findByText(ANSWER);
+      send("第二条研究"); await waitFor(() => expect(screen.getAllByText(ANSWER)).toHaveLength(2));
+      const pane = container.querySelector<HTMLElement>(".conversation-scroll")!;
+      const shell = container.querySelector<HTMLElement>(".workspace")!;
+      const link = screen.getByRole("link", { name: /01.*第一条研究/ });
+      const message = document.getElementById(link.getAttribute("href")!.slice(1))!;
+      vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
+      vi.spyOn(message, "getBoundingClientRect").mockReturnValue({ top } as DOMRect);
+      pane.scrollTop = initial;
+      const scroll = vi.fn((options: ScrollToOptions) => { pane.scrollTop = options.top!; });
+      Object.defineProperty(pane, "scrollTo", { configurable: true, value: scroll });
+      const hash = window.location.hash;
+      fireEvent.click(screen.getByRole("button", { name: "展开导航" }));
+      link.focus(); expect(link).toHaveFocus();
+      expect(fireEvent.click(link, { detail })).toBe(false);
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({ top: expected, behavior: "auto" });
+      expect(pane.scrollTop).toBe(expected);
+      expect((document.scrollingElement ?? document.documentElement).scrollTop).toBe(0);
+      expect(document.body.scrollTop).toBe(0); expect(container.scrollTop).toBe(0); expect(shell.scrollTop).toBe(0);
+      expect(window.location.hash).toBe(hash);
+      expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "false");
+    });
+
   it.each(["短线", "中线", "长线"])("automatically sends a fixed %s choice and disables old choices", async choice => {
     const { api } = await workspace();
     api.send.mockImplementationOnce(async (_session, id) => horizonReply(id));

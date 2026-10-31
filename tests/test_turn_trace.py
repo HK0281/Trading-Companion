@@ -27,7 +27,7 @@ NON_TURN_CODES = {
     "invalid_intent_input": "离线v2语义接口输入无效，不是正式研究结果。",
     "invalid_intent_context": "离线v2接口拒绝非程序上下文，不产生研究轮次。",
     "ungrounded_intent_v2": "离线v2原文片段未通过核对，不执行研究。",
-    "low_confidence_intent_v2": "离线v2低把握响应的协议检查结果。",
+    "invalid_horizon_interval": "离线v2期限区间不完整、逆序或超限，不执行研究。",
     "missing_plan_evidence": "离线v2价位请求缺原文或可信待办依据。",
     "missing_objective_evidence": "离线v2评级方向目标缺依据。",
     "missing_scope_evidence": "离线v2严格范围缺依据。",

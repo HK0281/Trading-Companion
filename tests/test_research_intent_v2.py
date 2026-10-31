@@ -8,7 +8,7 @@ import unittest
 from trading_companion.agent_input import InputIssue
 from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
 from trading_companion.research_intent_v2 import (
-    IntentContext, SCHEMA, TOOL_NAME, VERSION, check_response, understand,
+    IntentContext, SCHEMA, TOOL_NAME, VERSION, check_response, normalize_horizon, understand,
 )
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.research_session import ResearchSession
@@ -64,13 +64,34 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(InputIssue):
                 checked('分析平安银行', value)
 
-    def test_wrong_tool_multiple_calls_text_only_and_low_confidence(self):
+    def test_wrong_tool_multiple_calls_and_text_only(self):
         for payload in (ToolModelResponse('complete', text='直接回答'),
                         ToolModelResponse('tool_calls', tool_calls=(ToolCall('x', 'other', {}),)),
-                        ToolModelResponse('tool_calls', tool_calls=(ToolCall('x', TOOL_NAME, draft()), ToolCall('y', TOOL_NAME, draft()))),
-                        response(draft(confidence='low'))):
+                        ToolModelResponse('tool_calls', tool_calls=(ToolCall('x', TOOL_NAME, draft()), ToolCall('y', TOOL_NAME, draft())))):
             with self.subTest(payload=payload), self.assertRaises(InputIssue):
                 check_response('分析平安银行', payload, context=context())
+
+    def test_low_confidence_keeps_checked_fields_and_requests_confirmation(self):
+        intent = checked('分析平安银行', draft(confidence='low'))
+        self.assertTrue(intent.low_confidence)
+        self.assertEqual(intent.bound_subjects, ('000001.SZ',))
+        self.assertEqual(intent.outcome, 'clarify_conditions')
+        self.assertNotIn('low_confidence', intent.fields())
+        missing = checked('分析它', draft(confidence='low', subject=dict(source='previous', mentions=[], selection='它')))
+        self.assertEqual(missing.outcome, 'clarify_subject')
+        with self.assertRaises(InputIssue):
+            checked('分析平安银行', draft(confidence='low', date_expression='不存在的片段'))
+
+    def test_general_horizon_intervals_midpoints_and_boundaries(self):
+        for expression, expected in (('未来2~4个月', '未来40个交易日'), ('接下来一到二周', '未来10个交易日'),
+                ('持有十至二十天', '未来40个交易日'), ('三四周', '未来40个交易日'),
+                ('往后六至八个月', '未来120个交易日'), ('未来10～18天', '未来10个交易日'),
+                ('未来11-18天', '未来40个交易日'), ('未来2到3个交易日', '未来10个交易日')):
+            with self.subTest(expression=expression):
+                self.assertEqual(normalize_horizon(expression), expected)
+        for expression in ('未来4到2个月', '未来0到2周', '未来1至13个月', '三五个月', '未来2到3个月左右'):
+            with self.subTest(expression=expression), self.assertRaises(InputIssue):
+                normalize_horizon(expression)
 
     def test_every_evidence_field_must_come_from_current_question(self):
         for value in (draft(subject=dict(source='question', mentions=['浦发银行'], selection=None)),
@@ -122,9 +143,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(intent.horizon, '未来10个交易日')
 
     def test_historical_dates_and_future_horizons_are_separate(self):
-        question = '平安银行用2026-08-01至2026-09-20的资料判断未来两三个月'
+        question = '平安银行用2026-08-01至2026-09-20的资料判断未来2至4个月'
         intent = checked(question, draft(objective_kind='decision', objective_phrase='判断',
-            horizon_expression='未来两三个月', date_expression='2026-08-01至2026-09-20'))
+            horizon_expression='未来2至4个月', date_expression='2026-08-01至2026-09-20'))
         self.assertEqual(intent.horizon, '未来40个交易日')
         self.assertEqual(intent.historical_window, ('2026-08-01', '2026-09-20'))
         for phrase in ('近期', '下下个月', '明年'):
@@ -308,8 +329,9 @@ class AttemptTests(unittest.TestCase):
             self.assertIsNone(run.intent)
             self.assertEqual(model.calls, 1)
         run, model = self.run_model(lambda *args: response(draft(confidence='low')))
-        self.assertEqual(run.status, 'invalid')
-        self.assertIsNone(run.intent)
+        self.assertEqual(run.status, 'ok')
+        self.assertEqual(run.intent.outcome, 'clarify_conditions')
+        self.assertTrue(run.intent.low_confidence)
 
     def test_cancellation_and_deadline_discard_returned_interpretation(self):
         control = TurnControl(TurnLimits(model_calls=1))

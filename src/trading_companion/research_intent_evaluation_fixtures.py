@@ -61,18 +61,20 @@ def _outcome(result):
     return "clarify_conditions"
 
 
-def fixed_execution(state, probe):
+def fixed_execution(state, probe, *, capture_context=False):
     from scripts.verify import clean_environment, offline_network, VerificationError
     try:
         with clean_environment(), offline_network(), \
                 patch("trading_companion.local_env.load_model_environment", side_effect=RuntimeError("offline credentials forbidden")), \
                 patch("trading_companion.local_env._read_local_values", side_effect=RuntimeError("offline credentials forbidden")):
+            if capture_context:
+                return _fixed_execution(state, probe, capture_context=True)
             return _fixed_execution(state, probe)
     except (VerificationError, RuntimeError):
         return {"status": "failed", "reason": "离线边界拒绝了联网或凭据读取，不能计为正确澄清", "steps": [], "fields": {}}
 
 
-def _fixed_execution(state, probe):
+def _fixed_execution(state, probe, *, capture_context=False):
     """No gold accepted. Unscripted cases remain unmeasured, never default to success."""
     if not probe["steps"]:
         return {"status": "not_measured", "reason": probe["unmeasured_reason"], "steps": [], "fields": {}}
@@ -113,6 +115,14 @@ def _fixed_execution(state, probe):
                               entry.session.index_saved is not None)
                     if pending != context["pending"] or caches != tuple(context[k] for k in ("has_company", "has_technical", "has_index")):
                         return {"status": "not_measured", "reason": "固定前置步骤未形成声明的待办/缓存状态", "steps": observations, "fields": {}}
+                    if capture_context:
+                        if any(s["fixture_error"] for s in observations):
+                            return {"status": "not_measured", "reason": "前置固定脚本未完整消费", "fields": {}}
+                        # Detach before close() clears the API's original session.
+                        session = entry.session._fork_for_turn()
+                        session._turn_parent = None
+                        return dict(status="ok", session=session, directory=sources.directory,
+                                    quote_source=sources.quotes, setup_calls=model.calls)
                 model.start_step(deepcopy(step["script"]))
                 before, before_intent = model.calls, model.intent_calls
                 try:

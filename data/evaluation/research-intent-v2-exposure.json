@@ -1,0 +1,9 @@
+{
+  "version": "research-intent-v2-exposure-v1",
+  "known_during_implementation": {
+    "V2203": {
+      "reason": "首批实现按已披露标签添加了整句期限映射，已在agentbus #360确认暴露；本轮移除特殊映射。",
+      "unseen_holdout_eligible": false
+    }
+  }
+}

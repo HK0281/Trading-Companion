@@ -1,4 +1,4 @@
-"""Review and evaluate the v2 research-intent corpus, offline only."""
+"""Review/evaluate research intents; paid dev runs require explicit --v2-live."""
 
 import argparse
 import json
@@ -20,20 +20,27 @@ def main(argv=None):
     actions.add_argument("--annotation-review", action="store_true")
     actions.add_argument("--v2-plan-only", action="store_true", help="查看新协议指纹和调用上限；不调用模型")
     actions.add_argument("--diagnose-baseline", action="store_true", help="仅离线复现五道开发集失败题")
+    actions.add_argument("--v2-live", action="store_true", help="显式运行deepseek-flash开发评估；最多155次，无重试")
     parser.add_argument("--split", choices=("dev",), default="dev")
     parser.add_argument("--report-dir")
+    parser.add_argument("--max-calls", type=int, default=155)
+    parser.add_argument("--timeout-seconds", type=float, default=45)
     options = parser.parse_args(argv)
     try:
         if options.annotation_review:
             print(annotation_review(*load_corpus()), end="")
             return 0
-        if options.v2_plan_only:
+        if options.v2_live:
+            from trading_companion.research_intent_v2_evaluation import evaluate_development
+            report = evaluate_development(live=True, split=options.split, maximum=options.max_calls,
+                timeout_seconds=options.timeout_seconds, report_dir=options.report_dir)
+        elif options.v2_plan_only:
             report = build_v2_plan()
         elif options.diagnose_baseline:
             report = diagnose_baseline()
         else:
             report = build_plan(split=options.split) if options.plan_only else evaluate(split=options.split)
-        if options.report_dir and report["status"] == "completed":
+        if options.report_dir and report["status"] == "completed" and not options.v2_live:
             report["artifacts"] = write_report(report, options.report_dir)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ClassifierError, RecursionError):
         report = {"status": "invalid_request", "code": "intent_input_invalid"}

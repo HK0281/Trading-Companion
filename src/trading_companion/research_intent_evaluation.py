@@ -1,4 +1,4 @@
-"""Offline v2 plans, field scoring and artifacts; no paid/live entry point."""
+"""V2 plans, field scoring and artifacts; live admission lives in a separate adapter."""
 
 from collections import Counter
 from datetime import datetime, timezone
@@ -36,21 +36,25 @@ def build_plan(*, split="dev"):
 
 
 def build_v2_plan():
-    """Preparation only. Live runs and holdout admission are a later reviewed delivery."""
+    """Read-only plan. This function never loads credentials or invokes a model."""
     from hashlib import sha256
     from trading_companion.intent_router_task import digest
-    from trading_companion.research_intent_v2 import VERSION, INSTRUCTION, TOOL
+    from trading_companion.research_intent_v2 import VERSION, GUARD_VERSION, INSTRUCTION, TOOL
+    from trading_companion.research_intent_v2_evaluation import exposure_registry
     plan = build_plan()
     root = Path(__file__).resolve().parents[2]
     paths = ('src/trading_companion/research_intent_v2.py', 'src/trading_companion/turn_control.py',
-             'src/trading_companion/tool_model.py')
+             'src/trading_companion/tool_model.py', 'src/trading_companion/research_intent_v2_evaluation.py',
+             'src/trading_companion/deepseek_tool_model.py', 'src/trading_companion/deepseek_model.py',
+             'src/trading_companion/local_env.py', 'data/evaluation/research-intent-v2-exposure.json')
     return {**plan, 'kind': 'v2_contract_preparation', 'contract_version': VERSION,
+            'guard_version': GUARD_VERSION, 'exposure': exposure_registry(),
             'requested_model': 'deepseek-flash', 'prompt_sha256': sha256(INSTRUCTION.encode()).hexdigest(),
             'tool_sha256': digest(TOOL.to_dict()),
             'contract_implementation_sha256_lf': {p: sha256((root/p).read_bytes().replace(b'\r\n', b'\n')).hexdigest() for p in paths},
             'max_attempts_per_target': 1, 'max_dev_attempts': 155, 'max_holdout_attempts_after_lock': 85,
             'live_enabled': False, 'paid_calls': 0, 'prediction_rows': 0,
-            'next_admission': '代码审核提交后准备开发集真实命令；先经Claude确认，开发结果锁定后才运行留出',
+            'next_admission': 'Claude审核后显式运行--v2-live开发命令；开发结果锁定后另审留出入口',
             'metrics_required': ['returned_model', 'attempts', 'p50_ms', 'p95_ms', 'token_usage'],
             'local_preflight': '本模块仅提供语义理解；正式入口的本地路径尚未接入新版，必须另做同口径评估'}
 
@@ -161,6 +165,12 @@ def evaluate(*, split="dev"):
 
 
 def format_report(report):
+    if report.get('kind') == 'v2_development':
+        return '# 意图单 v2：开发实验\n\n' + report['scope'] + '\n\n' + (
+            '此报告仅为模拟实验，不是真实模型成绩。\n\n' if report['authenticity'] == 'mock_experiment' else '') + (
+            '未批准产品切换。旧A只比较共同可观测字段；旧B的实际固定执行与V2预计动作分开。'
+            '实现阶段已知题见exposure，未来未见过留出子集必须排除这些题。\n\n```json\n') + json.dumps(
+                report, ensure_ascii=False, indent=2, allow_nan=False).replace('<', '\\u003c').replace('`', '\\u0060') + '\n```\n'
     if report.get('kind') == 'baseline_diagnosis':
         return '# 意图基线失败诊断\n\n' + report['scope'] + '\n\n```json\n' + json.dumps(
             report, ensure_ascii=False, indent=2, allow_nan=False).replace('<', '\\u003c').replace('`', '\\u0060') + '\n```\n'

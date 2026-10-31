@@ -167,20 +167,20 @@ The 144-question development set selects a confidence threshold, which is export
 
 Offline runs and previews read no credentials and make no network requests. Live evaluation requires reviewed labels, explicit classifiers, a call limit and a price file; holdout also requires a reviewed development threshold lock. Live calls require separate user authorization and are run by Claude. See the design for lock export, holdout, ablation, cost assumptions and the fixed evidence gates for proposing a future product integration.
 
-### Research intent v2: draft corpus and rule observations
+### Research intent v2: reviewed corpus and separate development experiment
 
-The separate [v2 evaluation](docs/research-intent-evaluation-v2-design.md) adds 240 draft cases (155 development / 85 holdout), including disclosed failures and multi-turn state. Stocks share one research task; ratings and direction remain separate from authorization for price plans. It also checks trusted subjects, horizons and exclusions; protocol faults have separate execution assertions and do not alter normal intent labels. The [review checklist](docs/research-intent-v2-annotation-review.md) awaits individual Claude approval; formal scoring is blocked until then. Existing 304-case data and historical results remain unchanged.
+The separate [v2 evaluation](docs/research-intent-evaluation-v2-design.md) adds 240 reviewed cases (155 development / 85 holdout), including disclosed failures and multi-turn state. Stocks share one research task; ratings and direction remain separate from authorization for price plans. It also checks trusted subjects, horizons and exclusions; protocol faults have separate execution assertions and do not alter normal intent labels. The [review checklist](docs/research-intent-v2-annotation-review.md) records individual Claude approval. Existing 304-case data and historical results remain unchanged.
 
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_intents.py --plan-only
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_intents.py --annotation-review
 ```
 
-This step observes production rules and a limited set of existing scripted sessions offline. Missing observations count as incomplete; scripted execution is not real-model quality. There is no live/paid or holdout run option, and product routing remains unchanged. Development baseline results follow reviewed labels in a separate delivery.
+The original baseline observes production rules and a limited set of existing scripted sessions offline. Missing observations count as incomplete; scripted execution is not real-model quality. Default evaluation remains offline; product routing is unchanged and holdout runs remain disabled.
 
 The [reviewed-corpus development baseline](docs/research-intent-v2-rule-baseline.md) records 155 cases: rule task accuracy is 119/155; fixed execution has 42 observed, 5 failed and 108 unmeasured cases, including 5 strict-scope violations. Both layers have unobserved intent fields, so all-field joint accuracy is 0/155; this report does not approve a product switch. Full per-case data and the evaluator entry-point fix are documented with source fingerprints; no holdout or live evaluation was run.
 
-The separate [v2 intent contract](docs/research-intent-v2-contract.md) adds strict, grounded interpretation and trusted subject binding without changing product routing. Fixed tests cover scope, vetoes, identity and stale conditions; new CLI preparation and failure-diagnosis modes make no live calls or holdout predictions. The five baseline failures remain recorded separately from the reported real-model MACD validation failure.
+The separate [v2.1 intent contract](docs/research-intent-v2-contract.md) adds strict, grounded interpretation and trusted subject binding without changing product routing. Valid low-confidence interpretations retain their fields and request clarification; bounded horizon intervals use a general midpoint conversion. Plan and failure-diagnosis modes make no live calls. An explicit `--v2-live --split dev --max-calls 155 --timeout-seconds 45 --report-dir .agentbus/tmp/intent-v2-live-dev` command is prepared for Claude to run after code review: deepseek-flash, one attempt per target, no retries, persisted responses and usage. No live result is claimed here. Reports compare only observable baseline fields and distinguish proposed actions from actual execution. V2203 is registered as known during implementation and must be excluded from future unseen-holdout scores. The five baseline failures remain separate from the reported real-model MACD validation failure.
 
 ## Scope & limits
 

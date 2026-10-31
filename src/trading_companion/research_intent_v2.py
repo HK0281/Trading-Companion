@@ -2,11 +2,14 @@
 
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
+from fractions import Fraction
 import json
+from math import ceil
 import re
+import unicodedata
 
 from trading_companion.agent_input import InputIssue
-from trading_companion.decision_horizon import canonical
+from trading_companion.decision_horizon import canonical, profile
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.market_scope import INDICES, _mentions as index_mentions
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
@@ -14,7 +17,7 @@ from trading_companion.product_scope import _INDICATOR_CUE, _NEGATED_ONLY, _indi
 from trading_companion.product_plan import ProductPlanContext
 from trading_companion.research_intent import _dates
 from trading_companion.research_instruments import research_spans
-from trading_companion.research_objective import parse_outlook_expression
+from trading_companion.research_objective import _integer, parse_outlook_expression
 from trading_companion.research_session import ResearchSession
 from trading_companion.routing_context import ResearchSubject, checked_subject, selection_reply
 from trading_companion.security_directory import SecurityDirectory
@@ -23,7 +26,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2'
+VERSION = 'research-intent-v2.1'
+GUARD_VERSION = 'intent-v2-guards-v1'
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
 KINDS = ('profile', 'financial', 'news', 'announcements', 'technical', 'risk')
@@ -95,11 +99,15 @@ class IntentContext:
     development: bool = False
     history: tuple[str, ...] = ()
     quote_source: object = field(default=None, repr=False, compare=False)
+    company_enabled: bool = True
+    workflow_enabled: bool = True
+    conversation_memory: bool = True
 
     def __post_init__(self):
         if (type(self.session) is not ResearchSession or type(self.directory) is not SecurityDirectory
                 or type(self.now) is not datetime or self.now.utcoffset() is None
                 or type(self.reference_date) is not date or type(self.development) is not bool
+                or any(type(v) is not bool for v in (self.company_enabled, self.workflow_enabled, self.conversation_memory))
                 or self.source not in ('tencent', 'akshare_eastmoney', 'csv')
                 or self.source == 'csv' and not self.development
                 or type(self.history) is not tuple or len(self.history) > 6
@@ -124,7 +132,8 @@ class IntentContext:
                 source=self.source, development=self.development, now=self.now) is None
             shortlist = dict(valid=valid, names=[s.name for s in saved.securities] if valid else [])
         return dict(latest=latest, pending=_pending(self), shortlist=shortlist,
-                    source=self.source, development=self.development, history=list(self.history))
+                    source=self.source, development=self.development, history=list(self.history),
+                    capabilities=dict(company=self.company_enabled, workflow=self.workflow_enabled, memory=self.conversation_memory))
 
 
 @dataclass(frozen=True)
@@ -147,10 +156,11 @@ class CheckedIntent:
     historical_window: tuple[str, ...] = ()
     provenance: tuple[tuple[str, str], ...] = ()
     plan_blocked: str | None = None
+    low_confidence: bool = False
 
     def fields(self):
         return {k: list(v) if type(v) is tuple else v for k, v in asdict(self).items()
-                if k not in ('historical_window', 'provenance', 'plan_blocked')}
+                if k not in ('historical_window', 'provenance', 'plan_blocked', 'low_confidence')}
 
 
 @dataclass(frozen=True)
@@ -202,6 +212,31 @@ def _vetoes(question):
                                    question, re.I))}
 
 
+def normalize_horizon(expression):
+    """Whole bounded intervals use their midpoint, then existing short/medium/long profiles."""
+    text = unicodedata.normalize('NFKC', expression).strip()
+    prefix = r'(?:(?:未来|接下来|今后|往后|后续|持有|拿)\s*(?:的)?\s*)?'
+    count = r'(?:[0-9]{1,3}|[零〇一二两三四五六七八九十百]+)'
+    unit = r'(个?交易日|自然日|天|日|个?星期|周|个月|月|年)'
+    match = re.fullmatch(prefix + '(' + count + r')\s*(?:~|-|至|到)\s*(' + count + r')\s*' + unit, text)
+    if match:
+        low, high, units = _integer(match[1]), _integer(match[2]), match[3]
+    else:
+        compressed = re.fullmatch(prefix + r'([一二两三四五六七八九])([一二两三四五六七八九])\s*' + unit, text)
+        if not compressed:
+            return None if text in ('近期', '最近') else canonical(parse_outlook_expression(text).horizon)
+        low, high, units = _integer(compressed[1]), _integer(compressed[2]), compressed[3]
+        if high != low + 1:
+            raise InputIssue('needs_clarification', 'invalid_horizon_interval', '请明确完整的期限区间。')
+    days = {'个交易日': 1, '交易日': 1, '自然日': 1, '天': 1, '日': 1,
+            '星期': 7, '个星期': 7, '周': 7, '个月': 30, '月': 30, '年': 365}[units]
+    if not 1 <= low <= high or high * days > 366:
+        raise InputIssue('needs_clarification', 'invalid_horizon_interval', '期限区间需为顺序明确的正数且不超过366天或交易日。')
+    midpoint = Fraction(low + high, 2) * days
+    band = profile(f"未来{ceil(midpoint)}{'个交易日' if '交易日' in units else '天'}")
+    return {'short': '未来10个交易日', 'medium': '未来40个交易日', 'long': '未来120个交易日'}[band]
+
+
 def _pending(context):
     """Read only an original program-owned pending object; never renew its deadline."""
     from trading_companion.index_agent import PendingIndexResearch
@@ -220,7 +255,9 @@ def _pending(context):
                  and bool(pending.securities) and all(context.directory.lookup(s.instrument_id).candidates == (s,)
                                                      for s in pending.securities))
         return dict(valid=bool(valid), kind='stock_research', subjects=[s.instrument_id for s in pending.securities],
-                    objective_kind=pending.objective.kind, wants_plan=pending.wants_risk, horizon=pending.objective.horizon)
+                    # A program-owned horizon pending is created only by the price-plan gate.
+                    # wants_risk alone omits decision requests whose prices were already authorized.
+                    objective_kind=pending.objective.kind, wants_plan=True, horizon=pending.objective.horizon)
     if type(pending) is PendingIndexResearch:
         valid = (valid and (pending.development_source is not None) == context.development
                  and pending.instrument_id in {i.instrument_id for i in INDICES})
@@ -330,7 +367,6 @@ def check_response(question, response, *, context):
     phrases += [*draft['subject']['mentions'], draft['subject']['selection'], *draft['indicator_mentions']]
     phrases += [item['phrase'] for k in ('exclusions', 'research_kinds') for item in draft[k]]
     _require(all(p is None or p in question for p in phrases), 'ungrounded_intent_v2')
-    _require(draft['confidence'] == 'high', 'low_confidence_intent_v2')
     pending = _pending(context) if draft['subject']['source'] == 'previous' else None
     inherited_plan = bool(pending and pending['valid'] and pending['wants_plan'])
     _require(not draft['wants_plan'] or draft['plan_phrase'] is not None or inherited_plan, 'missing_plan_evidence')
@@ -385,8 +421,7 @@ def check_response(question, response, *, context):
     expression = draft['horizon_expression']
     if expression is not None:
         try:
-            horizon = (None if expression in ('近期', '最近') else '未来40个交易日' if expression == '未来两三个月'
-                       else canonical(parse_outlook_expression(expression).horizon))
+            horizon = normalize_horizon(expression)
         except InputIssue:
             if outcome == 'research':
                 outcome = 'clarify_conditions'
@@ -422,9 +457,13 @@ def check_response(question, response, *, context):
     if outcome == 'research' and wants_plan and plan_blocked is None and horizon is None:
         outcome = 'clarify_horizon'
     task = 'clarify' if binding_issue or outcome == 'clarify_subject' else draft['task']
+    low_confidence = draft['confidence'] == 'low'
+    if low_confidence:
+        outcome = ('clarify_subject' if not bound and draft['task'] in ('stock_research', 'index_research', 'clarify')
+                   else 'clarify_conditions')
     return CheckedIntent(task, draft['operation'], draft['objective_kind'], wants_plan,
         draft['subject']['source'], bound, horizon, draft['date_expression'], tuple(draft['indicator_mentions']),
-        exclusions, kinds, draft['strict_scope'], outcome, False, historical_window, tuple(provenance), plan_blocked)
+        exclusions, kinds, draft['strict_scope'], outcome, False, historical_window, tuple(provenance), plan_blocked, low_confidence)
 
 
 def understand(question, *, model, context, control=None):

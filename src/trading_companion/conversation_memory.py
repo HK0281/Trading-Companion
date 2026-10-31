@@ -122,11 +122,13 @@ def _kind(result):
 def _judgements(result):
     index = result.get("index_research")
     if type(index) is dict:
-        # Index cards carry a trend call and conviction only; no company rating or price plan.
+        # Only the selected, available plan's profile enters memory, never its points.
         if index.get("origin") != "model":
             return ()
+        plan = index.get('scenario_plan') or {}
+        horizon = PROFILE_LABELS.get(plan.get('horizon_profile')) if plan.get('status') == 'available' else None
         return (Judgement(_clean(index.get("name"), 40), None, _choice(index.get("direction"), _DIRECTIONS),
-                          _choice(index.get("conviction"), _CONVICTIONS), None),)
+                          _choice(index.get("conviction"), _CONVICTIONS), horizon),)
     company = result.get("company_research") or {}
     names = {s.get("instrument_id"): s.get("name") for s in company.get("securities") or () if type(s) is dict}
     profiles = {p.get("plan_id"): p.get("horizon_profile") for p in company.get("trade_plans") or () if type(p) is dict}

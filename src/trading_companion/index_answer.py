@@ -94,7 +94,7 @@ def _scope_allowed(sentence, request, directory):
 def _price_relations_allowed(sentence, context):
     """Check explicit current-price sides of BOLL; conditional scenarios stay hypothetical."""
     from decimal import Decimal
-    close = next(r['raw_value'] for r in context['evidence'] if r['field'] == 'close_price')
+    close = next((r['raw_value'] for r in context['evidence'] if r['field'] == 'close_price'), None)
     hypothetical = False
     for fragment in re.finditer(r'[^，,；;。]+[，,；;。]?', sentence):
         clause = fragment[0]
@@ -117,7 +117,7 @@ def _price_relations_allowed(sentence, context):
                 if (r.get('indicator_id') or '').startswith('boll(')
                 and r['timeframe'] == ('weekly' if period == '周线' else 'daily')
                 and r['field'] == {'中轨': 'middle', '上轨': 'upper', '下轨': 'lower'}[field]}
-            if len(values) != 1:
+            if close is None or len(values) != 1:
                 return False
             level = values.pop()
             if not (Decimal(str(close)) > level if side == '上方' else Decimal(str(close)) < level):
@@ -159,12 +159,21 @@ class IndexAnswer:
     blocks: tuple
     origin: str = 'model'
     quality: IndexAnswerQuality = IndexAnswerQuality()
+    scenario_blocks: tuple = ()
+    scenario_quality: IndexAnswerQuality = IndexAnswerQuality()
 
     def text(self, result):
         request = result.request
         prefix = '本次以上证指数作为大盘观察基准。\n\n' if request.benchmark_defaulted else ''
         notice = '\n\n' + PARTIAL_NOTICE + '。' if self.quality.partial else ''
-        return prefix + '\n\n'.join(title + '：' + text for title, text, _ in self.blocks) + notice
+        text = prefix + '\n\n'.join(title + '：' + text for title, text, _ in self.blocks) + notice
+        if request.scenario_requested:
+            from trading_companion.index_scenario import selected_plan, plan_text
+            text += '\n\n' + plan_text(selected_plan(result, self.direction, origin=self.origin))
+            text += ''.join('\n\n'+title+'：'+value for title, value, _ in self.scenario_blocks)
+            if self.scenario_quality.partial:
+                text += '\n\n部分计划说明未通过核对已移除。'
+        return text
 
 
 def validate_answer(payload, result, *, directory=None):
@@ -221,7 +230,11 @@ def validate_answer(payload, result, *, directory=None):
     if not any(title == '结论' for title, _, _ in blocks):
         return None
     quality = IndexAnswerQuality(generated, retained, generated-retained, len(blocks), rejected, partial_sentences)
-    return IndexAnswer(payload['direction'], payload['conviction'], request.horizon, tuple(blocks), quality=quality)
+    from trading_companion.index_scenario_answer import validate_scenario_blocks
+    scenario_blocks, scenario_quality = (validate_scenario_blocks(payload['scenario_blocks'], result, payload['direction'])
+        if payload.get('scenario_blocks') else ((), IndexAnswerQuality()))
+    return IndexAnswer(payload['direction'], payload['conviction'], request.horizon, tuple(blocks), quality=quality,
+                       scenario_blocks=scenario_blocks, scenario_quality=scenario_quality)
 
 
 def facts_answer(result):
@@ -238,10 +251,21 @@ def facts_answer(result):
 def synthesize_index_answer(question, result, *, model, directory=None):
     context = answer_context(result)
     public = {k: v for k, v in context.items() if not k.startswith('_') and k not in ('securities', 'identity_names')}
+    instruction = INSTRUCTION
+    if result.request.scenario_requested:
+        from trading_companion.index_scenario import candidates, plan_evidence
+        from trading_companion.index_scenario_answer import INSTRUCTION as SCENARIO_INSTRUCTION
+        plans = candidates(result)
+        public['scenario_basis'] = {k: plans[0][k] for k in ('method', 'horizon', 'horizon_profile',
+            'atr_timeframe', 'atr_source_date', 'source_date', 'atr_multiple', 'target_multiples')}
+        public['scenario_candidates'] = [dict(plan={k: p[k] for k in ('plan_id', 'purpose', 'status', 'code')},
+            evidence=[{k: r[k] for k in ('id', 'field', 'label', 'display_value', 'unit')}
+                      for r in plan_evidence(p) if r['field'] not in ('atr', 'atr_multiple')]) for p in plans]
+        instruction += '\n' + SCENARIO_INSTRUCTION
     responses = []
     for attempt in range(2):
         checkpoint()
-        messages = (ToolMessage('system', INSTRUCTION), ToolMessage('user', question),
+        messages = (ToolMessage('system', instruction), ToolMessage('user', question),
             ToolMessage('assistant', 'UNTRUSTED_INDEX_CONTEXT\n' + json.dumps(public, ensure_ascii=False, separators=(',', ':'))),
             ToolMessage('user', '请按指定JSON结构回答。' if not attempt else '上一稿未通过结构、单位、数字或范围检查。请只用所给证据重写一次，保持期限与方向一致。'))
         try:
@@ -268,9 +292,11 @@ def checked_answer(result, answer):
     """Use the same rechecked answer for plain text, status and structured display."""
     result.__post_init__()
     if answer.origin == 'model':
+        old_scenario, old_scenario_quality = answer.scenario_blocks, answer.scenario_quality
         checked = validate_answer(dict(version='index-answer-v1', instrument_id=result.request.instrument_id,
             direction=answer.direction, conviction=answer.conviction, horizon=answer.horizon,
-            blocks=[dict(title=t, text=text, evidence_ids=list(ids)) for t, text, ids in answer.blocks]), result)
+            blocks=[dict(title=t, text=text, evidence_ids=list(ids)) for t, text, ids in answer.blocks],
+            scenario_blocks=[dict(title=t, text=text, evidence_ids=list(ids)) for t, text, ids in answer.scenario_blocks]), result)
         if checked is None:
             answer = facts_answer(result)
         elif tuple((title, text) for title, text, _ in checked.blocks) != tuple((title, text) for title, text, _ in answer.blocks):
@@ -284,6 +310,13 @@ def checked_answer(result, answer):
                 rejected_paragraphs=answer.quality.rejected_paragraphs+quality.rejected_paragraphs,
                 partially_retained_sentences=answer.quality.partially_retained_sentences+quality.partially_retained_sentences,
                 repair_attempts=answer.quality.repair_attempts))
+        if checked is not None and checked.scenario_blocks != old_scenario:
+            q = checked.scenario_quality
+            generated = max(old_scenario_quality.generated_sentences, q.generated_sentences)
+            answer = replace(answer, scenario_blocks=checked.scenario_blocks, scenario_quality=replace(q,
+                generated_sentences=generated, deleted_sentences=generated-q.retained_sentences))
+        elif checked is not None:
+            answer = replace(answer, scenario_quality=old_scenario_quality)
     elif replace(answer, quality=IndexAnswerQuality()) != facts_answer(result):
         answer = facts_answer(result)
     return answer
@@ -292,7 +325,7 @@ def checked_answer(result, answer):
 def public_index(result, answer, *, saved_at=None, plan_notice=False):
     answer = checked_answer(result, answer)
     context = answer_context(result)
-    return dict(version='index-research-v1', request_id=result.request.request_id,
+    output = dict(version='index-research-v1', request_id=result.request.request_id,
         instrument_kind='index', instrument_id=result.request.instrument_id, name=result.request.index.name,
         benchmark_defaulted=result.request.benchmark_defaulted, price_unit='index_point',
         start_date=result.request.start_date.isoformat(), as_of_date=result.request.as_of_date.isoformat(),
@@ -304,4 +337,11 @@ def public_index(result, answer, *, saved_at=None, plan_notice=False):
         origin=answer.origin, blocks=[dict(title=t, text=text, evidence_ids=list(ids)) for t, text, ids in answer.blocks],
         quality=answer.quality.public(),
         evidence=context['evidence'], limitations=context['limitations'],
-        plan_notice='点位计划下一批提供；本轮未生成入场、跌破观察位或目标点位。' if plan_notice else None)
+        plan_notice=None)
+    if result.request.scenario_requested:
+        from trading_companion.index_scenario import selected_plan, plan_evidence
+        plan = selected_plan(result, answer.direction, origin=answer.origin)
+        plan.update(evidence=plan_evidence(plan), quality=answer.scenario_quality.public(),
+            blocks=[dict(title=t, text=text, evidence_ids=list(ids)) for t, text, ids in answer.scenario_blocks])
+        output['scenario_plan'] = plan
+    return output

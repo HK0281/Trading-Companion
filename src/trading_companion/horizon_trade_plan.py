@@ -12,6 +12,7 @@ from trading_companion.research_report import build_research_report
 from trading_companion.risk_research import build_risk_scenario, PRICE_GRID
 from trading_companion.technical_insights import aggregate_completed_weeks
 from trading_companion.trade_plan import TradePlan, PURPOSES, HORIZON_METHOD
+from trading_companion.atr_plan_math import atr_geometry, purpose_values
 
 WEEKLY_METHOD = 'complete-week-atr14-v1:' + ALGORITHM_VERSIONS['atr']
 
@@ -92,26 +93,13 @@ def build_horizon_plans(result, *, expected_request, horizon, unavailable_code=N
                                   evidence_ids=(checked.evidence_ids[0], weekly.id))
             if timeframe == 'daily' or weekly:
                 try:
-                    with localcontext() as context:
-                        context.prec = 80
-                        entry = Decimal(checked.values.reference_entry)
-                        stop = (entry - Decimal(multiple) * value).quantize(PRICE_GRID, rounding=ROUND_CEILING)
-                        risk = entry - stop
-                        first, second = ((entry + Decimal(t) * risk).quantize(PRICE_GRID, rounding=ROUND_FLOOR) for t in targets)
-                        if not 0 < stop < entry < first < second:
-                            raise ValueError('price_grid')
-                        ratio = lambda target: format(((target-entry)/risk).quantize(Decimal('.000001'), rounding=ROUND_FLOOR), 'f')
-                        core = dict(reference_entry=format(entry, '.2f') if entry == entry.quantize(PRICE_GRID) else format(entry, 'f'),
-                            reference_stop=format(stop, '.2f'), target_1=format(first, '.2f'), target_2=format(second, '.2f'),
-                            reward_risk_1=ratio(first), reward_risk_2=ratio(second),
-                            atr=format(value.quantize(Decimal('.0001'), rounding=ROUND_HALF_UP), '.4f'), atr_multiple=multiple)
+                    core = atr_geometry(checked.values.reference_entry, value, multiple, targets)
                 except (DecimalException, ValueError, OverflowError):
                     code = 'plan_price_grid_unavailable'
     plans = []
     identity = sha256(str(horizon).encode()).hexdigest()[:16]
     for purpose in PURPOSES:
-        values = core if purpose == 'conditional_entry' else ({'reference_close': core['reference_entry'], 'exit_below': core['reference_stop']}
-            if purpose == 'holding_exit' else {'observe_below': core['reference_stop'], 'observe_above': core['target_1']}) if core else None
+        values = purpose_values(core, purpose) if core else None
         plans.append(TradePlan(f'{request_id or instrument}|{HORIZON_METHOD}:{identity}:{purpose}', purpose=purpose,
             status='available' if values else 'unavailable', code='plan_ready' if values else code,
             values=tuple(values.items()) if values else (), **common))

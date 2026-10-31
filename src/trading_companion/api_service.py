@@ -163,6 +163,12 @@ class _Entry:
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
     """Explicit allowlist; never use the Agent's debug-oriented to_dict() here."""
+    if result.index_pending_expires_at is not None:
+        return dict(status=result.status, code=result.code, message=result.message, answer=result.message,
+            stage=result.stage, report=None, parameters=None, chart=None, market_context=None, candidates=[],
+            clarification_expires_at=result.index_pending_expires_at, applied_defaults=[],
+            model_calls_attempted=result.model_calls_attempted, analyses_used=result.analyses_used,
+            runtime=deepcopy(result.runtime), validation_scope='application_owned_index_horizon')
     if result.index_result is not None and result.index_research is not None:
         from trading_companion.index_chart import daily_chart
         from trading_companion.index_contracts import LIMITATIONS
@@ -692,7 +698,8 @@ class ResearchApiService:
                     and result.session_event == 'index_research' and projected.get('index_research') is not None
                     and result.runtime is not None and result.runtime.get('stop_code') is None):
                 try:
-                    projected['index_research']['snapshot_id'] = self._snapshot_store.save_index(result.index_result)
+                    projected['index_research']['snapshot_id'] = self._snapshot_store.save_index(result.index_result,
+                        direction=result.index_answer.direction if result.index_answer.origin == 'model' else None)
                     projected['index_research']['snapshot_status'] = 'saved'
                 except Exception:
                     projected['index_research']['snapshot_status'] = 'unavailable'

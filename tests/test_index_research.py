@@ -56,7 +56,7 @@ class IndexResearchTests(unittest.TestCase):
                 self.assertNotIn('元/股', outcome.display_answer)
 
     def test_default_benchmark_and_missing_recognition(self):
-        for question in ('分析一下大盘指数的走势', '现在A股能买吗', 'A股市场走势'):
+        for question in ('分析一下大盘指数的走势', 'A股市场走势'):
             outcome = self.run_index(question)
             self.assertEqual(outcome.index_result.request.instrument_id, '000001.SH')
             self.assertTrue(outcome.display_answer.startswith('本次以上证指数作为大盘观察基准。'))
@@ -133,11 +133,11 @@ class IndexResearchTests(unittest.TestCase):
         self.assertNotEqual(edited.index_result.request.request_id, first.index_result.request.request_id)
         self.assertEqual(edited.model_calls_attempted, 1)
 
-    def test_plan_request_is_explicitly_deferred(self):
+    def test_plan_request_has_direction_selected_observation_plan(self):
         result = self.run_index('上证指数中线走势和止盈止损计划')
-        self.assertIn('点位计划下一批提供', result.display_answer)
-        self.assertIsNone(result.index_research.get('scenario_plan'))
-        self.assertIn('点位计划下一批提供', self.run_index('查看上次结果').display_answer)
+        self.assertIn('点位情景计划', result.display_answer)
+        self.assertEqual(result.index_research['scenario_plan']['purpose'], 'wait')
+        self.assertEqual(self.run_index('查看上次结果').index_research['scenario_plan'], result.index_research['scenario_plan'])
 
     def test_followup_explicit_horizon_is_kept_separate_from_history_window(self):
         original = self.run_index('上证指数走势').index_result.request

@@ -1,0 +1,480 @@
+{
+  "explicit": [
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来4个月",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:ba36db13e1894486:conditional_entry",
+      "price_adjustment": null,
+      "purpose": "conditional_entry",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来4个月",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:ba36db13e1894486:holding_exit",
+      "price_adjustment": null,
+      "purpose": "holding_exit",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来4个月",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:ba36db13e1894486:wait",
+      "price_adjustment": null,
+      "purpose": "wait",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    }
+  ],
+  "legacy": [
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v1:conditional_entry",
+      "price_adjustment": null,
+      "purpose": "conditional_entry",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "values": null,
+      "version": "trade-plan-v1"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v1:holding_exit",
+      "price_adjustment": null,
+      "purpose": "holding_exit",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "values": null,
+      "version": "trade-plan-v1"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v1",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v1:wait",
+      "price_adjustment": null,
+      "purpose": "wait",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "values": null,
+      "version": "trade-plan-v1"
+    }
+  ],
+  "long": [
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2",
+      "atr_source_date": null,
+      "atr_timeframe": "weekly",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来120个交易日",
+      "horizon_profile": "long",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-weekly|atr_reference_plan_v2:341c56f921fb40b7:conditional_entry",
+      "price_adjustment": null,
+      "purpose": "conditional_entry",
+      "request_id": "stock-math-weekly",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2",
+      "atr_source_date": null,
+      "atr_timeframe": "weekly",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来120个交易日",
+      "horizon_profile": "long",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-weekly|atr_reference_plan_v2:341c56f921fb40b7:holding_exit",
+      "price_adjustment": null,
+      "purpose": "holding_exit",
+      "request_id": "stock-math-weekly",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2",
+      "atr_source_date": null,
+      "atr_timeframe": "weekly",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来120个交易日",
+      "horizon_profile": "long",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-weekly|atr_reference_plan_v2:341c56f921fb40b7:wait",
+      "price_adjustment": null,
+      "purpose": "wait",
+      "request_id": "stock-math-weekly",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    }
+  ],
+  "medium": [
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来40个交易日",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:3adb4d9232100ce4:conditional_entry",
+      "price_adjustment": null,
+      "purpose": "conditional_entry",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来40个交易日",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:3adb4d9232100ce4:holding_exit",
+      "price_adjustment": null,
+      "purpose": "holding_exit",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "2.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来40个交易日",
+      "horizon_profile": "medium",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:3adb4d9232100ce4:wait",
+      "price_adjustment": null,
+      "purpose": "wait",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "2",
+        "3"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    }
+  ],
+  "short": [
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "1.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来10个交易日",
+      "horizon_profile": "short",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:23a5d04bb742f670:conditional_entry",
+      "price_adjustment": null,
+      "purpose": "conditional_entry",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "1.5",
+        "2.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "1.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来10个交易日",
+      "horizon_profile": "short",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:23a5d04bb742f670:holding_exit",
+      "price_adjustment": null,
+      "purpose": "holding_exit",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "1.5",
+        "2.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    },
+    {
+      "assumptions": [
+        "历史收盘参考；条件价位由规则计算，不是预测目标。",
+        "未计费用、滑点、跳空及交易限制，不保证按参考价成交。"
+      ],
+      "atr_indicator_id": null,
+      "atr_multiple": "1.5",
+      "atr_source_date": null,
+      "atr_timeframe": "daily",
+      "code": "risk_evidence_mismatch",
+      "condition": null,
+      "data_authenticity": null,
+      "evidence_ids": [],
+      "execution_allowed": false,
+      "horizon": "未来10个交易日",
+      "horizon_profile": "short",
+      "instrument_id": "000001.SZ",
+      "method": "atr_reference_plan_v2",
+      "origin": "application",
+      "plan_id": "stock-math-daily|atr_reference_plan_v2:23a5d04bb742f670:wait",
+      "price_adjustment": null,
+      "purpose": "wait",
+      "request_id": "stock-math-daily",
+      "source": null,
+      "source_date": null,
+      "status": "unavailable",
+      "target_multiples": [
+        "1.5",
+        "2.5"
+      ],
+      "values": null,
+      "version": "trade-plan-v2"
+    }
+  ]
+}

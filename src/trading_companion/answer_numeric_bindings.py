@@ -82,7 +82,8 @@ def atoms(record):
     unit = record.get('unit')
     field = record.get('field') or FIELDS.get(record.get('label'))
     if value is not None and unit in UNITS:
-        return [Atom(value, UNITS[unit], identity, field)]
+        return [Atom(value, UNITS[unit], identity, field,
+                     record.get('plan_id') if record.get('content_kind') == 'index_scenario' else None)]
     # For title records only the supplied (possibly truncated) title is available.
     title = record.get('kind') in ('news', 'announcements')
     display = unicodedata.normalize('NFKC', record.get('display', ''))
@@ -210,6 +211,9 @@ def _masked(text, context, records):
             # This exact cap is application-authored evidence metadata. Other
             # counts, asserted sample sizes and ordinary values stay visible.
             masked = re.sub(re.escape(window_label), lambda m: ' ' * len(m[0]), masked)
+        if context.get('_index_scenario'):
+            masked = re.sub(r'(?:止盈|目标|实际盈亏比)\s*[12](?!\d)',
+                            lambda m: ' ' * len(m[0]), masked)
     for match in DATE.finditer(normalized):
         try:
             day = date(*(int(x) for x in match.groups())).isoformat()
@@ -308,6 +312,8 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
             local_spans.append((left, right, binding, bad or start < offset or end > offset+len(sentence)))
     index_context = context.get('instrument_kind') == 'index'
     def matches(value, atom, shown, diagnostic=None):
+        if index_context and atom.plan_id is not None:
+            return value == atom.value
         if index_context and atom.kind in ('index', 'index_price'):
             from trading_companion.evidence_numbers import same_display_number
             return same_display_number(value, atom.value)
@@ -349,6 +355,24 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         label = PLAN_PREFIX.search(normalized[:match.start()])
         suffix_label = PLAN_SUFFIX.search(normalized[match.end():])
         plan_field = PLAN_LABELS[label[1]] if label else PLAN_LABELS[suffix_label[1]] if suffix_label else None
+        if index_context and context.get('_index_scenario'):
+            labels = {'入场参考': 'reference_entry', '止损参考': 'reference_stop', '跌破观察位': 'reference_stop',
+                '止损': 'reference_stop', '止盈1': 'target_1', '目标1': 'target_1',
+                '止盈2': 'target_2', '目标2': 'target_2', '实际盈亏比1': 'reward_risk_1',
+                '实际盈亏比2': 'reward_risk_2', '下方观察位': 'observe_below', '上方观察位': 'observe_above',
+                '收盘参考': 'reference_close', '退出观察位': 'exit_below', '跌破止损参考': 'exit_below'}
+            prefix = re.sub(r'\s+', '', normalized[:match.start()])
+            prefix = re.sub(r'\((?:跌破观察位|目标[12]|跌破止损参考)\)', '', prefix)
+            found = re.search('('+'|'.join(sorted(labels, key=len, reverse=True))
+                              +r')(?:为|是|约|在|[:：])*(跌破|低于|高于|站上)?$', prefix)
+            if found:
+                plan_field = labels[found[1]]
+                if found[2] and plan_field not in (
+                        ('reference_stop', 'exit_below', 'observe_below') if found[2] in ('跌破', '低于')
+                        else ('reference_entry', 'target_1', 'target_2', 'observe_above')):
+                    return reject('index_scenario_direction_conflict', BINDING_INVALID)
+            if plan_field is None:
+                return reject('index_scenario_field_required', BINDING_INVALID)
         # A coordinated historical low in the same comma clause is not another
         # plan price: "跌破51.58元计划止损且失守50.11元低点".
         boundary = r'[，,；;。]|并且|以及|且|并|和'
@@ -439,9 +463,9 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                     d['reason'] = 'unit_kind_mismatch'
                 elif plan_field and (not field_ok or atom.plan_id is None):
                     d['reason'] = 'plan_field_mismatch'
-                elif protected and atom.kind == 'price' and atom.plan_id is None:
+                elif protected and atom.kind in (('price', 'index_price') if index_context else ('price',)) and atom.plan_id is None:
                     d['reason'] = 'plan_source_required'
-                elif expected_plan and atom.kind == 'price' and atom.plan_id != expected_plan:
+                elif expected_plan and atom.kind in (('price', 'index_price', 'ratio') if index_context else ('price',)) and atom.plan_id != expected_plan:
                     d['reason'] = 'selected_plan_mismatch'
                 elif direction_error:
                     d['reason'] = direction_error

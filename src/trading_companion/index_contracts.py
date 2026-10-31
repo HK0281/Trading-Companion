@@ -62,6 +62,10 @@ class IndexResearchRequest:
     request_id: str = field(default_factory=lambda: uuid4().hex)
     benchmark_defaulted: bool = False
     horizon: str | None = None
+    scenario_requested: bool = False
+    historical_explicit: bool = False
+    indicators_strict: bool = False
+    scenario_code: str | None = None
 
     def __post_init__(self):
         identity(self.instrument_id)
@@ -70,7 +74,9 @@ class IndexResearchRequest:
         if (self.source not in ('tencent', 'csv') or type(self.benchmark_defaulted) is not bool
                 or self.benchmark_defaulted and self.instrument_id != '000001.SH'
                 or type(self.request_id) is not str or re.fullmatch(r'[A-Za-z0-9_.-]{1,100}', self.request_id) is None
-                or self.horizon is not None and (type(self.horizon) is not str or len(self.horizon) > 120)):
+                or self.horizon is not None and (type(self.horizon) is not str or len(self.horizon) > 120)
+                or any(type(v) is not bool for v in (self.scenario_requested, self.historical_explicit, self.indicators_strict))
+                or self.scenario_code not in (None, 'plan_excluded', 'risk_atr_not_requested')):
             raise InvalidRequestError('Invalid index research conditions')
 
     @property
@@ -118,8 +124,14 @@ class IndexResearchResult:
         return 'synthetic' if self.request.source == 'csv' else 'provider_reported'
 
     def to_dict(self):
-        return dict(version='index-snapshot-v1', parameters=self.request.parameters(),
+        output = dict(version='index-snapshot-v1', parameters=self.request.parameters(),
                     request_id=self.request.request_id, benchmark_defaulted=self.request.benchmark_defaulted,
                     horizon=self.request.horizon, retrieved_at=self.retrieved_at.isoformat(),
                     data_authenticity=self.authenticity,
                     bars=[{**asdict(b), 'trade_date': b.trade_date.isoformat()} for b in self.bars])
+        if (self.request.scenario_requested or self.request.historical_explicit
+                or self.request.indicators_strict or self.request.scenario_code):
+            output.update(version='index-snapshot-v2', scenario_requested=self.request.scenario_requested,
+                historical_explicit=self.request.historical_explicit, indicators_strict=self.request.indicators_strict,
+                scenario_code=self.request.scenario_code)
+        return output

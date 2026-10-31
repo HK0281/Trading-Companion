@@ -66,6 +66,7 @@ class AgentTurnResult:
     index_result: object | None = field(default=None, repr=False)
     index_answer: object | None = field(default=None, repr=False)
     index_research: dict | None = field(default=None, repr=False)
+    index_pending_expires_at: str | None = field(default=None, repr=False)
     screening_result: object | None = field(default=None, repr=False)
     screening_defaulted: bool = False
     followup_answer: FollowupAnswer | None = field(default=None, repr=False)

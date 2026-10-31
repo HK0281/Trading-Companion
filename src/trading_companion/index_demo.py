@@ -23,5 +23,14 @@ def index_demo_response(messages, tools):
                 claim('情景', '若后续收盘走强可重新研究，走弱则关注下行风险，不能据此保证后续趋势。'),
                 claim('观察重点', '核对历史点位与指标，若后续走势与当前观察相反应重新评估。'),
             ])
+        candidate = next((c for c in data.get('scenario_candidates', ())
+                          if c['plan']['purpose'] == 'wait' and c['plan']['status'] == 'available'), None)
+        if candidate:
+            payload['direction'] = '震荡'
+            payload['blocks'][0]['text'] = '人工示例的方向设为震荡，把握低，仅用于演示。'
+            payload['scenario_blocks'] = [dict(title='观察重点',
+                text=''.join(f"指数{r['label']}为{r['display_value']}点。" for r in candidate['evidence']),
+                evidence_ids=[r['id'] for r in candidate['evidence']],
+                numbers=[dict(text=r['display_value']+'点', ref=r['id'], field=r['field']) for r in candidate['evidence']])]
         return ToolModelResponse('complete', text=json.dumps(payload, ensure_ascii=False))
     return None

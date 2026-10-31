@@ -260,7 +260,7 @@ class ResearchSession:
 
     def to_dict(self) -> dict[str, object]:
         if self.index_pending is not None:
-            return {'state': 'awaiting_index', 'pending': {'kind': 'index_identity',
+            return {'state': 'awaiting_index', 'pending': {'kind': 'index_'+self.index_pending.stage,
                 'created_at': self.index_pending.created_at.isoformat(),
                 'expires_at': (self.index_pending.created_at + PENDING_LIFETIME).isoformat()},
                 'confirmed': None, 'saved_result': None}

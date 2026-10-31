@@ -64,6 +64,7 @@ class RoutingSessionView:
     latest_current: bool = True
     latest_shared: bool = False
     index_pending: bool | None = None
+    index_horizon_pending: bool = False
 
     @property
     def pending_count(self) -> int:
@@ -73,6 +74,7 @@ class RoutingSessionView:
     def capture(cls, session: ResearchSession) -> "RoutingSessionView":
         return cls(product_pending=True if session.product_pending is not None else None,
             index_pending=True if session.index_pending is not None else None,
+            index_horizon_pending=getattr(session.index_pending, 'stage', None) == 'horizon',
             product_horizon_pending=getattr(session.product_pending, 'stage', None) == 'horizon',
             pending=True if session.pending is not None else None,
             pending_edit=True if session.pending_edit is not None else None,
@@ -129,7 +131,7 @@ def probe_general_knowledge(question: str, *, workflow: bool, history: bool,
                             session: RoutingSessionView | None = None) -> bool:
     """Whether the API should attempt the optional local identity hint first."""
     from trading_companion.decision_horizon import is_horizon_reply
-    return (workflow and not history and not (session and session.product_horizon_pending and is_horizon_reply(question))
+    return (workflow and not history and not (session and (session.product_horizon_pending or session.index_horizon_pending) and is_horizon_reply(question))
             and parse_knowledge_question(question) is None
             and is_general_knowledge_question(question))
 
@@ -137,7 +139,7 @@ def probe_general_knowledge(question: str, *, workflow: bool, history: bool,
 def _knowledge(value: _MatchInput) -> bool:
     directory = value.context.directory if value.context is not None else value.directory
     from trading_companion.decision_horizon import is_horizon_reply
-    if value.context is not None and value.context.session.product_horizon_pending and is_horizon_reply(value.question, directory):
+    if value.context is not None and (value.context.session.product_horizon_pending or value.context.session.index_horizon_pending) and is_horizon_reply(value.question, directory):
         return False
     return is_general_knowledge_question(value.question, directory=directory)
 

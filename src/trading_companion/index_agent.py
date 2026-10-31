@@ -46,6 +46,11 @@ class PendingIndexResearch:
     created_at: datetime
     source: str
     development_source: object
+    stage: str = 'identity'
+    instrument_id: str | None = None
+    benchmark_defaulted: bool = False
+    reference_date: object = None
+    base: object = None
 
 
 def owns_index_request(question, session=None, directory=None):
@@ -53,6 +58,9 @@ def owns_index_request(question, session=None, directory=None):
         return True
     kind = getattr(getattr(session, 'latest_research', None), 'kind', None)
     if session is not None and session.index_pending is not None:
+        from trading_companion.decision_horizon import is_horizon_reply
+        if session.index_pending.stage == 'horizon' and is_horizon_reply(question):
+            return True
         from trading_companion.routing_context import independent_task
         if not independent_task(question, directory):
             from trading_companion.indicator_knowledge import parse_knowledge_question
@@ -65,9 +73,15 @@ def owns_index_request(question, session=None, directory=None):
             or index_continuation(question, latest_kind=kind, directory=directory))
 
 
-def _reply(code, message, *, status='needs_clarification'):
+def _reply(code, message, *, status='needs_clarification', expires=None):
     from trading_companion.agent import AgentTurnResult
-    return AgentTurnResult(status=status, code=code, message=message, stage='clarification', input_mode='natural')
+    return AgentTurnResult(status=status, code=code, message=message, stage='clarification', input_mode='natural',
+                           index_pending_expires_at=expires.isoformat() if expires else None)
+
+
+def _horizon_reply(pending):
+    return _reply('index_horizon_required', '你希望按短线（1-2周）、中线（1-3个月）还是长线（半年以上）观察？请回复一个期限。',
+                  expires=pending.created_at+timedelta(minutes=15))
 
 
 def _saved(session, *, source, development_source, now, history):
@@ -94,7 +108,9 @@ def _outcome(result, answer, *, responses=(), saved_at=None, plan_notice=False):
     from trading_companion.agent import AgentTurnResult
     answer = checked_answer(result, answer)
     view = public_index(result, answer, saved_at=saved_at, plan_notice=plan_notice)
-    complete = answer.origin == 'model' and not answer.quality.partial and not any(s.kind in VOLUME_KINDS for s in result.request.indicators)
+    complete = (answer.origin == 'model' and not answer.quality.partial and not answer.scenario_quality.partial
+        and not any(s.kind in VOLUME_KINDS for s in result.request.indicators)
+        and (not result.request.scenario_requested or view['scenario_plan']['status'] == 'available'))
     return AgentTurnResult(status='completed' if complete else 'limited',
         code='index_research_completed' if answer.origin == 'model' else 'index_research_facts_only',
         stage='index_research', input_mode='natural',
@@ -133,6 +149,11 @@ def _execute(question, *, session, model, directory, source, development_source,
     history = question.rstrip('。.!！') in HISTORY
     # A configuration switch invalidates saved index data even if directory admission fails.
     saved = _saved(session, source=effective_source, development_source=development_source, now=now, history=history)
+    pending = session.index_pending
+    if pending is not None and (not pending.created_at <= now < pending.created_at+timedelta(minutes=15)
+            or pending.source != effective_source or pending.development_source != development_source):
+        session.clear_pending()
+        return _reply('index_clarification_expired', '原指数任务已过期或配置已变化，请重新提供完整研究问题。')
     try:
         directory.assert_usable(reference, development=development_source is not None)
     except (InvalidRequestError, DataValidationError):
@@ -157,22 +178,56 @@ def _execute(question, *, session, model, directory, source, development_source,
         if pending is not None and pending.question == question:
             return _routing_reply(code)
         session.begin_research()
-        session.index_pending = PendingIndexResearch(question, now, effective_source, development_source)
+        session.index_pending = PendingIndexResearch(question, now, effective_source, development_source, reference_date=reference)
         return _routing_reply(code)
     pending = session.index_pending
+    resumed_base = None
     if pending is not None:
         if (not pending.created_at <= now < pending.created_at + timedelta(minutes=15)
                 or pending.source != effective_source or pending.development_source != development_source):
             session.clear_pending()
             return _reply('index_clarification_expired', '原指数选择已过期或配置已变化，请重新提供完整研究问题。')
-        if index is not None and question.rstrip('。.!！') in (*index.aliases, index.instrument_id, index.symbol):
+        from trading_companion.decision_horizon import is_horizon_reply, canonical
+        if pending.stage == 'horizon':
+            from trading_companion.index_contracts import identity
+            owner = identity(pending.instrument_id)
+            text = question
+            if index is not None:
+                if index != owner:
+                    return _reply('index_selection_mismatch', '期限回复中的指数与原任务不一致，请重新提出完整问题。')
+                for name in sorted((*owner.aliases, owner.name, owner.instrument_id, owner.symbol), key=len, reverse=True):
+                    text = text.replace(name, '')
+            if not is_horizon_reply(text):
+                return _horizon_reply(pending)
+            try:
+                outlook = extract_outlook(text)
+                horizon = canonical(outlook.horizon)
+            except InputIssue as issue:
+                return _reply(issue.code, str(issue))
+            question = pending.question+'，'+horizon
+            index, defaulted = owner, pending.benchmark_defaulted
+            reference = pending.reference_date or reference
+            resumed_base = pending.base
+            if resumed_base is not None:
+                if not resumed_base.saved_at <= now < resumed_base.saved_at+timedelta(minutes=15):
+                    session.clear_pending()
+                    return _reply('index_clarification_expired', '原指数快照已过期，请重新提供完整问题。')
+                saved = resumed_base
+        elif index is not None and (question.rstrip('。.!！') in (*index.aliases, index.instrument_id, index.symbol)
+                or any(question.startswith(name) and is_horizon_reply(question[len(name):].strip(' ，,。'))
+                       for name in (*index.aliases, index.name, index.instrument_id, index.symbol))):
             if '科创板指数' in pending.question and index.instrument_id != '000688.SH':
                 return _reply('index_selection_mismatch', '原问题中的科创板指数尚未确认；请明确选择科创50，或提出完整新研究。')
+            suffix = next((question[len(name):].strip(' ，,。') for name in sorted(
+                (*index.aliases, index.name, index.instrument_id, index.symbol), key=len, reverse=True) if question.startswith(name)), '')
             question = pending.question.replace('科创板指数', index.name) if '科创板指数' in pending.question else index.name + '：' + pending.question
+            if suffix:
+                question += '，'+suffix
+            reference = pending.reference_date or reference
         elif index is None:
             return _reply('index_identity_required', '请回复一个完整指数名称；原问题和日期条件仍保留，或回复取消。')
     # A nameless follow-up may only use the latest current index, never another cache.
-    continuation = index is None
+    continuation = index is None or resumed_base is not None
     if continuation:
         if saved is None:
             return _reply('index_current_unavailable', '当前没有可续接的同一指数研究，请重新明确指数；未借用旧股票或旧指数资料。')
@@ -184,21 +239,67 @@ def _execute(question, *, session, model, directory, source, development_source,
         session.begin_research()
         return _reply('index_source_unsupported', '指数研究目前只支持腾讯；当前来源未接入指数，未自动换源。', status='out_of_scope')
     from trading_companion.research_decision import wants_prices, excludes_plan
-    plan_notice = (not excludes_plan(question) and (wants_prices(question)
-        or bool(re.search(r'点位计划|情景计划|跌破观察位|入场参考|盈亏比', question))))
+    from trading_companion.decision_horizon import canonical, profile
+    from trading_companion.multi_contracts import IndicatorSpec
+    plan_notice = False
+    try:
+        outlook = extract_outlook(question)
+        same = saved is not None and saved.result.request.instrument_id == index.instrument_id
+        horizon = canonical(outlook.horizon if outlook and outlook.horizon else saved.result.request.horizon if same else None)
+        requested = not excludes_plan(question) and (wants_prices(question)
+            or bool(re.search(r'点位计划|情景计划|跌破观察位|入场参考|盈亏比', question))
+            or continuation and saved.result.request.scenario_requested)
+        indicators = _indicators(question, saved.result.request.indicators if continuation else None)
+        strict = bool(re.search(r'只看|仅看|只用|仅用|严格|只分析|仅分析', question)) or bool(continuation and saved.result.request.indicators_strict)
+        _, excluded = _positive_scope(question)
+        blocked = 'plan_excluded' if requested and 'risk' in excluded else None
+        if requested and not blocked and not any(s.kind == 'atr' and s.parameters['window'] == 14 for s in indicators):
+            if strict or 'indicator:atr' in excluded or 'risk' in excluded:
+                blocked = 'risk_atr_not_requested'
+            else:
+                indicators += (IndicatorSpec('atr', window=14),)
+        if requested and not blocked and horizon is None:
+            created = pending.created_at if pending else saved.saved_at if continuation else now
+            session.begin_research()
+            session.index_pending = PendingIndexResearch(question, created, effective_source, development_source,
+                'horizon', index.instrument_id, defaulted if not continuation else saved.result.request.benchmark_defaulted,
+                reference, saved if continuation else None)
+            return _horizon_reply(session.index_pending)
+    except InputIssue as issue:
+        return _reply(issue.code, str(issue), status=issue.status)
     if continuation and re.search(r'财报|基本面|新闻|公告|资金流|板块|成份股', question):
         return _reply('market_scope_unsupported', '本批只支持指数技术研究，尚无财报、新闻、资金流或成份股研究能力。', status='out_of_scope')
     # Explanations and a weekly view reuse the same daily evidence, with one narrative call.
-    if continuation and not is_indicator_edit(question) and not re.search(r'刷新|最新|重新|最近|近\d|过去|\d{4}-|未来|短线|中线|长线', question):
-        answer, responses = synthesize_index_answer(question, saved.result, model=model, directory=directory)
-        return _outcome(saved.result, answer, responses=responses, saved_at=saved.saved_at, plan_notice=plan_notice or saved.plan_notice)
+    reuse = None
+    if continuation and not is_indicator_edit(question) and not re.search(r'刷新|最新|重新', question):
+        local_dates = mask_outlook_expressions(question)
+        if not _DATE_CUE.search(local_dates):
+            old = saved.result.request
+            request = replace(old, horizon=horizon, indicators=indicators, scenario_requested=requested,
+                indicators_strict=strict, scenario_code=blocked)
+            if requested and not blocked and profile(horizon) == 'long' and not old.historical_explicit and (old.as_of_date-old.start_date).days+1 < 366:
+                reuse = replace(request, start_date=old.as_of_date-timedelta(days=365), request_id=uuid4().hex)
+            else:
+                if request != old:
+                    request = replace(request, request_id=uuid4().hex)
+                result = replace(saved.result, request=request)
+                answer, responses = synthesize_index_answer(question, result, model=model, directory=directory)
+                session.index_saved = SavedIndexResearch(result, answer, saved.saved_at, development_source)
+                session.stage_research_subject((), kind='index', source=effective_source,
+                    development=development_source is not None, now=saved.saved_at, scope=request)
+                return _outcome(result, answer, responses=responses, saved_at=saved.saved_at)
     responses = ()
     # Consume the subject before fallible interpretation. Explicit history stays detached.
     session.begin_research()
     try:
-        if continuation and is_indicator_edit(question):
+        if reuse is not None:
+            request = reuse
+        elif continuation and is_indicator_edit(question):
             request = replace_indicator(saved.result.request, question, request_factory=IndexResearchRequest)
-            request = replace(request, benchmark_defaulted=saved.result.request.benchmark_defaulted, horizon=saved.result.request.horizon)
+            old = saved.result.request
+            request = replace(request, benchmark_defaulted=old.benchmark_defaulted, horizon=horizon,
+                scenario_requested=requested, historical_explicit=old.historical_explicit, indicators_strict=strict,
+                scenario_code=blocked if any(s.kind == 'atr' and s.parameters['window'] == 14 for s in request.indicators) else 'risk_atr_not_requested' if requested else None)
         else:
             response = model.complete((ToolMessage('system', 'Extract only the literal historical date_expression using interpret_index_research. Never infer an index code or future market data.'),
                                        ToolMessage('user', question)), tools=(INTENT_TOOL,))
@@ -216,16 +317,19 @@ def _execute(question, *, session, model, directory, source, development_source,
                 expression = expression.strip()
                 if expression not in question:
                     return _reply('index_intent_ungrounded', '日期条件不是原问题中的完整表达，未查询行情。')
-            outlook = extract_outlook(question)
             start, end, _ = _dates(expression, date_text, reference)
+            explicit = expression is not None or bool(_DATE_CUE.search(date_text))
             if continuation and expression is None and not _DATE_CUE.search(date_text) and not re.search(r'刷新|最新|重新', question):
                 start, end = saved.result.request.start_date, saved.result.request.as_of_date
+                explicit = saved.result.request.historical_explicit
+            if requested and not blocked and profile(horizon) == 'long' and not explicit:
+                start = end-timedelta(days=365)
             if end >= reference:
                 raise InvalidRequestError('Only completed historical index daily bars are supported')
-            request = IndexResearchRequest(index.instrument_id, start, end, _indicators(question,
-                saved.result.request.indicators if continuation else None), effective_source,
+            request = IndexResearchRequest(index.instrument_id, start, end, indicators, effective_source,
                 benchmark_defaulted=defaulted if not continuation else saved.result.request.benchmark_defaulted,
-                horizon=outlook.horizon if outlook is not None else saved.result.request.horizon if continuation else None)
+                horizon=horizon, scenario_requested=requested, historical_explicit=explicit,
+                indicators_strict=strict, scenario_code=blocked)
         checkpoint()
         reserve_analysis()
         if effective_source == 'csv':

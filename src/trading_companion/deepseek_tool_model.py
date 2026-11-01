@@ -249,8 +249,8 @@ class DeepSeekToolModel:
         history, definitions, seen_ids = validate_tool_messages(messages, tools=tools)
         if self.repair_tool_arguments and (len(definitions) != 1
                 or definitions[0].name != 'interpret_research_intent_v2'
-                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.1']):
-            raise ModelConfigurationError('Argument repair is restricted to the v2.5.1 intent candidate')
+                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.2']):
+            raise ModelConfigurationError('Argument repair is restricted to the v2.5.2 intent candidate')
         body = {
             "model": self.config.model,
             "messages": [_wire_message(message) for message in history],

@@ -27,11 +27,13 @@ SOURCES = {
     'regression': ROOT/'.agentbus/evaluation-runs/research-intent-v2.4/holdout/report.json',
 }
 PUBLIC_V25 = ROOT/'.agentbus/evaluation-runs/research-intent-v2.5/public/cbdc7d62b342a3edee292d1305795bbb343fec04'
+PUBLIC_V251 = ROOT/'.agentbus/evaluation-runs/research-intent-v2.5/public/e49ff07172df3b148cfc3dc0ba8a8b96e31ac1ab'
 SOURCES_BY_VERSION = {'v2.4': SOURCES,
-                      'v2.5': {split: PUBLIC_V25/split/'report.json' for split in ('dev', 'regression')}}
+                      'v2.5': {split: PUBLIC_V25/split/'report.json' for split in ('dev', 'regression')},
+                      'v2.5.1': {split: PUBLIC_V251/split/'report.json' for split in ('dev', 'regression')}}
 
 
-def migrate_response(value, source_version='v2.5'):
+def migrate_response(value, source_version='v2.5.1'):
     """An explicit version-only copy; retain the original response in the replay row."""
     expected = {'status', 'text', 'tool_calls', 'provider', 'requested_model', 'model', 'is_mock', 'finish_reason', 'usage'}
     if type(value) is not dict or value.keys() != expected or type(value['tool_calls']) is not list:
@@ -48,7 +50,7 @@ def migrate_response(value, source_version='v2.5'):
     return ToolModelResponse(**copied)
 
 
-def replay_reports(reports, source_version='v2.5'):
+def replay_reports(reports, source_version='v2.5.1'):
     """Reports are explicit old observations; neither gold nor target scripts enter checking."""
     rows, effective, prefixes, setups = evaluation.populations('all')
     if source_version not in SOURCES_BY_VERSION:
@@ -107,7 +109,8 @@ def replay_reports(reports, source_version='v2.5'):
                                       original_response_unchanged=True)))
     report = evaluation.report_results(output, effective, dict(kind='offline_replay', target_calls=0,
         model_factory_calls=0, retries=0, annotation_completion=evaluation.annotation_completion()),
-        notice=evaluation.REPLAY_251_NOTICE if source_version == 'v2.5' else evaluation.REPLAY_NOTICE)
+        notice={'v2.4': evaluation.REPLAY_NOTICE, 'v2.5': evaluation.REPLAY_251_NOTICE,
+                'v2.5.1': evaluation.REPLAY_252_NOTICE}[source_version])
     report.update(passed=None, thresholds=None, new_model_results=False,
                   note='仅回放旧提案及新本地前置，不检验新提示词或推测缺失JSON；缺响应、失败和未测仍留在完整分母。')
     return report
@@ -116,7 +119,7 @@ def replay_reports(reports, source_version='v2.5'):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report-dir', type=Path, default=ROOT/'.agentbus/tmp/intent-v25-replay')
-    parser.add_argument('--source-version', choices=tuple(SOURCES_BY_VERSION), default='v2.5')
+    parser.add_argument('--source-version', choices=tuple(SOURCES_BY_VERSION), default='v2.5.1')
     args = parser.parse_args(argv)
     base = args.report_dir.resolve()
     if not base.is_relative_to((ROOT/'.agentbus/tmp').resolve()):

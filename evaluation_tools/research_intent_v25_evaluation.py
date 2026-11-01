@@ -24,8 +24,9 @@ from trading_companion.turn_control import TurnControl, TurnLimits
 
 NOT_APPLICABLE = {'V2222', 'V2223'}
 LIMITS = {'dev': 233, 'regression': 85}
-REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.1 程序回放，不是新模型成绩'
-REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.1 程序回放，不是新模型成绩'
+REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.2 程序回放，不是新模型成绩'
+REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.2 程序回放，不是新模型成绩'
+REPLAY_252_NOTICE = 'v2.5.1 原始响应经 v2.5.2 程序回放，不是新模型成绩'
 ADDENDUM = ROOT/'data/evaluation/research-intent-v2.5.1-amendments.json'
 _ARGUMENT_SINK = ContextVar('v251_argument_diagnostic_sink', default=None)
 
@@ -355,7 +356,7 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
                 group['count'] += 1
                 if row['id'] not in group['ids']:
                     group['ids'].append(row['id'])
-    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE) else
+    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE, REPLAY_252_NOTICE) else
         'mock_experiment' if telemetry['mock_responses'] else
         'live_provider' if live and telemetry['attempts'] else 'no_provider_observation')
     return dict(kind='research-intent-v2.5-public-report', title=notice or 'v2.5 公开开发与已暴露回归',

@@ -73,8 +73,9 @@ class TechnicalAndSubjectTests(OfflineTests):
             self.check('研究平安银行', value)
         with self.assertRaises(InputIssue):
             self.check('研究平安银行，只用BOLL', draft(indicator_mentions=['BOLL']))
-        with self.assertRaises(InputIssue):
-            self.check('研究平安银行，不用BOLL', draft(indicator_mentions=['BOLL']))
+        conflict = self.check('研究平安银行，不用BOLL', draft(indicator_mentions=['BOLL']))
+        self.assertEqual((conflict.outcome, conflict.indicator_mentions, conflict.exclusions),
+                         ('clarify_conflict', (), ('indicator:boll',)))
 
     def test_whole_group_reference_precedes_ordinals_and_checks_counts(self):
         ctx = context(previous=True, securities=SECURITIES[:2])
@@ -307,7 +308,7 @@ class AnnotationAndReplayTests(OfflineTests):
         with patch.object(experiment, 'populations', return_value=([row, other],
                 {r['id']: r['gold'] for r in (row, other)}, {}, {})), \
                 patch.object(experiment, 'build_context', return_value=(context(), 0)):
-            report = replay.replay_reports([dict(rows=[archived, failed])])
+            report = replay.replay_reports([dict(rows=[archived, failed])], 'v2.5')
         self.assertEqual([archived, failed], original)
         self.assertEqual(len(report['rows']), 2)
         self.assertEqual(report['rows'][1]['V2']['status'], 'not_measured')
@@ -321,7 +322,7 @@ class AnnotationAndReplayTests(OfflineTests):
         for index, line in enumerate(lines):
             if line.startswith('| ---'):
                 self.assertIn(experiment.REPLAY_251_NOTICE, lines[index-1])
-        self.assertEqual(replay.migrate_response(raw).tool_calls[0].arguments['version'], intent.VERSION)
+        self.assertEqual(replay.migrate_response(raw, 'v2.5').tool_calls[0].arguments['version'], intent.VERSION)
         self.assertEqual(raw['tool_calls'][0]['arguments']['version'], 'research-intent-v2.5')
 
 

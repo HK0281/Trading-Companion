@@ -175,8 +175,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(raw.research_kinds, ('financial',))
         self.assertEqual(checked('平安银行财报', draft(research_kinds=[dict(kind='financial', phrase='财报')])).research_kinds,
                          ('financial',))
-        with self.assertRaises(InputIssue):
-            checked('平安银行基本面，不看公司资料', value)
+        conflict = checked('平安银行基本面，不看公司资料', value)
+        self.assertEqual(conflict.outcome, 'clarify_conflict')
+        self.assertEqual(conflict.research_kinds, ('financial',))
+        self.assertEqual(conflict.exclusions, ('profile',))
         with self.assertRaises(InputIssue):
             checked('平安银行基本面', draft(research_kinds=[dict(kind='financial', phrase='虚构基本面')]))
 
@@ -282,10 +284,14 @@ class ProtocolTests(unittest.TestCase):
         result = checked('研究沪深300的均线', value)
         self.assertEqual(result.research_kinds, ('technical',))
         self.assertEqual(result.indicator_mentions, ('均线',))
-        for fields in ([dict(kind='technical', phrase='技术面'), dict(kind='financial', phrase='财报')],
-                       [dict(kind='technical', phrase='技术面')]):
-            with self.assertRaises(InputIssue):
-                checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[], research_kinds=fields))
+        with self.assertRaises(InputIssue):
+            checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[],
+                research_kinds=[dict(kind='technical', phrase='技术面'), dict(kind='financial', phrase='财报')]))
+        conflict = checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[],
+            research_kinds=[dict(kind='technical', phrase='技术面')]))
+        self.assertEqual(conflict.outcome, 'clarify_conflict')
+        self.assertEqual(conflict.research_kinds, ())
+        self.assertEqual(conflict.exclusions, ('technical',))
 
     def test_schema_and_checker_reject_extra_missing_and_wrong_types(self):
         self.assertEqual(set(SCHEMA['required']), set(draft()))
@@ -367,10 +373,14 @@ class ProtocolTests(unittest.TestCase):
         intent = checked('平安银行只用SMA3，禁用ATR', value)
         self.assertEqual(intent.indicator_mentions, ('SMA3',))
         self.assertEqual(intent.exclusions, ('indicator:atr',))
-        for bad in (draft(), draft(strict_scope=True, scope_phrase='只用SMA3'),
-                    draft(indicator_mentions=['SMA3', 'ATR'], strict_scope=True, scope_phrase='只用SMA3')):
+        for bad in (draft(), draft(strict_scope=True, scope_phrase='只用SMA3')):
             with self.subTest(bad=bad), self.assertRaises(InputIssue):
                 checked('平安银行只用SMA3，禁用ATR', bad)
+        conflict = checked('平安银行只用SMA3，禁用ATR',
+            draft(indicator_mentions=['SMA3', 'ATR'], strict_scope=True, scope_phrase='只用SMA3'))
+        self.assertEqual(conflict.outcome, 'clarify_conflict')
+        self.assertEqual(conflict.indicator_mentions, ('SMA3',))
+        self.assertEqual(conflict.exclusions, ('indicator:atr',))
 
     def test_strict_scope_blocks_implicit_atr_dependency(self):
         intent = checked('平安银行短线给价位，只用SMA3', draft(objective_kind='decision', objective_phrase='给价位',

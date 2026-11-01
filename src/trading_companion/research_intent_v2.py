@@ -27,8 +27,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.5.1'
-GUARD_VERSION = 'intent-v2-guards-v6'
+VERSION = 'research-intent-v2.5.2'
+GUARD_VERSION = 'intent-v2-guards-v7'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -70,6 +70,9 @@ INSTRUCTION = (
     '只更新旧报告/计划的数据而未修改条件也为refresh，例如“把原计划按现有条件重算”。'
     '同一对象增加或删除指标、领域等条件为update，例如“同一只股票再加MACD”；'
     '“重新研究”“更新数据”而未改条件为refresh。'
+    '已有研究明确要求最新数据/最新情况、更新原计划或筛选结果且条件不变，也为refresh；'
+    '仅沿用筛选条件刷新结果不是update，改变筛选阈值或研究范围才是update。'
+    '上下文对象或待办失效、来源/模式不匹配时，增补语气不授权续接旧任务；不能续接时用new并澄清对象。'
     'explain仅解释已发布结论。继续同一对象不自动update；没有任何程序记录时不能update，重置/取消后用new并澄清缺失对象。'
     '有效pending的original_question仅可为update提供objective_phrase/plan_phrase；'
     '换对象只可续目标和价位意图，不借旧日期/期限/对象/指标/范围/排除依据；普通history没有此权限。'
@@ -650,13 +653,25 @@ def _select_previous(selection, securities, directory):
     return tuple(s.instrument_id for s in securities), None
 
 
+def _prefixed_previous_ordinal(selection):
+    # Only neutral references to the latest research; never arbitrary prefixes,
+    # security names, historical report IDs or screening lists.
+    match = re.fullmatch(r'(?:上一份|上次|刚才|前面)(?:的)?'
+        r'(?:比较(?:研究|报告|结果)?|研究(?:报告|结果)?|报告)?(?:里|中)?的\s*'
+        r'(第\s*[0-9零〇一二两三四五六七八九十百]+\s*(?:只|个|支))', selection or '')
+    return match[1] if match else None
+
+
 def _previous_subject(question, subject, context, task, *, normalize=True, corrections=None):
     if not context.conversation_memory:
         return (), 'clarify_subject'
+    ordinal = _prefixed_previous_ordinal(subject['selection']) if normalize else None
     pending = _pending(context)
     if pending is not None:
         if not pending['valid']:
             return (), 'clarify_' + pending.get('reason', 'conditions')
+        if ordinal is not None:
+            return (), 'clarify_subject'  # A research prefix cannot select a pending/list member.
         if pending['kind'] != task:
             return (), 'clarify_subject'
         if task == 'stock_research':
@@ -668,7 +683,7 @@ def _previous_subject(question, subject, context, task, *, normalize=True, corre
         return tuple(pending['subjects']), None
     latest = context.session.latest_research
     selection = subject['selection'] or ''
-    if context.session.screening_saved is not None and (latest is None or re.search(r'名单|第', selection)):
+    if ordinal is None and context.session.screening_saved is not None and (latest is None or re.search(r'名单|第', selection)):
         selected = select_screening(question, saved=context.session.screening_saved, directory=context.directory,
             quote_source=context.quote_source, source=context.source, development=context.development, now=context.now)
         return (tuple(s.instrument_id for s in selected.securities), None) if selected.ready else ((), 'clarify_subject')
@@ -677,6 +692,8 @@ def _previous_subject(question, subject, context, task, *, normalize=True, corre
             or latest.development != context.development):
         return (), 'clarify_subject'
     if task == 'index_research':
+        if ordinal is not None:
+            return (), 'clarify_subject'
         if latest.kind != 'index':
             return (), 'clarify_subject'
         latest_reference = normalize and selection in _LATEST_SELECTIONS
@@ -694,6 +711,13 @@ def _previous_subject(question, subject, context, task, *, normalize=True, corre
         reference_date=context.reference_date, development=context.development, now=context.now)
     if issue:
         return (), 'clarify_subject'
+    if ordinal is not None:
+        if len(securities) < 2:
+            return (), 'clarify_subject'
+        bound, issue = _select_previous(ordinal, securities, context.directory)
+        if bound and corrections is not None:
+            _correction(corrections, 'previous_research_ordinal', 'subject.selection', selection, ordinal, 'program_latest')
+        return bound, issue
     if normalize and selection in _LATEST_SELECTIONS:
         if len(securities) != 1:
             return (), 'clarify_subject'
@@ -760,19 +784,49 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         vetoes[item['kind']] = item['phrase']
     exclusions = tuple(sorted(vetoes))
     kinds = tuple(item['kind'] for item in draft['research_kinds'])
-    _require(not set(kinds) & set(exclusions), 'scope_conflict')
+    domain_conflict = bool(set(kinds) & set(exclusions))
+    _require(normalize or not domain_conflict, 'scope_conflict')
+    if domain_conflict:
+        replacement = [item for item in draft['research_kinds'] if item['kind'] not in exclusions]
+        _correction(log, 'domain_conflict', 'research_kinds', draft['research_kinds'], replacement, 'question_veto')
+        draft['research_kinds'] = replacement
+        kinds = tuple(item['kind'] for item in replacement)
     specs, unsupported_indicator = (), False
+    original_mentions = draft['indicator_mentions']
+    kept_mentions, indicator_conflict = [], False
     for mention in draft['indicator_mentions']:
         try:
-            specs += tuple(_indicator(mention))
+            parsed = tuple(_indicator(mention))
         except (InputIssue, InvalidRequestError, ValueError):
             # Data granularity is never an indicator, even in a clarifying result.
             _require(not re.search(r'日线|周线|K线', mention, re.I), 'invalid_indicator_granularity')
             unsupported_indicator = True
-    _require(not any('indicator:' + spec.kind in exclusions for spec in specs), 'scope_conflict')
+            kept_mentions.append(mention)
+            continue
+        conflict = any('indicator:' + spec.kind in exclusions for spec in parsed)
+        _require(normalize or not conflict, 'scope_conflict')
+        indicator_conflict |= conflict
+        if conflict:
+            surviving = tuple(spec for spec in parsed if 'indicator:' + spec.kind not in exclusions)
+            recovered = ()
+            for match in _INDICATOR_CUE.finditer(mention) if surviving else ():
+                part = tuple(_indicator(match[0]))
+                if not any('indicator:' + spec.kind in exclusions for spec in part):
+                    recovered += part
+                    kept_mentions.append(match[0])
+            _require({s.indicator_id for s in recovered} == {s.indicator_id for s in surviving}, 'omitted_indicator')
+            specs += surviving
+        else:
+            specs += parsed
+            kept_mentions.append(mention)
     for key, prefix in (('strict_scope', 'scope_phrase'),):
         if draft[key]:
-            _require(_scope_limit(draft[prefix], draft['indicator_mentions']), 'ungrounded_strict_scope')
+            _require(_scope_limit(draft[prefix], original_mentions), 'ungrounded_strict_scope')
+    if indicator_conflict:
+        replacement = list(dict.fromkeys(kept_mentions))
+        _validate(replacement, SCHEMA['properties']['indicator_mentions'])
+        _correction(log, 'indicator_conflict', 'indicator_mentions', original_mentions, replacement, 'question_veto')
+        draft['indicator_mentions'] = replacement
     positive = question
     for phrase in vetoes.values():
         positive = positive.replace(phrase, ' ' * len(phrase))
@@ -792,7 +846,8 @@ def check_response(question, response, *, context, normalize=True, corrections=N
                         dict(task='unsupported', subject=dict(source='none', mentions=[], selection=None)),
                         'question_product_boundary')
         draft['task'], draft['subject'] = 'unsupported', dict(source='none', mentions=[], selection=None)
-    outcome = 'clarify_' + draft['clarification_reason'] if draft['clarification_reason'] else 'research'
+    outcome = ('clarify_conflict' if domain_conflict or indicator_conflict else
+               'clarify_' + draft['clarification_reason'] if draft['clarification_reason'] else 'research')
     if 'plan' in exclusions and draft['wants_plan']:
         outcome = 'clarify_conflict'
     if draft['task'] in ('knowledge', 'recall'):

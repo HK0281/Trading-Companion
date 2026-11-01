@@ -1,0 +1,43 @@
+{
+  "version": "intent-v2-dev-amendments-v1",
+  "parent_corpus_sha256": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+  "changes": [
+    {
+      "id": "V2020",
+      "parent_row_sha256": "9542f71a54d1b2a746af854ee3a1c9e791f405d5e315ef5b1e377bbec0e7c792",
+      "field": "indicator_mentions",
+      "before": [],
+      "after": [
+        "均线"
+      ],
+      "reason": "原句明确要求均线；指数默认技术领域规范化不应抹掉指标。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 366
+    },
+    {
+      "id": "V2038",
+      "parent_row_sha256": "9d45c4bfee6f0a71d685a0878877fb4c279a0189d2b02038bf9ae5fb2b407fe3",
+      "field": "objective_kind",
+      "before": "outlook",
+      "after": "decision",
+      "reason": "Claude在#366否决analysis建议：个股短线研究面向未来，应给评级和方向；明确不要计划仍保留且不提供价位。模型旧输出analysis仍计错。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 366
+    },
+    {
+      "id": "V2089",
+      "parent_row_sha256": "96ce5c897cbbdab171162941c0bb147f9899f9b9f02957ff1bfbcaae4eaf0d83",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "原句明确参考日线；日线/周线数据属于明确技术分析领域。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 366
+    }
+  ]
+}

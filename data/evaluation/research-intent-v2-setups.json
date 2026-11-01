@@ -1,0 +1,17 @@
+{
+  "version": "intent-v2-setups-v1",
+  "reviewer": "claude",
+  "approval_message": 366,
+  "prefixes": [
+    [
+      {
+        "question": "研究平安银行",
+        "script": {
+          "phases": ["company_intent", "company_answer"],
+          "mentions": ["平安银行"],
+          "kinds": ["profile", "financial", "news", "announcements", "technical"]
+        }
+      }
+    ]
+  ]
+}

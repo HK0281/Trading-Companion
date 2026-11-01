@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
+from copy import deepcopy
 import unittest
 
 from trading_companion.agent_input import InputIssue
@@ -49,6 +50,71 @@ def checked(question, value=None, ctx=None):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_nullable_corrections_are_audited_and_raw_response_is_immutable(self):
+        value = draft(date_expression='null', horizon_expression=' NONE ', objective_phrase='无')
+        original = deepcopy(value)
+        log = []
+        result = check_response('分析平安银行', response(value), context=context(), corrections=log)
+        self.assertEqual(result.outcome, 'research')
+        self.assertEqual(value, original)
+        self.assertEqual(len(log), 3)
+        self.assertTrue(all(c['kind'] == 'nullable_null' for c in log))
+        with self.assertRaises(InputIssue):
+            check_response('分析平安银行', response(value), context=context(), normalize=False)
+        with self.assertRaises(InputIssue):
+            checked('分析平安银行', draft(operation='recall', date_expression='null'))
+
+    def test_low_confidence_preserves_specific_conflict_identity_and_veto(self):
+        conflict = checked('平安银行给价位，不要价位', draft(confidence='low', wants_plan=True,
+            plan_phrase='给价位', clarification_reason='conflict'))
+        self.assertEqual(conflict.outcome, 'clarify_conflict')
+        self.assertFalse(conflict.wants_plan)
+        ambiguous = checked('研究平安', draft(confidence='low', subject=dict(source='question', mentions=['平安'], selection=None)))
+        self.assertEqual(ambiguous.outcome, 'clarify_identity')
+        self.assertEqual(checked('分析平安银行', draft(confidence='low', clarification_reason='horizon')).outcome, 'clarify_horizon')
+
+    def test_unquantified_time_does_not_select_horizon_or_hide_invalid_quantities(self):
+        for phrase in ('后面', '现在', '接下来'):
+            for wants_plan in (False, True):
+                result = checked('平安银行'+phrase+'给参考价', draft(horizon_expression=phrase,
+                    wants_plan=wants_plan, plan_phrase='参考价' if wants_plan else None))
+                self.assertIsNone(result.horizon)
+                self.assertEqual(result.outcome, 'clarify_horizon' if wants_plan else 'research')
+        bad = checked('平安银行未来999天给参考价', draft(horizon_expression='未来999天', wants_plan=True, plan_phrase='参考价'))
+        self.assertEqual(bad.outcome, 'clarify_conditions')
+
+    def test_index_aliases_require_same_identity_and_all_explicit_objects(self):
+        for question, mention, expected in (('大盘指数有何变化', '大盘指数', '000001.SH'),
+                                             ('创业板后续表现如何', '创业板', '399006.SZ')):
+            log = []
+            value = draft(task='index_research', subject=dict(source='question', mentions=[mention], selection=None))
+            result = check_response(question, response(value), context=context(), corrections=log)
+            self.assertEqual(result.bound_subjects, (expected,))
+            self.assertEqual(log[0]['kind'], 'index_alias')
+            with self.assertRaises(InputIssue):
+                check_response(question, response(value), context=context(), normalize=False)
+        broad = checked('A股后市怎样', draft(task='index_research', subject=dict(source='question', mentions=['A股'], selection=None)))
+        self.assertEqual(broad.bound_subjects, ('000001.SH',))
+        for question, mentions in (('研究沪深300ETF', ['沪深300']), ('研究大盘指数和沪深300', ['大盘指数']),
+                                   ('研究大盘指数和平安银行', ['大盘指数'])):
+            with self.subTest(question=question), self.assertRaises(InputIssue):
+                checked(question, draft(task='index_research', subject=dict(source='question', mentions=mentions, selection=None)))
+        for question in ('研究大盘指数ETF', '研究沪深300指数基金', '研究创业板期权'):
+            result = checked(question, draft(task='index_research', subject=dict(source='none', mentions=[], selection=None)))
+            self.assertEqual(result.bound_subjects, ())
+            self.assertEqual(result.outcome, 'clarify_subject')
+
+    def test_index_domain_normalization_cannot_erase_financial_or_strict_exclusion(self):
+        value = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None),
+                      indicator_mentions=['均线'], research_kinds=[dict(kind='technical', phrase='均线')])
+        result = checked('研究沪深300的均线', value)
+        self.assertEqual(result.research_kinds, ())
+        self.assertEqual(result.indicator_mentions, ('均线',))
+        for fields in ([dict(kind='technical', phrase='技术面'), dict(kind='financial', phrase='财报')],
+                       [dict(kind='technical', phrase='技术面')]):
+            with self.assertRaises(InputIssue):
+                checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[], research_kinds=fields))
+
     def test_schema_and_checker_reject_extra_missing_and_wrong_types(self):
         self.assertEqual(set(SCHEMA['required']), set(draft()))
         bad = []
@@ -165,6 +231,105 @@ class ProtocolTests(unittest.TestCase):
 
 
 class BindingTests(unittest.TestCase):
+    def test_explicit_source_correction_never_drops_a_referenced_object(self):
+        cases = (
+            ('它和浦发银行比哪个好', '它'),
+            ('它和浦发银行比哪个更值得研究', '它'),
+            ('把它换成浦发银行再分析', '它'),
+            ('它们和浦发银行比较', '它们'),
+            ('这只和浦发银行比较', '这只'),
+            ('这只股和浦发银行比较', '这只股'),
+            ('该股和浦发银行比较', '该股'),
+            ('这家公司和浦发银行比较', '这家公司'),
+            ('该公司和浦发银行比较', '该公司'),
+            ('第二只和浦发银行比较', '第二只'),
+            ('第2只和浦发银行比较', '第2只'),
+            ('第２只和浦发银行比较', '第２只'),
+            ('第 二 只和浦发银行比较', '第 二 只'),
+        )
+        for question, reference in cases:
+            for selection in (reference, None):
+                for source in ('previous', 'none'):
+                    with self.subTest(question=question, selection=selection, source=source):
+                        value = draft(subject=dict(source=source, mentions=[], selection=selection))
+                        original, log = deepcopy(value), []
+                        with self.assertRaises(InputIssue):
+                            check_response(question, response(value), context=context(previous=True), corrections=log)
+                        self.assertFalse(any(c['kind'] == 'explicit_subject' for c in log))
+                        self.assertEqual(value, original)
+        for selection in ('它', None):
+            value = draft(task='index_research', subject=dict(source='previous', mentions=[], selection=selection))
+            with self.subTest(index_selection=selection), self.assertRaises(InputIssue):
+                checked('它和上证指数比较', value, context(previous=True, kind='index'))
+
+    def test_explicit_source_correction_never_repairs_model_semantics_or_fabricated_selection(self):
+        ctx = context(previous=True, horizon='未来40个交易日')
+        value = draft(subject=dict(source='previous', mentions=[], selection='浦发银行'), operation='refresh',
+                      objective_kind='decision', objective_phrase='给方向')
+        log = []
+        result = check_response('浦发银行给方向', response(value), context=ctx, corrections=log)
+        self.assertEqual(result.subject_source, 'question')
+        self.assertEqual(result.operation, 'refresh')
+        self.assertEqual(result.objective_kind, 'decision')
+        self.assertIsNone(result.horizon)
+        self.assertEqual(log[0]['kind'], 'explicit_subject')
+        with self.assertRaises(InputIssue):
+            check_response('浦发银行给方向', response(value), context=ctx, normalize=False)
+        for selection in ('第二只', '招商银行'):
+            with self.assertRaises(InputIssue):
+                checked('浦发银行给方向', dict(value, subject=dict(source='previous', mentions=[], selection=selection)), ctx)
+
+    def test_unwritten_pronoun_drops_to_null_but_never_selects_among_multiple_objects(self):
+        value = draft(subject=dict(source='previous', mentions=[], selection='它'))
+        result = checked('继续分析', value, context(previous=True, securities=SECURITIES[:2]))
+        self.assertEqual(result.bound_subjects, ())
+        self.assertEqual(result.outcome, 'clarify_subject')
+        with self.assertRaises(InputIssue):
+            checked('继续分析', dict(value, subject=dict(source='previous', mentions=[], selection='第二只')), context(previous=True))
+
+    def test_pending_evidence_only_lends_two_fields_to_valid_updates(self):
+        from trading_companion.decision_horizon import gate
+        from trading_companion.product_plan import ProductPlan
+        from trading_companion.multi_contracts import IndicatorSpec
+        ctx = context()
+        plan = ProductPlan(status='ready', source='tencent', securities=SECURITIES[:1], kinds=('technical',),
+            start_date=REFERENCE_DATE-timedelta(days=30), end_date=REFERENCE_DATE-timedelta(days=1),
+            indicators=(IndicatorSpec('atr', window=14),),
+            objective=ResearchObjective('decision'), wants_risk=True, user_question='平安银行能买吗，参考最近一个月')
+        ctx.session.product_pending = gate(plan, now=NOW, reference_date=REFERENCE_DATE, development=False).context
+        self.assertIsNotNone(ctx.session.product_pending)
+        pending = ctx.session.product_pending
+        value = draft(operation='update', objective_kind='decision', objective_phrase='能买吗',
+            wants_plan=True, plan_phrase='能买吗', horizon_expression='中线',
+            subject=dict(source='question', mentions=['浦发银行'], selection=None))
+        log = []
+        result = check_response('中线，改为浦发银行', response(value), context=ctx, corrections=log)
+        self.assertEqual(result.bound_subjects, ('600000.SH',))
+        self.assertEqual(result.horizon, '未来40个交易日')
+        self.assertNotEqual(result.historical_window[0], plan.start_date.isoformat())
+        self.assertIn(('objective_phrase', 'program_pending'), result.provenance)
+        self.assertEqual({c['kind'] for c in log}, {'pending_evidence'})
+        invalid_contexts = (context(history=(pending.original_question,)), replace(ctx, now=NOW+timedelta(minutes=15)),
+                            replace(ctx, source='akshare_eastmoney'), replace(ctx, development=True))
+        for invalid in invalid_contexts:
+            with self.assertRaises(InputIssue):
+                checked('中线，改为浦发银行', value, invalid)
+        for changes in (dict(operation='new'), dict(date_expression='最近一个月'),
+                        dict(indicator_mentions=['ATR']), dict(scope_phrase='只看技术面')):
+            with self.assertRaises(InputIssue):
+                checked('中线，改为浦发银行', dict(value, **changes), ctx)
+        # A pending has its own conditions; even a fresh older publication cannot lend a horizon.
+        ctx.session.stage_research_subject(SECURITIES[1:2], kind='company', source='tencent', development=False,
+            now=NOW, scope=SimpleNamespace(objective=ResearchObjective('decision', '未来40个交易日')))
+        ctx.session.product_pending = pending
+        continued = draft(operation='update', objective_kind='decision', wants_plan=True,
+                          subject=dict(source='previous', mentions=[], selection=None))
+        result = checked('继续', continued, ctx)
+        self.assertEqual(result.bound_subjects, ('000001.SZ',))
+        self.assertIsNone(result.horizon)
+        self.assertEqual(result.outcome, 'clarify_horizon')
+        self.assertIs(ctx.session.product_pending, pending)
+
     def previous(self, question='它给参考价', ctx=None, **changes):
         return checked(question, draft(subject=dict(source='previous', mentions=[], selection='它'),
             objective_kind='decision', objective_phrase='参考价', wants_plan=True, plan_phrase='参考价', **changes),
@@ -262,7 +427,7 @@ class BindingTests(unittest.TestCase):
         pending = gate(plan, now=NOW, reference_date=REFERENCE_DATE, development=False).context
         self.assertIsNotNone(pending)
         ctx.session.product_pending = pending
-        value = draft(subject=dict(source='previous', mentions=[], selection=None), objective_kind='decision',
+        value = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None), objective_kind='decision',
                       wants_plan=True, horizon_expression='中线')
         intent = checked('中线，禁用ATR', value, ctx)
         self.assertEqual(intent.bound_subjects, ('000001.SZ',))
@@ -291,6 +456,28 @@ class BindingTests(unittest.TestCase):
         for changed in (replace(ctx, quote_source=object()), replace(ctx, now=NOW+timedelta(minutes=15))):
             self.assertEqual(checked('研究第二只的技术面', value, changed).bound_subjects, ())
         self.assertEqual(ctx.model_context()['shortlist']['names'], [s.name for s in SECURITIES[:3]])
+
+    def test_screening_update_binds_task_not_stock_and_preserves_grounding(self):
+        from trading_companion.screening import ScreeningCondition, ScreeningRequest
+        from trading_companion.screening_context import SavedScreening
+        ctx = replace(context(), quote_source=object())
+        request = ScreeningRequest((ScreeningCondition('price', 'gt', 0),), limit=3)
+        ctx.session.screening_saved = SavedScreening(NOW, request, SECURITIES[:3], ctx.quote_source)
+        value = draft(task='screening', operation='update', subject=dict(source='previous', mentions=[], selection='名单'))
+        result = checked('名单改为8只', value, ctx)
+        self.assertEqual(result.subject_source, 'none')
+        self.assertEqual(result.bound_subjects, ())
+        self.assertIn(('screening_task', 'program_screening'), result.provenance)
+        for bad in (dict(value, objective_phrase='新增一个条件'),
+                    dict(value, subject=dict(source='previous', mentions=[], selection='第二只'))):
+            with self.assertRaises(InputIssue):
+                checked('名单改为8只', bad, ctx)
+        with self.assertRaises(InputIssue):
+            checked('改为8只', value, ctx)  # A fabricated list phrase is not silently discarded.
+        for invalid in (replace(ctx, now=NOW+timedelta(minutes=15)), replace(ctx, quote_source=object()),
+                        replace(ctx, source='akshare_eastmoney')):
+            with self.assertRaises(InputIssue):
+                checked('名单改为8只', value, invalid)
 
 
 class AttemptTests(unittest.TestCase):

@@ -5,6 +5,8 @@ from copy import deepcopy
 from io import StringIO
 import json
 from pathlib import Path
+from dataclasses import replace
+from datetime import timedelta
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -127,7 +129,8 @@ class AdmissionTests(unittest.TestCase):
             baseline = Path(folder)/'baseline.json'
             baseline.write_text(json.dumps(old), encoding='utf-8')
             with clean_environment(), offline_network(), patch.object(experiment, 'BASELINE', baseline), \
-                    patch.object(experiment, 'load_corpus', return_value=([sample], dict(annotation_status='reviewed'))), \
+                    patch.object(experiment, 'load_corpus', return_value=([sample], dict(annotation_status='reviewed', corpus_sha256='independent'))), \
+                    patch.object(experiment, 'load_amendments', return_value={}), \
                     patch('trading_companion.research_intent_evaluation.build_v2_plan', return_value=dict(corpus_sha256='independent', baseline={})), \
                     patch.object(experiment, '_live_model', return_value=RecordingModel()) as factory:
                 report = experiment.evaluate_development(live=True, report_dir=folder)
@@ -135,12 +138,42 @@ class AdmissionTests(unittest.TestCase):
             self.assertEqual(report['authenticity'], 'mock_experiment')
             artifact = Path(report['artifacts'])
             self.assertTrue((artifact/'plan.json').exists())
+            events = [json.loads(line) for line in (artifact/'attempts.jsonl').read_text(encoding='utf-8').splitlines()]
+            self.assertEqual([event['phase'] for event in events], ['reserved', 'finished'])
+            self.assertEqual(events[0]['id'], 'independent')
+            self.assertTrue(events[1]['returned'])
             self.assertEqual(json.loads((artifact/'rows.jsonl').read_text(encoding='utf-8'))['id'], 'independent')
             self.assertEqual(json.loads((artifact/'report.json').read_text(encoding='utf-8'))['telemetry']['attempts'], 1)
             self.assertIn('模拟实验', (artifact/'report.md').read_text(encoding='utf-8'))
 
 
 class ContextTests(unittest.TestCase):
+    def test_explanation_requires_real_saved_bundle_and_never_truncates_research(self):
+        prefix = [dict(question='研究浦发银行', script=dict(phases=['company_intent', 'company_answer'],
+                    mentions=['浦发银行'], kinds=['profile', 'financial', 'news', 'announcements', 'technical']))]
+        latest = dict(kind='company', subjects=['600000.SH'], age_seconds=0, source='tencent',
+                      development=False, current=True, horizon=None)
+        sample = state('说明一下此前的结论', has_company=True, latest=latest, history=['研究浦发银行'])
+        with clean_environment(), offline_network():
+            ctx, calls = experiment.program_context(sample, {('研究浦发银行',): prefix})
+        self.assertEqual(calls, 2)
+        self.assertIsNotNone(ctx.session.product_saved.bundle)
+        for question in ('说明一下此前的结论', '为何作出该判断', '此前研究的证据说明什么'):
+            local = experiment.local_preflight(question, ctx)
+            self.assertEqual(local.operation, 'explain')
+            self.assertTrue(local.zero_intent_calls)
+            self.assertEqual(local.bound_subjects, ('600000.SH',))
+        for question in ('说明一下此前的结论，再核对最新数据', '解释结论并给评级', '解释结论，改用SMA5',
+                         '解释平安银行的结论', '说明此前结论，分析最近20天', '解释结论并给价位'):
+            self.assertIsNone(experiment.local_preflight(question, ctx), question)
+        self.assertIsNone(experiment.local_preflight('说明一下此前的结论', replace(ctx, now=ctx.now+timedelta(minutes=15))))
+        self.assertIsNone(experiment.local_preflight('说明一下此前的结论', replace(ctx, source='akshare_eastmoney')))
+        ctx.session._subject_current = False
+        self.assertIsNone(experiment.local_preflight('说明一下此前的结论', ctx))
+        no_cache, _ = experiment.program_context(sample, {})
+        self.assertIsNone(no_cache.session.product_saved)
+        self.assertIsNone(experiment.local_preflight(sample['question'], no_cache))
+
     def test_target_never_receives_gold_id_script_tags_or_split(self):
         sample = row(gold=dict(expected_fields(), task='gold-private-sentinel'), id='id-private-sentinel',
             tags=['tags-private-sentinel'], probe=dict(steps='script-private-sentinel'))
@@ -215,6 +248,45 @@ class ContextTests(unittest.TestCase):
 
 
 class PredictionTests(unittest.TestCase):
+    def test_new_local_guards_and_existing_general_knowledge_are_identified(self):
+        model = RecordingModel()
+        budget = experiment.AttemptBudget(155)
+        for question, expected in (('你上次判断看多还是看空', 'v2_recall_choice'),
+                                   ('请提交浦发银行的委托', 'v2_order_submission_guard'),
+                                   ('PE怎么用于估值', 'existing_general_knowledge')):
+            result = experiment.predict(state(question, history=['已完成研究']), prefixes={}, model=model, budget=budget)
+            self.assertEqual(result['attempts'], 0)
+            self.assertIn(('preflight', expected), result['metadata']['provenance'])
+        self.assertEqual(model.messages, [])
+        for question in ('你上次判断看多还是看空，再研究浦发银行', 'PE怎么用于估值，然后研究浦发银行'):
+            experiment.predict(state(question, history=['已完成研究']), prefixes={}, model=model, budget=budget)
+        self.assertEqual(len(model.messages), 2)
+        ctx, _ = experiment.program_context(state(), {})
+        self.assertIsNone(experiment.local_preflight('创业板后续表现如何', ctx))
+
+    def test_failure_codes_are_allowlisted_and_attempts_remain_counted(self):
+        for code, expected in (('timeout', 'intent_v2_model_timeout'), ('private-code-sentinel', 'intent_v2_model_failure')):
+            result = run([row()], RecordingModel(error=ModelCallError(code, 'private-body-sentinel')))
+            self.assertEqual(result['rows'][0]['V2']['reason'], expected)
+            self.assertEqual(result['telemetry']['attempts'], 1)
+            self.assertNotIn('private-', json.dumps(result))
+
+    def test_reservation_is_visible_before_transport_and_survives_interruption(self):
+        events = []
+        class Interrupted:
+            def complete(self, messages, *, tools):
+                self.assertion = events[-1]['phase']
+                raise KeyboardInterrupt()
+        model = Interrupted()
+        budget = experiment.AttemptBudget(1, events.append)
+        with self.assertRaises(KeyboardInterrupt):
+            budget.target(model, 'independent').complete((), tools=())
+        self.assertEqual(model.assertion, 'reserved')
+        self.assertEqual(events[-1]['phase'], 'finished')
+        self.assertEqual(events[-1]['failure'], 'interrupted')
+        self.assertFalse(events[-1]['returned'])
+        self.assertEqual(budget.attempts, 1)
+
     def test_local_paths_have_no_model_and_cannot_truncate_extra_conditions(self):
         model = RecordingModel()
         budget = experiment.AttemptBudget(155)
@@ -276,6 +348,26 @@ class PredictionTests(unittest.TestCase):
 
 
 class ReportingTests(unittest.TestCase):
+    def test_three_score_views_corrections_and_frozen_baseline_use_same_effective_gold(self):
+        sample = row(gold=dict(expected_fields(), objective_kind='outlook'))
+        amendment = dict(id='independent', field='objective_kind', before='outlook', after='analysis')
+        model = RecordingModel(response(draft(date_expression='null')))
+        old = dict(A=dict(status='ok', fields=expected_fields()), B=dict(status='ok', fields=expected_fields()))
+        report = run([sample], model, baseline={'independent': old}, amendments={'independent': amendment})
+        views = report['score_views']
+        self.assertEqual(views['model_raw_original_gold']['all']['joint_all_fields']['numerator'], 0)
+        self.assertEqual(views['normalized_original_gold']['all']['joint_all_fields']['numerator'], 0)
+        self.assertEqual(views['normalized_revised_gold']['all']['joint_all_fields']['numerator'], 1)
+        self.assertEqual(views['frozen_baseline_rescored']['original_gold']['A']['joint_all_fields']['numerator'], 0)
+        self.assertEqual(views['frozen_baseline_rescored']['revised_gold']['A']['joint_all_fields']['numerator'], 1)
+        self.assertEqual(report['rows'][0]['gold']['objective_kind'], 'outlook')
+        self.assertEqual(report['rows'][0]['effective_gold']['objective_kind'], 'analysis')
+        self.assertEqual(report['corrections']['nullable_null']['ids'], ['independent'])
+        self.assertIn('模型原样+原标注', format_report(report))
+        self.assertEqual(sample['gold']['objective_kind'], 'outlook')
+        repeated = [dict(report['rows'][0], id=str(i)) for i in range(11)]
+        self.assertTrue(experiment.correction_summary(repeated)['nullable_null']['requires_individual_review'])
+
     def test_failures_and_unmeasured_fields_keep_full_denominator(self):
         successful = run([row()])['rows'][0]
         failed, unmeasured, missing = (deepcopy(successful) for _ in range(3))

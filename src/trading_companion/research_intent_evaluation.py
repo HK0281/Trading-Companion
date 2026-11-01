@@ -41,14 +41,22 @@ def build_v2_plan():
     from trading_companion.intent_router_task import digest
     from trading_companion.research_intent_v2 import VERSION, GUARD_VERSION, INSTRUCTION, TOOL
     from trading_companion.research_intent_v2_evaluation import exposure_registry
-    plan = build_plan()
+    from trading_companion.research_intent_v2_annotations import load_amendments, amendment_fingerprint
+    rows, manifest = load_corpus()
+    plan = _plan(rows, manifest, 'dev')
+    amendments = load_amendments(rows, manifest['corpus_sha256'])
     root = Path(__file__).resolve().parents[2]
     paths = ('src/trading_companion/research_intent_v2.py', 'src/trading_companion/turn_control.py',
              'src/trading_companion/tool_model.py', 'src/trading_companion/research_intent_v2_evaluation.py',
              'src/trading_companion/deepseek_tool_model.py', 'src/trading_companion/deepseek_model.py',
-             'src/trading_companion/local_env.py', 'data/evaluation/research-intent-v2-exposure.json')
+             'src/trading_companion/local_env.py', 'data/evaluation/research-intent-v2-exposure.json',
+             'src/trading_companion/research_intent_v2_annotations.py',
+             'src/trading_companion/research_intent_evaluation.py',
+             'src/trading_companion/research_intent_evaluation_fixtures.py',
+             'data/evaluation/research-intent-v2-dev-amendments.json', 'data/evaluation/research-intent-v2-setups.json')
     return {**plan, 'kind': 'v2_contract_preparation', 'contract_version': VERSION,
             'guard_version': GUARD_VERSION, 'exposure': exposure_registry(),
+            'dev_amendments_sha256_lf': amendment_fingerprint(), 'dev_amendments': list(amendments.values()),
             'requested_model': 'deepseek-flash', 'prompt_sha256': sha256(INSTRUCTION.encode()).hexdigest(),
             'tool_sha256': digest(TOOL.to_dict()),
             'contract_implementation_sha256_lf': {p: sha256((root/p).read_bytes().replace(b'\r\n', b'\n')).hexdigest() for p in paths},
@@ -166,10 +174,26 @@ def evaluate(*, split="dev"):
 
 def format_report(report):
     if report.get('kind') == 'v2_development':
+        overview = []
+        if 'score_views' in report:
+            views = report['score_views']
+            columns = ('model_raw_original_gold', 'normalized_original_gold', 'normalized_revised_gold')
+            overview = ['', '三列均含本地前置；“模型原样”关闭受限规范化，仍含v2.2新增通用校验（如指数不支持领域），并非v2.1同口径成绩。门槛按规范化+修订标注判断。', '',
+                '| 子集/联合全对 | 模型原样+原标注 | 规范化+原标注 | 规范化+修订标注 |', '| --- | --- | --- | --- |']
+            for group in views[columns[0]]:
+                overview.append('| ' + group + ' | ' + ' | '.join(rate(views[c][group]['joint_all_fields']) for c in columns) + ' |')
+            overview += ['', '| 字段/全部题 | 模型原样+原标注 | 规范化+原标注 | 规范化+修订标注 |', '| --- | --- | --- | --- |']
+            for field in GOLD_FIELDS:
+                overview.append('| ' + field + ' | ' + ' | '.join(rate(views[c]['all']['fields'][field]['accuracy']) for c in columns) + ' |')
+            overview += ['', '| 纠正类型 | 次数 | 题数 | 题号 | 需逐题复核（超过10题） |', '| --- | --- | --- | --- | --- |']
+            for kind, group in report['corrections'].items():
+                overview.append('| ' + ' | '.join(cell(v) for v in (kind, group['events'], group['questions'],
+                    ', '.join(group['ids']), '是' if group['requires_individual_review'] else '否')) + ' |')
+            overview += ['', '旧A/B按原标注和相同修订标注另行重算，完整数字见下方frozen_baseline_rescored；旧报告未覆盖。', '']
         return '# 意图单 v2：开发实验\n\n' + report['scope'] + '\n\n' + (
             '此报告仅为模拟实验，不是真实模型成绩。\n\n' if report['authenticity'] == 'mock_experiment' else '') + (
             '未批准产品切换。旧A只比较共同可观测字段；旧B的实际固定执行与V2预计动作分开。'
-            '实现阶段已知题见exposure，未来未见过留出子集必须排除这些题。\n\n```json\n') + json.dumps(
+            '实现阶段已知题见exposure，未来未见过留出子集必须排除这些题。\n') + '\n'.join(overview) + '\n```json\n' + json.dumps(
                 report, ensure_ascii=False, indent=2, allow_nan=False).replace('<', '\\u003c').replace('`', '\\u0060') + '\n```\n'
     if report.get('kind') == 'baseline_diagnosis':
         return '# 意图基线失败诊断\n\n' + report['scope'] + '\n\n```json\n' + json.dumps(

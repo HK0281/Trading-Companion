@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
+import os
 from math import ceil, isfinite
 from pathlib import Path
 from threading import Lock
@@ -12,27 +13,30 @@ from time import perf_counter
 from uuid import uuid4
 
 from trading_companion.classification_metrics import ratio
-from trading_companion.decision_horizon import canonical, is_horizon_reply, resume
-from trading_companion.intent_router_task import digest
+from trading_companion.intent_router_task import digest, read_json
 from trading_companion.model import ModelConfigurationError
-from trading_companion.product_plan import ProductPlan, ProductPlanContext, _execution_requested, _INJECTION
+from trading_companion.product_plan import ProductPlan
+from trading_companion.agent_input import InputIssue
+from trading_companion.errors import InvalidRequestError, DataValidationError
 from trading_companion.research_intent_evaluation import field_scores, same
 from trading_companion.research_intent_evaluation_baseline import UNKNOWN
 from trading_companion.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, input_state, load_corpus, valid_context
 from trading_companion.research_intent_evaluation_fixtures import fixed_execution
-from trading_companion.research_intent_v2 import CheckedIntent, IntentContext, understand
+from trading_companion.research_intent_v2 import IntentContext, check_response, local_preflight, safe_failure, understand
+from trading_companion.research_intent_v2_annotations import load_amendments, revised_rows
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.research_session import ResearchSession
 from trading_companion.security_directory import SecurityDirectory
 from trading_companion.tool_model import ToolModelResponse
 from trading_companion.turn_control import TurnControl, TurnLimits
-from trading_companion.workflow_evaluation_fixtures import SECURITIES, NOW, REFERENCE_DATE
+from trading_companion.workflow_evaluation_fixtures import SECURITIES, NOW, REFERENCE_DATE, PHASES, SCRIPT_KEYS
 
 
 EXPOSURE = ROOT / 'data/evaluation/research-intent-v2-exposure.json'
 BASELINE = ROOT / 'data/evaluation/research-intent-v2-rule-baseline-dev.json'
 MODEL = 'deepseek-flash'
 MAX_CALLS = 155
+SETUPS = ROOT / 'data/evaluation/research-intent-v2-setups.json'
 
 
 def exposure_registry():
@@ -61,6 +65,24 @@ def prefix_library(rows):
             prefix = deepcopy(steps[:length])
             key = tuple(s['question'] for s in prefix)
             variants.setdefault(key, {})[digest(prefix)] = prefix
+    reviewed = read_json(SETUPS, maximum=100_000)
+    if (reviewed.keys() != {'version', 'reviewer', 'approval_message', 'prefixes'}
+            or reviewed['version'] != 'intent-v2-setups-v1' or reviewed['reviewer'] != 'claude'
+            or type(reviewed['approval_message']) is not int or reviewed['approval_message'] <= 0
+            or type(reviewed['prefixes']) is not list):
+        raise ValueError('Invalid reviewed setup library')
+    for prefix in reviewed['prefixes']:
+        if type(prefix) is not list or not 1 <= len(prefix) <= 6:
+            raise ValueError('Invalid setup prefix')
+        for step in prefix:
+            if (type(step) is not dict or step.keys() != {'question', 'script'}
+                    or type(step['question']) is not str or not 0 < len(step['question']) <= 2000
+                    or type(step['script']) is not dict or not step['script'].keys() <= SCRIPT_KEYS
+                    or type(step['script'].get('phases')) is not list
+                    or not set(step['script']['phases']) <= PHASES):
+                raise ValueError('Invalid setup step')
+        key = tuple(s['question'] for s in prefix)
+        variants.setdefault(key, {})[digest(prefix)] = deepcopy(prefix)
     return {key: next(iter(items.values())) if len(items) == 1 else None for key, items in variants.items()}
 
 
@@ -71,8 +93,12 @@ def program_context(state, prefixes):
     value = state['context']
     valid_context(value)
     setup_calls = 0
-    if value['pending'] != 'none':
-        prefix = prefixes.get(tuple(value['history']))
+    prefix = prefixes.get(tuple(value['history']))
+    capture_saved = (value['has_company'] and prefix and value['latest'] is not None
+        and value['latest']['age_seconds'] == 0 and value['latest']['current']
+        and value['source'] == 'tencent' and not value['development']
+        and value['company_enabled'] and value['workflow_enabled'] and not value['shortlist'])
+    if value['pending'] != 'none' or capture_saved:
         if not prefix:
             raise ValueError('待办缺少唯一的已审核前置脚本，未从聊天文字补身份')
         probe = dict(steps=[*prefix, dict(question=state['question'], script=dict(phases=[]))], unmeasured_reason='')
@@ -113,57 +139,29 @@ def program_context(state, prefixes):
         value['conversation_memory']), setup_calls
 
 
-def local_preflight(question, context):
-    """Reuse existing guards; no labels or row tags enter this decision."""
-    from trading_companion.conversation_memory import is_recall_question
-    from trading_companion.indicator_knowledge import parse_knowledge_question
-    from trading_companion.request_routing import _COMMANDS
-    from trading_companion.research_intent_v2 import _pending
-    command = question.strip(' \t\r\n。.!！')
-    task, outcome = None, 'local'
-    if command in _COMMANDS:
-        task = 'command'
-    elif context.conversation_memory and context.history and is_recall_question(question):
-        task = 'recall'
-    elif _execution_requested(question) or _INJECTION.search(question):
-        task, outcome = 'unsupported', 'reject'
-    elif parse_knowledge_question(question) is not None:
-        task = 'knowledge'
-    if task:
-        return CheckedIntent(task, operation='local', outcome=outcome, zero_intent_calls=True)
-    pending = context.session.product_pending
-    binding = _pending(context)
-    if (type(pending) is ProductPlanContext and binding and binding['valid']
-            and is_horizon_reply(question, context.directory)):
-        base = ProductPlan(source=pending.source, kinds=pending.kinds, objective=pending.objective,
-            wants_risk=pending.wants_risk, indicators=pending.indicators, scope=pending.scope,
-            start_date=pending.start_date, end_date=pending.end_date)
-        selected = resume(pending, base, question, directory=context.directory)
-        if selected.status == 'ready':
-            return CheckedIntent('stock_research', operation='update', objective_kind=selected.objective.kind,
-                wants_plan=binding['wants_plan'], subject_source='previous',
-                bound_subjects=tuple(s.instrument_id for s in selected.securities),
-                horizon=canonical(selected.objective.horizon), zero_intent_calls=True,
-                provenance=(('subject', 'program_pending'), ('horizon', 'question')))
-    return None
-
-
 class AttemptBudget:
     """Reserve immediately before the transport, once per target and at most 155 total."""
 
-    def __init__(self, maximum):
+    def __init__(self, maximum, event_sink=None):
         if type(maximum) is not int or not 1 <= maximum <= MAX_CALLS:
             raise ValueError('Maximum calls must be 1..155')
         self.maximum, self.attempts, self.lock = maximum, 0, Lock()
+        self.event_sink = event_sink
 
-    def target(self, model):
-        return TargetAttempt(self, model)
+    def target(self, model, identifier=None):
+        return TargetAttempt(self, model, identifier)
 
 
 class TargetAttempt:
-    def __init__(self, budget, delegate):
+    def __init__(self, budget, delegate, identifier=None):
         self.budget, self.delegate = budget, delegate
         self.attempts, self.response, self.elapsed_ms = 0, None, None
+        self.identifier = identifier
+
+    def record(self, phase, **values):
+        if self.budget.event_sink is not None:
+            self.budget.event_sink(dict(phase=phase, id=self.identifier,
+                at=datetime.now(timezone.utc).isoformat(), attempt_number=self.budget.attempts, **values))
 
     def complete(self, messages, *, tools):
         with self.budget.lock:
@@ -171,15 +169,23 @@ class TargetAttempt:
                 raise ModelConfigurationError('Evaluation attempt budget exhausted; no retry')
             self.attempts += 1
             self.budget.attempts += 1
+            # Persist reservation before transport. A killed run leaves a known unknown-cost attempt.
+            self.record('reserved')
         start = perf_counter()
+        failure = None
         try:
             self.response = self.delegate.complete(messages, tools=tools)
             return self.response
+        except BaseException as error:
+            failure = safe_failure(error) if isinstance(error, Exception) else 'interrupted'
+            raise
         finally:
             self.elapsed_ms = round((perf_counter() - start) * 1000, 3)
+            self.record('finished', returned=self.response is not None, failure=failure,
+                        call_ms=self.elapsed_ms, response=self.response.to_dict() if type(self.response) is ToolModelResponse else None)
 
 
-def predict(state, *, prefixes, model, budget, timeout_seconds=45):
+def predict(state, *, prefixes, model, budget, timeout_seconds=45, identifier=None):
     """Isolated adapter: neither scripts, IDs, tags nor gold reach the target model."""
     try:
         context, setup_calls = program_context(state, prefixes)
@@ -194,20 +200,30 @@ def predict(state, *, prefixes, model, budget, timeout_seconds=45):
     if budget.attempts >= budget.maximum:
         return dict(status='not_measured', reason='全局尝试上限已到；未重试或丢弃分母', fields={},
                     attempts=0, setup_calls=setup_calls, response=None, call_ms=None)
-    target = budget.target(model)
+    target = budget.target(model, identifier)
     control = TurnControl(TurnLimits(model_calls=1, timeout_seconds=timeout_seconds))
     try:
         run = understand(state['question'], model=target, context=context, control=control)
         result = dict(status=run.status, reason=run.code, fields=run.intent.fields() if run.intent else {},
             runtime=run.runtime, low_confidence=bool(run.intent and run.intent.low_confidence),
+            corrections=list(run.corrections),
             metadata=dict(historical_window=list(run.intent.historical_window),
                 provenance=list(run.intent.provenance), plan_blocked=run.intent.plan_blocked) if run.intent else {})
     except Exception as error:
         # Never serialize provider exception text or traceback, including unknown failures.
-        result = dict(status='failed', reason=type(error).__name__, fields={}, runtime=control.to_dict())
+        result = dict(status='failed', reason=safe_failure(error), fields={}, runtime=control.to_dict(), corrections=[])
+    raw = dict(status=result['status'], reason=result['reason'], fields={})
+    if result['status'] in ('ok', 'invalid') and target.response is not None:
+        try:
+            original = check_response(state['question'], target.response, context=context, normalize=False)
+            raw = dict(status='ok', reason='intent_v2_raw_checked', fields=original.fields())
+        except InputIssue as error:
+            raw = dict(status='invalid', reason=error.code, fields={})
+        except (ValueError, InvalidRequestError, DataValidationError):
+            raw = dict(status='invalid', reason='intent_v2_context_or_conditions_invalid', fields={})
     response = target.response.to_dict() if type(target.response) is ToolModelResponse else None
     return dict(result, attempts=target.attempts, setup_calls=setup_calls, response=response,
-                call_ms=target.elapsed_ms, context=context.model_context(), path='semantic')
+                call_ms=target.elapsed_ms, context=context.model_context(), path='semantic', raw=raw)
 
 
 def _groups(rows):
@@ -260,7 +276,40 @@ def telemetry(rows):
         latency=dict(n=len(elapsed), p50_ms=elapsed[ceil(len(elapsed)*.5)-1] if elapsed else None,
             p95_ms=elapsed[ceil(len(elapsed)*.95)-1] if elapsed else None, method='nearest_rank_transport_including_failures'),
         low_confidence=sum(bool(r.get('low_confidence')) for r in observations),
+        raw_low_confidence=sum(any(c.get('arguments', {}).get('confidence') == 'low'
+            for c in (r['response'] or {}).get('tool_calls', [])) for r in observations),
         unexpected_local_intent_calls=[r['id'] for r in rows if r['gold']['zero_intent_calls'] and r['V2']['attempts']])
+
+
+def correction_summary(rows):
+    groups = {}
+    for row in rows:
+        for correction in row['V2'].get('corrections', []):
+            group = groups.setdefault(correction['kind'], dict(events=0, ids=[]))
+            group['events'] += 1
+            if row['id'] not in group['ids']:
+                group['ids'].append(row['id'])
+    for group in groups.values():
+        group.update(questions=len(group['ids']), requires_individual_review=len(group['ids']) > 10)
+    return groups
+
+
+def score_views(rows, amendments, registry, baseline):
+    raw = deepcopy(rows)
+    for row in raw:
+        row['V2'] = deepcopy(row['V2'].get('raw', row['V2']))
+    revised = revised_rows(rows, amendments)
+    baseline_scores = {}
+    for name, gold_rows in (('original_gold', rows), ('revised_gold', revised)):
+        compared = []
+        for row in gold_rows:
+            observation = baseline.get(row['id'])
+            if observation is None:
+                continue
+            compared.append(dict(row, A=observation['A'], B=observation['B']))
+        baseline_scores[name] = {layer: field_scores(compared, layer) for layer in ('A', 'B')}
+    return dict(model_raw_original_gold=metrics(raw, registry), normalized_original_gold=metrics(rows, registry),
+                normalized_revised_gold=metrics(revised, registry), frozen_baseline_rescored=baseline_scores)
 
 
 def zero_tolerance(rows):
@@ -274,25 +323,36 @@ def zero_tolerance(rows):
     return checks
 
 
-def _run_rows(rows, *, plan, model, maximum, timeout_seconds, prefixes, baseline, registry, live=False, journal=None):
-    budget, results = AttemptBudget(maximum), []
+def _run_rows(rows, *, plan, model, maximum, timeout_seconds, prefixes, baseline, registry, live=False, journal=None,
+              amendments=None, event_sink=None):
+    budget, results = AttemptBudget(maximum, event_sink), []
+    amendments = amendments or {}
     for row in rows:
         result = {key: deepcopy(row[key]) for key in ('id', 'split', 'question', 'context', 'gold', 'tags', 'source', 'fault')}
         result['implementation_known'] = row['id'] in registry['known_during_implementation']
-        result['V2'] = predict(input_state(row), prefixes=prefixes, model=model, budget=budget, timeout_seconds=timeout_seconds)
+        result['V2'] = predict(input_state(row), prefixes=prefixes, model=model, budget=budget,
+                               timeout_seconds=timeout_seconds, identifier=row['id'])
+        result['effective_gold'] = revised_rows([result], amendments)[0]['gold']
         results.append(result)
         if journal is not None:
             journal.write(json.dumps(result, ensure_ascii=False, allow_nan=False) + '\n')
             journal.flush()
     stats = telemetry(results)
+    views = score_views(results, amendments, registry, baseline)
+    revised = revised_rows(results, amendments)
     return dict(status='completed', kind='v2_development', evaluated_at=datetime.now(timezone.utc).isoformat(),
         plan=plan, scope='V2为独立离线候选：本地前置加单次模型理解，outcome仅预计动作；B为历史固定模拟执行。未接产品。',
         authenticity=('no_provider_observation' if live and not stats['attempts'] else
                       'live_provider' if live and not stats['mock_responses'] else 'mock_experiment'),
-        paid_calls=stats['attempts'] if live else 0, rows=results, telemetry=stats, metrics=metrics(results, registry),
+        paid_calls=stats['attempts'] if live else 0, rows=results, telemetry=stats,
+        metrics=views['normalized_revised_gold'], score_views=views, corrections=correction_summary(results),
+        gold_amendments=list(amendments.values()),
+        scoring_policy='三列均保留全部分母；原样关闭受限规范化，仍含v2.2新增通用校验（如指数不支持领域），并非v2.1同口径成绩；本地前置仍为程序结果。门槛使用规范化+修订gold；改标签不算模型改善。',
+        threshold_basis='normalized_revised_gold',
         billing_note='paid_calls为发往传输层的尝试上限记录，不证明服务商实际计费；未知token不按0计费用',
         zero_tolerance=zero_tolerance(results),
-        common_comparison=common_comparison(results, baseline), exposure=registry,
+        common_comparison=common_comparison(revised, baseline),
+        common_comparison_original_gold=common_comparison(results, baseline), exposure=registry,
         unmeasured=['真实计划执行及价位', '跨对象证据借用', '完整严格范围执行', '正式会话零调用及端到端', '新协议故障注入', '留出成绩'],
         eligible_for_switch=False)
 
@@ -322,6 +382,7 @@ def evaluate_development(*, live=False, split='dev', maximum=MAX_CALLS, timeout_
     if manifest['annotation_status'] != 'reviewed':
         raise ValueError('Annotations require review')
     selected = [r for r in rows if r['split'] == 'dev']
+    amendments = load_amendments(rows, manifest['corpus_sha256'])
     registry = exposure_registry()
     baseline_report = json.loads(BASELINE.read_text(encoding='utf-8'))
     if (baseline_report['plan']['corpus_sha256'] != plan['corpus_sha256']
@@ -339,9 +400,15 @@ def evaluate_development(*, live=False, split='dev', maximum=MAX_CALLS, timeout_
     (folder/'plan.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     # Load the key only after admission, fingerprints and durable output are ready.
     model = _live_model(timeout_seconds)
-    with (folder/'rows.jsonl').open('x', encoding='utf-8', newline='\n') as journal:
+    with (folder/'rows.jsonl').open('x', encoding='utf-8', newline='\n') as journal, \
+            (folder/'attempts.jsonl').open('x', encoding='utf-8', newline='\n') as attempts:
+        def event_sink(event):
+            attempts.write(json.dumps(event, ensure_ascii=False, allow_nan=False) + '\n')
+            attempts.flush()
+            os.fsync(attempts.fileno())
         report = _run_rows(selected, plan=plan, model=model, maximum=maximum, timeout_seconds=timeout_seconds,
-            prefixes=prefixes, baseline=baseline, registry=registry, live=True, journal=journal)
+            prefixes=prefixes, baseline=baseline, registry=registry, live=True, journal=journal,
+            amendments=amendments, event_sink=event_sink)
     report['artifacts'] = str(folder)
     (folder/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False)+'\n', encoding='utf-8')
     (folder/'report.md').write_text(format_report(report), encoding='utf-8')

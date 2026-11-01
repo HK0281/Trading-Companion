@@ -23,6 +23,7 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "invalid_indicator_granularity": "独立v2.5候选拒绝把日线/周线/K线作为指标的诊断；不接正式入口。",
     "response_json_invalid": "v2评估显式启用的传输JSON诊断类别；生产默认仍为invalid_response。",
     "response_shape_invalid": "v2评估显式启用的响应封装诊断类别，不是正式研究结果。",
     "tool_arguments_json_invalid": "v2评估显式启用的工具参数JSON诊断类别，不保存解析正文。",

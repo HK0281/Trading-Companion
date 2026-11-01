@@ -27,8 +27,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.4'
-GUARD_VERSION = 'intent-v2-guards-v4'
+VERSION = 'research-intent-v2.5'
+GUARD_VERSION = 'intent-v2-guards-v5'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -70,13 +70,27 @@ INSTRUCTION = (
     '有效pending的original_question仅可为update提供objective_phrase/plan_phrase；'
     '换对象只可续目标和价位意图，不借旧日期/期限/对象/指标/范围/排除依据；普通history没有此权限。'
     'indicator_mentions只复制肯定要求的指标，排除指标写入exclusions。'
-    'strict_scope表示只看/仅用等严格范围；scope_phrase复制该限制的原文。'
+    '同轮肯否冲突要澄清；被排除的领域或指标不再重复填入research_kinds或indicator_mentions，'
+    '但保留已提出的严格范围和clarification_reason=conflict。'
+    'strict_scope只表示研究领域或指标的唯一限制；仅限制时间范围取false。'
+    '不要只看、不能只用等否定唯一限制取false，不等于排除该领域或指标，仍复制肯定要求。'
+    'scope_phrase复制该限制的原文。'
     'objective_phrase、plan_phrase分别为目标和价位需求的原文依据，可共用同一原话；'
     '即使缺对象也保留已有目标/价位依据。没有则为JSON null，不要字符串null/none。'
-    '明确技术面/技术指标/具体指标（含均线）/日线或周线数据属于technical；'
+    '明确技术面/技术指标/具体指标（含均线）/日线、周线、K线数据属于technical；'
+    '日线、周线、K线是数据粒度，不是指标，不能放入indicator_mentions；成交量是指标。'
+    '公司情况、业务情况、主营业务属于profile；泛称某公司的情况不自动限定领域。'
     '仅走势/趋势/表现/波动不自动限定technical。基本面包含profile和financial。'
     '不因价位计算依赖或否定ATR补technical，不把最新当news；筛选PE/PB是筛选条件而非公司研究领域。'
-    '指数默认技术研究，research_kinds不重复technical，但保留明确指标；不支持领域不能隐去。'
+    '指数明确要求technical也必须保留；仅隐含默认技术研究不填领域。不支持领域不能隐去。'
+    '具体ETF、基金、期货、期权研究为unsupported，不绑定跟踪指数；产品概念可解释，'
+    '产品仅作实际股票的公司背景时不拒绝股票研究。'
+    '未来实际收盘价、完整日线等尚未发生的事实须澄清，不改成方向预测或条件价位情景；'
+    '此时objective_kind=analysis、wants_plan=false、horizon_expression=null；'
+    '未来相对事实不填历史date_expression，明确日历日期仍保留原文并澄清。'
+    '这N天/周/月为最近N个自然日/N乘7日/N乘30日，date_expression保留原话；'
+    '本月、自然季度、这三个月以来不套此规则。'
+    '同一只、同一只股票是最近单对象指代，不是第一只；无有效最近对象不能猜。'
     'exclusions每项kind为受限类别，phrase复制含否定词和被排除内容的完整片段。'
     '不能输出证券代码映射、数值日期、来源、查询工具、公式参数或实际价位。'
     '任务类型和处理阶段分开：能确认股票/指数/筛选就保留task，澄清原因放clarification_reason。'
@@ -231,17 +245,103 @@ def _validate(value, schema):
         _require('enum' not in schema or value in schema['enum'])
 
 
-_NEGATION = r'(?:不要|不用|无需|不需要|排除|禁用|不看)(?:再|给|提供|计算|分析|研究)?\s*'
-_TARGETS = {'plan': r'(?:交易计划|参考计划|止盈止损|风险计划|价格计划|计划|价位|目标价)',
-            'risk': r'风险', 'technical': r'技术面', 'financial': r'(?:财报|财务)',
-            'profile': r'(?:公司资料|公司背景)', 'news': r'(?:新闻|资讯)', 'announcements': r'公告',
-            **{'indicator:' + k: k for k in INDICATORS}}
+_NEGATION = r'(?:不要|不用|无需|不需要|不必|排除|禁用|不看|删掉|删除|去掉|移除|不再)(?:再|给|提供|计算|分析|研究|考虑|看)?\s*'
+_TARGETS = {'plan': r'(?:交易计划|参考计划|止盈止损|风险计划|价格计划|计划|价位|目标价|止盈|止损)',
+            'risk': r'风险', 'technical': r'(?:技术面|技术分析|技术指标|技术)', 'financial': r'(?:财报|财务|基本面)',
+            'profile': r'(?:公司资料|公司背景|公司概况|公司情况|业务情况|主营业务|基本面)',
+            'news': r'(?:新闻|资讯)', 'announcements': r'公告',
+            **{'indicator:' + k: {'sma': r'(?:SMA|简单移动平均线|均线)',
+                'ema': r'(?:EMA|指数移动平均线)', 'boll': r'(?:BOLL|布林带|布林线)',
+                'volume': r'(?:VOLUME|成交量|量能)'}.get(k, k) for k in INDICATORS}}
+_NEGATED_LIMIT = re.compile(r'(?:不能|不应|不要|不用|无需|不需要|不必|并非|不是)\s*(?:只是|仅仅|只|仅)\s*(?:看|用|分析|研究|要)')
+_LIMIT = re.compile(r'只(?:看|用|分析|研究|要)|仅(?:看|用|分析|研究|要)|严格|纯技术')
+
+
+def _negative_spans(question):
+    text = _NEGATED_LIMIT.sub(lambda m: ' ' * len(m[0]), question)
+    # A list shares its leading negation; stop before a new verb or clause.
+    target = '|'.join('(?:' +
+        (r'(?:[0-9零〇一二两三四五六七八九十百]+\s*(?:日|天)\s*)?' if k.startswith('indicator:') else '')
+        + t + (r'(?![A-Za-z])(?:\s*(?:[（(][0-9.,，\s]+[）)]|[0-9]+))?' if k.startswith('indicator:') else '')
+        + ')' for k, t in _TARGETS.items())
+    return tuple(re.finditer(_NEGATION + '(?:' + target + r')(?:\s*(?:和|及|与|、|以及)\s*(?:' + target + '))*', text, re.I))
 
 
 def _vetoes(question):
-    return {kind: match[0] for kind, target in _TARGETS.items()
-            if (match := re.search(_NEGATION + target + (r'(?![A-Za-z])' if kind.startswith('indicator:') else ''),
-                                   question, re.I))}
+    result = {}
+    for match in _negative_spans(question):
+        body = re.sub('^' + _NEGATION, '', match[0])
+        found = [(kind, m.start(), m.end()) for kind, terms in _TARGETS.items()
+                 for m in re.finditer(terms + (r'(?![A-Za-z])' if kind.startswith('indicator:') else ''), body, re.I)]
+        for kind, start, end in found:
+            # E.g. 均线 inside 指数移动平均线 does not also authorize an SMA veto.
+            if not any(a <= start and end <= b and b-a > end-start for _, a, b in found):
+                result[kind] = question[match.start():match.end()]
+    return result
+
+
+def _scope_limit(question, indicators=()):
+    text = _NEGATED_LIMIT.sub(lambda m: ' ' * len(m[0]), question)
+    domains = '|'.join(_TARGETS[k] for k in KINDS)
+    for match in _LIMIT.finditer(text):
+        clause = re.split(r'[,，;；。\n]', text[match.start():], maxsplit=1)[0]
+        if (re.search(domains, clause) or _INDICATOR_CUE.search(clause) or match[0] == '纯技术'
+                or any(mention in clause for mention in indicators)):
+            return True
+    return False
+
+
+def _future_fact(question, reference):
+    for clause in re.split(r'[,，;；。\n]', question):
+        dated_future = False
+        for match in re.finditer(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', clause):
+            try:
+                dated_future |= date.fromisoformat(match[0]) > reference
+            except ValueError:
+                pass  # The date validator still rejects an impossible calendar date.
+        if re.search(r'(?:如果|若|假设|假如|当).*?(?:收盘价|开盘价|价格).*?(?:跌破|突破|低于|高于|达到|小于|大于|上穿|下穿)', clause):
+            continue  # A conditional future observation is not a request for a realized fact.
+        if ((dated_future or re.search(r'明天|后天|下周|下个月|明年|未来\s*[0-9零一二两三四五六七八九十百]+\s*个?(?:天|日|周|月|年|交易日)', clause))
+                and re.search(r'收盘价|开盘价|实际价格|完整日线|实际成交量|实际财报', clause)
+                and (re.search(r'实际|真实|确切|准确|已实现|完整', clause)
+                     or not re.search(r'若|如果|假设|预测|预计|估计|参考|情景|可能', clause))):
+            return True
+    return False
+
+
+def _candidate_dates(expression, text, reference):
+    """Opt-in adapter around the unchanged production date calculation."""
+    from trading_companion.research_intent import _COUNT
+    pattern = re.compile(r'这\s*(' + _COUNT + r')\s*个?\s*(天|日|周|月)(?!以来|之前|之后|前|后|内|外|半|多|左右)')
+    for match in reversed(list(pattern.finditer(text))):
+        text = text[:match.start()] + '近' + match[0][1:] + text[match.end():]
+    if expression is not None and pattern.fullmatch(expression):
+        expression = '近' + expression[1:]
+    return _dates(expression, text, reference)
+
+
+def _product_research(question, directory):
+    """Capability boundary only; never classify or bind ordinary stock research."""
+    from trading_companion.market_scope import _CONCEPT, _OBSERVATION, _BACKGROUND
+    products = list(re.finditer(r'ETF|基金|期货|期权', question, re.I))
+    if not products:
+        return False
+    stocks = research_spans(question, directory)
+    for match in products:
+        start = max((m.end() for m in re.finditer(r'[,，;；。\n]', question[:match.start()])), default=0)
+        after = re.search(r'[,，;；。\n]', question[match.end():])
+        end = match.end() + after.start() if after else len(question)
+        clause = question[start:end]
+        if stocks and (re.search(r'背景(?:里|中)?(?:提到|涉及|包括)|期权激励', clause) or _BACKGROUND.search(clause)):
+            continue
+        concept = _CONCEPT.search(clause) or re.search(r'区别|有何不同|有什么不同', clause)
+        generic_topic = re.fullmatch(r'\s*(?:(?:请|解释|说说|讲讲|介绍|一下)\s*)*(?:指数|货币|股票|混合|债券|投资)?',
+                                     question[start:match.start()])
+        concept = concept or generic_topic and re.search(r'有哪些|有什么风险|为什么|如何运作|怎么运作', clause)
+        if concept and not (_OBSERVATION.search(clause) or re.search(r'研究|分析|买入|卖出|新闻|财报|公告', clause)):
+            continue
+        return True
+    return False
 
 
 def normalize_horizon(expression):
@@ -339,7 +439,7 @@ def _normalize_nullable(value, schema, log, path=''):
 
 
 _IMPLICIT_SELECTIONS = ('它', '它们', '这只', '这只股', '该股', '这家公司', '该公司')
-_LATEST_SELECTIONS = ('上一只', '上一个', '刚才那只')
+_LATEST_SELECTIONS = ('上一只', '上一个', '刚才那只', '同一只', '同一只股票')
 _VAGUE_DATES = ('最近', '近期', '近来', '近日')
 
 
@@ -379,7 +479,7 @@ def _normalize_subject(question, draft, context, log):
         _correction(log, 'explicit_subject', 'subject', subject, replacement, 'question')
         draft['subject'] = subject = replacement
     saved = context.session.screening_saved
-    if (draft['task'] == 'screening' and draft['operation'] == 'update' and subject['source'] == 'previous'
+    if (draft['task'] == 'screening' and draft['operation'] in ('update', 'refresh') and subject['source'] == 'previous'
             and not subject['mentions'] and not stocks and not indices and type(saved) is SavedScreening
             and (subject['selection'] is None or subject['selection'] in question
                  and re.fullmatch(r'(?:原|刚才的|上次的|这份|这个)?(?:筛选)?名单|这些|它们', subject['selection']))
@@ -420,6 +520,10 @@ def _normalize_scope(question, draft, log):
     if kept != mentions:
         _correction(log, 'indicator_fragment', 'indicator_mentions', mentions, kept, 'same_question_positions')
         draft['indicator_mentions'] = kept
+    if (draft['strict_scope'] and draft['scope_phrase'] is not None
+            and draft['scope_phrase'] in question and not _scope_limit(question, draft['indicator_mentions'])):
+        _correction(log, 'non_domain_limit', 'strict_scope', True, False, 'question_scope')
+        draft['strict_scope'], draft['scope_phrase'] = False, None
 
 
 def _historical_text(question, draft, *, normalize, corrections, vague_date_window=False):
@@ -521,6 +625,8 @@ def _select_previous(selection, securities, directory):
 
 
 def _previous_subject(question, subject, context, task, *, normalize=True, corrections=None):
+    if not context.conversation_memory:
+        return (), 'clarify_subject'
     pending = _pending(context)
     if pending is not None:
         if not pending['valid']:
@@ -626,15 +732,32 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     exclusions = tuple(sorted(vetoes))
     kinds = tuple(item['kind'] for item in draft['research_kinds'])
     _require(not set(kinds) & set(exclusions), 'scope_conflict')
-    specs = tuple(spec for mention in draft['indicator_mentions'] for spec in _indicator(mention))
+    specs, unsupported_indicator = (), False
+    for mention in draft['indicator_mentions']:
+        try:
+            specs += tuple(_indicator(mention))
+        except (InputIssue, InvalidRequestError, ValueError):
+            # Data granularity is never an indicator, even in a clarifying result.
+            _require(not re.search(r'日线|周线|K线', mention, re.I), 'invalid_indicator_granularity')
+            unsupported_indicator = True
     _require(not any('indicator:' + spec.kind in exclusions for spec in specs), 'scope_conflict')
     for key, prefix in (('strict_scope', 'scope_phrase'),):
         if draft[key]:
-            _require(bool(re.search(r'只(?:看|用|分析|研究)|仅(?:看|用|分析|研究)|严格|纯技术', draft[prefix])), 'ungrounded_strict_scope')
+            _require(_scope_limit(draft[prefix], draft['indicator_mentions']), 'ungrounded_strict_scope')
     positive = question
     for phrase in vetoes.values():
         positive = positive.replace(phrase, ' ' * len(phrase))
+    for match in _negative_spans(question):
+        positive = positive[:match.start()] + ' ' * (match.end()-match.start()) + positive[match.end():]
+    positive = _NEGATED_LIMIT.sub(lambda m: ' ' * len(m[0]), positive)
     positive = _NEGATED_ONLY.sub('', positive)
+    if normalize and _product_research(question, context.directory):
+        if draft['task'] != 'unsupported' or draft['subject'] != dict(source='none', mentions=[], selection=None):
+            _correction(log, 'unsupported_product', 'task_and_subject',
+                        dict(task=draft['task'], subject=draft['subject']),
+                        dict(task='unsupported', subject=dict(source='none', mentions=[], selection=None)),
+                        'question_product_boundary')
+        draft['task'], draft['subject'] = 'unsupported', dict(source='none', mentions=[], selection=None)
     outcome = 'clarify_' + draft['clarification_reason'] if draft['clarification_reason'] else 'research'
     if 'plan' in exclusions and draft['wants_plan']:
         outcome = 'clarify_conflict'
@@ -672,17 +795,21 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         _correction(log, 'objective_outlook_non_index', 'objective_kind', 'outlook', 'decision', 'non_index_contract')
         draft['objective_kind'] = 'decision'
     if draft['task'] in ('stock_research', 'index_research'):
-        if re.search(r'只(?:看|用|分析|研究)|仅(?:看|用|分析|研究)|纯技术', positive):
+        if _scope_limit(positive, draft['indicator_mentions']):
             _require(draft['strict_scope'], 'omitted_strict_scope')
-        explicit = tuple(spec for match in _INDICATOR_CUE.finditer(positive) for spec in _indicator(match[0]))
+        explicit = ()
+        for match in _INDICATOR_CUE.finditer(positive):
+            try:
+                explicit += tuple(_indicator(match[0]))
+            except (InputIssue, InvalidRequestError, ValueError):
+                unsupported_indicator = True
+        if any('indicator:' + s.kind in exclusions for s in explicit):
+            outcome = 'clarify_conflict'
+            explicit = tuple(s for s in explicit if 'indicator:' + s.kind not in exclusions)
         _require({s.indicator_id for s in explicit} <= {s.indicator_id for s in specs}, 'omitted_indicator')
     if draft['task'] == 'index_research':
         # Recovered tasks must pass exactly the same scope checks as original ones.
         _require(not set(kinds) - {'technical', 'risk'}, 'index_domain_unsupported')
-        if normalize and 'technical' in kinds:
-            normalized_kinds = tuple(k for k in kinds if k != 'technical')
-            _correction(log, 'index_default_domain', 'research_kinds', list(kinds), list(normalized_kinds), 'index_default')
-            kinds = normalized_kinds
     if binding_issue and outcome != 'clarify_conflict':
         outcome = binding_issue
     elif draft['task'] in ('stock_research', 'index_research') and not bound:
@@ -723,13 +850,29 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         try:
             historical_text = _historical_text(question, draft, normalize=normalize, corrections=log,
                                                vague_date_window=vague_date_window)
-            start, end, _ = _dates(draft['date_expression'], historical_text, context.reference_date)
+            start, end, _ = _candidate_dates(draft['date_expression'], historical_text, context.reference_date)
             _require(start <= end < context.reference_date and (end - start).days < 366, 'invalid_historical_window')
             historical_window = (start.isoformat(), end.isoformat())
         except (InputIssue, InvalidRequestError, ValueError):
             if outcome == 'research':
                 outcome = 'clarify_conditions'
     wants_plan = draft['wants_plan'] and 'plan' not in exclusions
+    if unsupported_indicator and outcome == 'research':
+        outcome = 'clarify_conditions'
+    if draft['strict_scope'] and not kinds and not specs and exclusions and outcome == 'research':
+        outcome = 'clarify_conflict'
+    if draft['task'] in ('stock_research', 'index_research') and _future_fact(question, context.reference_date):
+        if normalize:
+            updates = [('objective_kind', 'analysis'), ('wants_plan', False), ('horizon_expression', None)]
+            if (draft['date_expression'] and re.fullmatch(r'明天|后天|下周|下个月|明年|未来\s*[0-9零一二两三四五六七八九十百]+\s*个?(?:天|日|周|月|年|交易日)', draft['date_expression'])):
+                updates.append(('date_expression', None))
+            for key, value in updates:
+                if draft[key] != value:
+                    _correction(log, 'future_actual_data', key, draft[key], value, 'question_future_fact')
+                    draft[key] = value
+        wants_plan, horizon, historical_window = False, None, ()
+        if not binding_issue and outcome != 'clarify_conflict':
+            outcome = 'clarify_conditions'
     plan_blocked = None
     declared_kinds = tuple(item['kind'] for item in draft['research_kinds'])
     if wants_plan and ('indicator:atr' in exclusions or 'risk' in exclusions or 'technical' in exclusions
@@ -738,7 +881,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         plan_blocked = 'risk_atr_not_authorized'
     if outcome == 'research' and wants_plan and plan_blocked is None and horizon is None:
         outcome = 'clarify_horizon'
-    task = 'clarify' if binding_issue or outcome == 'clarify_subject' else draft['task']
+    task = 'clarify' if (binding_issue and binding_issue != 'clarify_identity') or outcome == 'clarify_subject' else draft['task']
     low_confidence = draft['confidence'] == 'low'
     if low_confidence and not retired_subject_clarification and not outcome.startswith('clarify_') and outcome != 'reject':
         outcome = ('clarify_subject' if not bound and draft['task'] in ('stock_research', 'index_research', 'clarify')
@@ -811,22 +954,38 @@ def safe_failure(error):
 def local_preflight(question, context):
     """Versioned candidate zero-intent paths; these do not answer or execute research."""
     from trading_companion.conversation_memory import is_recall_question
-    from trading_companion.decision_horizon import is_horizon_reply, resume
     from trading_companion.indicator_knowledge import parse_knowledge_question
-    from trading_companion.product_plan import ProductPlan, _execution_requested, _INJECTION
+    from trading_companion.market_scope import market_reply_code, market_selection
+    from trading_companion.product_plan import _execution_requested, _INJECTION
     from trading_companion.research_decision import wants_decision
-    from trading_companion.request_routing import _COMMANDS, probe_general_knowledge, resolve_general_knowledge, RoutingSessionView
+    from trading_companion.request_routing import (IntentKind, RoutingContext, RoutingSessionView,
+        probe_general_knowledge, resolve_general_knowledge, route_research_request)
+    routing = RoutingContext(RoutingSessionView.capture(context.session), context.directory,
+        company_enabled=context.company_enabled, quote_source=context.quote_source, research_source=context.source,
+        development=context.development, workflow=context.workflow_enabled)
+    decision = route_research_request(question, context=routing, clock=lambda: context.now)
+    if decision.intent in (IntentKind.COMMAND, IntentKind.HISTORY, IntentKind.STATE_CONFLICT):
+        if decision.intent == IntentKind.HISTORY:
+            return _history_intent(context, decision.kind)
+        if decision.intent == IntentKind.STATE_CONFLICT:
+            return CheckedIntent('clarify', outcome='clarify_conflict', zero_intent_calls=True,
+                                 provenance=(('preflight', decision.rule_id),))
+        return CheckedIntent('command', operation='local', outcome='local', zero_intent_calls=True,
+                             provenance=(('preflight', decision.rule_id),))
     command = question.strip(' \t\r\n。.!！')
     task, outcome, rule = None, 'local', None
     recall_choice = re.fullmatch(
         r'你(?:之前|上次|上一轮|刚才)(?:说|判断|给的判断是)(?:的)?'
         r'(?:偏多还是偏空|看多还是看空|什么方向|什么评级)[吗呢?？。]?', command)
-    if command in _COMMANDS:
-        task, rule = 'command', 'existing_command'
-    elif _execution_requested(question) or _INJECTION.search(question):
+    if _execution_requested(question) or _INJECTION.search(question):
         task, outcome, rule = 'unsupported', 'reject', 'existing_execution_guard'
     elif re.search(r'(?:提交|执行|发出|撤销)[^。\n]{0,80}(?:委托|订单)', question):
         task, outcome, rule = 'unsupported', 'reject', 'v2_order_submission_guard'
+    elif (market_reply_code(question, directory=context.directory) == 'market_index_unsupported'
+          and market_selection(question, directory=context.directory)[2] == 'market_index_unsupported'):
+        task, outcome, rule = 'unsupported', 'reject', 'existing_index_scope'
+    elif (horizon_reply := _pending_horizon_reply(question, context)) is not None:
+        return horizon_reply
     elif (explanation := _saved_explanation(question, context)) is not None:
         return explanation
     elif (context.conversation_memory and context.history and (is_recall_question(question) or recall_choice)
@@ -839,28 +998,73 @@ def local_preflight(question, context):
         # The legacy probe accepts a topic + question marker even for a decision.
         # Also keep new index aliases on the semantic path. This gate assigns no
         # research task itself; the model still interprets the entire question.
-        candidate = (not wants_decision(question) and _index_spans(question) == index_mentions(question) and probe_general_knowledge(
+        candidate = (not _product_research(question, context.directory) and not wants_decision(question)
+            and _index_spans(question) == index_mentions(question) and probe_general_knowledge(
             question, workflow=context.workflow_enabled, history=False, session=RoutingSessionView.capture(context.session)))
         if resolve_general_knowledge(question, candidate=candidate, directory=context.directory) is not None:
             task, rule = 'knowledge', 'existing_general_knowledge'
     if task:
         return CheckedIntent(task, operation='local', outcome=outcome, zero_intent_calls=True,
                              provenance=(('preflight', rule),))
-    pending = context.session.product_pending
-    binding = _pending(context)
-    if (type(pending) is ProductPlanContext and binding and binding['valid']
-            and is_horizon_reply(question, context.directory)):
-        base = ProductPlan(source=pending.source, kinds=pending.kinds, objective=pending.objective,
-            wants_risk=pending.wants_risk, indicators=pending.indicators, scope=pending.scope,
-            start_date=pending.start_date, end_date=pending.end_date)
-        selected = resume(pending, base, question, directory=context.directory)
-        if selected.status == 'ready':
-            return CheckedIntent('stock_research', operation='update', objective_kind=selected.objective.kind,
-                wants_plan=binding['wants_plan'], subject_source='previous',
-                bound_subjects=tuple(s.instrument_id for s in selected.securities),
-                horizon=canonical(selected.objective.horizon), zero_intent_calls=True,
-                provenance=(('subject', 'program_pending'), ('horizon', 'question'), ('preflight', 'existing_horizon_reply')))
     return None
+
+
+def _pending_horizon_reply(question, context):
+    from trading_companion.decision_horizon import is_horizon_reply
+    from trading_companion.research_objective import extract_outlook
+    binding = _pending(context)
+    if not binding or binding.get('reason') == 'conflict' or not is_horizon_reply(question, context.directory):
+        return None
+    for start, end in research_spans(question, context.directory):
+        found = context.directory.lookup(question[start:end])
+        if found.status != 'resolved' or found.candidates[0].instrument_id not in binding.get('subjects', ()):
+            return None
+    try:
+        outlook = extract_outlook(question)
+        horizon = canonical(outlook.horizon) if outlook else None
+    except (InputIssue, InvalidRequestError, ValueError):
+        horizon = None
+    if horizon is None:
+        return None
+    if not binding['valid'] or not context.conversation_memory:
+        return CheckedIntent('clarify', operation='update', horizon=horizon, outcome='clarify_conditions',
+            zero_intent_calls=True, provenance=(('preflight', 'invalid_horizon_pending'), ('horizon', 'question')))
+    return CheckedIntent(binding['kind'], operation='update', objective_kind=binding['objective_kind'],
+        wants_plan=binding['wants_plan'], subject_source='previous', bound_subjects=tuple(binding['subjects']),
+        horizon=horizon, zero_intent_calls=True,
+        provenance=(('subject', 'program_pending'), ('horizon', 'question'), ('preflight', 'existing_horizon_reply')))
+
+
+def _history_intent(context, route):
+    """Run existing cache validators on a private fork; no changes reach the session."""
+    from trading_companion.index_agent import _saved
+    from trading_companion.product_agent import saved_product
+    from trading_companion.request_routing import RouteKind
+    session, bound = context.session._fork_for_turn(), ()
+    if context.conversation_memory:
+        if route == RouteKind.INDEX_RESEARCH:
+            saved = session.index_saved
+            if saved is not None and (saved.development_source is not None) == context.development:
+                saved = _saved(session, source=context.source, development_source=saved.development_source,
+                               now=context.now, history=True)
+                if saved is not None:
+                    bound = (saved.result.request.instrument_id,)
+        elif route == RouteKind.COMPANY_RESEARCH:
+            saved = saved_product(session, directory=context.directory, now=context.now, source=context.source,
+                                  development=context.development, reference_date=context.reference_date)
+            if saved is not None:
+                bound = tuple(s.instrument_id for s in saved.plan.securities)
+        else:
+            saved = session._last_result
+            if saved is not None and (saved.development_source is not None) == context.development:
+                lookup = session.saved_result(directory=context.directory, source=context.source,
+                    development_source=saved.development_source, reference_date=context.reference_date,
+                    now=context.now, allow_history=True)
+                if lookup.status == 'ready':
+                    bound = (lookup.saved.security.instrument_id,)
+    return CheckedIntent('history', operation='local', subject_source='previous' if bound else 'none',
+        bound_subjects=bound, outcome='local', zero_intent_calls=True,
+        provenance=(('preflight', 'session.history'), ('subject', 'checked_saved_result' if bound else 'none')))
 
 
 def _saved_explanation(question, context):

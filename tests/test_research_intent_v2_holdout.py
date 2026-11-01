@@ -100,8 +100,21 @@ class OfflineTests(unittest.TestCase):
 
 
 class LockTests(OfflineTests):
-    def test_real_plan_only_builds_contexts_without_prediction_scoring_or_credentials(self):
+    def test_archived_real_lock_rejects_current_candidate_before_credentials(self):
+        # The v2.4 lock describes old source bytes, not the current v2.5 candidate.
+        with patch.object(holdout.core, '_live_model', side_effect=AssertionError('no key')) as factory:
+            for live in (False, True):
+                with self.subTest(live=live), self.assertRaisesRegex(ValueError, 'Locked file mismatch'):
+                    holdout.evaluate_holdout(live=live)
+        factory.assert_not_called()
+
+    def test_snapshot_plan_only_builds_contexts_without_prediction_scoring_or_credentials(self):
+        # An independent snapshot tests orchestration only; actual admission above is never patched.
+        lock = json.loads(holdout.LOCK_PATH.read_text(encoding='utf-8'))
+        snapshot = dict(lock=lock, lock_sha256='independent-snapshot', runtime_revision='independent-revision',
+                        workspace_dirty=False)
         with patch.object(holdout.core, 'predict', side_effect=AssertionError('no prediction')), \
+                patch.object(holdout, 'validate_lock', return_value=snapshot), \
                 patch.object(holdout.core, 'local_preflight', side_effect=AssertionError('no target interpretation')), \
                 patch.object(holdout.core, 'metrics', side_effect=AssertionError('no scoring')), \
                 patch.object(holdout, '_execute', side_effect=AssertionError('no run claim')), \

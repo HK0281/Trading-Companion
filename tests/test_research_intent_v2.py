@@ -68,7 +68,7 @@ class ProtocolTests(unittest.TestCase):
                 except InputIssue:
                     continue
                 self.assertEqual(result.bound_subjects, ())
-                self.assertEqual(result.outcome, 'clarify_identity')
+                self.assertEqual(result.outcome, 'reject' if 'ETF' in question else 'clarify_identity')
 
     def test_future_horizon_repairs_analysis_without_adding_prices_or_reusing_old_horizon(self):
         for mention, task, wants_plan, objective in (('平安银行', 'stock_research', False, 'decision'),
@@ -220,7 +220,7 @@ class ProtocolTests(unittest.TestCase):
             value = draft(task='index_research', subject=dict(source='none', mentions=[], selection=None))
             result = checked('创业板'+suffix, value)
             self.assertEqual(result.bound_subjects, ())
-            self.assertEqual(result.outcome, 'clarify_subject')
+            self.assertEqual(result.outcome, 'reject' if 'ETF' in suffix or '基金' in suffix else 'clarify_subject')
 
     def test_nullable_corrections_are_audited_and_raw_response_is_immutable(self):
         value = draft(date_expression='null', horizon_expression=' NONE ', objective_phrase='无')
@@ -267,20 +267,20 @@ class ProtocolTests(unittest.TestCase):
                 check_response(question, response(value), context=context(), normalize=False)
         broad = checked('A股后市怎样', draft(task='index_research', subject=dict(source='question', mentions=['A股'], selection=None)))
         self.assertEqual(broad.bound_subjects, ('000001.SH',))
-        for question, mentions in (('研究沪深300ETF', ['沪深300']), ('研究大盘指数和沪深300', ['大盘指数']),
+        for question, mentions in (('研究大盘指数和沪深300', ['大盘指数']),
                                    ('研究大盘指数和平安银行', ['大盘指数'])):
             with self.subTest(question=question), self.assertRaises(InputIssue):
                 checked(question, draft(task='index_research', subject=dict(source='question', mentions=mentions, selection=None)))
         for question in ('研究大盘指数ETF', '研究沪深300指数基金', '研究创业板期权'):
             result = checked(question, draft(task='index_research', subject=dict(source='none', mentions=[], selection=None)))
             self.assertEqual(result.bound_subjects, ())
-            self.assertEqual(result.outcome, 'clarify_subject')
+            self.assertEqual(result.outcome, 'reject')
 
     def test_index_domain_normalization_cannot_erase_financial_or_strict_exclusion(self):
         value = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None),
                       indicator_mentions=['均线'], research_kinds=[dict(kind='technical', phrase='均线')])
         result = checked('研究沪深300的均线', value)
-        self.assertEqual(result.research_kinds, ())
+        self.assertEqual(result.research_kinds, ('technical',))
         self.assertEqual(result.indicator_mentions, ('均线',))
         for fields in ([dict(kind='technical', phrase='技术面'), dict(kind='financial', phrase='财报')],
                        [dict(kind='technical', phrase='技术面')]):
@@ -667,8 +667,10 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(checked('研究它', value, index_ctx).bound_subjects, ('000300.SH',))
         index = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None))
         self.assertEqual(checked('研究沪深300', index).bound_subjects, ('000300.SH',))
-        with self.assertRaises(InputIssue):
-            checked('研究沪深300ETF', index)
+        product = checked('研究沪深300ETF', index)
+        self.assertEqual(product.task, 'unsupported')
+        self.assertEqual(product.outcome, 'reject')
+        self.assertEqual(product.bound_subjects, ())
 
     def test_binding_checks_do_not_mutate_session_or_borrow_other_session(self):
         ctx = context(previous=True)

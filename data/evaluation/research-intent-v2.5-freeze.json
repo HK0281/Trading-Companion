@@ -1,0 +1,312 @@
+{
+  "version": "research-intent-v2.5-cases-v1",
+  "status": "frozen",
+  "approved_plan_message": 390,
+  "author_session_id": "01a19543-2291-7490-a1db-5e6080d437fe",
+  "author_role": "只出题与构建预检，不得承担第二批修补",
+  "frozen_at": "2026-11-01T05:15:39Z",
+  "dev_sha256": "5e1a47c20038a04653ce69b34a1a6fc07f2b8219c1b81f4bad2e442a8ce5e890",
+  "holdout": {
+    "sha256": "99a5e163cb7840a1f9e135a68578da8ff096185c3efc3fae33262944debc5a6e",
+    "summary": {
+      "count": 96,
+      "families": {
+        "D01-entry-failure": 3,
+        "D02-broad-market": 1,
+        "D03-chinext-market": 1,
+        "D04-star50-history": 1,
+        "D05-rating-recall": 1,
+        "D06-direction-only": 1,
+        "D07-rating-without-prices": 1,
+        "D08-veto-analysis": 3,
+        "D09-conflicting-plan": 3,
+        "D10-no-subject": 1,
+        "D11-expired-subject": 1,
+        "D12-ambiguous-pronoun": 2,
+        "D13-explicit-new-subject": 1,
+        "D14-knowledge-interlude": 1,
+        "D15-stock-index-switch": 1,
+        "D16-strict-sma": 2,
+        "D17-no-atr": 1,
+        "D18-history-vs-future": 1,
+        "D19-horizon-buttons": 2,
+        "D20-button-with-suffix": 2,
+        "D21-source-mismatch": 1,
+        "D22-mode-mismatch": 1,
+        "D23-cleared-state": 1,
+        "D24-shortlist-selection": 1,
+        "D25-shortlist-edit": 1,
+        "D26-explain-published": 1,
+        "D27-refresh-published": 1,
+        "D28-local-commands": 1,
+        "D29-execution-guards": 1,
+        "D30-deterministic-concepts": 1,
+        "D31-current-price-worth": 2,
+        "H01-legacy-historical-range": 4,
+        "H02-ambiguous-issuer": 4,
+        "H03-funds-not-index": 8,
+        "H04-explicit-comparison": 1,
+        "H05-add-indicator": 4,
+        "H06-remove-domain": 6,
+        "H07-history-commands": 1,
+        "H08-news-only": 1,
+        "H09-new-screening": 1,
+        "H10-invalid-dates": 6,
+        "H11-invalid-horizons": 1,
+        "H12-no-fallback-to-old-cache": 1,
+        "H13-future-publication": 1,
+        "H14-pending-conflict": 4,
+        "H15-stale-button-binding": 6,
+        "H16-understanding-faults": 4,
+        "H17-entry-exit-placement": 1
+      },
+      "tasks": {
+        "clarify": 13,
+        "command": 1,
+        "history": 2,
+        "index_research": 9,
+        "knowledge": 2,
+        "recall": 1,
+        "screening": 2,
+        "stock_research": 59,
+        "unsupported": 7
+      },
+      "outcomes": {
+        "clarify_conditions": 11,
+        "clarify_conflict": 5,
+        "clarify_horizon": 2,
+        "clarify_identity": 3,
+        "clarify_subject": 7,
+        "local": 6,
+        "reject": 7,
+        "research": 55
+      },
+      "semantic_calls": 79,
+      "local_zero_calls": 17,
+      "coverage": {
+        "negation": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "history_command": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "technical_domain": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "ambiguous_identity": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "product_scope": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "pending_validity": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "pending_conflict": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "same_subject": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        },
+        "future_fact": {
+          "boundary": 1,
+          "negative": 1,
+          "positive": 1
+        }
+      }
+    }
+  },
+  "thresholds": {
+    "all": {
+      "n": 96,
+      "minimum_correct": 92
+    },
+    "implementation_unseen": {
+      "n": 96,
+      "minimum_fraction": 0.95
+    },
+    "semantic": {
+      "n": 79,
+      "minimum_correct": 76
+    },
+    "families": {
+      "H01-legacy-historical-range": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H02-ambiguous-issuer": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H03-funds-not-index": {
+        "n": 8,
+        "minimum_correct": 7
+      },
+      "H05-add-indicator": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H06-remove-domain": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H10-invalid-dates": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H14-pending-conflict": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H15-stale-button-binding": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H16-understanding-faults": {
+        "n": 4,
+        "minimum_correct": 4
+      }
+    },
+    "small_family_rule": "题数少于4的族只计入总分，逐族仍报告",
+    "common_fields_not_worse": true,
+    "measurable_red_line_violations": 0,
+    "failed_unmeasured_invalid_in_denominator": true,
+    "maximum_target_attempts": 96,
+    "output_views": [
+      "raw_original",
+      "normalized_original",
+      "normalized_approved"
+    ]
+  },
+  "partition_checks": {
+    "variant_groups": 170,
+    "normalized_shapes": 171,
+    "cross_split_group_leaks": 0,
+    "cross_split_shape_leaks": 0,
+    "duplicate_inputs": 0,
+    "note": "机械检查只拦相同组和替换式重复；跨题语义近似仍须Claude逐题复核。"
+  },
+  "public_files_sha256": {
+    "data/evaluation/research-intent-v2.5-dev.jsonl": "5e1a47c20038a04653ce69b34a1a6fc07f2b8219c1b81f4bad2e442a8ce5e890",
+    "data/evaluation/research-intent-v2.5-dev.manifest.json": "118da611b7175c160a6ae110dce3bd886c8d2805e6c37e8946ac8ed7dc400f6a",
+    "data/evaluation/research-intent-v2.5-setups.json": "e20999362b9eb2d9a3de76569a8d51f1797e8cb11cffd4e1b40cee9393ed96a9",
+    "data/evaluation/research-intent-v2.5-amendments.json": "d3dfd47510df5540a883f08a35e7a0f7117bf5a83ca96746c83ce81103c39aaa",
+    "data/evaluation/research-intent-v2.5-rule-coverage.json": "875f3b04f970c3d5f655ccf0b80e123fe7bfecbdef38980760b64e7f4ff9dffd",
+    "docs/research-intent-v2.5-plan.md": "571329527c7eb3edc6a43e62b1214245b864064bdaf2999df9f0f5a1ffef4530",
+    "docs/research-intent-v2-contract.md": "243ebae6d162b0b46ac0ad81e89b40cf6450ed77a2f9897a0e41ef65b82eb21e",
+    "evaluation_tools/__init__.py": "bdd5d0052bdf1dba08b6148f1cebf36ff133c16f31be02fa0dee51ac1e3b3d28",
+    "evaluation_tools/research_intent_v25_cases.py": "fa3afa9da0b6d63ef5b071d287dc01205f2bbedd25e68ab82dd6143686a7ae99",
+    "evaluation_tools/preflight_research_intents_v25.py": "5fc46a6fa6abebb962b2686ceac00b9d6f434d7d9f8c87aa24569ee4fa9238a9",
+    "tests/test_research_intent_v25_cases.py": "e2da4d98852a424a97eb6af2b62281febc25f7d03b328939f23af3815e1d43e4",
+    "data/evaluation/research-intent-v2.jsonl": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+    "data/evaluation/research-intent-v2.manifest.json": "7c50bf73cbe5a27698f91da81d4869ace4f7c2ed3da38fb13a739e72c44c28be",
+    "data/evaluation/research-intent-v2-dev-amendments.json": "878a0e389f967d41855cd72bfdba59e4fae68870aa51c6e0ed647a11d46c7c60",
+    "src/trading_companion/research_intent_evaluation_cases.py": "de549924012f8b69b0aebfa3004e4f8629045a1c78c4661c2a583ea1f2ae1ed3",
+    "src/trading_companion/research_intent_v2_evaluation.py": "5a91fa1e0a99d75575d1ed51e1a4be2fa951074c7f16a884328e473cdb3857e5",
+    "src/trading_companion/research_intent_evaluation_fixtures.py": "f805298d1494c237904141035f43b1b2348a01af18adfcd58687bbc66c087531",
+    "src/trading_companion/workflow_evaluation_fixtures.py": "e9bf2111601bdc47c6a4879a6d65aadac9c79e7d6bb04817d113b442b69024b8"
+  },
+  "fingerprint_encoding": {
+    "public_files": "SHA256 after CRLF to LF canonicalization",
+    "holdout": "SHA256 of exact bytes"
+  },
+  "context_preflight": {
+    "dev": {
+      "count": 78,
+      "buildable": 78,
+      "target_calls": 0,
+      "prediction_rows": 0,
+      "score_rows": 0,
+      "passed": true
+    },
+    "holdout": {
+      "count": 96,
+      "buildable": 96,
+      "target_calls": 0,
+      "prediction_rows": 0,
+      "score_rows": 0,
+      "passed": true
+    }
+  },
+  "sealed_packet_sha256": {
+    "research-intent-v2.5-review.json": "2ec9c22de227216ccf77babc3aee2b9d5ac809888fe17de6bf2d28f5553ad5a3",
+    "research-intent-v2.5-context-preflight.json": "afbb3fcb5bc7d399e6e3612fdeb4aaee9f948d8b10b3ed1e628704c2340e945e",
+    "research-intent-v2.5-rule-tags.json": "dec18a12f189e995cfab3c61d66d296705ffa6cd69a291894523e4d0f803660a"
+  },
+  "review": {
+    "status": "approved",
+    "reviewer": "claude",
+    "approval_message": 394,
+    "reviewed_dev_count": 78,
+    "reviewed_holdout_count": 96,
+    "pending_dev_count": 0,
+    "pending_dev_ids": [],
+    "summary": "#392批准原160题；#394批准新增14题和4个前置及120条规则覆盖。题库、规范和门槛已冻结；整个出题目录移出仓库及公开文件提交、推送待Claude完成。",
+    "reviewed_setup_count": 28,
+    "reviewed_at": "2026-11-01T05:15:39Z"
+  },
+  "isolation": {
+    "statement": "检验题由独立Codex会话起草、Claude审核；实现会话在调参期间不可见",
+    "author_has_seen_targets": true,
+    "implementation_session_must_be_new": true,
+    "author_materials_must_be_moved_outside_repository": true,
+    "holdout_path_is_explicit": true,
+    "implementation_must_not_read_author_logs": true,
+    "limitations": "只防止误用，不是防篡改证明，也不是独立人类盲测；作者会话不得承担修补。"
+  },
+  "candidate": {
+    "status": "not_implemented",
+    "production_changed": false,
+    "live_enabled": false,
+    "model": "deepseek-flash",
+    "temperature": 0,
+    "thinking": "disabled",
+    "max_output_tokens": 1500,
+    "final_code_prompt_runner_fingerprints": "第三批锁候选时添加；本记录仅锁题目、规范、状态构建辅助与门槛"
+  },
+  "legacy": {
+    "original_cases": 240,
+    "legacy_development": 155,
+    "exposed_regression": 85,
+    "new_public_development_total": 233,
+    "old_not_applicable": [
+      "V2222",
+      "V2223"
+    ],
+    "old_setup_gap": [
+      "V2002"
+    ],
+    "amended_cases": 24,
+    "amended_fields": 39,
+    "historical_failures_and_usage_preserved": true
+  },
+  "approved_revision_message": 394,
+  "rule_coverage": {
+    "rule_count": 120,
+    "uncovered_rules": 0,
+    "public_examples_only": true
+  },
+  "development_population": {
+    "original_v25_count": 64,
+    "added_after_review": 14,
+    "current_count": 78,
+    "approval_message": 392,
+    "review_approval_message": 394
+  }
+}

@@ -1,0 +1,904 @@
+{
+  "version": "research-intent-v2.5-cases-v1",
+  "rule_count": 120,
+  "holdout_count": 96,
+  "uncovered_rules": 0,
+  "rules": {
+    "ambiguous_previous_subject": {
+      "description": "最近多对象单数指代不得猜选",
+      "public_examples": [
+        "V25D012",
+        "V2056",
+        "V2057"
+      ]
+    },
+    "ambiguous_stock_identity": {
+      "description": "歧义股票名保留任务并澄清身份",
+      "public_examples": [
+        "V25D034"
+      ]
+    },
+    "benchmark_default": {
+      "description": "大盘默认上证指数",
+      "public_examples": [
+        "V25D002",
+        "V2006",
+        "V2008"
+      ]
+    },
+    "binding:multiple": {
+      "description": "对象绑定数量：multiple",
+      "public_examples": [
+        "V25D040",
+        "V25D068",
+        "V25D075"
+      ]
+    },
+    "binding:none": {
+      "description": "对象绑定数量：none",
+      "public_examples": [
+        "V25D005",
+        "V25D010",
+        "V25D012"
+      ]
+    },
+    "binding:single": {
+      "description": "对象绑定数量：single",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "command_before_pending": {
+      "description": "取消或清空命令优先于待办",
+      "public_examples": [
+        "V25D028"
+      ]
+    },
+    "conflict_independent_new": {
+      "description": "完整新任务绕过待办冲突",
+      "public_examples": [
+        "V25D067"
+      ]
+    },
+    "consumed_subject": {
+      "description": "已消耗最近身份不从旧缓存回流",
+      "public_examples": [
+        "V25D054",
+        "V2206",
+        "V2207"
+      ]
+    },
+    "daily_weekly_not_indicator": {
+      "description": "日周K线是领域而非指标",
+      "public_examples": [
+        "V25D003",
+        "V25D018",
+        "V25D032"
+      ]
+    },
+    "date_expression:absent": {
+      "description": "历史日期原文：absent",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D005"
+      ]
+    },
+    "date_expression:present": {
+      "description": "历史日期原文：present",
+      "public_examples": [
+        "V25D003",
+        "V25D004",
+        "V25D018"
+      ]
+    },
+    "date_unexecutable": {
+      "description": "非法或未完成历史窗口保留原文并澄清",
+      "public_examples": [
+        "V25D052",
+        "V2196",
+        "V2197"
+      ]
+    },
+    "direction_without_prices": {
+      "description": "方向评级与价位授权分开",
+      "public_examples": [
+        "V25D006",
+        "V25D007",
+        "V25D009"
+      ]
+    },
+    "empty_strict_domain_conflict": {
+      "description": "严格领域全被否定须澄清",
+      "public_examples": [
+        "V25D075"
+      ]
+    },
+    "exclusion:financial": {
+      "description": "明确排除：financial",
+      "public_examples": [
+        "V25D075",
+        "V2177"
+      ]
+    },
+    "exclusion:indicator:atr": {
+      "description": "明确排除：indicator:atr",
+      "public_examples": [
+        "V25D017",
+        "V25D044",
+        "V2081"
+      ]
+    },
+    "exclusion:indicator:ema": {
+      "description": "明确排除：indicator:ema",
+      "public_examples": [
+        "V25D067"
+      ]
+    },
+    "exclusion:news": {
+      "description": "明确排除：news",
+      "public_examples": [
+        "V25D045",
+        "V2176",
+        "V2189"
+      ]
+    },
+    "exclusion:plan": {
+      "description": "明确排除：plan",
+      "public_examples": [
+        "V25D007",
+        "V25D008",
+        "V25D009"
+      ]
+    },
+    "exclusion:profile": {
+      "description": "明确排除：profile",
+      "public_examples": [
+        "V25D043",
+        "V2179"
+      ]
+    },
+    "exclusion:technical": {
+      "description": "明确排除：technical",
+      "public_examples": [
+        "V25D068"
+      ]
+    },
+    "exclusions:absent": {
+      "description": "排除项：absent",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "exclusions:present": {
+      "description": "排除项：present",
+      "public_examples": [
+        "V25D007",
+        "V25D008",
+        "V25D009"
+      ]
+    },
+    "expired_independent_new": {
+      "description": "完整新任务绕过过期待办",
+      "public_examples": [
+        "V25D068"
+      ]
+    },
+    "explain_semantic": {
+      "description": "其他解释使用一次语义理解",
+      "public_examples": [
+        "V2214"
+      ]
+    },
+    "explicit_comparison": {
+      "description": "多个明确对象可比较",
+      "public_examples": [
+        "V25D040",
+        "V25D068",
+        "V2166"
+      ]
+    },
+    "future_actual_unavailable": {
+      "description": "未来实际事实不得伪装成条件情景",
+      "public_examples": [
+        "V25D050",
+        "V2198"
+      ]
+    },
+    "future_publication": {
+      "description": "未来发布时间不得授权绑定",
+      "public_examples": [
+        "V25D055",
+        "V2211",
+        "V2212"
+      ]
+    },
+    "history_before_conflict": {
+      "description": "历史命令优先于待办冲突",
+      "public_examples": [
+        "V25D057"
+      ]
+    },
+    "history_saved_index": {
+      "description": "历史命令引用合法已存指数结果",
+      "public_examples": [
+        "V25D076"
+      ]
+    },
+    "history_without_result": {
+      "description": "无保存结果的历史命令仍本地处理",
+      "public_examples": [
+        "V25D057"
+      ]
+    },
+    "horizon:absent": {
+      "description": "未来期限：absent",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "horizon:present": {
+      "description": "未来期限：present",
+      "public_examples": [
+        "V25D010",
+        "V25D014",
+        "V25D016"
+      ]
+    },
+    "horizon_interval": {
+      "description": "未来期限区间按统一中点口径",
+      "public_examples": [
+        "V25D073"
+      ]
+    },
+    "horizon_invalid": {
+      "description": "非法量化未来期限不得当省略",
+      "public_examples": [
+        "V25D053",
+        "V2201",
+        "V2202"
+      ]
+    },
+    "horizon_named_band": {
+      "description": "短中长档映射代表期限",
+      "public_examples": [
+        "V25D017",
+        "V25D046",
+        "V25D065"
+      ]
+    },
+    "index_explicit_technical": {
+      "description": "指数明确技术领域保留",
+      "public_examples": [
+        "V25D003",
+        "V25D015",
+        "V25D035"
+      ]
+    },
+    "index_horizon_local_invalid": {
+      "description": "失效或到期边界的指数期限待办本地澄清",
+      "public_examples": [
+        "V25D066"
+      ]
+    },
+    "index_horizon_local_valid": {
+      "description": "有效指数期限待办零调用续接",
+      "public_examples": [
+        "V25D065"
+      ]
+    },
+    "indicator:boll": {
+      "description": "明确支持指标：boll",
+      "public_examples": [
+        "V25D073"
+      ]
+    },
+    "indicator:ema": {
+      "description": "明确支持指标：ema",
+      "public_examples": [
+        "V25D016",
+        "V25D020",
+        "V25D041"
+      ]
+    },
+    "indicator:macd": {
+      "description": "明确支持指标：macd",
+      "public_examples": [
+        "V2173"
+      ]
+    },
+    "indicator:sma": {
+      "description": "明确支持指标：sma",
+      "public_examples": [
+        "V25D015",
+        "V2020",
+        "V2076"
+      ]
+    },
+    "indicator:volume": {
+      "description": "明确支持指标：volume",
+      "public_examples": [
+        "V25D032",
+        "V2153"
+      ]
+    },
+    "indicator_mentions:absent": {
+      "description": "正向指标：absent",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "indicator_mentions:present": {
+      "description": "正向指标：present",
+      "public_examples": [
+        "V25D015",
+        "V25D016",
+        "V25D020"
+      ]
+    },
+    "knowledge_interlude": {
+      "description": "知识插曲不改变最近身份",
+      "public_examples": [
+        "V25D014",
+        "V2066",
+        "V2067"
+      ]
+    },
+    "known_index_local_reject": {
+      "description": "已知不支持指数本地拒绝",
+      "public_examples": [
+        "V2165"
+      ]
+    },
+    "memory_off_no_binding": {
+      "description": "关闭记忆不沿用对象",
+      "public_examples": [
+        "V25D078"
+      ]
+    },
+    "missing_horizon_for_prices": {
+      "description": "已有对象要价位先确认期限",
+      "public_examples": [
+        "V25D001",
+        "V25D011",
+        "V25D031"
+      ]
+    },
+    "missing_subject_before_horizon": {
+      "description": "缺对象优先澄清对象",
+      "public_examples": [
+        "V25D010",
+        "V2046",
+        "V2047"
+      ]
+    },
+    "mode_mismatch": {
+      "description": "模式改变阻断旧身份",
+      "public_examples": [
+        "V25D022",
+        "V2106",
+        "V2107"
+      ]
+    },
+    "objective_kind:analysis": {
+      "description": "目标：analysis",
+      "public_examples": [
+        "V25D002",
+        "V25D003",
+        "V25D004"
+      ]
+    },
+    "objective_kind:decision": {
+      "description": "目标：decision",
+      "public_examples": [
+        "V25D001",
+        "V25D006",
+        "V25D007"
+      ]
+    },
+    "objective_kind:outlook": {
+      "description": "目标：outlook",
+      "public_examples": [
+        "V2009",
+        "V2014"
+      ]
+    },
+    "operation:explain": {
+      "description": "操作：explain",
+      "public_examples": [
+        "V25D026",
+        "V2126",
+        "V2127"
+      ]
+    },
+    "operation:local": {
+      "description": "操作：local",
+      "public_examples": [
+        "V25D005",
+        "V25D028",
+        "V25D029"
+      ]
+    },
+    "operation:new": {
+      "description": "操作：new",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "operation:refresh": {
+      "description": "操作：refresh",
+      "public_examples": [
+        "V25D027",
+        "V25D071",
+        "V2054"
+      ]
+    },
+    "operation:update": {
+      "description": "操作：update",
+      "public_examples": [
+        "V25D019",
+        "V25D020",
+        "V25D025"
+      ]
+    },
+    "ordinal_selection": {
+      "description": "序号在当前对象或名单中核验",
+      "public_examples": [
+        "V25D024",
+        "V25D042",
+        "V2116"
+      ]
+    },
+    "outcome:clarify_conditions": {
+      "description": "预计动作：clarify_conditions",
+      "public_examples": [
+        "V25D050",
+        "V25D052",
+        "V25D053"
+      ]
+    },
+    "outcome:clarify_conflict": {
+      "description": "预计动作：clarify_conflict",
+      "public_examples": [
+        "V25D009",
+        "V25D056",
+        "V25D075"
+      ]
+    },
+    "outcome:clarify_horizon": {
+      "description": "预计动作：clarify_horizon",
+      "public_examples": [
+        "V25D001",
+        "V25D011",
+        "V25D031"
+      ]
+    },
+    "outcome:clarify_identity": {
+      "description": "预计动作：clarify_identity",
+      "public_examples": [
+        "V25D034",
+        "V25D035",
+        "V25D070"
+      ]
+    },
+    "outcome:clarify_subject": {
+      "description": "预计动作：clarify_subject",
+      "public_examples": [
+        "V25D010",
+        "V25D012",
+        "V25D021"
+      ]
+    },
+    "outcome:local": {
+      "description": "预计动作：local",
+      "public_examples": [
+        "V25D005",
+        "V25D028",
+        "V25D030"
+      ]
+    },
+    "outcome:reject": {
+      "description": "预计动作：reject",
+      "public_examples": [
+        "V25D029",
+        "V25D036",
+        "V25D037"
+      ]
+    },
+    "outcome:research": {
+      "description": "预计动作：research",
+      "public_examples": [
+        "V25D002",
+        "V25D003",
+        "V25D004"
+      ]
+    },
+    "parameterized_indicator": {
+      "description": "明确指标参数完整保留",
+      "public_examples": [
+        "V25D016",
+        "V25D020",
+        "V25D041"
+      ]
+    },
+    "pending_clock_rollback": {
+      "description": "时钟回拨使待办失效",
+      "public_examples": [
+        "V2224"
+      ]
+    },
+    "pending_conflict_local": {
+      "description": "普通冲突待办本地澄清",
+      "public_examples": [
+        "V25D056",
+        "V2216",
+        "V2217"
+      ]
+    },
+    "pending_directory_changed": {
+      "description": "目录变化使待办身份失效",
+      "public_examples": [
+        "V25D069"
+      ]
+    },
+    "pending_mode_changed": {
+      "description": "模式变化使待办失效",
+      "public_examples": [
+        "V25D077"
+      ]
+    },
+    "pending_suffix_semantic": {
+      "description": "待办回复附句必须理解完整条件",
+      "public_examples": [
+        "V25D020",
+        "V2096",
+        "V2097"
+      ]
+    },
+    "plan_conflict": {
+      "description": "肯定价位与否决计划冲突",
+      "public_examples": [
+        "V25D009",
+        "V2041",
+        "V2042"
+      ]
+    },
+    "product_background": {
+      "description": "产品只作股票背景不误拒绝",
+      "public_examples": [
+        "V25D039"
+      ]
+    },
+    "product_concept": {
+      "description": "产品概念解释可以回答",
+      "public_examples": [
+        "V25D038"
+      ]
+    },
+    "profile_explicit_situation": {
+      "description": "公司或业务情况明确为概况",
+      "public_examples": [
+        "V25D013",
+        "V25D034",
+        "V25D062"
+      ]
+    },
+    "purchase_value_prices": {
+      "description": "购买价值默认包含参考价位",
+      "public_examples": [
+        "V25D017",
+        "V25D031",
+        "V25D036"
+      ]
+    },
+    "relative_this_window": {
+      "description": "这N天周月为相对历史窗口",
+      "public_examples": [
+        "V25D033",
+        "V2152",
+        "V2155"
+      ]
+    },
+    "research_kind:announcements": {
+      "description": "明确领域：announcements",
+      "public_examples": [
+        "V25D045",
+        "V25D048",
+        "V25D078"
+      ]
+    },
+    "research_kind:financial": {
+      "description": "明确领域：financial",
+      "public_examples": [
+        "V25D012",
+        "V25D027",
+        "V25D043"
+      ]
+    },
+    "research_kind:news": {
+      "description": "明确领域：news",
+      "public_examples": [
+        "V25D021",
+        "V25D037",
+        "V25D048"
+      ]
+    },
+    "research_kind:profile": {
+      "description": "明确领域：profile",
+      "public_examples": [
+        "V25D013",
+        "V25D024",
+        "V25D034"
+      ]
+    },
+    "research_kind:technical": {
+      "description": "明确领域：technical",
+      "public_examples": [
+        "V25D003",
+        "V25D015",
+        "V25D016"
+      ]
+    },
+    "research_kinds:absent": {
+      "description": "明确研究领域：absent",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D004"
+      ]
+    },
+    "research_kinds:present": {
+      "description": "明确研究领域：present",
+      "public_examples": [
+        "V25D003",
+        "V25D012",
+        "V25D013"
+      ]
+    },
+    "same_single_subject": {
+      "description": "最近唯一同一对象可指代",
+      "public_examples": [
+        "V25D041",
+        "V2173"
+      ]
+    },
+    "screening_refresh": {
+      "description": "按旧条件刷新筛选",
+      "public_examples": [
+        "V25D071"
+      ]
+    },
+    "situation_unspecified_domain": {
+      "description": "泛称某公司情况不限定领域",
+      "public_examples": [
+        "V25D063",
+        "V2055",
+        "V2133"
+      ]
+    },
+    "source_mismatch": {
+      "description": "来源改变阻断旧身份",
+      "public_examples": [
+        "V25D021",
+        "V2101",
+        "V2102"
+      ]
+    },
+    "stock_horizon_local_invalid": {
+      "description": "失效公司期限待办零调用澄清并清除授权",
+      "public_examples": [
+        "V25D059",
+        "V25D060",
+        "V25D061"
+      ]
+    },
+    "stock_horizon_local_valid": {
+      "description": "有效公司期限待办零调用续接",
+      "public_examples": [
+        "V25D019",
+        "V25D058",
+        "V2091"
+      ]
+    },
+    "strict_negated_only_false": {
+      "description": "被否定的唯一范围不设严格范围",
+      "public_examples": [
+        "V25D073"
+      ]
+    },
+    "strict_scope:false": {
+      "description": "严格领域或指标范围：false",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "strict_scope:true": {
+      "description": "严格领域或指标范围：true",
+      "public_examples": [
+        "V25D016",
+        "V25D043",
+        "V25D048"
+      ]
+    },
+    "strict_time_only_false": {
+      "description": "仅限时间不设严格领域",
+      "public_examples": [
+        "V25D072"
+      ]
+    },
+    "subject_source:none": {
+      "description": "对象来源：none",
+      "public_examples": [
+        "V25D005",
+        "V25D010",
+        "V25D023"
+      ]
+    },
+    "subject_source:previous": {
+      "description": "对象来源：previous",
+      "public_examples": [
+        "V25D001",
+        "V25D011",
+        "V25D012"
+      ]
+    },
+    "subject_source:question": {
+      "description": "对象来源：question",
+      "public_examples": [
+        "V25D002",
+        "V25D003",
+        "V25D004"
+      ]
+    },
+    "task:clarify": {
+      "description": "任务：clarify",
+      "public_examples": [
+        "V25D010",
+        "V25D012",
+        "V25D021"
+      ]
+    },
+    "task:command": {
+      "description": "任务：command",
+      "public_examples": [
+        "V25D028",
+        "V2136",
+        "V2137"
+      ]
+    },
+    "task:history": {
+      "description": "任务：history",
+      "public_examples": [
+        "V25D047",
+        "V25D057",
+        "V25D076"
+      ]
+    },
+    "task:index_research": {
+      "description": "任务：index_research",
+      "public_examples": [
+        "V25D002",
+        "V25D003",
+        "V25D004"
+      ]
+    },
+    "task:knowledge": {
+      "description": "任务：knowledge",
+      "public_examples": [
+        "V25D030",
+        "V25D038",
+        "V2146"
+      ]
+    },
+    "task:recall": {
+      "description": "任务：recall",
+      "public_examples": [
+        "V25D005",
+        "V2021",
+        "V2022"
+      ]
+    },
+    "task:screening": {
+      "description": "任务：screening",
+      "public_examples": [
+        "V25D025",
+        "V25D049",
+        "V25D071"
+      ]
+    },
+    "task:stock_research": {
+      "description": "任务：stock_research",
+      "public_examples": [
+        "V25D001",
+        "V25D006",
+        "V25D007"
+      ]
+    },
+    "task:unsupported": {
+      "description": "任务：unsupported",
+      "public_examples": [
+        "V25D029",
+        "V25D036",
+        "V25D037"
+      ]
+    },
+    "uncertain_index_identity": {
+      "description": "不明确指数身份须澄清",
+      "public_examples": [
+        "V25D035"
+      ]
+    },
+    "unknown_stock_identity": {
+      "description": "未知股票名保留任务并澄清身份",
+      "public_examples": [
+        "V25D070"
+      ]
+    },
+    "unsupported_indicator": {
+      "description": "不支持指标保留原文并澄清",
+      "public_examples": [
+        "V25D074"
+      ]
+    },
+    "unsupported_product": {
+      "description": "具体不支持产品研究拒绝",
+      "public_examples": [
+        "V25D036",
+        "V25D037",
+        "V2161"
+      ]
+    },
+    "veto_preserves_direction": {
+      "description": "计划否决保留未来方向",
+      "public_examples": [
+        "V25D007",
+        "V25D009",
+        "V2031"
+      ]
+    },
+    "wants_plan:false": {
+      "description": "价位授权：false",
+      "public_examples": [
+        "V25D002",
+        "V25D003",
+        "V25D004"
+      ]
+    },
+    "wants_plan:true": {
+      "description": "价位授权：true",
+      "public_examples": [
+        "V25D001",
+        "V25D010",
+        "V25D011"
+      ]
+    },
+    "zero_intent_calls:false": {
+      "description": "零理解调用：false",
+      "public_examples": [
+        "V25D001",
+        "V25D002",
+        "V25D003"
+      ]
+    },
+    "zero_intent_calls:true": {
+      "description": "零理解调用：true",
+      "public_examples": [
+        "V25D005",
+        "V25D019",
+        "V25D026"
+      ]
+    }
+  }
+}

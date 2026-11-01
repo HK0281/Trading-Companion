@@ -1,0 +1,382 @@
+{
+  "version": "research-intent-v2.5-cases-v1",
+  "review": {
+    "status": "approved",
+    "reviewer": "claude",
+    "approval_message": 394,
+    "reviewed_entries": [
+      "empty",
+      "pending-company",
+      "pending-conflict",
+      "pending-identity",
+      "pending-index",
+      "pending-index-star",
+      "pending-mode",
+      "pending-source",
+      "saved-company",
+      "saved-index",
+      "saved-index-star",
+      "saved-short",
+      "snapshot-consumed",
+      "snapshot-consumed-other",
+      "snapshot-from-demo",
+      "snapshot-future",
+      "snapshot-future-index",
+      "snapshot-interlude",
+      "snapshot-memory-off",
+      "snapshot-memory-off-dev",
+      "snapshot-mode-switch",
+      "snapshot-multi",
+      "snapshot-old-period",
+      "snapshot-old-rating",
+      "snapshot-shortlist",
+      "snapshot-shortlist-company",
+      "snapshot-source-other",
+      "snapshot-source-switch"
+    ],
+    "pending_entries": [],
+    "reviewed_at": "2026-11-01T05:15:39Z",
+    "entry_reviews": {
+      "empty": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-company": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-conflict": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-identity": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-index": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-index-star": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 394
+      },
+      "pending-mode": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "pending-source": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "saved-company": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "saved-index": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "saved-index-star": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 394
+      },
+      "saved-short": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-consumed": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-consumed-other": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-from-demo": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-future": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-future-index": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-interlude": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-memory-off": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-memory-off-dev": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 394
+      },
+      "snapshot-mode-switch": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-multi": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-old-period": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-old-rating": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-shortlist": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-shortlist-company": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 394
+      },
+      "snapshot-source-other": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      },
+      "snapshot-source-switch": {
+        "status": "approved",
+        "reviewer": "claude",
+        "approval_message": 392
+      }
+    }
+  },
+  "entries": {
+    "empty": {
+      "kind": "snapshot",
+      "history": [],
+      "note": "空会话，无前置模型调用。"
+    },
+    "saved-company": {
+      "kind": "company_saved",
+      "history": [
+        "研究平安银行"
+      ],
+      "note": "复用#366已审核脚本，真实发布公司缓存。"
+    },
+    "saved-short": {
+      "kind": "company_saved",
+      "history": [
+        "平安银行短线能买吗"
+      ],
+      "note": "复用#341已审短线研究脚本，真实发布带期限的公司缓存。"
+    },
+    "snapshot-multi": {
+      "kind": "snapshot",
+      "history": [
+        "对照平安银行和招商银行的经营情况"
+      ],
+      "note": "真实目录核验后stage_research_subject记录双对象，未制造报告正文。"
+    },
+    "snapshot-shortlist": {
+      "kind": "snapshot",
+      "history": [
+        "筛选价格大于0的股票"
+      ],
+      "note": "真实SavedScreening对象及固定目录，当前列表顺序为招商、浦发、平安。"
+    },
+    "pending-company": {
+      "kind": "company_horizon",
+      "history": [
+        "平安银行能买吗"
+      ],
+      "note": "复用#341已审单轮脚本形成真实ProductPlanContext期限待办。"
+    },
+    "pending-source": {
+      "kind": "company_horizon_source",
+      "history": [
+        "平安银行能买吗"
+      ],
+      "note": "先建立真实期限待办，再切换当前来源；待办内容不改。"
+    },
+    "pending-mode": {
+      "kind": "company_horizon_mode",
+      "history": [
+        "平安银行能买吗"
+      ],
+      "note": "先建立真实期限待办，再切换当前演示模式。"
+    },
+    "pending-identity": {
+      "kind": "company_horizon_identity",
+      "history": [
+        "平安银行能买吗"
+      ],
+      "note": "先建立真实期限待办，再更新000001.SZ的目录名称，制造目录身份不一致。"
+    },
+    "pending-conflict": {
+      "kind": "conflict",
+      "history": [
+        "平安银行能买吗"
+      ],
+      "note": "在真实公司期限待办上显式注入第二个原生PendingResearch；标记multi_pending。"
+    },
+    "pending-index": {
+      "kind": "index_horizon",
+      "history": [
+        "沪深300给一个点位计划"
+      ],
+      "note": "真实指数执行器在任何模型/来源调用前创建PendingIndexResearch期限待办。"
+    },
+    "saved-index": {
+      "kind": "index_saved",
+      "history": [
+        "研究沪深300的技术面"
+      ],
+      "note": "真实指数执行器，固定演示响应及合成日线；创建并发布原生SavedIndexResearch。"
+    },
+    "snapshot-old-period": {
+      "kind": "snapshot",
+      "history": [
+        "旧公司报告"
+      ],
+      "note": "过期最近对象保留可信身份；过期研究期限不能继承。"
+    },
+    "snapshot-interlude": {
+      "kind": "snapshot",
+      "history": [
+        "研究平安银行",
+        "解释市净率的用途"
+      ],
+      "note": "目录核验的最近对象快照；知识插曲本身不发布研究身份。"
+    },
+    "snapshot-source-switch": {
+      "kind": "snapshot",
+      "history": [
+        "源A公司报告"
+      ],
+      "note": "研究快照来源为腾讯，当前来源已切换。"
+    },
+    "snapshot-mode-switch": {
+      "kind": "snapshot",
+      "history": [
+        "真实模式公司报告"
+      ],
+      "note": "真实研究快照遇当前演示模式，身份使用应失败。"
+    },
+    "snapshot-consumed": {
+      "kind": "snapshot",
+      "history": [
+        "研究平安银行",
+        "新任务使最近对象失效"
+      ],
+      "note": "保留旧缓存标志但最近对象已消耗，不允许回退旧对象。"
+    },
+    "snapshot-future": {
+      "kind": "snapshot",
+      "history": [
+        "时间异常的公司发布"
+      ],
+      "note": "真实ResearchSubject发布时间在当前时钟之后10秒。"
+    },
+    "snapshot-old-rating": {
+      "kind": "snapshot",
+      "history": [
+        "旧短线研判"
+      ],
+      "note": "旧报告过期但最近单对象身份可核验；本句提供全新期限。"
+    },
+    "snapshot-source-other": {
+      "kind": "snapshot",
+      "history": [
+        "腾讯旧研究"
+      ],
+      "note": "当前源改变且旧对象不同；明确新对象仍可发起研究。"
+    },
+    "snapshot-from-demo": {
+      "kind": "snapshot",
+      "history": [
+        "演示模式研究"
+      ],
+      "note": "旧对象来自演示模式而当前是真实模式。"
+    },
+    "snapshot-memory-off": {
+      "kind": "snapshot",
+      "history": [
+        "研究报告仅作状态背景"
+      ],
+      "note": "程序状态有最近对象，但会话记忆开关关闭。"
+    },
+    "snapshot-consumed-other": {
+      "kind": "snapshot",
+      "history": [
+        "已发布中国平安",
+        "新的显式任务开始后失败"
+      ],
+      "note": "最近发布已被新研究消耗，旧保存结果不能回流。"
+    },
+    "snapshot-future-index": {
+      "kind": "snapshot",
+      "history": [
+        "时钟回拨后的指数记录"
+      ],
+      "note": "真实指数ResearchSubject发布时间比当前时钟晚1秒。"
+    },
+    "pending-index-star": {
+      "kind": "index_horizon",
+      "history": [
+        "科创50给一个点位计划"
+      ],
+      "note": "新增开发前置：真实执行器创建科创50期限待办，与原沪深300前置不同；已由Claude在#394审核通过。"
+    },
+    "saved-index-star": {
+      "kind": "index_saved",
+      "history": [
+        "研究科创50的日线"
+      ],
+      "note": "新增开发前置：固定合成日线和响应经真实指数执行器发布科创50保存结果；已由Claude在#394审核通过。"
+    },
+    "snapshot-shortlist-company": {
+      "kind": "snapshot",
+      "history": [
+        "筛选价格大于0的股票",
+        "研究浦发银行的财务"
+      ],
+      "note": "新增开发前置：真实筛选名单与另一个最近公司身份同时存在，刷新筛选不得误绑当前公司；已由Claude在#394审核通过。"
+    },
+    "snapshot-memory-off-dev": {
+      "kind": "snapshot",
+      "history": [
+        "公开构造的公司发布记录"
+      ],
+      "note": "新增开发前置：真实最近公司身份对象存在，但会话记忆关闭；未执行目标轮，已由Claude在#394审核通过。"
+    }
+  }
+}

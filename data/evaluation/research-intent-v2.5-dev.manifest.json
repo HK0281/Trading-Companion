@@ -1,0 +1,685 @@
+{
+  "version": "research-intent-v2.5-cases-v1",
+  "author": "codex",
+  "author_session_id": "01a19543-2291-7490-a1db-5e6080d437fe",
+  "corpus_sha256": "5e1a47c20038a04653ce69b34a1a6fc07f2b8219c1b81f4bad2e442a8ce5e890",
+  "summary": {
+    "count": 78,
+    "families": {
+      "D01-entry-failure": 1,
+      "D02-broad-market": 1,
+      "D03-chinext-market": 1,
+      "D04-star50-history": 1,
+      "D05-rating-recall": 1,
+      "D06-direction-only": 1,
+      "D07-rating-without-prices": 1,
+      "D08-veto-analysis": 1,
+      "D09-conflicting-plan": 2,
+      "D10-no-subject": 1,
+      "D11-expired-subject": 1,
+      "D12-ambiguous-pronoun": 1,
+      "D13-explicit-new-subject": 1,
+      "D14-knowledge-interlude": 1,
+      "D15-stock-index-switch": 1,
+      "D16-strict-sma": 3,
+      "D17-no-atr": 1,
+      "D18-history-vs-future": 1,
+      "D19-horizon-buttons": 2,
+      "D20-button-with-suffix": 1,
+      "D21-source-mismatch": 1,
+      "D22-mode-mismatch": 1,
+      "D23-cleared-state": 2,
+      "D24-shortlist-selection": 1,
+      "D25-shortlist-edit": 2,
+      "D26-explain-published": 1,
+      "D27-refresh-published": 1,
+      "D28-local-commands": 1,
+      "D29-execution-guards": 1,
+      "D30-deterministic-concepts": 1,
+      "D31-current-price-worth": 1,
+      "H01-legacy-historical-range": 2,
+      "H02-ambiguous-issuer": 3,
+      "H03-funds-not-index": 4,
+      "H04-explicit-comparison": 1,
+      "H05-add-indicator": 3,
+      "H06-remove-domain": 4,
+      "H07-history-commands": 2,
+      "H08-news-only": 1,
+      "H09-new-screening": 1,
+      "H10-invalid-dates": 3,
+      "H11-invalid-horizons": 1,
+      "H12-no-fallback-to-old-cache": 1,
+      "H13-future-publication": 1,
+      "H14-pending-conflict": 3,
+      "H15-stale-button-binding": 8,
+      "H16-understanding-faults": 2,
+      "H17-entry-exit-placement": 1
+    },
+    "tasks": {
+      "clarify": 15,
+      "command": 1,
+      "history": 3,
+      "index_research": 7,
+      "knowledge": 2,
+      "recall": 1,
+      "screening": 3,
+      "stock_research": 43,
+      "unsupported": 3
+    },
+    "outcomes": {
+      "clarify_conditions": 10,
+      "clarify_conflict": 3,
+      "clarify_horizon": 4,
+      "clarify_identity": 3,
+      "clarify_subject": 8,
+      "local": 7,
+      "reject": 3,
+      "research": 40
+    },
+    "semantic_calls": 59,
+    "local_zero_calls": 19,
+    "coverage": {
+      "negation": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 1
+      },
+      "history_command": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 2
+      },
+      "technical_domain": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 1
+      },
+      "ambiguous_identity": {
+        "boundary": 2,
+        "negative": 1,
+        "positive": 1
+      },
+      "product_scope": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 1
+      },
+      "pending_validity": {
+        "boundary": 2,
+        "negative": 2,
+        "positive": 2
+      },
+      "pending_conflict": {
+        "boundary": 1,
+        "negative": 2,
+        "positive": 1
+      },
+      "same_subject": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 1
+      },
+      "future_fact": {
+        "boundary": 1,
+        "negative": 1,
+        "positive": 1
+      }
+    }
+  },
+  "review": {
+    "status": "approved",
+    "reviewer": "claude",
+    "approval_message": 394,
+    "reviewed_count": 78,
+    "pending_count": 0,
+    "reviewed_at": "2026-11-01T05:15:39Z"
+  },
+  "reviews": {
+    "V25D001": {
+      "row_sha256": "b1061d214cc6e031edb7f6234e8d7b75cf3cf1622b59fa6ded90b6de4fa53582",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D002": {
+      "row_sha256": "9f5ee60eb09cb18816e6b619736f04ae91bd78a29705700df3af03a0b1c294f8",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D003": {
+      "row_sha256": "911fb38a77a7a4850926cc5b306d104861e83e78294d36847daba2da999dea0a",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D004": {
+      "row_sha256": "d48a6f32642e943f8f21467f941d236620df31fb6a2882a2b341b0bececd93d3",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D005": {
+      "row_sha256": "c39c9d6d83cc8d28a30f537797ff8f4433c604222882f3d3d88ecc74c43db489",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D006": {
+      "row_sha256": "e92fc2c81d2c861184fcce6f316a0705bf90e104eae30f1249e6d47f7fc30cd3",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D007": {
+      "row_sha256": "20b89829bafc8c08d8020d1ab16860553489b9a5e355f3043b811e4ad17d9276",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D008": {
+      "row_sha256": "7802b9c204e20a834fd09152b78db68f288e4cf1f993401ee9e7163d36638dee",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D009": {
+      "row_sha256": "ba1d8bfcde193a96fae1f1678a824a74104b2363fe9e7502dfaa4e26c42f23b5",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D010": {
+      "row_sha256": "49004d721598f53b33564a2ddc0149d02f1338ff584740447392dc2b660e25b0",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D011": {
+      "row_sha256": "dbae82fdd32998455aa2c4f37d0cb9caa02fad4d642e1d77647e4461cf08a20c",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D012": {
+      "row_sha256": "1cff64f1a093cb52975869e1743ca9be9171ea0d49a5d3ab8911656efb53471d",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D013": {
+      "row_sha256": "337671b1f3bc909c82c4c03d0d6e445a818ba392ff9d7d76a2b32884f1ef725d",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D014": {
+      "row_sha256": "d5fa27e0006758b036733697782f066bf0d8612cb1b937616726ddc2d9c4428d",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D015": {
+      "row_sha256": "bd2e9468aacf19b80335cb3f21c0474b44546ec6c49bb72b592dfa72abe7d81a",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D016": {
+      "row_sha256": "9665fb91d3748180c2020e17090fa56ad5bec0d207db4a06c1db09d105c42a97",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D017": {
+      "row_sha256": "f702551f85d22ef017fbd7c1e39d4deff3a101ddf199e97513dd7651313a83f3",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D018": {
+      "row_sha256": "347947e3295cdecd6af3b2ae1253884c09fddf63cf6abc9e7c466727a77eb788",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D019": {
+      "row_sha256": "9785f6635a9820cf17462aab2ddc014e05b8d9f6b349d2237dc231967c975b34",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D020": {
+      "row_sha256": "348c7b80cfd9335f64582f90b4438ecb0d65057b5f767065009b531eb11928ed",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D021": {
+      "row_sha256": "9d87fc3a2299517e335dedb5e6fd64e63d2ea9d086a6d88972682cacfe12781a",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D022": {
+      "row_sha256": "1d98c80134a5d5083565e3b1d5fa6920dc2ce48cb0312df7fece2a7a22854a03",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D023": {
+      "row_sha256": "caec48aa92a626e24bc763bc427575ad7cbd031a799a01edede7dfffdc7dfb4e",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D024": {
+      "row_sha256": "0fcfac47bd7791296d69b546e5ba526e4a5daadde197fdcad2642a4fcb94e03e",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D025": {
+      "row_sha256": "06ec52225f97589fd544400ded3ca4da6e442fb01989cdda5c11cbb8e50a8c89",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D026": {
+      "row_sha256": "500c04a322ce6f0a841964a25c5daf420e3052105f3d3fd5237a5c4930f1dfd7",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D027": {
+      "row_sha256": "bfcef09717eb58a891aa84c3a631e4c6982582bc73b23c817c84f0415021efc0",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D028": {
+      "row_sha256": "848c911b757cea6f647c673b9fc99da252adff3587de375d74a2122388edeb91",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D029": {
+      "row_sha256": "fe46b1d6cfe4ee8c7558b30f5a3306a37951095f7b89b28a29d601939ba77994",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D030": {
+      "row_sha256": "18f1bdb1b6b403d5dc77247633fe6309935b99099f9e26f5e40cb080bdb08935",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D031": {
+      "row_sha256": "e0d75dbf53fd5d331c8205722d8b8c9eeb0545ef707b39c023cc793a79c46e0b",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D032": {
+      "row_sha256": "a0d1bbd09b1b7a154174f5eaea0b7a49bb4f35f4776135e7a1c3b5bc3cf2f33e",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D033": {
+      "row_sha256": "50d4893c6e874279a0d4e8d5e57fb3e7035c62d1af305611a223132ac47a94a4",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D034": {
+      "row_sha256": "ed2088e515d67be25c7721ac4409b4635cf573c5d14e48e310802311b56fdc4d",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D035": {
+      "row_sha256": "caeb6987742aedeb85171562ac10ee2166ab6acbcfa0ded345ca354313a0d3bd",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D036": {
+      "row_sha256": "add54204c1feabaccaad09a201725f1814eadd262644d11bfa1b98e490e08e56",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D037": {
+      "row_sha256": "d937cde08e3cb84f9763781abfeec94a189baaa67ac29427cb4046ea151985d1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D038": {
+      "row_sha256": "bc2b7962c0292ee97140f2a2a2c16da13e62f0de11f56dd974d75a78a28af051",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D039": {
+      "row_sha256": "2d1f9df6b377ca3630617af2df5c6dedc5534f3e7cf233e54fddddfa0dc348e1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D040": {
+      "row_sha256": "152b83077dd9751970886730ca64a8bc840a36707f15fd35b53437b956d1e806",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D041": {
+      "row_sha256": "a867151e54831b81887073ef73f568edf2e09bfd5b1cf6ccceb0cb4940152523",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D042": {
+      "row_sha256": "41b826d70d951ff66b69526dff58dbe04dbc68c0b259b14d97dac5a9904fc9e8",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D043": {
+      "row_sha256": "05f00ad25284b017f9243d42286b4febc6e005e3954a0ab5cf026922a7eb64f9",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D044": {
+      "row_sha256": "d6d7a47b76aaf301573d7eb38773c688cf4c479ceeb354d7b9e4d68042b32f81",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D045": {
+      "row_sha256": "265acdff8597650854736834744c6b1826e961cf53372155a3bd9960298159fa",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D046": {
+      "row_sha256": "61bc93ffbbefc1cef3e75bffe07eb280265db47da8340feec4778a62c86b4917",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D047": {
+      "row_sha256": "cf90988e7e56d5ba3a18377881884b97693f040effc767087fd404751c15bcf5",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D048": {
+      "row_sha256": "2c24e8ad80579f0ce129cd3e8e86ad7e0834cac2ec759923312d1107d67e18a0",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D049": {
+      "row_sha256": "55924defa87560730d2334690d244bd6001d7e1c6215e996966dd789aa9c1cde",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D050": {
+      "row_sha256": "678a68a1b8666bd866710c213fc87cecd1ae73abfbf74ae2e01dab3945eef435",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D051": {
+      "row_sha256": "90b07b9f1334ef6120674fb366ac63a47620b8e237517b832139e4fc5fd07c54",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D052": {
+      "row_sha256": "a8515a5e41b1596774d25128a08b083351a2c450f162c1e8bf07976a9894ce03",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D053": {
+      "row_sha256": "3770bd169cf67a2e3f49a3d98842e413611444818c65dec8402a3a662f5bd5bf",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D054": {
+      "row_sha256": "7ff2a35bb49c332c4991a6a9af23666d7b01c06841ec96bed197f9f50083a997",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D055": {
+      "row_sha256": "a44a4d5a019ba53ef076bf929601f5780bd78c5ddb6b17a58fca6e4b673a73bf",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D056": {
+      "row_sha256": "d932c3e611cb043b4002b40bb7f107cb524fa971ac1f0d12887c4501b62fbebd",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D057": {
+      "row_sha256": "93e2f6dcbfad8f0eb617210a23d93fcf269ce4703a8594348baffaaae0f09318",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D058": {
+      "row_sha256": "4e60b8903c02ef8097fa0ba311a95e86f0251bc4bee8c0927a6e32d2463bc1b3",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D059": {
+      "row_sha256": "25659d934411d2a9fa56259f173c7b4d367b4cd89f882e28f76ff6bf0504ade7",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D060": {
+      "row_sha256": "c277dc25c381f501d03f562683bf85334a080787122e3b28005a7cd0918d776e",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D061": {
+      "row_sha256": "b58bac0597996725423aac5775f8d105177bb146f2644ab8c81a1b5e51d4511a",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D062": {
+      "row_sha256": "6b2521f117dd5b59b89e0b6a06b123847f41d409ce11dd47ad295d85a4bf4cc1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D063": {
+      "row_sha256": "df32f4ccb42534f354c4bd2f986b206bcdf734abff1af5f05f8246f94a97333b",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D064": {
+      "row_sha256": "4c63e81c17991a4ad45eb928d06d0b75869fded85416dc135abda233f698b043",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 392,
+      "note": "#392逐题审阅通过；本轮未改题干或gold"
+    },
+    "V25D065": {
+      "row_sha256": "9f3ecae7d7d6b464b89724bd4acdc764b6e4964f2b0b6af9f46d7f21cc6ca70f",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D066": {
+      "row_sha256": "a28d22aa6bc6d76b1d75daaa57b9efde922e49dd765786ab7099abde15818d30",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D067": {
+      "row_sha256": "ce4ef3de4cc0a0205fd7e1a794943a0a66d5b65d7bc257c28e45f9c4cd4b55c7",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D068": {
+      "row_sha256": "845276a7c97541b807953851e65611585e1a464d516444adf3478fa1c4dc60dd",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D069": {
+      "row_sha256": "c7158e3b17dab937f069f12a1909f033c41eb5c92ae4caf7f598600902e0ba11",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D070": {
+      "row_sha256": "4d1ab8866215dda18e8f34c8cc69a64deea30641d8dd3abb11599a6a8489248d",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D071": {
+      "row_sha256": "f594a0e367e2c42aaae5ec6a8dd660a5c2c40c8f019a841411022014546c33d1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D072": {
+      "row_sha256": "77818e857b8aadaea28cb6b898aac4e575f4f70ce33ae80b4c436d546a563bc1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D073": {
+      "row_sha256": "2c391ed20d10e817aa100a1d410a4fadeecd729549be348e61e071b83d3f0f4a",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D074": {
+      "row_sha256": "743a33712b16c279cf2412f44b4bbf533390474862e11ec84dce81b03f5ecdf4",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D075": {
+      "row_sha256": "50708ab83fbb91aa400140dbed8569ca9bdcb0ad5c051cd5d4d142c10a07b117",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D076": {
+      "row_sha256": "2bcc50524bbab547f827a51a3bccbb075c82f3b8a9da906336e93b0b82316bdb",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D077": {
+      "row_sha256": "72d45140642a1a70ebcc0914314e65591d31431d9aa29e436c432a0cf8690055",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    },
+    "V25D078": {
+      "row_sha256": "06a90e9abcc2130aeeb1f89dbea124f5c431f831945d9a87575020fe57eccec1",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 394,
+      "note": "#394逐题审阅通过；仅更新审核记录，题干及gold未改"
+    }
+  }
+}

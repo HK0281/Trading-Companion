@@ -1,0 +1,464 @@
+{
+  "version": "research-intent-v2.5-cases-v1",
+  "parent_corpus_sha256": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+  "previous_amendments_sha256": "878a0e389f967d41855cd72bfdba59e4fae68870aa51c6e0ed647a11d46c7c60",
+  "changes": [
+    {
+      "id": "V2013",
+      "parent_row_sha256": "aedc69064c024c7e690cc753dbb6dd4613fab2d065023f0538deb0c2f2d0e697",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2017",
+      "parent_row_sha256": "1ccc49a2f3a8fe0596ef7042402e7be07d61675fe1b3ac76d2454cb0dc43120f",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2020",
+      "parent_row_sha256": "9542f71a54d1b2a746af854ee3a1c9e791f405d5e315ef5b1e377bbec0e7c792",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2151",
+      "parent_row_sha256": "8c354ae1d7ecf49054f01f496f8875465973af4deeb21e4b656cafc480a44665",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2152",
+      "parent_row_sha256": "9d4fe0a49e81ed2bc74015b70ea6d43ac170d74ad204d2e62490fd10f5495aa0",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2153",
+      "parent_row_sha256": "d58e40c2c20189d0fbb9bf595afa0b7e7096574556caf05f0a87a6e61468de2f",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2153",
+      "parent_row_sha256": "d58e40c2c20189d0fbb9bf595afa0b7e7096574556caf05f0a87a6e61468de2f",
+      "field": "indicator_mentions",
+      "before": [],
+      "after": [
+        "成交量"
+      ],
+      "reason": "成交量为明确指标，不与日线混为指标。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2154",
+      "parent_row_sha256": "6985767eda7b40e672cfa799646550be321daa7258204eeba2d5bf5a7bc42124",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2155",
+      "parent_row_sha256": "61335f2faaf435ba93f35573eeb5cbf5bcfca575bf272696f6f5372bfb733e74",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2196",
+      "parent_row_sha256": "7e249778059c685ca56275e72bcfbe7f9a8a070f93e97f63bc591079c4a8bf9a",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2199",
+      "parent_row_sha256": "3a6494584dca3d02188052c68dc4635f4b46b20ea4a107988ea8a97e5f34c4da",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2199",
+      "parent_row_sha256": "3a6494584dca3d02188052c68dc4635f4b46b20ea4a107988ea8a97e5f34c4da",
+      "field": "date_expression",
+      "before": null,
+      "after": "过去十年",
+      "reason": "提取原文日期与可执行性分开；非法或当日范围不抹去原文。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2200",
+      "parent_row_sha256": "89c36f8b8ff24f8a7d1ad6d83ff392e6d60fc4e58b0ebb7f791656a0f7f24aed",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "technical"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2200",
+      "parent_row_sha256": "89c36f8b8ff24f8a7d1ad6d83ff392e6d60fc4e58b0ebb7f791656a0f7f24aed",
+      "field": "date_expression",
+      "before": null,
+      "after": "今天",
+      "reason": "提取原文日期与可执行性分开；非法或当日范围不抹去原文。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2165",
+      "parent_row_sha256": "7997c65b2a5111e17868500331718a6b93175583962d41823ff6fbca244f9e2a",
+      "field": "operation",
+      "before": "new",
+      "after": "local",
+      "reason": "已知不支持指数走既有本地拒绝。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2165",
+      "parent_row_sha256": "7997c65b2a5111e17868500331718a6b93175583962d41823ff6fbca244f9e2a",
+      "field": "objective_kind",
+      "before": "outlook",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2165",
+      "parent_row_sha256": "7997c65b2a5111e17868500331718a6b93175583962d41823ff6fbca244f9e2a",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2216",
+      "parent_row_sha256": "3e8d0330bca7a1cef04447165dee57c7575c72bb5c27c7c57fc03039dd074b52",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2217",
+      "parent_row_sha256": "ec5a0ab7aa31af11275864e1b442b06810dc60214bdfeaecfb6d0b8d82f54d67",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2218",
+      "parent_row_sha256": "cea10d1ad85a69d52e043fed3503e5db41e546262ceec34c091027b60a2279e1",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2219",
+      "parent_row_sha256": "75b4b3d3c12ac1cee2afdf99e7318dcbc5fa70779d3ba49f0b9333cd62eb87f3",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2220",
+      "parent_row_sha256": "20b1868ec72fbbee2b19a8b537dc34a00ac9feb098a2f7ba75f3b26d383a059e",
+      "field": "zero_intent_calls",
+      "before": false,
+      "after": true,
+      "reason": "历史/已知范围/冲突按已批准本地路由零理解调用。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2221",
+      "parent_row_sha256": "77364e1b39a5cc14f18fac43cda3c153dc3651d2b981799c3f02e3ecfcfd5ef4",
+      "field": "objective_kind",
+      "before": "decision",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2221",
+      "parent_row_sha256": "77364e1b39a5cc14f18fac43cda3c153dc3651d2b981799c3f02e3ecfcfd5ef4",
+      "field": "wants_plan",
+      "before": true,
+      "after": false,
+      "reason": "失效待办不得授权价位计划。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2221",
+      "parent_row_sha256": "77364e1b39a5cc14f18fac43cda3c153dc3651d2b981799c3f02e3ecfcfd5ef4",
+      "field": "subject_source",
+      "before": "previous",
+      "after": "none",
+      "reason": "失效待办不得借原问题或普通历史补绑定。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2222",
+      "parent_row_sha256": "ff00c45b586473a1fcd92f619b2cc7c70059beae7bd7fb5912d49f13b4ea50e1",
+      "field": "objective_kind",
+      "before": "decision",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2222",
+      "parent_row_sha256": "ff00c45b586473a1fcd92f619b2cc7c70059beae7bd7fb5912d49f13b4ea50e1",
+      "field": "wants_plan",
+      "before": true,
+      "after": false,
+      "reason": "失效待办不得授权价位计划。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2222",
+      "parent_row_sha256": "ff00c45b586473a1fcd92f619b2cc7c70059beae7bd7fb5912d49f13b4ea50e1",
+      "field": "subject_source",
+      "before": "previous",
+      "after": "none",
+      "reason": "失效待办不得借原问题或普通历史补绑定。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2223",
+      "parent_row_sha256": "9b8e9dbf1176379fc8de502def4409f9ae612d1c2f91362886dd08b962dbd7c7",
+      "field": "objective_kind",
+      "before": "decision",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2223",
+      "parent_row_sha256": "9b8e9dbf1176379fc8de502def4409f9ae612d1c2f91362886dd08b962dbd7c7",
+      "field": "wants_plan",
+      "before": true,
+      "after": false,
+      "reason": "失效待办不得授权价位计划。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2223",
+      "parent_row_sha256": "9b8e9dbf1176379fc8de502def4409f9ae612d1c2f91362886dd08b962dbd7c7",
+      "field": "subject_source",
+      "before": "previous",
+      "after": "none",
+      "reason": "失效待办不得借原问题或普通历史补绑定。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2224",
+      "parent_row_sha256": "9a8382445fd3487461d0f736a62e8c825201bf1531a3849f314d4b95b40cfe89",
+      "field": "objective_kind",
+      "before": "decision",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2224",
+      "parent_row_sha256": "9a8382445fd3487461d0f736a62e8c825201bf1531a3849f314d4b95b40cfe89",
+      "field": "wants_plan",
+      "before": true,
+      "after": false,
+      "reason": "失效待办不得授权价位计划。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2224",
+      "parent_row_sha256": "9a8382445fd3487461d0f736a62e8c825201bf1531a3849f314d4b95b40cfe89",
+      "field": "subject_source",
+      "before": "previous",
+      "after": "none",
+      "reason": "失效待办不得借原问题或普通历史补绑定。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2225",
+      "parent_row_sha256": "d3bf28320cd2ae41a057f78b7335ac85134c87655d50523eeb3e936ef00a0170",
+      "field": "objective_kind",
+      "before": "decision",
+      "after": "analysis",
+      "reason": "本地拒绝/失效待办澄清用analysis中性占位，不继承旧授权。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2225",
+      "parent_row_sha256": "d3bf28320cd2ae41a057f78b7335ac85134c87655d50523eeb3e936ef00a0170",
+      "field": "wants_plan",
+      "before": true,
+      "after": false,
+      "reason": "失效待办不得授权价位计划。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2225",
+      "parent_row_sha256": "d3bf28320cd2ae41a057f78b7335ac85134c87655d50523eeb3e936ef00a0170",
+      "field": "subject_source",
+      "before": "previous",
+      "after": "none",
+      "reason": "失效待办不得借原问题或普通历史补绑定。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2226",
+      "parent_row_sha256": "4de9d461af092f99f26986a02c0b8b05756cd9f6d9ba75dc11c73b8d163eb196",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "profile"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    },
+    {
+      "id": "V2229",
+      "parent_row_sha256": "df126613cf972c1bbd0dec065d6e172dbe9ba33ff35eb704b133a333b3266f3c",
+      "field": "research_kinds",
+      "before": [],
+      "after": [
+        "profile"
+      ],
+      "reason": "明确日线/K线/均线保留technical；公司情况明确profile。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 390
+    }
+  ]
+}

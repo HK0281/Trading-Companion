@@ -2,6 +2,7 @@
 
 from collections import Counter
 from copy import deepcopy
+from dataclasses import fields as dataclass_fields, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -25,7 +26,8 @@ from trading_companion.research_intent_evaluation_fixtures import fixed_executio
 from trading_companion.research_intent_v2 import TEMPERATURE, IntentContext, check_response, local_preflight, safe_failure, understand
 from trading_companion.research_intent_v2_annotations import load_amendments, revised_rows
 from trading_companion.research_objective import ResearchObjective
-from trading_companion.research_session import ResearchSession
+from trading_companion.research_session import ResearchSession, PendingResearch
+from trading_companion.research_intent import ResearchConditions
 from trading_companion.security_directory import SecurityDirectory
 from trading_companion.tool_model import ToolModelResponse
 from trading_companion.turn_control import TurnControl, TurnLimits
@@ -92,6 +94,11 @@ def program_context(state, prefixes):
         raise ValueError('Prediction accepts question/context only')
     value = state['context']
     valid_context(value)
+    if value['pending'] != 'none':
+        if not all(value['pending_binding'].values()):
+            raise ValueError('架构不存在会话/轮次待办归属，不能真实表示该描述符')
+        if value['pending'] == 'conflict' or value['pending_age_seconds'] != 0:
+            return _pending_fault_context(value, prefixes)
     setup_calls = 0
     prefix = prefixes.get(tuple(value['history']))
     capture_saved = (value['has_company'] and prefix and value['latest'] is not None
@@ -137,6 +144,68 @@ def program_context(state, prefixes):
     return IntentContext(session, directory, NOW, REFERENCE_DATE, value['source'], value['development'],
         tuple(value['history']), quotes, value['company_enabled'], value['workflow_enabled'],
         value['conversation_memory']), setup_calls
+
+
+def _pending_fault_context(value, prefixes):
+    """Descriptor-only fault injection over reviewed, program-created pending objects."""
+    seed = deepcopy(value)
+    seed['pending_age_seconds'] = 0
+    if value['pending'] == 'conflict':
+        seed['pending'] = 'company_horizon'
+    # Empty history describes no conversational seed. Search only the reviewed
+    # library, and require exactly one matching prefix rather than inventing one
+    # from the target question, a case ID or an expected answer.
+    histories = [tuple(seed['history'])] if seed['history'] else sorted(prefixes)
+    matches = []
+    for history in histories:
+        if not prefixes.get(history):
+            continue
+        declared = dict(seed, history=list(history))
+        try:
+            context, calls = program_context(dict(question='仅捕获已审核前置状态', context=declared), prefixes)
+        except (ValueError, IndexError, KeyError):
+            continue
+        matches.append((context, calls))
+    if len(matches) != 1:
+        raise ValueError('故障待办缺少唯一、状态匹配的已审核前置')
+    context, calls = matches[0]
+    session = context.session
+    slots = ('pending', 'pending_edit', 'product_pending', 'index_pending')
+    occupied = [name for name in slots if getattr(session, name) is not None]
+    if len(occupied) != 1:
+        raise ValueError('故障前置必须只产生一个真实待办')
+    name = occupied[0]
+    pending = getattr(session, name)
+    created = context.now - timedelta(seconds=value['pending_age_seconds'])
+    updates = dict(created_at=created)
+    if 'expires_at' in {field.name for field in dataclass_fields(pending)}:
+        updates['expires_at'] = created + (pending.expires_at - pending.created_at)
+    pending = replace(pending, **updates)
+    setattr(session, '_' + name if name in ('pending', 'pending_edit') else name, pending)
+    if value['pending'] == 'conflict':
+        # This is explicitly a state fault, not a normal API dialogue. Both
+        # native objects use only conditions and identities checked by the seed.
+        from trading_companion.product_plan import ProductPlanContext
+        if type(pending) is not ProductPlanContext or name != 'product_pending' or not pending.securities:
+            raise ValueError('双槽位故障需要真实公司待办及已核对的证券')
+        conditions = ResearchConditions(pending.start_date, pending.end_date, pending.indicators,
+            pending.source, pending.reference_date, pending.applied_defaults, pending.objective)
+        session._pending = PendingResearch(conditions, pending.securities, created,
+                                          user_question=pending.original_question)
+    # The seed's question is evidence for the injected objects, not target history.
+    return replace(context, history=tuple(value['history'])), calls
+
+
+def setup_metadata(context):
+    """Describe fixture construction separately from the model's trusted context."""
+    pending = [getattr(context.session, name) for name in
+               ('pending', 'pending_edit', 'product_pending', 'index_pending')
+               if getattr(context.session, name) is not None]
+    return dict(fault_injection='multi_pending' if len(pending) > 1 else None,
+        pending_types=[type(item).__name__ for item in pending],
+        pending_ages_seconds=[int((context.now-item.created_at).total_seconds()) for item in pending],
+        original_questions=[getattr(item, 'original_question', getattr(item, 'user_question',
+                                    getattr(item, 'question', ''))) for item in pending])
 
 
 class AttemptBudget:
@@ -196,7 +265,7 @@ def predict(state, *, prefixes, model, budget, timeout_seconds=45, identifier=No
     if local is not None:
         return dict(status='ok', reason=None, fields=local.fields(), attempts=0, setup_calls=setup_calls,
             response=None, call_ms=None, low_confidence=False, context=context.model_context(),
-            path='local_preflight', metadata=dict(provenance=list(local.provenance)))
+            path='local_preflight', setup=setup_metadata(context), metadata=dict(provenance=list(local.provenance)))
     if budget.attempts >= budget.maximum:
         return dict(status='not_measured', reason='全局尝试上限已到；未重试或丢弃分母', fields={},
                     attempts=0, setup_calls=setup_calls, response=None, call_ms=None)
@@ -223,7 +292,7 @@ def predict(state, *, prefixes, model, budget, timeout_seconds=45, identifier=No
             raw = dict(status='invalid', reason='intent_v2_context_or_conditions_invalid', fields={})
     response = target.response.to_dict() if type(target.response) is ToolModelResponse else None
     return dict(result, attempts=target.attempts, setup_calls=setup_calls, response=response,
-                call_ms=target.elapsed_ms, context=context.model_context(), path='semantic', raw=raw)
+                call_ms=target.elapsed_ms, context=context.model_context(), setup=setup_metadata(context), path='semantic', raw=raw)
 
 
 def _groups(rows):

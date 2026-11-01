@@ -1,6 +1,6 @@
 {
   "version": "research-intent-v2-lock-v1",
-  "status": "candidate_locked_runner_pending",
+  "status": "locked",
   "candidate": {
     "revision": "2563e9de2d7f4c6ed31c44b8c58408b442bfb1ae",
     "contract_version": "research-intent-v2.4",
@@ -159,7 +159,7 @@
       "src/trading_companion/research_intent_evaluation_fixtures.py": "f805298d1494c237904141035f43b1b2348a01af18adfcd58687bbc66c087531",
       "src/trading_companion/research_intent_v2.py": "0751eb42b72ddb297e6197b92395877cab642a061f4d205c0d8e96b8899d701d",
       "src/trading_companion/research_intent_v2_annotations.py": "6583c9dbf9bd818fed4f548ed238c9c5d0e490989c64dc1889c63f5468c8fd12",
-      "src/trading_companion/research_intent_v2_evaluation.py": "c9457c152bc94fd5450777f0f9cb30274861c22469e5d1dd9035bd69c746f44d",
+      "src/trading_companion/research_intent_v2_evaluation.py": "5a91fa1e0a99d75575d1ed51e1a4be2fa951074c7f16a884328e473cdb3857e5",
       "src/trading_companion/research_memory.py": "03efc329c6757db3db8824a8638388367d9f3031ee49344a8e3cada7121bcb8c",
       "src/trading_companion/research_objective.py": "00044de6a93a411cb38ea767d03105c2aca3028529a378e92b76daab5ebdbbd8",
       "src/trading_companion/research_price_context.py": "a4b0a8cbbce5815fb5f1f8d4f394a2a0d454e5043350436d1a1b5961840f6186",
@@ -216,7 +216,8 @@
       "data/evaluation/research-intent-v2-rule-baseline-dev.json": "741e45afa47067d3893aea3918dc2440cf7678ce8c4afa805bd6669837e336d7",
       "data/evaluation/research-intent-v2-setups.json": "937a9fd4dcb01a1811368761a9b18038faa62f3ed2807d3dddf4cf882958b92c",
       "data/evaluation/research-intent-v2.jsonl": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
-      "data/evaluation/research-intent-v2.manifest.json": "7c50bf73cbe5a27698f91da81d4869ace4f7c2ed3da38fb13a739e72c44c28be"
+      "data/evaluation/research-intent-v2.manifest.json": "7c50bf73cbe5a27698f91da81d4869ace4f7c2ed3da38fb13a739e72c44c28be",
+      "data/evaluation/research-intent-v2.4-holdout-population.json": "64c82323061596083a3cb38c9393168716ee8d0f737226d48839e1910c637a66"
     },
     "corpus_sha256": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
     "split_sha256": "d0fac66db3cdd7726d71fb082e7df9d990ef113a6f5e6a21b05e8637a6c26891",
@@ -235,12 +236,39 @@
       }
     },
     "holdout_denominators": {
-      "all": 85,
-      "unseen": 84,
-      "implementation_known": 1
+      "all": 83,
+      "unseen": 82,
+      "implementation_known": 1,
+      "not_applicable": 2,
+      "reference_all": 85,
+      "reference_unseen": 84
+    },
+    "holdout_population_revision": {
+      "version": "research-intent-v2-holdout-population-v1",
+      "reviewer": "claude",
+      "approval_message": 383,
+      "decided_at": "2026-10-31T19:04:23-07:00",
+      "decided_before_holdout": true,
+      "not_applicable": {
+        "V2222": {
+          "reason": "v2.4 架构不存在会话/轮次归属，描述符不可真实表示",
+          "descriptor": "session_matches=false"
+        },
+        "V2223": {
+          "reason": "v2.4 架构不存在会话/轮次归属，描述符不可真实表示",
+          "descriptor": "turn_matches=false"
+        }
+      }
+    },
+    "superseded_candidate": {
+      "candidate_sha256": "8daf86262860f49a59483a6770546d9b899901fc6b584b4cce305c2a5cefe066",
+      "status": "superseded",
+      "holdout_started": false,
+      "archive": "data/evaluation/research-intent-v2.4-superseded-lock.json",
+      "sha256_lf": "fa68bfe49a374302e474061da604e9fdbfa85936ed4d410d42fbb9c4c91b4cf7"
     }
   },
-  "candidate_sha256": "8daf86262860f49a59483a6770546d9b899901fc6b584b4cce305c2a5cefe066",
+  "candidate_sha256": "2ecaddd5fad72faa51b2b97a0629cab01642278b9e59019c4f50f0dc11e58dc9",
   "development_evidence": {
     "review_message": 377,
     "run_id": "4a6b8973437046a4a08e74b25eb532b9",
@@ -329,7 +357,35 @@
       "开发结果不批准留出运行或正式产品切换。"
     ]
   },
-  "holdout_runner": null,
-  "holdout_live_admitted": false,
-  "admission_note": "仅锁定2563e9d候选。新增留出运行器须先按计划实现、绑定完整文件指纹并交Claude审核提交；当前文件不能启动留出。"
+  "holdout_runner": {
+    "version": "intent-v2-holdout-runner-v1",
+    "plan_approval_message": 379,
+    "population_approval_message": 383,
+    "source_sha256_lf": {
+      "src/trading_companion/research_intent_v2_holdout.py": "7d3a42c9c72fe45813154eea86b34aef11840a8a6e40af6a73c404a95740efdc",
+      "scripts/evaluate_research_intents_holdout.py": "20feef643a3b8e73f66a4b516b3fd7277cf7cbb8a183e3e24e5fba8201878922",
+      "tests/test_research_intent_v2_holdout.py": "9ab45eaf27ad01610b165f076d1217a7625f706fecfea91b95b17af39a05de0d"
+    },
+    "thresholds": {
+      "all": {
+        "n": 83,
+        "minimum_correct": 79
+      },
+      "unseen_holdout": {
+        "n": 82,
+        "minimum_correct": 78
+      }
+    }
+  },
+  "holdout_live_admitted": true,
+  "admission_note": "按#383在留出运行前重锁；仅评估搭建层及适用总体变化，协议、护栏、提示词、工具结构和模型参数均不变。83道适用题必须全部可构建，2题不适用单列。仍须Claude审核提交后在干净提交上亲自运行，Codex不运行真实留出。",
+  "superseded_candidates": [
+    {
+      "candidate_sha256": "8daf86262860f49a59483a6770546d9b899901fc6b584b4cce305c2a5cefe066",
+      "status": "superseded",
+      "holdout_started": false,
+      "archive": "data/evaluation/research-intent-v2.4-superseded-lock.json",
+      "sha256_lf": "fa68bfe49a374302e474061da604e9fdbfa85936ed4d410d42fbb9c4c91b4cf7"
+    }
+  ]
 }

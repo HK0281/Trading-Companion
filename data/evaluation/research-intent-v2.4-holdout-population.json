@@ -1,0 +1,17 @@
+{
+  "version": "research-intent-v2-holdout-population-v1",
+  "reviewer": "claude",
+  "approval_message": 383,
+  "decided_at": "2026-10-31T19:04:23-07:00",
+  "decided_before_holdout": true,
+  "not_applicable": {
+    "V2222": {
+      "reason": "v2.4 架构不存在会话/轮次归属，描述符不可真实表示",
+      "descriptor": "session_matches=false"
+    },
+    "V2223": {
+      "reason": "v2.4 架构不存在会话/轮次归属，描述符不可真实表示",
+      "descriptor": "turn_matches=false"
+    }
+  }
+}

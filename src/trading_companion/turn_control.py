@@ -222,8 +222,11 @@ def reserve_analysis():
 class ControlledToolModel:
     """Meter all model paths without changing their protocol or granting tools authority."""
 
-    def __init__(self, delegate, control: TurnControl):
+    def __init__(self, delegate, control: TurnControl, *, retry_transient_errors: bool = True):
+        if type(retry_transient_errors) is not bool:
+            raise ModelConfigurationError('Transport retry policy must be an explicit boolean')
         self.delegate, self.control = delegate, control
+        self.retry_transient_errors = retry_transient_errors
 
     def complete(self, messages, *, tools):
         for attempt in range(2):
@@ -239,6 +242,6 @@ class ControlledToolModel:
                     self.control.observe_response(response.usage)
                     return response
             except ModelCallError as error:
-                if (attempt or error.code not in ("timeout", "connection_error")
+                if (not self.retry_transient_errors or attempt or error.code not in ("timeout", "connection_error")
                         or not self.control.can_retry_model()):
                     raise

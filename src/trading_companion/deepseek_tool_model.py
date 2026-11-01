@@ -1,6 +1,8 @@
 """Non-streaming DeepSeek tool transport; proposals never execute tools here."""
 
 from collections.abc import Callable, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 import json
 from math import isfinite
@@ -15,6 +17,20 @@ from trading_companion.tool_model import (
     ToolCall, ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages,
     _unique_pairs, _reject_constant,
 )
+
+
+MAX_FAILED_ARGUMENT_CHARACTERS = 10000
+_STRICT_ARGUMENTS = ContextVar('strict_candidate_tool_arguments', default=False)
+
+
+@contextmanager
+def strict_tool_arguments():
+    """Disable all argument repairs for one candidate retry, without changing its request."""
+    token = _STRICT_ARGUMENTS.set(True)
+    try:
+        yield
+    finally:
+        _STRICT_ARGUMENTS.reset(token)
 
 
 def _json_text(value: dict) -> str:
@@ -80,7 +96,7 @@ def _unwrap_arguments(arguments):
     return value, kind
 
 
-def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair, sink):
+def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair, sink, save_failed_arguments=False):
     """Strict first; return a proposal plus safe diagnostic awaiting ToolCall validation."""
     if diagnostics and len(arguments) > MAX_JSON_CHARACTERS and sink is not None:
         sink(dict(call_index=call_index, arguments_length=len(arguments), finish_reason=finish_reason,
@@ -116,6 +132,9 @@ def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair
         except (ValueError, RecursionError):
             pass
     if sink is not None:
+        if save_failed_arguments:
+            event.update(arguments_raw=arguments[:MAX_FAILED_ARGUMENT_CHARACTERS],
+                         arguments_raw_truncated=len(arguments) > MAX_FAILED_ARGUMENT_CHARACTERS)
         sink(event)
     raise ModelCallError('tool_arguments_json_invalid', 'Model tool arguments were not complete JSON') from None
 
@@ -123,7 +142,7 @@ def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair
 def _parse_response(payload: object, requested_model: str,
                     allowed_names: frozenset[str], seen_ids: frozenset[str], *,
                     response_diagnostics: bool = False, repair_tool_arguments: bool = False,
-                    argument_diagnostic_sink=None) -> ToolModelResponse:
+                    argument_diagnostic_sink=None, save_failed_arguments=False) -> ToolModelResponse:
     invalid = ModelCallError("response_shape_invalid" if response_diagnostics else "invalid_response",
                              "Model returned an invalid tool response")
     if type(payload) is not dict:
@@ -196,7 +215,8 @@ def _parse_response(payload: object, requested_model: str,
             if type(function) is not dict or type(function.get("arguments")) is not str:
                 raise invalid
             arguments, diagnostic = _tool_arguments(function['arguments'], finish_reason, call_index,
-                diagnostics=response_diagnostics, repair=repair_tool_arguments, sink=argument_diagnostic_sink)
+                diagnostics=response_diagnostics, repair=repair_tool_arguments, sink=argument_diagnostic_sink,
+                save_failed_arguments=save_failed_arguments)
             # ToolCall validates bounded object JSON, identifiers and duplicate keys.
             try:
                 call = ToolCall(raw.get("id"), function.get("name"), arguments)
@@ -227,6 +247,8 @@ class DeepSeekToolModel:
     response_diagnostics: bool = False
     repair_tool_arguments: bool = False
     argument_diagnostic_sink: Callable[[dict[str, object]], None] | None = field(default=None, repr=False, compare=False)
+    evaluation_scope: str | None = None
+    save_failed_arguments: bool = False
 
     def __post_init__(self) -> None:
         if type(self.config) is not DeepSeekConfig:
@@ -236,6 +258,11 @@ class DeepSeekToolModel:
             raise ModelConfigurationError("Tool model temperature must be finite and between 0 and 2")
         if type(self.response_diagnostics) is not bool:
             raise ModelConfigurationError("Tool response diagnostics must be an explicit boolean")
+        if (self.evaluation_scope not in (None, 'public', 'sealed')
+                or type(self.save_failed_arguments) is not bool
+                or self.save_failed_arguments and (self.evaluation_scope is None or not self.response_diagnostics
+                                                     or self.argument_diagnostic_sink is None)):
+            raise ModelConfigurationError('Saving failed arguments requires explicit evaluation diagnostics and a sink')
         if (type(self.repair_tool_arguments) is not bool
                 or self.argument_diagnostic_sink is not None and not callable(self.argument_diagnostic_sink)
                 or self.repair_tool_arguments and (not self.response_diagnostics or self.argument_diagnostic_sink is None)):
@@ -247,10 +274,10 @@ class DeepSeekToolModel:
     def complete(self, messages: Sequence[ToolMessage], *,
                  tools: Sequence[ToolDefinition]) -> ToolModelResponse:
         history, definitions, seen_ids = validate_tool_messages(messages, tools=tools)
-        if self.repair_tool_arguments and (len(definitions) != 1
+        if (self.repair_tool_arguments or self.save_failed_arguments) and (len(definitions) != 1
                 or definitions[0].name != 'interpret_research_intent_v2'
-                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.2']):
-            raise ModelConfigurationError('Argument repair is restricted to the v2.5.2 intent candidate')
+                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.3']):
+            raise ModelConfigurationError('Argument repair and capture are restricted to the v2.5.3 intent candidate')
         body = {
             "model": self.config.model,
             "messages": [_wire_message(message) for message in history],
@@ -279,5 +306,6 @@ class DeepSeekToolModel:
         return _parse_response(payload, self.config.model,
                                frozenset(tool.name for tool in definitions), seen_ids,
                                response_diagnostics=self.response_diagnostics,
-                               repair_tool_arguments=self.repair_tool_arguments,
-                               argument_diagnostic_sink=self.argument_diagnostic_sink)
+                               repair_tool_arguments=self.repair_tool_arguments and not _STRICT_ARGUMENTS.get(),
+                               argument_diagnostic_sink=self.argument_diagnostic_sink,
+                               save_failed_arguments=self.save_failed_arguments)

@@ -241,7 +241,7 @@ class ArgumentRepairTests(OfflineTests):
         self.assertEqual(report['score_views']['normalized_approved']['all']['joint_all_fields']['numerator'], 1)
         self.assertIn('tool_arguments_repaired', report['corrections'])
 
-    def test_failed_argument_diagnostic_is_durable_and_never_retried(self):
+    def test_failed_argument_diagnostic_is_durable_without_retry_when_global_budget_is_one(self):
         payload = provider_payload(finish='tool_calls', content=None,
             calls=[provider_call(name=intent.TOOL_NAME, arguments='{"private-sentinel":')])
         events = []
@@ -258,7 +258,8 @@ class ArgumentRepairTests(OfflineTests):
         self.assertEqual((result['status'], result['attempts'], result['response']), ('failed', 1, None))
         self.assertEqual(result['argument_diagnostics'][0]['category'], 'incomplete_json')
         self.assertEqual([e['phase'] for e in events], ['reserved', 'argument_diagnostic', 'finished'])
-        self.assertNotIn('private-sentinel', json.dumps(dict(events=events, result=result)))
+        self.assertEqual(result['argument_diagnostics'][0]['arguments_raw'], '{"private-sentinel":')
+        self.assertNotIn('synthetic-fixture-credential', json.dumps(dict(events=events, result=result)))
 
 
 class AnnotationAndReplayTests(OfflineTests):

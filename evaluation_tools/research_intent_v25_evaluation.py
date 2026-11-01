@@ -1,6 +1,7 @@
 """Public v2.5 development/regression evaluation. No sealed-corpus entry point."""
 
 from copy import deepcopy
+from contextlib import nullcontext
 from contextvars import ContextVar
 from hashlib import sha256
 import json
@@ -8,15 +9,17 @@ from math import isfinite
 import os
 import subprocess
 from threading import Lock
+from time import perf_counter
 from unittest.mock import patch
 
 from evaluation_tools import research_intent_v25_cases as cases
 from trading_companion import research_intent_v2 as intent
 from trading_companion import research_intent_v2_evaluation as core
 from trading_companion.agent_input import InputIssue
+from trading_companion.deepseek_tool_model import strict_tool_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.model import ModelConfigurationError
+from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.research_intent_evaluation import field_scores, same
 from trading_companion.research_intent_evaluation_baseline import UNKNOWN, rule_observation
 from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
@@ -24,9 +27,11 @@ from trading_companion.turn_control import TurnControl, TurnLimits
 
 NOT_APPLICABLE = {'V2222', 'V2223'}
 LIMITS = {'dev': 233, 'regression': 85}
-REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.2 程序回放，不是新模型成绩'
-REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.2 程序回放，不是新模型成绩'
-REPLAY_252_NOTICE = 'v2.5.1 原始响应经 v2.5.2 程序回放，不是新模型成绩'
+REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.3 程序回放，不是新模型成绩'
+REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.3 程序回放，不是新模型成绩'
+REPLAY_252_NOTICE = 'v2.5.1 原始响应经 v2.5.3 程序回放，不是新模型成绩'
+REPLAY_253_NOTICE = 'v2.5.2 原始响应经 v2.5.3 程序回放，不是新模型成绩'
+FAILED_ARGUMENT_NOTICE = '评估工件包含失败的模型参数原文'
 ADDENDUM = ROOT/'data/evaluation/research-intent-v2.5.1-amendments.json'
 _ARGUMENT_SINK = ContextVar('v251_argument_diagnostic_sink', default=None)
 
@@ -132,7 +137,7 @@ def _git(*args):
 def fingerprints():
     paths = [p for folder in ('src', 'scripts', 'evaluation_tools') for p in (ROOT/folder).rglob('*.py')]
     paths += list((ROOT/'tests').glob('test_research_intent*.py'))
-    paths += [ROOT/'tests/test_deepseek_tool_model.py', ADDENDUM]
+    paths += [ROOT/'tests/test_deepseek_tool_model.py', ROOT/'tests/test_turn_control.py', ADDENDUM]
     paths += [ROOT/name for name in cases.PUBLIC_FILES]
     paths += [ROOT/'data/evaluation/research-intent-v2.5-freeze.json',
               ROOT/'data/evaluation/research-intent-v2.4-holdout-population.json']
@@ -146,13 +151,16 @@ def build_plan(split='all', maximum=None):
         raise ValueError('Attempt limit must only tighten the public population cap')
     return dict(kind='research-intent-v2.5-public-plan', contract_version=intent.VERSION,
         guard_version=intent.GUARD_VERSION, split=split, total=len(rows), max_calls=maximum or limit,
-        max_attempts_per_target=1, model='deepseek-flash', temperature=0, thinking='disabled', max_output_tokens=1500,
+        max_attempts_per_target=2, model='deepseek-flash', temperature=0, thinking='disabled', max_output_tokens=1500,
         timeout_seconds=45, runtime_revision=_git('rev-parse', 'HEAD'), workspace_dirty=bool(_git('status', '--porcelain')),
         source_sha256_lf=fingerprints(), prompt_sha256=sha256(intent.INSTRUCTION.encode('utf-8')).hexdigest(),
         tool_sha256=digest(intent.TOOL.to_dict()), context_preflight=preflight(rows, prefixes, setups),
         annotation_completion=annotation_completion(),
         tool_arguments_policy=dict(strict_first=True, candidate_only=True, repair_enabled=True,
-            allowed_repairs=['control_char', 'code_fence', 'trailing_text'], retries=0, failed_body_saved=False),
+            allowed_repairs=['control_char', 'code_fence', 'trailing_text'], retries=1, failed_body_saved=True,
+            retry_only='tool_arguments_json_invalid', retry_same_messages=True, retry_repairs=False,
+            retry_transient_errors=False, failed_arguments_max_characters=10000,
+            global_budget_includes_retries=True, approval_messages=[410, 412]),
         live_enabled=False, paid_calls=0, eligible_for_switch=False,
         thresholds=dict(dev=dict(n=233, minimum_correct=222), regression=dict(n=83, minimum_correct=79),
                         reference_regression_n=85, common_fields_no_regression=True, redline_violations=0),
@@ -177,9 +185,10 @@ class AttemptBudget(core.AttemptBudget):
         self.event_sink, self.identifiers = event_sink, set()
 
     def target(self, model, identifier=None):
-        if identifier in self.identifiers:
-            raise ValueError('No second attempt for a target')
-        self.identifiers.add(identifier)
+        with self.lock:
+            if identifier in self.identifiers:
+                raise ValueError('No second target wrapper for a target')
+            self.identifiers.add(identifier)
         return TargetAttempt(self, model, identifier)
 
 
@@ -187,17 +196,50 @@ class TargetAttempt(core.TargetAttempt):
     def __init__(self, *args):
         super().__init__(*args)
         self.argument_diagnostics = []
+        self.attempt_history = []
+        self._retry_pending = False
+        self._request = None
 
     def argument_diagnostic(self, event):
-        self.argument_diagnostics.append(deepcopy(event))
-        self.record('argument_diagnostic', diagnostic=event)
+        event = dict(deepcopy(event), target_attempt=self.attempts)
+        self.argument_diagnostics.append(event)
+        self.record('argument_diagnostic', diagnostic=event, target_attempt=self.attempts)
+
+    def can_retry_arguments(self):
+        with self.budget.lock:
+            return self._retry_pending and self.attempts == 1 and self.budget.attempts < self.budget.maximum
 
     def complete(self, messages, *, tools):
+        request = deepcopy((messages, tools))
+        with self.budget.lock:
+            if (self.attempts >= 2 or self.budget.attempts >= self.budget.maximum
+                    or self.attempts and (not self._retry_pending or request != self._request)):
+                raise ModelConfigurationError('Public attempt budget exhausted or unauthorized retry')
+            self.attempts += 1
+            self.budget.attempts += 1
+            self._retry_pending, self._request = False, request
+            self.response = None
+            self.record('reserved', target_attempt=self.attempts)
+        start, failure, diagnostic_start = perf_counter(), None, len(self.argument_diagnostics)
         token = _ARGUMENT_SINK.set(self.argument_diagnostic)
         try:
-            return super().complete(messages, tools=tools)
+            with strict_tool_arguments() if self.attempts == 2 else nullcontext():
+                self.response = self.delegate.complete(messages, tools=tools)
+            return self.response
+        except BaseException as error:
+            failure = intent.safe_failure(error) if isinstance(error, Exception) else 'interrupted'
+            self._retry_pending = (self.attempts == 1 and isinstance(error, ModelCallError)
+                                   and error.code == 'tool_arguments_json_invalid')
+            raise
         finally:
             _ARGUMENT_SINK.reset(token)
+            elapsed = round((perf_counter() - start) * 1000, 3)
+            self.elapsed_ms = round((self.elapsed_ms or 0) + elapsed, 3)
+            record = dict(target_attempt=self.attempts, failure=failure, call_ms=elapsed,
+                          response=self.response.to_dict() if self.response is not None else None,
+                          argument_diagnostics=deepcopy(self.argument_diagnostics[diagnostic_start:]))
+            self.attempt_history.append(record)
+            self.record('finished', returned=self.response is not None, **record)
 
 
 def _argument_diagnostic(event):
@@ -214,7 +256,8 @@ def _live_model(timeout_seconds):
     key = load_evaluation_key_environment('DEEPSEEK_API_KEY').get('DEEPSEEK_API_KEY', '')
     return DeepSeekToolModel(DeepSeekConfig(model='deepseek-flash', api_key=key,
         timeout_seconds=timeout_seconds, max_output_tokens=1500), temperature=intent.TEMPERATURE,
-        response_diagnostics=True, repair_tool_arguments=True, argument_diagnostic_sink=_argument_diagnostic)
+        response_diagnostics=True, repair_tool_arguments=True, argument_diagnostic_sink=_argument_diagnostic,
+        evaluation_scope='public', save_failed_arguments=True)
 
 
 def checked_result(question, response, context):
@@ -248,11 +291,11 @@ def predict(row, *, prefixes, setups, model, budget, timeout_seconds=45):
         return dict(_empty('ok', None, calls), fields=local.fields(), path='local_preflight',
                     metadata=dict(provenance=list(local.provenance)))
     if budget.attempts >= budget.maximum:
-        return _empty('not_measured', '全局尝试上限已到；未重试或缩分母', calls)
+        return _empty('not_measured', '全局尝试上限已到（含格式重问）；未缩分母', calls)
     target = budget.target(model, row['id'])
-    control = TurnControl(TurnLimits(model_calls=1, timeout_seconds=timeout_seconds))
+    control = TurnControl(TurnLimits(model_calls=2, timeout_seconds=timeout_seconds))
     try:
-        run = intent.understand(row['question'], model=target, context=context, control=control)
+        run = intent.understand(row['question'], model=target, context=context, control=control, retry_json_arguments=True)
         result = (checked_result(row['question'], target.response, context) if run.status in ('ok', 'invalid')
                   and target.response is not None else dict(status=run.status, reason=run.code, fields={}))
         result['runtime'] = run.runtime
@@ -265,11 +308,16 @@ def predict(row, *, prefixes, setups, model, budget, timeout_seconds=45):
         result.setdefault('corrections', []).extend(dict(kind='tool_arguments_repaired', field='tool_arguments',
             before='invalid_json', after='checked_json', source='transport', repair=event['repair']) for event in repairs)
         result['raw'] = dict(status='failed', reason='tool_arguments_json_invalid', fields={})
+    retried = target.attempts == 2
+    if retried:
+        result['raw'] = dict(status='failed', reason=target.attempt_history[0]['failure'], fields={})
     return dict(_empty(result['status'], result.get('reason'), calls), **{k: v for k, v in result.items()
         if k not in ('status', 'reason')}, attempts=target.attempts,
         response=target.response.to_dict() if target.response else None, call_ms=target.elapsed_ms,
         argument_diagnostics=target.argument_diagnostics,
-        response_origin='repaired_tool_arguments' if repairs else 'provider',
+        attempt_history=target.attempt_history,
+        format_retry=dict(attempted=retried, successful=retried and result['status'] == 'ok'),
+        response_origin='format_retry' if retried else 'repaired_tool_arguments' if repairs else 'provider',
         path='semantic', context_sha256=digest(context.model_context()), setup=core.setup_metadata(context))
 
 
@@ -347,7 +395,26 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
         correct = scores['joint_all_fields']['numerator']
         thresholds[dataset] = dict(n=len(selected), correct=correct, minimum_correct=minimum,
             joint_passed=correct >= minimum, common=_common(selected), redlines=redlines(selected))
-    telemetry = core.telemetry(rows)
+    # Old telemetry assumes one call per row. Expand only metered histories so a
+    # missing first response remains unknown usage, rather than disappearing.
+    metered_rows = []
+    for row in rows:
+        observation = row['V2']
+        history = observation.get('attempt_history', [])
+        if history:
+            for index, attempt in enumerate(history):
+                metered_rows.append(dict(row, V2=dict(observation, attempts=1,
+                    response=attempt['response'], call_ms=attempt['call_ms'],
+                    setup_calls=observation['setup_calls'] if index == 0 else 0)))
+        else:
+            metered_rows.append(row)
+    telemetry = core.telemetry(metered_rows)
+    telemetry['low_confidence'] = sum(bool(r['V2'].get('low_confidence')) for r in rows)
+    telemetry['raw_low_confidence'] = sum(any(c.get('arguments', {}).get('confidence') == 'low'
+        for c in (r['V2']['response'] or {}).get('tool_calls', [])) for r in rows)
+    retried = [r for r in rows if r['V2'].get('format_retry', {}).get('attempted')]
+    recovered = [r for r in retried if r['V2']['format_retry']['successful']]
+    saved = sum('arguments_raw' in e for r in rows for e in r['V2'].get('argument_diagnostics', []))
     repairs = {}
     for row in rows:
         for event in row['V2'].get('argument_diagnostics', []):
@@ -356,7 +423,7 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
                 group['count'] += 1
                 if row['id'] not in group['ids']:
                     group['ids'].append(row['id'])
-    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE, REPLAY_252_NOTICE) else
+    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE, REPLAY_252_NOTICE, REPLAY_253_NOTICE) else
         'mock_experiment' if telemetry['mock_responses'] else
         'live_provider' if live and telemetry['attempts'] else 'no_provider_observation')
     return dict(kind='research-intent-v2.5-public-report', title=notice or 'v2.5 公开开发与已暴露回归',
@@ -364,6 +431,10 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
         thresholds=thresholds, paid_calls=telemetry['attempts'] if live else 0, telemetry=telemetry, authenticity=authenticity,
         corrections=core.correction_summary(rows), eligible_for_switch=False,
         tool_arguments_repairs=dict(total=sum(g['count'] for g in repairs.values()), by_category=repairs),
+        format_retries=dict(total=len(retried), successful=len(recovered), ids=[r['id'] for r in retried],
+                            successful_ids=[r['id'] for r in recovered]),
+        failed_arguments=dict(notice=FAILED_ARGUMENT_NOTICE, saved_events=saved, max_characters=10000,
+                              enabled=plan.get('tool_arguments_policy', {}).get('failed_body_saved', False)),
         annotation_completion=plan.get('annotation_completion'),
         passed=authenticity == 'live_provider' and bool(thresholds) and all(t['joint_passed'] and t['common']['passed'] and t['redlines']['passed']
                                        for t in thresholds.values()),
@@ -389,11 +460,16 @@ def markdown(report):
         if r['V2']['status'] == 'ok' else r['V2'].get('reason', '')) for r in report['rows']))
     table(('JSON 修复类别', '次数', '题号'), ((kind, group['count'], ', '.join(group['ids']))
           for kind, group in report['tool_arguments_repairs']['by_category'].items()))
+    retries = report['format_retries']
+    table(('格式重问', '次数', '题号'), [('重问请求', retries['total'], ', '.join(retries['ids'])),
+          ('第二次严格解析且语义核验成功', retries['successful'], ', '.join(retries['successful_ids']))])
     if report.get('annotation_completion'):
         table(('标注补齐（不计模型改善）', '字段', '原值', '新值', '批准消息'),
               ((c['id'], c['field'], c['before'], c['after'], c['approval_message'])
                for c in report['annotation_completion']['changes']))
-    lines += ['实际新付费尝试：' + str(report['paid_calls']), '',
+    lines += [report['failed_arguments']['notice'] + '；单事件最多 10000 字符；本报告保存事件数：'
+              + str(report['failed_arguments']['saved_events']), '',
+              '实际新付费尝试（含重问）：' + str(report['paid_calls']), '',
               'eligible_for_switch=false；正式会话端到端、执行及新封存检验仍未测。', '']
     return '\n'.join(lines)
 

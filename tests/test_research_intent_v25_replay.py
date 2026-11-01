@@ -16,8 +16,8 @@ class ReplayTests(unittest.TestCase):
         original = deepcopy(raw)
         migrated = replay.migrate_response(raw, 'v2.4')
         self.assertEqual(raw, original)
-        self.assertEqual(migrated.tool_calls[0].arguments['version'], 'research-intent-v2.5.2')
-        for version in ('research-intent-v2.3', 'research-intent-v2.5.2'):
+        self.assertEqual(migrated.tool_calls[0].arguments['version'], 'research-intent-v2.5.3')
+        for version in ('research-intent-v2.3', 'research-intent-v2.5.3'):
             raw['tool_calls'][0]['arguments']['version'] = version
             with self.assertRaises(ValueError):
                 replay.migrate_response(raw, 'v2.4')

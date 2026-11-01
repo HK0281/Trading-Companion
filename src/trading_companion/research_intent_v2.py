@@ -1,6 +1,7 @@
 """Opt-in v2 interpretation and checked identity binding; no routing or data execution."""
 
 from dataclasses import asdict, dataclass, field
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from fractions import Fraction
@@ -11,6 +12,7 @@ import unicodedata
 
 from trading_companion.agent_input import InputIssue
 from trading_companion.decision_horizon import canonical, profile
+from trading_companion.deepseek_tool_model import strict_tool_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.market_scope import INDICES, _mentions as index_mentions
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
@@ -27,8 +29,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.5.2'
-GUARD_VERSION = 'intent-v2-guards-v7'
+VERSION = 'research-intent-v2.5.3'
+GUARD_VERSION = 'intent-v2-guards-v8'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -73,6 +75,8 @@ INSTRUCTION = (
     '已有研究明确要求最新数据/最新情况、更新原计划或筛选结果且条件不变，也为refresh；'
     '仅沿用筛选条件刷新结果不是update，改变筛选阈值或研究范围才是update。'
     '上下文对象或待办失效、来源/模式不匹配时，增补语气不授权续接旧任务；不能续接时用new并澄清对象。'
+    '只要存在有效旧任务，增删指标或领域、收窄严格范围均为update，即使同时出现“重新”；'
+    '只重算旧计划、用最新数据刷新原筛选名单而条件不变均为refresh，即使同时出现“调整”。'
     'explain仅解释已发布结论。继续同一对象不自动update；没有任何程序记录时不能update，重置/取消后用new并澄清缺失对象。'
     '有效pending的original_question仅可为update提供objective_phrase/plan_phrase；'
     '换对象只可续目标和价位意图，不借旧日期/期限/对象/指标/范围/排除依据；普通history没有此权限。'
@@ -879,6 +883,13 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         task = 'index_research' if bound[0] in {i.instrument_id for i in INDICES} else 'stock_research'
         _correction(log, 'clarification_task', 'task', 'clarify', task, 'checked_subject_type')
         draft['task'] = task
+    if (normalize and draft['task'] == 'clarify' and binding_issue == 'clarify_identity'
+            and draft['subject']['source'] == 'question' and not research_spans(question, context.directory)
+            and all(re.fullmatch(r'[^,，;；。!?！？\n]{0,40}指数', mention) for mention in draft['subject']['mentions'])
+            and re.search(r'研究|分析|走势|日线|周线|K线', question, re.I)
+            and not _product_research(question, context.directory)):
+        _correction(log, 'clarification_task', 'task', 'clarify', 'index_research', 'question_index_type')
+        draft['task'] = 'index_research'
     if (normalize and draft['objective_kind'] == 'outlook' and draft['task'] in ('stock_research', 'clarify')
             and not (bound and bound[0] in {i.instrument_id for i in INDICES})):
         _correction(log, 'objective_outlook_non_index', 'objective_kind', 'outlook', 'decision', 'non_index_contract')
@@ -917,7 +928,10 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         try:
             horizon = normalize_horizon(expression)
         except InputIssue:
-            if outcome == 'research':
+            if normalize and outcome in ('research', 'clarify_horizon'):
+                _correction(log, 'invalid_horizon', 'outcome', outcome, 'clarify_conditions', 'question_horizon')
+                outcome = 'clarify_conditions'
+            elif outcome == 'research':
                 outcome = 'clarify_conditions'
     provenance = [('subject', draft['subject']['source']), *evidence_provenance]
     if any(c['kind'] == 'screening_list' for c in log[correction_start:]):
@@ -988,13 +1002,16 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         exclusions, kinds, draft['strict_scope'], outcome, False, historical_window, tuple(provenance), plan_blocked, low_confidence)
 
 
-def understand(question, *, model, context, control=None):
-    """One metered semantic attempt. Callers retain their local zero-call preflight paths."""
+def understand(question, *, model, context, control=None, retry_json_arguments=False):
+    """Explicit candidate-only format retry; local preflight and semantic errors never retry."""
     if type(context) is not IntentContext:
         raise ModelConfigurationError('Use a trusted v2 context')
-    runtime = control if control is not None else TurnControl(TurnLimits(model_calls=1))
-    if type(runtime) is not TurnControl or runtime.limits.model_calls != 1:
-        raise ModelConfigurationError('V2 evaluation allows exactly one attempt, with no retry')
+    if type(retry_json_arguments) is not bool:
+        raise ModelConfigurationError('Candidate format retry must be an explicit boolean')
+    attempts = 2 if retry_json_arguments else 1
+    runtime = control if control is not None else TurnControl(TurnLimits(model_calls=attempts))
+    if type(runtime) is not TurnControl or runtime.limits.model_calls != attempts:
+        raise ModelConfigurationError('Candidate retry policy and metered call limit must agree')
     runtime.start()
     response, intent, status, code = None, None, 'failed', 'intent_v2_unavailable'
     corrections = []
@@ -1008,7 +1025,18 @@ def understand(question, *, model, context, control=None):
                         ToolMessage('assistant', 'PROGRAM_INTENT_CONTEXT\n' + json.dumps(context.model_context(), ensure_ascii=False)),
                         ToolMessage('user', '请只返回约定的意图工具调用。'))
             validate_tool_messages(messages, tools=(TOOL,))
-            response = ControlledToolModel(model, runtime).complete(messages, tools=(TOOL,))
+            metered = ControlledToolModel(model, runtime, retry_transient_errors=False)
+            for attempt in range(attempts):
+                try:
+                    with strict_tool_arguments() if attempt else nullcontext():
+                        response = metered.complete(messages, tools=(TOOL,))
+                    break
+                except ModelCallError as error:
+                    # incomplete_json with finish_reason=tool_calls uses this same transport code.
+                    # Interrupted/length output returns an incomplete response, never this code.
+                    if (attempt or not retry_json_arguments or error.code != 'tool_arguments_json_invalid'
+                            or not getattr(model, 'can_retry_arguments', lambda: True)()):
+                        raise
             if response.status == 'incomplete':
                 raise ModelCallError('output_limit' if response.finish_reason == 'length' else 'incomplete_response',
                                      'Intent model did not finish its response')

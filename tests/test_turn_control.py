@@ -212,6 +212,27 @@ class ControlUnitTests(OfflineTests):
 
 
 class ModelRetryTests(OfflineTests):
+    def test_default_network_retry_policy_is_unchanged_when_option_is_omitted(self):
+        for code in ('timeout', 'connection_error'):
+            control = self.control(model_calls=2)
+            control.start()
+            result = ToolModelResponse('complete', 'synthetic')
+            delegate = Mock(complete=Mock(side_effect=[ModelCallError(code, 'safe'), result]))
+            self.assertIs(ControlledToolModel(delegate, control).complete([], tools=()), result)
+            self.assertEqual(delegate.complete.call_count, 2)
+            self.assertEqual(control.to_dict()['model_calls_attempted'], 2)
+
+    def test_explicitly_disabling_network_retry_preserves_failure_and_unused_budget(self):
+        for code in ('timeout', 'connection_error'):
+            control = self.control(model_calls=2)
+            control.start()
+            delegate = Mock(complete=Mock(side_effect=ModelCallError(code, 'safe')))
+            with self.assertRaises(ModelCallError) as caught:
+                ControlledToolModel(delegate, control, retry_transient_errors=False).complete([], tools=())
+            self.assertEqual(caught.exception.code, code)
+            self.assertEqual(control.to_dict()['model_calls_attempted'], 1)
+            delegate.complete.assert_called_once()
+
     def test_timeout_or_connection_error_retries_once_and_preserves_partial_usage(self):
         response = ToolModelResponse("complete", "offline", usage=TokenUsage(10, 5, 15))
         for code in ("timeout", "connection_error"):

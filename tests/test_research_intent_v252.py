@@ -159,10 +159,10 @@ class ReplayTests(OfflineTests):
         archived = dict(row, V2=dict(status='ok', attempts=1, response=raw, fields=row['gold']))
         original = deepcopy(archived)
         with patch.object(experiment, 'populations', return_value=([row], {row['id']: row['gold']}, {}, {})):
-            report = replay.replay_reports([dict(rows=[archived])])
+            report = replay.replay_reports([dict(rows=[archived])], 'v2.5.1')
         self.assertEqual(archived, original)
         self.assertEqual(report['rows'][0]['V2']['status'], 'ok')
-        self.assertEqual(replay.migrate_response(raw).tool_calls[0].arguments['version'], intent.VERSION)
+        self.assertEqual(replay.migrate_response(raw, 'v2.5.1').tool_calls[0].arguments['version'], intent.VERSION)
         self.assertIsNone(report['passed'])
         self.assertIsNone(report['thresholds'])
         self.assertFalse(report['new_model_results'])

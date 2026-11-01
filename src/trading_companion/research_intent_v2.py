@@ -27,8 +27,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.5'
-GUARD_VERSION = 'intent-v2-guards-v5'
+VERSION = 'research-intent-v2.5.1'
+GUARD_VERSION = 'intent-v2-guards-v6'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -57,6 +57,8 @@ INSTRUCTION = (
     '明确新对象优先question；没有可用程序对象（含会话重置）或知识问题用none。'
     '大盘、A股、上证、沪深300、创业板等指数简称由程序在上下文中解析，不要仅因简称就报subject或low；'
     '确实歧义的名称仍澄清，不由模型猜身份。每项research_kinds的phrase必须复制原话。'
+    '并列领域可以共用整段原文：原话“仅看新闻和公告”时，两项phrase都复制“仅看新闻和公告”，不能造出“仅看公告”。'
+    '“先放下个股”“转向指数”只是切换任务，不是排除profile或其他研究领域。'
     '日期是历史数据窗口；horizon_expression是未来期限。日期和期限只复制本句，'
     '不抄上下文规范值，省略则null。历史回看窗口不能再填未来期限；近期/后面/现在不等于短线。'
     '最近/近期/近来/近日等未量化历史窗口用date_expression=null，量化窗口仍逐字复制。'
@@ -66,6 +68,8 @@ INSTRUCTION = (
     '另起研究另一公司是new。refresh是重新计算或重新核验已有研究，'
     '例如“重做一轮研究”“重算这份报告”“再查证一回”，不要求出现刷新二字；'
     '只更新旧报告/计划的数据而未修改条件也为refresh，例如“把原计划按现有条件重算”。'
+    '同一对象增加或删除指标、领域等条件为update，例如“同一只股票再加MACD”；'
+    '“重新研究”“更新数据”而未改条件为refresh。'
     'explain仅解释已发布结论。继续同一对象不自动update；没有任何程序记录时不能update，重置/取消后用new并澄清缺失对象。'
     '有效pending的original_question仅可为update提供objective_phrase/plan_phrase；'
     '换对象只可续目标和价位意图，不借旧日期/期限/对象/指标/范围/排除依据；普通history没有此权限。'
@@ -80,6 +84,7 @@ INSTRUCTION = (
     '明确技术面/技术指标/具体指标（含均线）/日线、周线、K线数据属于technical；'
     '日线、周线、K线是数据粒度，不是指标，不能放入indicator_mentions；成交量是指标。'
     '公司情况、业务情况、主营业务属于profile；泛称某公司的情况不自动限定领域。'
+    '“经营现状”“经营近况”本身不等于公司概况，不因此补profile。'
     '仅走势/趋势/表现/波动不自动限定technical。基本面包含profile和financial。'
     '不因价位计算依赖或否定ATR补technical，不把最新当news；筛选PE/PB是筛选条件而非公司研究领域。'
     '指数明确要求technical也必须保留；仅隐含默认技术研究不填领域。不支持领域不能隐去。'
@@ -91,6 +96,7 @@ INSTRUCTION = (
     '这N天/周/月为最近N个自然日/N乘7日/N乘30日，date_expression保留原话；'
     '本月、自然季度、这三个月以来不套此规则。'
     '同一只、同一只股票是最近单对象指代，不是第一只；无有效最近对象不能猜。'
+    '这两只、前面这两只、它们、这些是最近多对象的整体指代，selection复制完整原文，由程序核对数量和有效性。'
     'exclusions每项kind为受限类别，phrase复制含否定词和被排除内容的完整片段。'
     '不能输出证券代码映射、数值日期、来源、查询工具、公式参数或实际价位。'
     '任务类型和处理阶段分开：能确认股票/指数/筛选就保留task，澄清原因放clarification_reason。'
@@ -438,7 +444,7 @@ def _normalize_nullable(value, schema, log, path=''):
     return deepcopy(value)
 
 
-_IMPLICIT_SELECTIONS = ('它', '它们', '这只', '这只股', '该股', '这家公司', '该公司')
+_IMPLICIT_SELECTIONS = ('它', '它们', '这些', '这几只', '这只', '这只股', '该股', '这家公司', '该公司')
 _LATEST_SELECTIONS = ('上一只', '上一个', '刚才那只', '同一只', '同一只股票')
 _VAGUE_DATES = ('最近', '近期', '近来', '近日')
 
@@ -450,6 +456,7 @@ def _no_program_records(session):
 
 def _has_subject_reference(question):
     return (any(phrase in question for phrase in (*_IMPLICIT_SELECTIONS, *_LATEST_SELECTIONS))
+            or re.search(r'这[0-9零〇一二两三四五六七八九十百]+只', question) is not None
             or re.search(r'第\s*[0-9零〇一二两三四五六七八九十百]+\s*(?:只|个|支)',
                          unicodedata.normalize('NFKC', question)) is not None)
 
@@ -457,6 +464,9 @@ def _has_subject_reference(question):
 def _normalize_subject(question, draft, context, log):
     subject = draft['subject']
     selection = subject['selection']
+    if subject['source'] == 'question' and selection is not None and selection in subject['mentions']:
+        _correction(log, 'redundant_question_selection', 'subject.selection', selection, None, 'question_mention')
+        subject['selection'] = None
     if selection in _IMPLICIT_SELECTIONS and selection not in question:
         _correction(log, 'implicit_selection', 'subject.selection', selection, None, 'implicit_only')
         subject['selection'] = None
@@ -567,6 +577,8 @@ def _question_subject(question, subject, context, task, *, normalize=True, corre
         # All explicit index spans, including unsupported names, must be accounted for.
         if any(item is None for _, _, item in market_spans):
             return (), 'clarify_identity'
+        if normalize and not market_spans:
+            return (), 'clarify_identity'  # Grounded unknown names grant no index binding.
         if normalize:
             # Every occurrence must belong to exactly one curated span with the
             # same identity. A repeated literal inside an ETF cannot be hidden.
@@ -609,7 +621,24 @@ def _question_subject(question, subject, context, task, *, normalize=True, corre
     return identities, None
 
 
+def _whole_previous_count(selection):
+    if selection in ('它们', '这些', '这几只', '全部', '都', '比较', '比较它们', '比较这几只'):
+        return -1  # Plural without an explicit count still requires multiple subjects.
+    match = re.fullmatch(r'(?:前面|前面的|刚才|刚才的)?这([0-9零〇一二两三四五六七八九十百]+)只(?:股票)?', selection or '')
+    if not match:
+        return None
+    try:
+        return _integer(match[1])
+    except InputIssue:
+        return -2  # An invalid count cannot authorize any group.
+
+
 def _select_previous(selection, securities, directory):
+    count = _whole_previous_count(selection)
+    if count is not None:
+        if len(securities) < 2 or count != -1 and count != len(securities):
+            return (), 'clarify_subject'
+        return tuple(s.instrument_id for s in securities), None
     if selection:
         chosen, suffix = selection_reply(selection, securities, directory)
         if chosen is not None and not suffix and chosen in securities:
@@ -617,10 +646,7 @@ def _select_previous(selection, securities, directory):
         if re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*(?:只|个|支)', selection):
             return (), 'clarify_subject'
     if len(securities) > 1:
-        if not selection or not re.fullmatch(r'它们|这几只|这[两二三]只|全部|都|比较(?:它们|这几只)?', selection):
-            return (), 'clarify_subject'
-        if ('两' in selection or '二' in selection) and len(securities) != 2 or '三' in selection and len(securities) != 3:
-            return (), 'clarify_subject'
+        return (), 'clarify_subject'
     return tuple(s.instrument_id for s in securities), None
 
 
@@ -636,7 +662,8 @@ def _previous_subject(question, subject, context, task, *, normalize=True, corre
         if task == 'stock_research':
             securities = tuple(context.directory.lookup(code).candidates[0] for code in pending['subjects'])
             return _select_previous(subject['selection'], securities, context.directory)
-        if subject['selection'] and re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*只', subject['selection']):
+        if (_whole_previous_count(subject['selection']) is not None
+                or subject['selection'] and re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*只', subject['selection'])):
             return (), 'clarify_subject'
         return tuple(pending['subjects']), None
     latest = context.session.latest_research
@@ -653,6 +680,8 @@ def _previous_subject(question, subject, context, task, *, normalize=True, corre
         if latest.kind != 'index':
             return (), 'clarify_subject'
         latest_reference = normalize and selection in _LATEST_SELECTIONS
+        if _whole_previous_count(selection) is not None:
+            return (), 'clarify_subject'  # A single saved index is never a plural group.
         if not latest_reference and selection and re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*只', selection):
             return (), 'clarify_subject'
         code = getattr(latest.scope, 'instrument_id', None)
@@ -751,6 +780,11 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         positive = positive[:match.start()] + ' ' * (match.end()-match.start()) + positive[match.end():]
     positive = _NEGATED_LIMIT.sub(lambda m: ' ' * len(m[0]), positive)
     positive = _NEGATED_ONLY.sub('', positive)
+    # Granularity negation is local to the cue; it does not veto all technical work.
+    granularity_target = r'(?:完整)?(?:日线|周线|K线)(?:数据)?'
+    granularity_list = granularity_target + r'(?:\s*(?:和|及|与|、|以及|或|或者)\s*' + granularity_target + ')*'
+    negative_granularity = '(?:' + _NEGATION + granularity_list + '|' + granularity_list + r'\s*(?:都)?(?:不要|不用|不看|排除))'
+    positive = re.sub(negative_granularity, lambda m: ' ' * len(m[0]), positive, flags=re.I)
     if normalize and _product_research(question, context.directory):
         if draft['task'] != 'unsupported' or draft['subject'] != dict(source='none', mentions=[], selection=None):
             _correction(log, 'unsupported_product', 'task_and_subject',
@@ -795,6 +829,14 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         _correction(log, 'objective_outlook_non_index', 'objective_kind', 'outlook', 'decision', 'non_index_contract')
         draft['objective_kind'] = 'decision'
     if draft['task'] in ('stock_research', 'index_research'):
+        cue = next((mention for mention in draft['indicator_mentions'] if mention in positive), None)
+        granularity = re.search(r'日线|周线|K线', positive, re.I)
+        cue = cue or (granularity[0] if granularity else None)
+        if normalize and cue and 'technical' not in kinds and 'technical' not in exclusions:
+            replacement = [*draft['research_kinds'], dict(kind='technical', phrase=cue)]
+            _correction(log, 'explicit_technical_cue', 'research_kinds', draft['research_kinds'], replacement, 'question')
+            draft['research_kinds'] = replacement
+            kinds = (*kinds, 'technical')
         if _scope_limit(positive, draft['indicator_mentions']):
             _require(draft['strict_scope'], 'omitted_strict_scope')
         explicit = ()

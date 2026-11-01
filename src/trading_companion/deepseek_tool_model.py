@@ -1,9 +1,10 @@
 """Non-streaming DeepSeek tool transport; proposals never execute tools here."""
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 import json
 from math import isfinite
+import re
 
 from trading_companion.deepseek_model import TOOL_OUTPUT_TOKENS, DeepSeekConfig, _post_chat
 from trading_companion.model import (
@@ -12,6 +13,7 @@ from trading_companion.model import (
 from trading_companion.tool_model import (
     MAX_JSON_CHARACTERS, MAX_METADATA_CHARACTERS, MAX_PARALLEL_CALLS, MAX_TOTAL_CHARACTERS,
     ToolCall, ToolDefinition, ToolMessage, ToolModelResponse, validate_tool_messages,
+    _unique_pairs, _reject_constant,
 )
 
 
@@ -36,9 +38,92 @@ def _wire_message(message: ToolMessage) -> dict[str, object]:
     return result
 
 
+def _json_category(error, arguments):
+    """Classify without returning parser messages or any part of its document."""
+    if error.msg.startswith('Invalid control character'):
+        return 'control_char'
+    if arguments.lstrip().startswith('```'):
+        return 'code_fence'
+    if error.msg == 'Extra data':
+        return 'trailing_data'
+    if error.msg.startswith('Unterminated') or error.pos >= len(arguments.rstrip()):
+        return 'incomplete_json'
+    return 'invalid_syntax'
+
+
+def _unwrap_arguments(arguments):
+    """Only a complete leading object with unambiguous prose or one code fence."""
+    text, kind = arguments.strip(), 'trailing_text'
+    if text.startswith('```'):
+        fence = re.fullmatch(r'```(?:json)?[ \t]*\r?\n(.*?)\r?\n?```', text, re.S | re.I)
+        if fence is None:
+            raise ValueError('Invalid wrapper')
+        text, kind = fence[1].strip(), 'code_fence'
+    if not text.startswith('{'):
+        raise ValueError('Not a leading object')
+    decoder = json.JSONDecoder(object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
+    value, end = decoder.raw_decode(text)
+    suffix = text[end:].strip()
+    if type(value) is not dict or (not suffix and kind != 'code_fence'):
+        raise ValueError('Not a wrapped object')
+    # Reject another object/value, JSON fragments, or fences even when prose
+    # precedes them. This deliberately rejects ambiguous wrappers.
+    if suffix:
+        if kind == 'code_fence' or not suffix[0].isalpha() or re.search(r'[{}\[\]`"]', suffix):
+            raise ValueError('Ambiguous suffix')
+        try:
+            decoder.raw_decode(suffix)
+        except json.JSONDecodeError:
+            pass
+        else:
+            raise ValueError('Multiple JSON values')
+    return value, kind
+
+
+def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair, sink):
+    """Strict first; return a proposal plus safe diagnostic awaiting ToolCall validation."""
+    if diagnostics and len(arguments) > MAX_JSON_CHARACTERS and sink is not None:
+        sink(dict(call_index=call_index, arguments_length=len(arguments), finish_reason=finish_reason,
+                  category='size_limit', position=None, line=None, column=None, repair=None, correction=None))
+    if not diagnostics or len(arguments) > MAX_JSON_CHARACTERS:
+        return arguments, None
+    try:
+        json.loads(arguments)
+        return arguments, None
+    except json.JSONDecodeError as error:
+        event = dict(call_index=call_index, arguments_length=len(arguments), finish_reason=finish_reason,
+                     category=_json_category(error, arguments), position=error.pos,
+                     line=error.lineno, column=error.colno, repair=None, correction=None)
+    except (ValueError, RecursionError):
+        raise ModelCallError('tool_call_invalid', 'Model tool call failed protocol validation') from None
+    if repair:
+        try:
+            # The sole relaxation is literal control characters in strings.
+            value = json.loads(arguments, strict=False, object_pairs_hook=_unique_pairs,
+                               parse_constant=_reject_constant)
+            event['repair'] = 'control_char'
+            return value, event
+        except json.JSONDecodeError:
+            pass
+        except (ValueError, RecursionError):
+            if sink is not None:
+                sink(event)
+            raise ModelCallError('tool_call_invalid', 'Model tool call failed protocol validation') from None
+        try:
+            value, kind = _unwrap_arguments(arguments)
+            event['repair'] = kind
+            return value, event
+        except (ValueError, RecursionError):
+            pass
+    if sink is not None:
+        sink(event)
+    raise ModelCallError('tool_arguments_json_invalid', 'Model tool arguments were not complete JSON') from None
+
+
 def _parse_response(payload: object, requested_model: str,
                     allowed_names: frozenset[str], seen_ids: frozenset[str], *,
-                    response_diagnostics: bool = False) -> ToolModelResponse:
+                    response_diagnostics: bool = False, repair_tool_arguments: bool = False,
+                    argument_diagnostic_sink=None) -> ToolModelResponse:
     invalid = ModelCallError("response_shape_invalid" if response_diagnostics else "invalid_response",
                              "Model returned an invalid tool response")
     if type(payload) is not dict:
@@ -75,6 +160,13 @@ def _parse_response(payload: object, requested_model: str,
     if finish_reason == "content_filter" or (refusal is not None and refusal.strip()):
         return ToolModelResponse("refused", "The model did not provide an answer to this request.", **metadata)
     if finish_reason in ("length", "insufficient_system_resource", "aborted"):
+        if response_diagnostics and argument_diagnostic_sink is not None:
+            raw_calls = message.get('tool_calls')
+            for index, raw in enumerate(raw_calls[:MAX_PARALLEL_CALLS] if type(raw_calls) is list else []):
+                arguments = raw.get('function', {}).get('arguments') if type(raw) is dict and type(raw.get('function')) is dict else None
+                if type(arguments) is str:
+                    argument_diagnostic_sink(dict(call_index=index, arguments_length=len(arguments), finish_reason=finish_reason,
+                        category='interrupted', position=None, line=None, column=None, repair=None, correction=None))
         return ToolModelResponse("incomplete", text, **metadata)
     if message.get("function_call") is not None:
         raise ModelCallError("unsupported_response", "Legacy function-call responses are not supported")
@@ -97,25 +189,27 @@ def _parse_response(payload: object, requested_model: str,
 
     calls = []
     try:
-        for raw in raw_calls:
+        for call_index, raw in enumerate(raw_calls):
             if type(raw) is not dict or raw.get("type") != "function":
                 raise invalid
             function = raw.get("function")
             if type(function) is not dict or type(function.get("arguments")) is not str:
                 raise invalid
-            if response_diagnostics and len(function['arguments']) <= MAX_JSON_CHARACTERS:
-                try:
-                    json.loads(function['arguments'])
-                except json.JSONDecodeError:
-                    raise ModelCallError('tool_arguments_json_invalid', 'Model tool arguments were not complete JSON') from None
-                except (ValueError, RecursionError):
-                    raise ModelCallError('tool_call_invalid', 'Model tool call failed protocol validation') from None
+            arguments, diagnostic = _tool_arguments(function['arguments'], finish_reason, call_index,
+                diagnostics=response_diagnostics, repair=repair_tool_arguments, sink=argument_diagnostic_sink)
             # ToolCall validates bounded object JSON, identifiers and duplicate keys.
-            call = ToolCall(raw.get("id"), function.get("name"), function["arguments"])
+            try:
+                call = ToolCall(raw.get("id"), function.get("name"), arguments)
+            except ModelRequestError:
+                if diagnostic is not None and argument_diagnostic_sink is not None:
+                    argument_diagnostic_sink(dict(diagnostic, repair=None))
+                raise
             if call.name not in allowed_names:
                 raise ModelCallError("unknown_tool", "Model proposed a tool outside the declared set")
             if call.call_id in seen_ids:
                 raise invalid
+            if diagnostic is not None and argument_diagnostic_sink is not None:
+                argument_diagnostic_sink(dict(diagnostic, correction='tool_arguments_repaired'))
             calls.append(call)
     except ModelRequestError:
         if response_diagnostics:
@@ -131,6 +225,8 @@ class DeepSeekToolModel:
     config: DeepSeekConfig
     temperature: float | None = None
     response_diagnostics: bool = False
+    repair_tool_arguments: bool = False
+    argument_diagnostic_sink: Callable[[dict[str, object]], None] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if type(self.config) is not DeepSeekConfig:
@@ -140,6 +236,10 @@ class DeepSeekToolModel:
             raise ModelConfigurationError("Tool model temperature must be finite and between 0 and 2")
         if type(self.response_diagnostics) is not bool:
             raise ModelConfigurationError("Tool response diagnostics must be an explicit boolean")
+        if (type(self.repair_tool_arguments) is not bool
+                or self.argument_diagnostic_sink is not None and not callable(self.argument_diagnostic_sink)
+                or self.repair_tool_arguments and (not self.response_diagnostics or self.argument_diagnostic_sink is None)):
+            raise ModelConfigurationError('Argument repair requires explicit diagnostics and a safe sink')
         if (len(self.config.model) > MAX_METADATA_CHARACTERS
                 or any(not character.isprintable() for character in self.config.model)):
             raise ModelConfigurationError("Tool model identifier exceeds protocol metadata limits")
@@ -147,6 +247,10 @@ class DeepSeekToolModel:
     def complete(self, messages: Sequence[ToolMessage], *,
                  tools: Sequence[ToolDefinition]) -> ToolModelResponse:
         history, definitions, seen_ids = validate_tool_messages(messages, tools=tools)
+        if self.repair_tool_arguments and (len(definitions) != 1
+                or definitions[0].name != 'interpret_research_intent_v2'
+                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.1']):
+            raise ModelConfigurationError('Argument repair is restricted to the v2.5.1 intent candidate')
         body = {
             "model": self.config.model,
             "messages": [_wire_message(message) for message in history],
@@ -174,4 +278,6 @@ class DeepSeekToolModel:
             raise
         return _parse_response(payload, self.config.model,
                                frozenset(tool.name for tool in definitions), seen_ids,
-                               response_diagnostics=self.response_diagnostics)
+                               response_diagnostics=self.response_diagnostics,
+                               repair_tool_arguments=self.repair_tool_arguments,
+                               argument_diagnostic_sink=self.argument_diagnostic_sink)

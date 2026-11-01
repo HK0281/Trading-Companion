@@ -14,13 +14,13 @@ class ReplayTests(unittest.TestCase):
     def test_migration_changes_only_version_in_a_copy_and_rejects_other_versions(self):
         raw = response(draft(version='research-intent-v2.4')).to_dict()
         original = deepcopy(raw)
-        migrated = replay.migrate_response(raw)
+        migrated = replay.migrate_response(raw, 'v2.4')
         self.assertEqual(raw, original)
-        self.assertEqual(migrated.tool_calls[0].arguments['version'], 'research-intent-v2.5')
-        for version in ('research-intent-v2.3', 'research-intent-v2.5'):
+        self.assertEqual(migrated.tool_calls[0].arguments['version'], 'research-intent-v2.5.1')
+        for version in ('research-intent-v2.3', 'research-intent-v2.5.1'):
             raw['tool_calls'][0]['arguments']['version'] = version
             with self.assertRaises(ValueError):
-                replay.migrate_response(raw)
+                replay.migrate_response(raw, 'v2.4')
 
     def test_no_model_replay_preserves_original_missing_failures_and_marks_every_table(self):
         row = sample()
@@ -31,7 +31,7 @@ class ReplayTests(unittest.TestCase):
         with patch.object(experiment, 'populations', return_value=([row, second],
                 {r['id']: r['gold'] for r in (row, second)}, {}, {})), \
                 patch.object(experiment.core, '_live_model', side_effect=AssertionError('No model')):
-            result = replay.replay_reports([dict(rows=[archived])])
+            result = replay.replay_reports([dict(rows=[archived])], 'v2.4')
         self.assertEqual(archived, original)
         self.assertEqual(result['paid_calls'], 0)
         self.assertFalse(result['new_model_results'])

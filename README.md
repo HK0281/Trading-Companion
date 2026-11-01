@@ -2,7 +2,7 @@
 
 A Chinese-language research agent for China's A-share market, with application-controlled tools, checked evidence, and trading decisions kept with the human.
 
-The independent research-intent v2.5 candidate is being checked with public development and exposed regression cases. Production chat continues to use the existing router. [Candidate behavior, offline replay and evaluation commands (Chinese)](docs/research-intent-v2.5-implementation.md)
+The independent research-intent v2.5.1 candidate is being checked with public development and exposed regression cases. It adds bounded, opt-in JSON diagnostics and repairs, explicit technical cues and checked group references. Production chat continues to use the existing router. [Candidate behavior, offline replay and evaluation commands (Chinese)](docs/research-intent-v2.5-implementation.md)
 
 Index trend research has an independent daily/weekly workflow for 上证指数、深证成指、沪深300、创业板指 and 科创50. “大盘” uses an explicitly labelled 上证 benchmark; ambiguous “科创板指数” asks for the exact identity. Index prices use points, and unverified quantities remain unavailable. Index stop/target requests now ask for an observation horizon before any data/model call; click 短线、中线 or 长线 to continue. Plain text and index plan cards show a direction-matched scenario: conditional entry for bullish, observation bounds for neutral, and a conditional downside watch for bearish; an unformed direction has no plan. Cards retain exact point strings, distinguish daily-close and complete-week ATR dates, and locally reject damaged plans while preserving the trend and chart. Hourly charts remain a later batch. [Index scope, evidence and compatibility (Chinese)](docs/index-research-design.md)
 

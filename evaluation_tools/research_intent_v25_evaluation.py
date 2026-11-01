@@ -1,6 +1,7 @@
 """Public v2.5 development/regression evaluation. No sealed-corpus entry point."""
 
 from copy import deepcopy
+from contextvars import ContextVar
 from hashlib import sha256
 import json
 from math import isfinite
@@ -15,6 +16,7 @@ from trading_companion import research_intent_v2_evaluation as core
 from trading_companion.agent_input import InputIssue
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.intent_router_task import digest, read_json
+from trading_companion.model import ModelConfigurationError
 from trading_companion.research_intent_evaluation import field_scores, same
 from trading_companion.research_intent_evaluation_baseline import UNKNOWN, rule_observation
 from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
@@ -22,7 +24,39 @@ from trading_companion.turn_control import TurnControl, TurnLimits
 
 NOT_APPLICABLE = {'V2222', 'V2223'}
 LIMITS = {'dev': 233, 'regression': 85}
-REPLAY_NOTICE = 'v2.4 原始响应经 v2.5 程序回放，不是新模型成绩'
+REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.1 程序回放，不是新模型成绩'
+REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.1 程序回放，不是新模型成绩'
+ADDENDUM = ROOT/'data/evaluation/research-intent-v2.5.1-amendments.json'
+_ARGUMENT_SINK = ContextVar('v251_argument_diagnostic_sink', default=None)
+
+
+def apply_annotation_completion(original, effective, path=ADDENDUM):
+    """Exactly the one #404 approval, layered over the unchanged #390 record."""
+    value = read_json(path)
+    row = next(r for r in original if r['id'] == 'V2162')
+    if (value.keys() != {'version', 'parent_corpus_sha256', 'parent_amendments_sha256', 'changes'}
+            or value['version'] != 'research-intent-v2.5.1-addendum-v1'
+            or value['parent_corpus_sha256'] != cases.public_sha256(ROOT/'data/evaluation/research-intent-v2.jsonl')
+            or value['parent_amendments_sha256'] != cases.public_sha256(cases.AMENDMENTS)
+            or type(value['changes']) is not list or len(value['changes']) != 1):
+        raise ValueError('Invalid annotation completion parent/inventory')
+    change = value['changes'][0]
+    expected = dict(id='V2162', parent_row_sha256=digest(row), field='date_expression', before=None,
+                    after='今天', reviewer='claude', status='approved', approval_message=404)
+    if (type(change) is not dict or change.keys() != {*expected, 'reason'}
+            or any(change[key] != val or type(change[key]) is not type(val) for key, val in expected.items())
+            or type(change['reason']) is not str or not change['reason'].strip()
+            or effective['V2162']['date_expression'] is not None):
+        raise ValueError('Only the single approved #404 annotation completion is accepted')
+    result = deepcopy(effective)
+    result['V2162']['date_expression'] = '今天'
+    return result, dict(label='标注补齐', model_improvement=False, **value)
+
+
+def annotation_completion():
+    original, _ = load_corpus()
+    _, _, approved = cases.load_regression_amendments()
+    return apply_annotation_completion(original, {r['id']: r['gold'] for r in approved})[1]
 
 
 def populations(split='all'):
@@ -36,12 +70,13 @@ def populations(split='all'):
     if (set(population['not_applicable']) != NOT_APPLICABLE or population['approval_message'] != 383
             or population['reviewer'] != 'claude'):
         raise ValueError('Unapproved regression exclusions')
+    effective = {r['id']: r['gold'] for r in [*approved, *fresh]}
+    effective, _ = apply_annotation_completion(original, effective)
     rows = [*original, *fresh]
     for row in rows:
         row['dataset'] = 'regression' if row['split'] == 'holdout' else 'dev'
         if row['dataset'] == 'regression':
             row['split'] = 'regression'  # All original 85 cases are exposed, never unseen.
-    effective = {r['id']: r['gold'] for r in [*approved, *fresh]}
     selected = [r for r in rows if split == 'all' or r['dataset'] == split]
     if len(selected) != (318 if split == 'all' else LIMITS[split]):
         raise ValueError('Public evaluation population drift')
@@ -65,6 +100,7 @@ def preflight(rows, prefixes, setups):
             patch.object(core, 'understand', side_effect=AssertionError('No target understanding')), \
             patch.object(core, 'local_preflight', side_effect=AssertionError('No target interpretation')), \
             patch.object(core, 'metrics', side_effect=AssertionError('No target scoring')), \
+            patch(__name__ + '._live_model', side_effect=AssertionError('No credentials')), \
             patch.object(core, '_live_model', side_effect=AssertionError('No credentials')), \
             patch('trading_companion.local_env.load_model_environment', side_effect=AssertionError('No credentials')), \
             patch('trading_companion.local_env.load_evaluation_key_environment', side_effect=AssertionError('No credentials')):
@@ -95,6 +131,7 @@ def _git(*args):
 def fingerprints():
     paths = [p for folder in ('src', 'scripts', 'evaluation_tools') for p in (ROOT/folder).rglob('*.py')]
     paths += list((ROOT/'tests').glob('test_research_intent*.py'))
+    paths += [ROOT/'tests/test_deepseek_tool_model.py', ADDENDUM]
     paths += [ROOT/name for name in cases.PUBLIC_FILES]
     paths += [ROOT/'data/evaluation/research-intent-v2.5-freeze.json',
               ROOT/'data/evaluation/research-intent-v2.4-holdout-population.json']
@@ -112,6 +149,9 @@ def build_plan(split='all', maximum=None):
         timeout_seconds=45, runtime_revision=_git('rev-parse', 'HEAD'), workspace_dirty=bool(_git('status', '--porcelain')),
         source_sha256_lf=fingerprints(), prompt_sha256=sha256(intent.INSTRUCTION.encode('utf-8')).hexdigest(),
         tool_sha256=digest(intent.TOOL.to_dict()), context_preflight=preflight(rows, prefixes, setups),
+        annotation_completion=annotation_completion(),
+        tool_arguments_policy=dict(strict_first=True, candidate_only=True, repair_enabled=True,
+            allowed_repairs=['control_char', 'code_fence', 'trailing_text'], retries=0, failed_body_saved=False),
         live_enabled=False, paid_calls=0, eligible_for_switch=False,
         thresholds=dict(dev=dict(n=233, minimum_correct=222), regression=dict(n=83, minimum_correct=79),
                         reference_regression_n=85, common_fields_no_regression=True, redline_violations=0),
@@ -139,7 +179,41 @@ class AttemptBudget(core.AttemptBudget):
         if identifier in self.identifiers:
             raise ValueError('No second attempt for a target')
         self.identifiers.add(identifier)
-        return core.TargetAttempt(self, model, identifier)
+        return TargetAttempt(self, model, identifier)
+
+
+class TargetAttempt(core.TargetAttempt):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.argument_diagnostics = []
+
+    def argument_diagnostic(self, event):
+        self.argument_diagnostics.append(deepcopy(event))
+        self.record('argument_diagnostic', diagnostic=event)
+
+    def complete(self, messages, *, tools):
+        token = _ARGUMENT_SINK.set(self.argument_diagnostic)
+        try:
+            return super().complete(messages, tools=tools)
+        finally:
+            _ARGUMENT_SINK.reset(token)
+
+
+def _argument_diagnostic(event):
+    sink = _ARGUMENT_SINK.get()
+    if sink is None:
+        raise ModelConfigurationError('Candidate diagnostics require a metered target')
+    sink(event)
+
+
+def _live_model(timeout_seconds):
+    from trading_companion.deepseek_model import DeepSeekConfig
+    from trading_companion.deepseek_tool_model import DeepSeekToolModel
+    from trading_companion.local_env import load_evaluation_key_environment
+    key = load_evaluation_key_environment('DEEPSEEK_API_KEY').get('DEEPSEEK_API_KEY', '')
+    return DeepSeekToolModel(DeepSeekConfig(model='deepseek-flash', api_key=key,
+        timeout_seconds=timeout_seconds, max_output_tokens=1500), temperature=intent.TEMPERATURE,
+        response_diagnostics=True, repair_tool_arguments=True, argument_diagnostic_sink=_argument_diagnostic)
 
 
 def checked_result(question, response, context):
@@ -185,15 +259,22 @@ def predict(row, *, prefixes, setups, model, budget, timeout_seconds=45):
         raise
     except Exception as error:
         result = dict(status='failed', reason=intent.safe_failure(error), fields={})
+    repairs = [event for event in target.argument_diagnostics if event['correction'] == 'tool_arguments_repaired']
+    if repairs:
+        result.setdefault('corrections', []).extend(dict(kind='tool_arguments_repaired', field='tool_arguments',
+            before='invalid_json', after='checked_json', source='transport', repair=event['repair']) for event in repairs)
+        result['raw'] = dict(status='failed', reason='tool_arguments_json_invalid', fields={})
     return dict(_empty(result['status'], result.get('reason'), calls), **{k: v for k, v in result.items()
         if k not in ('status', 'reason')}, attempts=target.attempts,
         response=target.response.to_dict() if target.response else None, call_ms=target.elapsed_ms,
+        argument_diagnostics=target.argument_diagnostics,
+        response_origin='repaired_tool_arguments' if repairs else 'provider',
         path='semantic', context_sha256=digest(context.model_context()), setup=core.setup_metadata(context))
 
 
 def _empty(status, reason, setup_calls=0):
     return dict(status=status, reason=reason, fields={}, attempts=0, setup_calls=setup_calls,
-                response=None, call_ms=None, corrections=[])
+                response=None, call_ms=None, corrections=[], argument_diagnostics=[])
 
 
 def _groups(rows):
@@ -266,13 +347,23 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
         thresholds[dataset] = dict(n=len(selected), correct=correct, minimum_correct=minimum,
             joint_passed=correct >= minimum, common=_common(selected), redlines=redlines(selected))
     telemetry = core.telemetry(rows)
-    authenticity = ('archived_response_replay' if notice == REPLAY_NOTICE else
+    repairs = {}
+    for row in rows:
+        for event in row['V2'].get('argument_diagnostics', []):
+            if event['correction'] == 'tool_arguments_repaired':
+                group = repairs.setdefault(event['repair'], dict(count=0, ids=[]))
+                group['count'] += 1
+                if row['id'] not in group['ids']:
+                    group['ids'].append(row['id'])
+    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE) else
         'mock_experiment' if telemetry['mock_responses'] else
         'live_provider' if live and telemetry['attempts'] else 'no_provider_observation')
     return dict(kind='research-intent-v2.5-public-report', title=notice or 'v2.5 公开开发与已暴露回归',
         notice=notice, plan=plan, rows=rows, score_views=views, common_comparison=common, zero_tolerance=lines,
         thresholds=thresholds, paid_calls=telemetry['attempts'] if live else 0, telemetry=telemetry, authenticity=authenticity,
         corrections=core.correction_summary(rows), eligible_for_switch=False,
+        tool_arguments_repairs=dict(total=sum(g['count'] for g in repairs.values()), by_category=repairs),
+        annotation_completion=plan.get('annotation_completion'),
         passed=authenticity == 'live_provider' and bool(thresholds) and all(t['joint_passed'] and t['common']['passed'] and t['redlines']['passed']
                                        for t in thresholds.values()),
         unmeasured=['正式会话端到端', '真实研究执行和价位', '跨对象证据', '完整严格范围执行', '封存检验'],
@@ -295,6 +386,12 @@ def markdown(report):
     table(('逐题', '状态', '差异字段/原因'), ((r['id'], r['V2']['status'],
         ', '.join(f for f in GOLD_FIELDS if not same(r['V2']['fields'].get(f, UNKNOWN), r['effective_gold'][f]))
         if r['V2']['status'] == 'ok' else r['V2'].get('reason', '')) for r in report['rows']))
+    table(('JSON 修复类别', '次数', '题号'), ((kind, group['count'], ', '.join(group['ids']))
+          for kind, group in report['tool_arguments_repairs']['by_category'].items()))
+    if report.get('annotation_completion'):
+        table(('标注补齐（不计模型改善）', '字段', '原值', '新值', '批准消息'),
+              ((c['id'], c['field'], c['before'], c['after'], c['approval_message'])
+               for c in report['annotation_completion']['changes']))
     lines += ['实际新付费尝试：' + str(report['paid_calls']), '',
               'eligible_for_switch=false；正式会话端到端、执行及新封存检验仍未测。', '']
     return '\n'.join(lines)
@@ -330,7 +427,7 @@ def evaluate(*, split='dev', live=False, maximum=None, timeout_seconds=45):
             events.flush()
             os.fsync(events.fileno())
         assert_current(plan)
-        delegate = core._live_model(timeout_seconds)
+        delegate = _live_model(timeout_seconds)
         class PinnedModel:
             def complete(self, messages, *, tools):
                 assert_current(plan)

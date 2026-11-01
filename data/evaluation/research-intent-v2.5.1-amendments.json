@@ -1,0 +1,18 @@
+{
+  "version": "research-intent-v2.5.1-addendum-v1",
+  "parent_corpus_sha256": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+  "parent_amendments_sha256": "d3dfd47510df5540a883f08a35e7a0f7117bf5a83ca96746c83ce81103c39aaa",
+  "changes": [
+    {
+      "id": "V2162",
+      "parent_row_sha256": "357184e14e1548f88ba982468535af4a0d72a7277ba7153af3b76522956ac046",
+      "field": "date_expression",
+      "before": null,
+      "after": "今天",
+      "reason": "按 #390 的 J 口径补齐：提取字段保留原文，合法性由 outcome 表达；仅此字段，模型改善另计。",
+      "reviewer": "claude",
+      "status": "approved",
+      "approval_message": 404
+    }
+  ]
+}

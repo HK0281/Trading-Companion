@@ -119,7 +119,7 @@ class EvaluationTests(OfflineTests):
         self.assertEqual(model.messages, [])
 
     def test_bad_cli_and_dirty_live_admission_fail_before_credentials(self):
-        with patch.object(experiment.core, '_live_model', side_effect=AssertionError('No credentials')) as factory:
+        with patch.object(experiment, '_live_model', side_effect=AssertionError('No credentials')) as factory:
             for split in ('holdout', 'sealed', '../regression'):
                 with self.subTest(split=split), self.assertRaises(ValueError):
                     experiment.evaluate(split=split, live=True)
@@ -141,7 +141,7 @@ class EvaluationTests(OfflineTests):
                 patch.object(experiment, 'build_plan', side_effect=lambda *a: deepcopy(planned)), \
                 patch.object(experiment, 'assert_current'), \
                 patch.object(experiment, 'populations', return_value=([row], {row['id']: row['gold']}, {}, {})), \
-                patch.object(experiment.core, '_live_model', return_value=model) as factory:
+                patch.object(experiment, '_live_model', return_value=model) as factory:
             first = experiment.evaluate(split='dev', live=True, maximum=1)
             self.assertEqual(first['paid_calls'], 1)
             self.assertEqual(first['authenticity'], 'mock_experiment')

@@ -1,4 +1,4 @@
-"""v2.4 原始响应经 v2.5 程序回放，不是新模型成绩。禁止网络和模型调用。"""
+"""公开历史响应离线回放，不是新模型成绩。禁止网络和模型调用。"""
 
 import argparse
 from collections import Counter
@@ -26,27 +26,35 @@ SOURCES = {
     'dev': ROOT/'.agentbus/tmp/intent-v24-live-dev-run1/4a6b8973437046a4a08e74b25eb532b9/report.json',
     'regression': ROOT/'.agentbus/evaluation-runs/research-intent-v2.4/holdout/report.json',
 }
+PUBLIC_V25 = ROOT/'.agentbus/evaluation-runs/research-intent-v2.5/public/cbdc7d62b342a3edee292d1305795bbb343fec04'
+SOURCES_BY_VERSION = {'v2.4': SOURCES,
+                      'v2.5': {split: PUBLIC_V25/split/'report.json' for split in ('dev', 'regression')}}
 
 
-def migrate_response(value):
+def migrate_response(value, source_version='v2.5'):
     """An explicit version-only copy; retain the original response in the replay row."""
     expected = {'status', 'text', 'tool_calls', 'provider', 'requested_model', 'model', 'is_mock', 'finish_reason', 'usage'}
     if type(value) is not dict or value.keys() != expected or type(value['tool_calls']) is not list:
         raise ValueError('Missing or invalid archived response envelope')
+    if source_version not in SOURCES_BY_VERSION:
+        raise ValueError('Only the fixed public archive versions are accepted')
     copied = deepcopy(value)
     for call in copied['tool_calls']:
-        if call.keys() != {'call_id', 'name', 'arguments'} or call['arguments'].get('version') != 'research-intent-v2.4':
-            raise ValueError('Replay accepts only archived v2.4 proposals')
+        if call.keys() != {'call_id', 'name', 'arguments'} or call['arguments'].get('version') != 'research-intent-' + source_version:
+            raise ValueError('Replay accepts only the selected archived proposal version')
         call['arguments']['version'] = intent.VERSION
     copied['tool_calls'] = tuple(ToolCall(**call) for call in copied['tool_calls'])
     copied['usage'] = TokenUsage(**copied['usage']) if copied['usage'] is not None else None
     return ToolModelResponse(**copied)
 
 
-def replay_reports(reports):
+def replay_reports(reports, source_version='v2.5'):
     """Reports are explicit old observations; neither gold nor target scripts enter checking."""
     rows, effective, prefixes, setups = evaluation.populations('all')
-    rows = [r for r in rows if 'setup_id' not in r]
+    if source_version not in SOURCES_BY_VERSION:
+        raise ValueError('Only fixed public archives can be replayed')
+    if source_version == 'v2.4':
+        rows = [r for r in rows if 'setup_id' not in r]
     by_id = {r['id']: r for r in rows}
     observed = {}
     for report in reports:
@@ -64,6 +72,7 @@ def replay_reports(reports):
             patch.object(evaluation.core, 'predict', side_effect=AssertionError('Replay never predicts a target')), \
             patch('trading_companion.local_env.load_model_environment', side_effect=AssertionError('No credentials')), \
             patch('trading_companion.local_env.load_evaluation_key_environment', side_effect=AssertionError('No credentials')), \
+            patch.object(evaluation, '_live_model', side_effect=AssertionError('Replay never loads credentials')), \
             patch.object(evaluation.core, '_live_model', side_effect=AssertionError('Replay never loads credentials')):
         for row in rows:
             old = observed.get(row['id'])
@@ -79,7 +88,7 @@ def replay_reports(reports):
                         result = dict(evaluation._empty('ok', None, calls), fields=local.fields(),
                             path='local_preflight', metadata=dict(provenance=list(local.provenance)))
                     elif original.get('response') is not None:
-                        response = migrate_response(original['response'])
+                        response = migrate_response(original['response'], source_version)
                         result = dict(evaluation._empty('ok', None, calls),
                             **evaluation.checked_result(row['question'], response, context), path='archived_response',
                             context_sha256=digest(context.model_context()))
@@ -93,29 +102,31 @@ def replay_reports(reports):
                 archived_fields=original.get('fields', {}), archived_response=original.get('response'),
                 changed_fields=[key for key in evaluation.GOLD_FIELDS if not same(
                     result['fields'].get(key, evaluation.UNKNOWN), original.get('fields', {}).get(key, evaluation.UNKNOWN))],
-                replay_migration=dict(field='version', before='research-intent-v2.4', after=intent.VERSION,
+                replay_migration=dict(field='version', before='research-intent-' + source_version, after=intent.VERSION,
                                       applied=result.get('path') == 'archived_response',
                                       original_response_unchanged=True)))
     report = evaluation.report_results(output, effective, dict(kind='offline_replay', target_calls=0,
-        model_factory_calls=0, retries=0), notice=evaluation.REPLAY_NOTICE)
+        model_factory_calls=0, retries=0, annotation_completion=evaluation.annotation_completion()),
+        notice=evaluation.REPLAY_251_NOTICE if source_version == 'v2.5' else evaluation.REPLAY_NOTICE)
     report.update(passed=None, thresholds=None, new_model_results=False,
-                  note='仅回放旧提案及新本地前置，不检验新提示词；缺响应、失败和未测仍留在240题分母。')
+                  note='仅回放旧提案及新本地前置，不检验新提示词或推测缺失JSON；缺响应、失败和未测仍留在完整分母。')
     return report
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report-dir', type=Path, default=ROOT/'.agentbus/tmp/intent-v25-replay')
+    parser.add_argument('--source-version', choices=tuple(SOURCES_BY_VERSION), default='v2.5')
     args = parser.parse_args(argv)
     base = args.report_dir.resolve()
     if not base.is_relative_to((ROOT/'.agentbus/tmp').resolve()):
         parser.error('Replay outputs must remain inside .agentbus/tmp')
     reports, sources = [], []
-    for name, path in SOURCES.items():
+    for name, path in SOURCES_BY_VERSION[args.source_version].items():
         raw = path.read_bytes()
         reports.append(json.loads(raw))
         sources.append(dict(dataset=name, path=str(path), sha256=sha256(raw).hexdigest()))
-    report = replay_reports(reports)
+    report = replay_reports(reports, args.source_version)
     report['sources'] = sources
     folder = base / uuid4().hex
     folder.mkdir(parents=True, exist_ok=False)

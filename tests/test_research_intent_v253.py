@@ -95,7 +95,7 @@ class RetryTests(OfflineTests):
         return result, events, budget, post
 
     def test_single_format_retry_uses_identical_request_and_preserves_first_failure_and_usage_gap(self):
-        result, events, budget, post = self.evaluate([payload('{"x":oops}'), payload(json.dumps(draft()))])
+        result, events, budget, post = self.evaluate([payload('{"x":oops,"y":oops}'), payload(json.dumps(draft()))])
         self.assertEqual((result['status'], result['attempts'], budget.attempts), ('ok', 2, 2))
         self.assertEqual(post.call_args_list[0], post.call_args_list[1])
         self.assertEqual(result['runtime']['model_calls_attempted'], 2)
@@ -281,7 +281,7 @@ class ReplayTests(OfflineTests):
         reports = [dict(rows=[dict(row, V2=dict(response=old)), dict(missing, V2=dict(response=None))])]
         with patch.object(experiment, 'populations', return_value=([row, missing],
                 {r['id']:r['gold'] for r in (row, missing)}, {}, {})):
-            report = replay.replay_reports(reports)
+            report = replay.replay_reports(reports, 'v2.5.2')
         self.assertEqual(report['rows'][1]['V2']['status'], 'not_measured')
         self.assertEqual(report['format_retries']['total'], 0)
         self.assertIsNone(report['passed'])

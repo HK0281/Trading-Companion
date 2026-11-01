@@ -20,17 +20,17 @@ from trading_companion.tool_model import (
 
 
 MAX_FAILED_ARGUMENT_CHARACTERS = 10000
-_STRICT_ARGUMENTS = ContextVar('strict_candidate_tool_arguments', default=False)
+_RETRY_ARGUMENTS = ContextVar('retry_candidate_tool_arguments', default=False)
 
 
 @contextmanager
-def strict_tool_arguments():
-    """Disable all argument repairs for one candidate retry, without changing its request."""
-    token = _STRICT_ARGUMENTS.set(True)
+def retry_tool_arguments():
+    """Allow only scalar quoting on a retry, without changing its request."""
+    token = _RETRY_ARGUMENTS.set(True)
     try:
         yield
     finally:
-        _STRICT_ARGUMENTS.reset(token)
+        _RETRY_ARGUMENTS.reset(token)
 
 
 def _json_text(value: dict) -> str:
@@ -96,7 +96,49 @@ def _unwrap_arguments(arguments):
     return value, kind
 
 
-def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair, sink, save_failed_arguments=False):
+def _quote_unquoted_scalar(arguments, error):
+    """Quote exactly one object value at the first strict parser error; never compose repairs."""
+    if error.msg != 'Expecting value':
+        raise ValueError('Not a value start')
+    position = error.pos
+    # Scan the already parsed prefix, skipping complete JSON strings. A colon
+    # inside a quoted string or an array element must never authorize repair.
+    decoder = json.JSONDecoder(object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
+    stack, last, index = [], None, 0
+    while index < position:
+        char = arguments[index]
+        if char == '"':
+            _, index = decoder.raw_decode(arguments, index)
+            last = 'string'
+            continue
+        if char in '{[':
+            stack.append(char)
+        elif char in '}]':
+            stack.pop()
+        if not char.isspace():
+            last = char
+        index += 1
+    if index != position or last != ':' or not stack or stack[-1] != '{':
+        raise ValueError('Not an object value')
+    boundary = re.search(r'[,}]', arguments[position:])
+    if boundary is None:
+        raise ValueError('Missing value boundary')
+    end = position + boundary.start()
+    raw = arguments[position:end]
+    scalar = raw.strip()
+    if (not 1 <= len(scalar) <= 200 or re.search(r"[\"'\[\]{}:\\\r\n]", raw)
+            or scalar.casefold() in ('true', 'false', 'null', 'nan', 'infinity', '-infinity')
+            or re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?', scalar)):
+        raise ValueError('Not a bounded text scalar')
+    repaired = arguments[:position] + json.dumps(scalar, ensure_ascii=True) + arguments[end:]
+    value = decoder.decode(repaired)
+    if type(value) is not dict:
+        raise ValueError('Not an object')
+    return value
+
+
+def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair, sink,
+                    save_failed_arguments=False, scalar_only=False):
     """Strict first; return a proposal plus safe diagnostic awaiting ToolCall validation."""
     if diagnostics and len(arguments) > MAX_JSON_CHARACTERS and sink is not None:
         sink(dict(call_index=call_index, arguments_length=len(arguments), finish_reason=finish_reason,
@@ -107,12 +149,24 @@ def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair
         json.loads(arguments)
         return arguments, None
     except json.JSONDecodeError as error:
+        parse_error = error
         event = dict(call_index=call_index, arguments_length=len(arguments), finish_reason=finish_reason,
                      category=_json_category(error, arguments), position=error.pos,
                      line=error.lineno, column=error.colno, repair=None, correction=None)
     except (ValueError, RecursionError):
         raise ModelCallError('tool_call_invalid', 'Model tool call failed protocol validation') from None
     if repair:
+        try:
+            value = _quote_unquoted_scalar(arguments, parse_error)
+            event['repair'] = 'unquoted_scalar'
+            return value, event
+        except ModelRequestError:
+            if sink is not None:
+                sink(event)
+            raise ModelCallError('tool_call_invalid', 'Model tool call failed protocol validation') from None
+        except (ValueError, IndexError, RecursionError):
+            pass
+    if repair and not scalar_only:
         try:
             # The sole relaxation is literal control characters in strings.
             value = json.loads(arguments, strict=False, object_pairs_hook=_unique_pairs,
@@ -142,7 +196,8 @@ def _tool_arguments(arguments, finish_reason, call_index, *, diagnostics, repair
 def _parse_response(payload: object, requested_model: str,
                     allowed_names: frozenset[str], seen_ids: frozenset[str], *,
                     response_diagnostics: bool = False, repair_tool_arguments: bool = False,
-                    argument_diagnostic_sink=None, save_failed_arguments=False) -> ToolModelResponse:
+                    argument_diagnostic_sink=None, save_failed_arguments=False,
+                    scalar_only=False) -> ToolModelResponse:
     invalid = ModelCallError("response_shape_invalid" if response_diagnostics else "invalid_response",
                              "Model returned an invalid tool response")
     if type(payload) is not dict:
@@ -216,7 +271,7 @@ def _parse_response(payload: object, requested_model: str,
                 raise invalid
             arguments, diagnostic = _tool_arguments(function['arguments'], finish_reason, call_index,
                 diagnostics=response_diagnostics, repair=repair_tool_arguments, sink=argument_diagnostic_sink,
-                save_failed_arguments=save_failed_arguments)
+                save_failed_arguments=save_failed_arguments, scalar_only=scalar_only)
             # ToolCall validates bounded object JSON, identifiers and duplicate keys.
             try:
                 call = ToolCall(raw.get("id"), function.get("name"), arguments)
@@ -276,8 +331,8 @@ class DeepSeekToolModel:
         history, definitions, seen_ids = validate_tool_messages(messages, tools=tools)
         if (self.repair_tool_arguments or self.save_failed_arguments) and (len(definitions) != 1
                 or definitions[0].name != 'interpret_research_intent_v2'
-                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.3']):
-            raise ModelConfigurationError('Argument repair and capture are restricted to the v2.5.3 intent candidate')
+                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') != ['research-intent-v2.5.4']):
+            raise ModelConfigurationError('Argument repair and capture are restricted to the v2.5.4 intent candidate')
         body = {
             "model": self.config.model,
             "messages": [_wire_message(message) for message in history],
@@ -306,6 +361,7 @@ class DeepSeekToolModel:
         return _parse_response(payload, self.config.model,
                                frozenset(tool.name for tool in definitions), seen_ids,
                                response_diagnostics=self.response_diagnostics,
-                               repair_tool_arguments=self.repair_tool_arguments and not _STRICT_ARGUMENTS.get(),
+                               repair_tool_arguments=self.repair_tool_arguments,
+                               scalar_only=_RETRY_ARGUMENTS.get(),
                                argument_diagnostic_sink=self.argument_diagnostic_sink,
                                save_failed_arguments=self.save_failed_arguments)

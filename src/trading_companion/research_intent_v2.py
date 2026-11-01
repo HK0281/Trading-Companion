@@ -12,7 +12,7 @@ import unicodedata
 
 from trading_companion.agent_input import InputIssue
 from trading_companion.decision_horizon import canonical, profile
-from trading_companion.deepseek_tool_model import strict_tool_arguments
+from trading_companion.deepseek_tool_model import retry_tool_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.market_scope import INDICES, _mentions as index_mentions
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
@@ -29,8 +29,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.5.3'
-GUARD_VERSION = 'intent-v2-guards-v8'
+VERSION = 'research-intent-v2.5.4'
+GUARD_VERSION = 'intent-v2-guards-v9'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -87,6 +87,8 @@ INSTRUCTION = (
     '不要只看、不能只用等否定唯一限制取false，不等于排除该领域或指标，仍复制肯定要求。'
     'scope_phrase复制该限制的原文。'
     'objective_phrase、plan_phrase分别为目标和价位需求的原文依据，可共用同一原话；'
+    'plan_phrase只放肯定价位请求的原文；否决价位的原话放exclusions，不能放plan_phrase。'
+    'wants_plan=false时plan_phrase一律为JSON null。所有字符串值必须加双引号。'
     '即使缺对象也保留已有目标/价位依据。没有则为JSON null，不要字符串null/none。'
     '明确技术面/技术指标/具体指标（含均线）/日线、周线、K线数据属于technical；'
     '日线、周线、K线是数据粒度，不是指标，不能放入indicator_mentions；成交量是指标。'
@@ -322,15 +324,44 @@ def _future_fact(question, reference):
     return False
 
 
-def _candidate_dates(expression, text, reference):
-    """Opt-in adapter around the unchanged production date calculation."""
+def _candidate_date_text(text):
+    """Length-preserving candidate adapter; verbatim positions remain unchanged."""
     from trading_companion.research_intent import _COUNT
     pattern = re.compile(r'这\s*(' + _COUNT + r')\s*个?\s*(天|日|周|月)(?!以来|之前|之后|前|后|内|外|半|多|左右)')
     for match in reversed(list(pattern.finditer(text))):
         text = text[:match.start()] + '近' + match[0][1:] + text[match.end():]
-    if expression is not None and pattern.fullmatch(expression):
-        expression = '近' + expression[1:]
+    return text
+
+
+def _candidate_dates(expression, text, reference):
+    """Opt-in adapter around the unchanged production date calculation."""
+    text = _candidate_date_text(text)
+    if expression is not None:
+        expression = _candidate_date_text(expression)
     return _dates(expression, text, reference)
+
+
+def _normalize_date_prefix(draft, text, reference, window, log):
+    from trading_companion.research_intent import _local_date_expression, _parse_dates
+    expression = draft['date_expression']
+    if expression is None:
+        return
+    adapted = _candidate_date_text(expression)
+    try:
+        _parse_dates(adapted, reference)
+        return  # Already a complete date: do not shorten it.
+    except (InputIssue, InvalidRequestError, ValueError):
+        pass
+    local = _local_date_expression(_candidate_date_text(text))
+    if not local or not adapted.startswith(local) or len(local) >= len(expression):
+        return
+    prefix = expression[:len(local)]
+    if prefix not in text or _local_date_expression(adapted) != local:
+        return
+    if _parse_dates(local, reference)[:2] != window:
+        return
+    _correction(log, 'date_expression_prefix', 'date_expression', expression, prefix, 'shared_date_parser')
+    draft['date_expression'] = prefix
 
 
 def _product_research(question, directory):
@@ -786,6 +817,12 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     for item in draft['exclusions']:
         _require(item['kind'] in _vetoes(item['phrase']), 'ungrounded_exclusion')
         vetoes[item['kind']] = item['phrase']
+    if normalize and not draft['wants_plan'] and draft['plan_phrase'] is not None:
+        phrase = draft['plan_phrase']
+        vetoed = any(item['kind'] == 'plan' and item['phrase'] == phrase for item in draft['exclusions'])
+        _correction(log, 'vetoed_plan_phrase' if vetoed else 'unused_plan_phrase',
+                    'plan_phrase', phrase, None, 'wants_plan_false')
+        draft['plan_phrase'] = None
     exclusions = tuple(sorted(vetoes))
     kinds = tuple(item['kind'] for item in draft['research_kinds'])
     domain_conflict = bool(set(kinds) & set(exclusions))
@@ -963,6 +1000,8 @@ def check_response(question, response, *, context, normalize=True, corrections=N
                                                vague_date_window=vague_date_window)
             start, end, _ = _candidate_dates(draft['date_expression'], historical_text, context.reference_date)
             _require(start <= end < context.reference_date and (end - start).days < 366, 'invalid_historical_window')
+            if normalize:
+                _normalize_date_prefix(draft, historical_text, context.reference_date, (start, end), log)
             historical_window = (start.isoformat(), end.isoformat())
         except (InputIssue, InvalidRequestError, ValueError):
             if outcome == 'research':
@@ -1028,7 +1067,7 @@ def understand(question, *, model, context, control=None, retry_json_arguments=F
             metered = ControlledToolModel(model, runtime, retry_transient_errors=False)
             for attempt in range(attempts):
                 try:
-                    with strict_tool_arguments() if attempt else nullcontext():
+                    with retry_tool_arguments() if attempt else nullcontext():
                         response = metered.complete(messages, tools=(TOOL,))
                     break
                 except ModelCallError as error:

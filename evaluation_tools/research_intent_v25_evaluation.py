@@ -16,7 +16,7 @@ from evaluation_tools import research_intent_v25_cases as cases
 from trading_companion import research_intent_v2 as intent
 from trading_companion import research_intent_v2_evaluation as core
 from trading_companion.agent_input import InputIssue
-from trading_companion.deepseek_tool_model import strict_tool_arguments
+from trading_companion.deepseek_tool_model import retry_tool_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.intent_router_task import digest, read_json
 from trading_companion.model import ModelCallError, ModelConfigurationError
@@ -27,10 +27,11 @@ from trading_companion.turn_control import TurnControl, TurnLimits
 
 NOT_APPLICABLE = {'V2222', 'V2223'}
 LIMITS = {'dev': 233, 'regression': 85}
-REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.3 程序回放，不是新模型成绩'
-REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.3 程序回放，不是新模型成绩'
-REPLAY_252_NOTICE = 'v2.5.1 原始响应经 v2.5.3 程序回放，不是新模型成绩'
-REPLAY_253_NOTICE = 'v2.5.2 原始响应经 v2.5.3 程序回放，不是新模型成绩'
+REPLAY_NOTICE = 'v2.4 原始响应经 v2.5.4 程序回放，不是新模型成绩'
+REPLAY_251_NOTICE = 'v2.5 原始响应经 v2.5.4 程序回放，不是新模型成绩'
+REPLAY_252_NOTICE = 'v2.5.1 原始响应经 v2.5.4 程序回放，不是新模型成绩'
+REPLAY_253_NOTICE = 'v2.5.2 原始响应经 v2.5.4 程序回放，不是新模型成绩'
+REPLAY_254_NOTICE = 'v2.5.3 原始响应经 v2.5.4 程序回放，不是新模型成绩'
 FAILED_ARGUMENT_NOTICE = '评估工件包含失败的模型参数原文'
 ADDENDUM = ROOT/'data/evaluation/research-intent-v2.5.1-amendments.json'
 _ARGUMENT_SINK = ContextVar('v251_argument_diagnostic_sink', default=None)
@@ -157,10 +158,10 @@ def build_plan(split='all', maximum=None):
         tool_sha256=digest(intent.TOOL.to_dict()), context_preflight=preflight(rows, prefixes, setups),
         annotation_completion=annotation_completion(),
         tool_arguments_policy=dict(strict_first=True, candidate_only=True, repair_enabled=True,
-            allowed_repairs=['control_char', 'code_fence', 'trailing_text'], retries=1, failed_body_saved=True,
-            retry_only='tool_arguments_json_invalid', retry_same_messages=True, retry_repairs=False,
+            allowed_repairs=['control_char', 'code_fence', 'trailing_text', 'unquoted_scalar'], retries=1, failed_body_saved=True,
+            retry_only='tool_arguments_json_invalid', retry_same_messages=True, retry_repairs=['unquoted_scalar'],
             retry_transient_errors=False, failed_arguments_max_characters=10000,
-            global_budget_includes_retries=True, approval_messages=[410, 412]),
+            global_budget_includes_retries=True, approval_messages=[415, 416, 417]),
         live_enabled=False, paid_calls=0, eligible_for_switch=False,
         thresholds=dict(dev=dict(n=233, minimum_correct=222), regression=dict(n=83, minimum_correct=79),
                         reference_regression_n=85, common_fields_no_regression=True, redline_violations=0),
@@ -223,7 +224,7 @@ class TargetAttempt(core.TargetAttempt):
         start, failure, diagnostic_start = perf_counter(), None, len(self.argument_diagnostics)
         token = _ARGUMENT_SINK.set(self.argument_diagnostic)
         try:
-            with strict_tool_arguments() if self.attempts == 2 else nullcontext():
+            with retry_tool_arguments() if self.attempts == 2 else nullcontext():
                 self.response = self.delegate.complete(messages, tools=tools)
             return self.response
         except BaseException as error:
@@ -423,7 +424,7 @@ def report_results(rows, effective, plan, *, live=False, notice=None):
                 group['count'] += 1
                 if row['id'] not in group['ids']:
                     group['ids'].append(row['id'])
-    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE, REPLAY_252_NOTICE, REPLAY_253_NOTICE) else
+    authenticity = ('archived_response_replay' if notice in (REPLAY_NOTICE, REPLAY_251_NOTICE, REPLAY_252_NOTICE, REPLAY_253_NOTICE, REPLAY_254_NOTICE) else
         'mock_experiment' if telemetry['mock_responses'] else
         'live_provider' if live and telemetry['attempts'] else 'no_provider_observation')
     return dict(kind='research-intent-v2.5-public-report', title=notice or 'v2.5 公开开发与已暴露回归',
@@ -462,7 +463,20 @@ def markdown(report):
           for kind, group in report['tool_arguments_repairs']['by_category'].items()))
     retries = report['format_retries']
     table(('格式重问', '次数', '题号'), [('重问请求', retries['total'], ', '.join(retries['ids'])),
-          ('第二次严格解析且语义核验成功', retries['successful'], ', '.join(retries['successful_ids']))])
+          ('第二次解析（仅允许单处裸值修复）且语义核验成功', retries['successful'], ', '.join(retries['successful_ids']))])
+    if 'saved_argument_replays' in report:
+        table(('保存参数回放', '原尝试', '修复', '语义状态', '采用', '纠正', '来源'),
+              ((e['id'], e['target_attempt'], e['repair'], e['status'], e['selected'],
+                ', '.join(c['kind'] for c in e['corrections']), e['source_report'] + '#' + e['source_pointer'])
+               for e in report['saved_argument_replays']))
+        historical = report['historical_format_retries']
+        table(('历史格式重问（本轮新调用0）', '次数', '题号'),
+              [('历史请求', historical['total'], ', '.join(historical['ids'])),
+               ('历史成功', historical['successful'], ', '.join(historical['successful_ids']))])
+        summary = report['saved_argument_replay_summary']
+        lines += [f"保存参数 {summary['saved']} 条，修复 {summary['repaired']} 条，采用 {summary['selected']} 条；"
+                  'JSON修复分类只计采用结果，逐条回放另见保存参数表。', '']
+        lines += [report['note'], '', '保存参数用合成载体校验；原调用名、ID、调用数量及服务商用量未知，未恢复原响应。', '']
     if report.get('annotation_completion'):
         table(('标注补齐（不计模型改善）', '字段', '原值', '新值', '批准消息'),
               ((c['id'], c['field'], c['before'], c['after'], c['approval_message'])

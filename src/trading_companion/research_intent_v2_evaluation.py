@@ -347,7 +347,7 @@ def _run_rows(rows, *, plan, model, maximum, timeout_seconds, prefixes, baseline
         paid_calls=stats['attempts'] if live else 0, rows=results, telemetry=stats,
         metrics=views['normalized_revised_gold'], score_views=views, corrections=correction_summary(results),
         gold_amendments=list(amendments.values()),
-        scoring_policy='三列均保留全部分母；原样关闭受限规范化，仍含v2.2新增通用校验（如指数不支持领域），并非v2.1同口径成绩；本地前置仍为程序结果。门槛使用规范化+修订gold；改标签不算模型改善。',
+        scoring_policy='三列均保留全部分母；原样关闭受限规范化，仍执行当前版本通用校验、程序绑定和本地前置（含v2.2起的指数领域检查），并非v2.1同口径成绩。门槛使用规范化+修订gold；改标签不算模型改善。',
         threshold_basis='normalized_revised_gold',
         billing_note='paid_calls为发往传输层的尝试上限记录，不证明服务商实际计费；未知token不按0计费用',
         zero_tolerance=zero_tolerance(results),

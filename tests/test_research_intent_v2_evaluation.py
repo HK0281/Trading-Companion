@@ -248,6 +248,23 @@ class ContextTests(unittest.TestCase):
 
 
 class PredictionTests(unittest.TestCase):
+    def test_buy_sell_judgment_skips_legacy_education_probe_but_definitions_remain_local(self):
+        from trading_companion.request_routing import probe_general_knowledge, resolve_general_knowledge
+        ctx, _ = experiment.program_context(state(), {})
+        for question in ('中线能不能买', '短线能卖吗', '长线值得买吗'):
+            # The legacy route accepts this educational topic + question mark;
+            # the candidate must ask the semantic model to preserve missing identity.
+            candidate = probe_general_knowledge(question, workflow=True, history=False)
+            self.assertIsNotNone(resolve_general_knowledge(question, candidate=candidate, directory=ctx.directory))
+            self.assertIsNone(experiment.local_preflight(question, ctx))
+        model, budget = RecordingModel(), experiment.AttemptBudget(155)
+        result = experiment.predict(state('中线能不能买'), prefixes={}, model=model, budget=budget)
+        self.assertEqual(result['attempts'], 1)
+        for question in ('短线交易是什么意思', '什么是价值投资', 'RSI是什么指标'):
+            result = experiment.predict(state(question), prefixes={}, model=model, budget=budget)
+            self.assertEqual(result['attempts'], 0, question)
+            self.assertEqual(result['fields']['task'], 'knowledge')
+
     def test_new_local_guards_and_existing_general_knowledge_are_identified(self):
         model = RecordingModel()
         budget = experiment.AttemptBudget(155)

@@ -27,8 +27,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.2'
-GUARD_VERSION = 'intent-v2-guards-v2'
+VERSION = 'research-intent-v2.3'
+GUARD_VERSION = 'intent-v2-guards-v3'
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
 KINDS = ('profile', 'financial', 'news', 'announcements', 'technical', 'risk')
@@ -45,15 +45,21 @@ INSTRUCTION = (
     '买卖或购买价值判断（能买吗、值得买吗、能上车吗、该不该买、现价有没有购买价值）'
     '按产品约定同时请求参考价位，wants_plan=true，除非明确否决。'
     '纯方向/只评级不额外请求价位。有价位需求时先确认对象，对象明确才追问期限。'
-    '只评级不要价位时wants_plan=false；明确否决列入exclusions；同轮矛盾用clarification_reason=conflict。'
+    '只评级不要价位时wants_plan=false；明确否决列入exclusions；同轮矛盾用clarification_reason=conflict，'
+    '但保留用户请求的目标类型，例如要求具体价位的冲突仍是decision。'
     'subject.source=question时mentions复制本句全部对象片段；previous时mentions必须为空，'
-    'selection只复制本句确有的指代片段；隐含指代用null，不补代词；程序才会绑定对象。'
+    'selection只放本句确有的代词、序号或上一对象指代，不放公司名、资料名或时间；'
+    '例如“最新消息”不是selection。隐含指代用null，不补代词；程序才会绑定对象。'
     '明确新对象优先question；没有可用程序对象（含会话重置）或知识问题用none。'
     'research_kinds只列本句明确要求的范围，不能填默认领域；每项phrase必须复制原话。'
     '日期是历史数据窗口；horizon_expression是未来期限。日期和期限只复制本句，'
     '不抄上下文规范值，省略则null。历史回看窗口不能再填未来期限；近期/后面/现在不等于短线。'
-    'new是新研究或仅沿用对象继续研究；update须明确改已有任务条件或续接有效待办；'
-    'refresh明确刷新/核对最新数据；explain仅解释已发布结论。继续同一对象不自动update。'
+    'new是新研究或仅沿用对象继续研究；从保存名单选中成员发起研究也是new，不是修改筛选条件。'
+    'update须明确改已有任务条件或续接有效待办；有有效pending时，回复期限或替换对象均为update，'
+    '即使本句同时给了新公司。无待办时明确替换当前研究对象也是update，但不继承旧对象条件；'
+    '另起研究另一公司是new。refresh是重新计算或重新核验已有研究，'
+    '例如“重做一轮研究”“重算这份报告”“再查证一回”，不要求出现刷新二字；'
+    '只更新旧报告/计划的数据而未修改条件也为refresh。explain仅解释已发布结论。继续同一对象不自动update。'
     '有效pending的original_question仅可为update提供objective_phrase/plan_phrase；'
     '换对象只可续目标和价位意图，不借旧日期/期限/对象/指标/范围/排除依据；普通history没有此权限。'
     'indicator_mentions只复制肯定要求的指标，排除指标写入exclusions。'
@@ -294,10 +300,11 @@ def _index_spans(question):
     """V2-only identity aliases; keep funds, ambiguous and unsupported indices separate."""
     spans = [(a, b, i) for a, b, i in index_mentions(question)
              if not re.match(r'\s*(?:指数)?\s*(?:型)?(?:ETF|基金|期货|期权)', question[b:], re.I)]
-    # Only an observation of the board has the agreed index shorthand identity.
-    for match in re.finditer(r'创业板(?=\s*的?\s*(?:后面|后续|以后|接下来|将来))|大盘指数', question):
+    # Board shorthand requires an observation, horizon or price-plan context.
+    for match in re.finditer(r'创业板(?=\s*的?\s*(?:后面|后续|以后|接下来|将来|未来|短线|中线|长线|'
+                             r'参考计划|交易计划|计划|止盈|止损|价位|走势))|大盘指数', question):
         after = question[match.end():]
-        if re.match(r'\s*(?:型)?(?:ETF|基金|期货|期权)', after, re.I):
+        if re.match(r'\s*的?\s*(?:(?:短线|中线|长线)\s*)?(?:型)?(?:ETF|基金|期货|期权|股票|个股)', after, re.I):
             continue
         overlaps = [s for s in spans if match.start() < s[1] and s[0] < match.end()]
         identity = INDICES[3] if match[0] == '创业板' else INDICES[0]
@@ -325,6 +332,7 @@ def _normalize_nullable(value, schema, log, path=''):
 
 
 _IMPLICIT_SELECTIONS = ('它', '它们', '这只', '这只股', '该股', '这家公司', '该公司')
+_LATEST_SELECTIONS = ('上一只', '上一个', '刚才那只')
 
 
 def _normalize_subject(question, draft, context, log):
@@ -344,7 +352,7 @@ def _normalize_subject(question, draft, context, log):
             mentions = list(dict.fromkeys(question[a:b] for a, b, _ in indices))
     # A unique literal name may coexist with another, referenced object. Never
     # decide whether the user is comparing or replacing them during normalization.
-    has_reference = (any(phrase in question for phrase in _IMPLICIT_SELECTIONS)
+    has_reference = (any(phrase in question for phrase in (*_IMPLICIT_SELECTIONS, *_LATEST_SELECTIONS))
                      or re.search(r'第\s*[0-9零〇一二两三四五六七八九十百]+\s*(?:只|个|支)',
                                   unicodedata.normalize('NFKC', question)) is not None)
     # Never erase fabricated names/ordinals or repair an already explicit, incomplete list.
@@ -362,7 +370,56 @@ def _normalize_subject(question, draft, context, log):
                 source=context.source, development=context.development, now=context.now) is None):
         replacement = dict(source='none', mentions=[], selection=None)
         _correction(log, 'screening_list', 'subject', subject, replacement, 'program_screening')
-        draft['subject'] = replacement
+        draft['subject'] = subject = replacement
+    # Only absence of ALL program records permits this downgrade. Invalid or
+    # expired records must still go through their original binding checks.
+    session = context.session
+    if (subject['source'] == 'previous' and not subject['mentions']
+            and (subject['selection'] is None or subject['selection'] in question)
+            and session.latest_research is None and session.screening_saved is None
+            and all(p is None for p in (session.pending, session.pending_edit, session.product_pending, session.index_pending))):
+        replacement = dict(source='none', mentions=[], selection=None)
+        _correction(log, 'previous_without_record', 'subject', subject, replacement, 'program_records_absent')
+        draft['subject'] = subject = replacement
+    if subject['source'] == 'none' and subject['selection'] is not None and subject['selection'] in question:
+        _correction(log, 'none_selection', 'subject.selection', subject['selection'], None, 'no_subject_authority')
+        subject['selection'] = None
+
+
+def _normalize_scope(question, draft, log):
+    """Apply only to grounded fields; preserve independent occurrences and veto checks."""
+    kinds = draft['research_kinds']
+    fundamental = next((item for item in kinds if item['kind'] in ('profile', 'financial')
+                        and '基本面' in item['phrase']), None)
+    if fundamental and not {'profile', 'financial'} <= {item['kind'] for item in kinds}:
+        replacement = [*kinds, *(dict(kind=kind, phrase=fundamental['phrase']) for kind in ('profile', 'financial')
+                                 if kind not in {item['kind'] for item in kinds})]
+        _correction(log, 'fundamental_domains', 'research_kinds', kinds, replacement, 'grounded_fundamentals')
+        draft['research_kinds'] = replacement
+    mentions = draft['indicator_mentions']
+    spans = {mention: [match.span() for match in re.finditer(re.escape(mention), question)] for mention in mentions}
+    kept = [mention for mention in mentions if not all(
+        any(len(other) > len(mention) and a <= start and end <= b
+            for other in mentions for a, b in spans[other]) for start, end in spans[mention])]
+    if kept != mentions:
+        _correction(log, 'indicator_fragment', 'indicator_mentions', mentions, kept, 'same_question_positions')
+        draft['indicator_mentions'] = kept
+
+
+def _historical_text(question, draft, *, normalize, corrections):
+    expression = draft['horizon_expression']
+    text = question.replace(expression, ' ' * len(expression)) if expression else question
+    phrase = draft['objective_phrase']
+    if normalize and draft['objective_kind'] in ('decision', 'outlook') and phrase and phrase in question:
+        # Mask only the generic future marker inside grounded directional
+        # wording, never its whole phrase or an unextracted quantified date.
+        for match in re.finditer(r'未来(?=\s*(?:的\s*)?(?:方向|走向|走势|趋势|表现|行情|前景))', text):
+            if not any(start <= match.start() and match.end() <= end
+                       for start, end in (m.span() for m in re.finditer(re.escape(phrase), question))):
+                continue
+            text = text[:match.start()] + ' ' * len(match[0]) + text[match.end():]
+            _correction(corrections, 'future_objective_date_cue', 'historical_text', match[0], None, 'objective_phrase')
+    return text
 
 
 def _question_subject(question, subject, context, task, *, normalize=True, corrections=None):
@@ -432,7 +489,7 @@ def _select_previous(selection, securities, directory):
     return tuple(s.instrument_id for s in securities), None
 
 
-def _previous_subject(question, subject, context, task):
+def _previous_subject(question, subject, context, task, *, normalize=True, corrections=None):
     pending = _pending(context)
     if pending is not None:
         if not pending['valid']:
@@ -458,9 +515,12 @@ def _previous_subject(question, subject, context, task):
     if task == 'index_research':
         if latest.kind != 'index':
             return (), 'clarify_subject'
-        if selection and re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*只', selection):
+        latest_reference = normalize and selection in _LATEST_SELECTIONS
+        if not latest_reference and selection and re.search(r'第|[0-9零〇一二两三四五六七八九十百]+\s*只', selection):
             return (), 'clarify_subject'
         code = getattr(latest.scope, 'instrument_id', None)
+        if latest_reference and code in {i.instrument_id for i in INDICES} and corrections is not None:
+            _correction(corrections, 'previous_single_reference', 'bound_subjects', [], [code], 'program_latest')
         return ((code,), None) if code in {i.instrument_id for i in INDICES} else ((), 'clarify_identity')
     if latest.kind == 'index':
         return (), 'clarify_subject'
@@ -468,6 +528,13 @@ def _previous_subject(question, subject, context, task):
         reference_date=context.reference_date, development=context.development, now=context.now)
     if issue:
         return (), 'clarify_subject'
+    if normalize and selection in _LATEST_SELECTIONS:
+        if len(securities) != 1:
+            return (), 'clarify_subject'
+        if corrections is not None:
+            _correction(corrections, 'previous_single_reference', 'bound_subjects', [],
+                        [securities[0].instrument_id], 'program_latest')
+        return (securities[0].instrument_id,), None
     return _select_previous(subject['selection'], securities, context.directory)
 
 
@@ -479,6 +546,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     _require(type(response) is ToolModelResponse and response.status == 'tool_calls'
              and len(response.tool_calls) == 1 and response.tool_calls[0].name == TOOL_NAME)
     log = corrections if corrections is not None else []
+    correction_start = len(log)
     draft = (_normalize_nullable(response.tool_calls[0].arguments, SCHEMA, log) if normalize
              else deepcopy(response.tool_calls[0].arguments))
     _validate(draft, SCHEMA)
@@ -504,6 +572,8 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     phrases += [*draft['subject']['mentions'], draft['subject']['selection'], *draft['indicator_mentions']]
     phrases += [item['phrase'] for k in ('exclusions', 'research_kinds') for item in draft[k]]
     _require(all(p is None or p in question for p in phrases), 'ungrounded_intent_v2')
+    if normalize:
+        _normalize_scope(question, draft, log)
     inherited_plan = bool(usable_pending and pending['wants_plan'])
     _require(not draft['wants_plan'] or draft['plan_phrase'] is not None or inherited_plan, 'missing_plan_evidence')
     _require(draft['objective_kind'] == 'analysis' or draft['objective_phrase'] is not None
@@ -527,18 +597,6 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     for phrase in vetoes.values():
         positive = positive.replace(phrase, ' ' * len(phrase))
     positive = _NEGATED_ONLY.sub('', positive)
-    if draft['task'] in ('stock_research', 'index_research'):
-        if re.search(r'只(?:看|用|分析|研究)|仅(?:看|用|分析|研究)|纯技术', positive):
-            _require(draft['strict_scope'], 'omitted_strict_scope')
-        explicit = tuple(spec for match in _INDICATOR_CUE.finditer(positive) for spec in _indicator(match[0]))
-        _require({s.indicator_id for s in explicit} <= {s.indicator_id for s in specs}, 'omitted_indicator')
-    if draft['task'] == 'index_research':
-        # Check unsupported domains and strict/excluded scope BEFORE removing redundancy.
-        _require(not set(kinds) - {'technical', 'risk'}, 'index_domain_unsupported')
-        if normalize and 'technical' in kinds:
-            normalized_kinds = tuple(k for k in kinds if k != 'technical')
-            _correction(log, 'index_default_domain', 'research_kinds', list(kinds), list(normalized_kinds), 'index_default')
-            kinds = normalized_kinds
     outcome = 'clarify_' + draft['clarification_reason'] if draft['clarification_reason'] else 'research'
     if 'plan' in exclusions and draft['wants_plan']:
         outcome = 'clarify_conflict'
@@ -556,7 +614,37 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     bound, binding_issue = _question_subject(question, draft['subject'], context, draft['task'],
                                             normalize=normalize, corrections=log)
     if draft['subject']['source'] == 'previous':
-        bound, binding_issue = _previous_subject(question, draft['subject'], context, draft['task'])
+        bound, binding_issue = _previous_subject(question, draft['subject'], context, draft['task'],
+                                                normalize=normalize, corrections=log)
+    retired_subject_clarification = bool(normalize and bound and binding_issue is None
+        and draft['clarification_reason'] == 'subject'
+        and any(c['kind'] == 'explicit_subject' for c in log[correction_start:]))
+    if retired_subject_clarification:
+        _correction(log, 'resolved_subject_clarification', 'clarification_reason', 'subject', None, 'checked_explicit_subject')
+        draft['clarification_reason'] = None
+        if outcome == 'clarify_subject':
+            outcome = 'research'
+    if (normalize and draft['task'] == 'clarify' and len(bound) == 1 and binding_issue is None
+            and draft['clarification_reason'] not in (None, 'subject')):
+        task = 'index_research' if bound[0] in {i.instrument_id for i in INDICES} else 'stock_research'
+        _correction(log, 'clarification_task', 'task', 'clarify', task, 'checked_subject_type')
+        draft['task'] = task
+    if (normalize and draft['objective_kind'] == 'outlook' and draft['task'] in ('stock_research', 'clarify')
+            and not (bound and bound[0] in {i.instrument_id for i in INDICES})):
+        _correction(log, 'objective_outlook_non_index', 'objective_kind', 'outlook', 'decision', 'non_index_contract')
+        draft['objective_kind'] = 'decision'
+    if draft['task'] in ('stock_research', 'index_research'):
+        if re.search(r'只(?:看|用|分析|研究)|仅(?:看|用|分析|研究)|纯技术', positive):
+            _require(draft['strict_scope'], 'omitted_strict_scope')
+        explicit = tuple(spec for match in _INDICATOR_CUE.finditer(positive) for spec in _indicator(match[0]))
+        _require({s.indicator_id for s in explicit} <= {s.indicator_id for s in specs}, 'omitted_indicator')
+    if draft['task'] == 'index_research':
+        # Recovered tasks must pass exactly the same scope checks as original ones.
+        _require(not set(kinds) - {'technical', 'risk'}, 'index_domain_unsupported')
+        if normalize and 'technical' in kinds:
+            normalized_kinds = tuple(k for k in kinds if k != 'technical')
+            _correction(log, 'index_default_domain', 'research_kinds', list(kinds), list(normalized_kinds), 'index_default')
+            kinds = normalized_kinds
     if binding_issue and outcome != 'clarify_conflict':
         outcome = binding_issue
     elif draft['task'] in ('stock_research', 'index_research') and not bound:
@@ -570,7 +658,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
             if outcome == 'research':
                 outcome = 'clarify_conditions'
     provenance = [('subject', draft['subject']['source']), *evidence_provenance]
-    if any(c['kind'] == 'screening_list' for c in log):
+    if any(c['kind'] == 'screening_list' for c in log[correction_start:]):
         provenance.append(('screening_task', 'program_screening'))
     if expression is not None:
         provenance.append(('horizon', 'question'))
@@ -589,7 +677,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
     historical_window = ()
     if draft['task'] in ('stock_research', 'index_research'):
         try:
-            historical_text = question.replace(expression, ' ' * len(expression)) if expression else question
+            historical_text = _historical_text(question, draft, normalize=normalize, corrections=log)
             start, end, _ = _dates(draft['date_expression'], historical_text, context.reference_date)
             _require(start <= end < context.reference_date and (end - start).days < 366, 'invalid_historical_window')
             historical_window = (start.isoformat(), end.isoformat())
@@ -607,7 +695,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         outcome = 'clarify_horizon'
     task = 'clarify' if binding_issue or outcome == 'clarify_subject' else draft['task']
     low_confidence = draft['confidence'] == 'low'
-    if low_confidence and not outcome.startswith('clarify_') and outcome != 'reject':
+    if low_confidence and not retired_subject_clarification and not outcome.startswith('clarify_') and outcome != 'reject':
         outcome = ('clarify_subject' if not bound and draft['task'] in ('stock_research', 'index_research', 'clarify')
                    else 'clarify_conditions')
     return CheckedIntent(task, draft['operation'], draft['objective_kind'], wants_plan,
@@ -672,6 +760,7 @@ def local_preflight(question, context):
     from trading_companion.decision_horizon import is_horizon_reply, resume
     from trading_companion.indicator_knowledge import parse_knowledge_question
     from trading_companion.product_plan import ProductPlan, _execution_requested, _INJECTION
+    from trading_companion.research_decision import wants_decision
     from trading_companion.request_routing import _COMMANDS, probe_general_knowledge, resolve_general_knowledge, RoutingSessionView
     command = question.strip(' \t\r\n。.!！')
     task, outcome, rule = None, 'local', None
@@ -693,9 +782,10 @@ def local_preflight(question, context):
     elif parse_knowledge_question(question) is not None:
         task, rule = 'knowledge', 'existing_indicator_knowledge'
     else:
-        # The legacy probe does not know V2's observation-dependent identity aliases.
-        # Keep those on the semantic path instead of misrouting them as education.
-        candidate = (_index_spans(question) == index_mentions(question) and probe_general_knowledge(
+        # The legacy probe accepts a topic + question marker even for a decision.
+        # Also keep new index aliases on the semantic path. This gate assigns no
+        # research task itself; the model still interprets the entire question.
+        candidate = (not wants_decision(question) and _index_spans(question) == index_mentions(question) and probe_general_knowledge(
             question, workflow=context.workflow_enabled, history=False, session=RoutingSessionView.capture(context.session)))
         if resolve_general_knowledge(question, candidate=candidate, directory=context.directory) is not None:
             task, rule = 'knowledge', 'existing_general_knowledge'

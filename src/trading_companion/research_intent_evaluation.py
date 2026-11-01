@@ -39,7 +39,7 @@ def build_v2_plan():
     """Read-only plan. This function never loads credentials or invokes a model."""
     from hashlib import sha256
     from trading_companion.intent_router_task import digest
-    from trading_companion.research_intent_v2 import VERSION, GUARD_VERSION, INSTRUCTION, TOOL
+    from trading_companion.research_intent_v2 import VERSION, GUARD_VERSION, INSTRUCTION, TOOL, TEMPERATURE
     from trading_companion.research_intent_v2_evaluation import exposure_registry
     from trading_companion.research_intent_v2_annotations import load_amendments, amendment_fingerprint
     rows, manifest = load_corpus()
@@ -57,7 +57,8 @@ def build_v2_plan():
     return {**plan, 'kind': 'v2_contract_preparation', 'contract_version': VERSION,
             'guard_version': GUARD_VERSION, 'exposure': exposure_registry(),
             'dev_amendments_sha256_lf': amendment_fingerprint(), 'dev_amendments': list(amendments.values()),
-            'requested_model': 'deepseek-flash', 'prompt_sha256': sha256(INSTRUCTION.encode()).hexdigest(),
+            'requested_model': 'deepseek-flash', 'temperature': TEMPERATURE, 'response_diagnostics': True,
+            'prompt_sha256': sha256(INSTRUCTION.encode()).hexdigest(),
             'tool_sha256': digest(TOOL.to_dict()),
             'contract_implementation_sha256_lf': {p: sha256((root/p).read_bytes().replace(b'\r\n', b'\n')).hexdigest() for p in paths},
             'max_attempts_per_target': 1, 'max_dev_attempts': 155, 'max_holdout_attempts_after_lock': 85,

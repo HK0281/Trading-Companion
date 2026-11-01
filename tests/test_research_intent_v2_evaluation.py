@@ -91,6 +91,7 @@ class AdmissionTests(unittest.TestCase):
             self.assertFalse(plan['live_enabled'])
             self.assertEqual(plan['prediction_rows'], 0)
             self.assertEqual(plan['max_dev_attempts'], 155)
+            self.assertEqual(plan['temperature'], 0)
             self.assertIn('V2203', plan['exposure']['known_during_implementation'])
             self.assertIn('data/evaluation/research-intent-v2-exposure.json', plan['contract_implementation_sha256_lf'])
             with redirect_stdout(StringIO()):
@@ -120,6 +121,8 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(model.config.model, 'deepseek-flash')
         self.assertEqual(model.config.max_output_tokens, 1500)
         self.assertEqual(model.config.timeout_seconds, 23)
+        self.assertEqual(model.temperature, 0)
+        self.assertTrue(model.response_diagnostics)
 
     def test_explicit_live_orchestration_persists_independent_mock_without_network(self):
         sample = row()
@@ -131,13 +134,16 @@ class AdmissionTests(unittest.TestCase):
             with clean_environment(), offline_network(), patch.object(experiment, 'BASELINE', baseline), \
                     patch.object(experiment, 'load_corpus', return_value=([sample], dict(annotation_status='reviewed', corpus_sha256='independent'))), \
                     patch.object(experiment, 'load_amendments', return_value={}), \
-                    patch('trading_companion.research_intent_evaluation.build_v2_plan', return_value=dict(corpus_sha256='independent', baseline={})), \
+                    patch('trading_companion.research_intent_evaluation.build_v2_plan', return_value=dict(corpus_sha256='independent', baseline={}, temperature=0)), \
                     patch.object(experiment, '_live_model', return_value=RecordingModel()) as factory:
                 report = experiment.evaluate_development(live=True, report_dir=folder)
             factory.assert_called_once_with(45)
             self.assertEqual(report['authenticity'], 'mock_experiment')
+            self.assertEqual(report['temperature'], 0)
             artifact = Path(report['artifacts'])
             self.assertTrue((artifact/'plan.json').exists())
+            self.assertEqual(json.loads((artifact/'plan.json').read_text(encoding='utf-8'))['temperature'], 0)
+            self.assertEqual(json.loads((artifact/'report.json').read_text(encoding='utf-8'))['temperature'], 0)
             events = [json.loads(line) for line in (artifact/'attempts.jsonl').read_text(encoding='utf-8').splitlines()]
             self.assertEqual([event['phase'] for event in events], ['reserved', 'finished'])
             self.assertEqual(events[0]['id'], 'independent')
@@ -282,7 +288,9 @@ class PredictionTests(unittest.TestCase):
         self.assertIsNone(experiment.local_preflight('创业板后续表现如何', ctx))
 
     def test_failure_codes_are_allowlisted_and_attempts_remain_counted(self):
-        for code, expected in (('timeout', 'intent_v2_model_timeout'), ('private-code-sentinel', 'intent_v2_model_failure')):
+        for code, expected in (('timeout', 'intent_v2_model_timeout'), ('private-code-sentinel', 'intent_v2_model_failure'),
+                *((code, 'intent_v2_model_'+code) for code in ('response_json_invalid', 'response_shape_invalid',
+                    'tool_arguments_json_invalid', 'tool_call_invalid', 'tool_calls_missing', 'output_limit'))):
             result = run([row()], RecordingModel(error=ModelCallError(code, 'private-body-sentinel')))
             self.assertEqual(result['rows'][0]['V2']['reason'], expected)
             self.assertEqual(result['telemetry']['attempts'], 1)

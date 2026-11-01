@@ -23,6 +23,12 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "response_json_invalid": "v2评估显式启用的传输JSON诊断类别；生产默认仍为invalid_response。",
+    "response_shape_invalid": "v2评估显式启用的响应封装诊断类别，不是正式研究结果。",
+    "tool_arguments_json_invalid": "v2评估显式启用的工具参数JSON诊断类别，不保存解析正文。",
+    "tool_call_invalid": "v2评估显式启用的工具调用协议诊断类别，不是研究执行结果。",
+    "tool_calls_missing": "独立v2理解未形成工具调用的失败类别，不接正式入口。",
+    "output_limit": "独立v2理解输出达到token上限的失败类别，不接正式入口。",
     "invalid_intent_v2": "尚未接入正式入口的离线v2协议格式错误。",
     "invalid_intent_input": "离线v2语义接口输入无效，不是正式研究结果。",
     "invalid_intent_context": "离线v2接口拒绝非程序上下文，不产生研究轮次。",

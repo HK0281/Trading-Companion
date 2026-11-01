@@ -22,7 +22,7 @@ from trading_companion.research_intent_evaluation import field_scores, same
 from trading_companion.research_intent_evaluation_baseline import UNKNOWN
 from trading_companion.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, input_state, load_corpus, valid_context
 from trading_companion.research_intent_evaluation_fixtures import fixed_execution
-from trading_companion.research_intent_v2 import IntentContext, check_response, local_preflight, safe_failure, understand
+from trading_companion.research_intent_v2 import TEMPERATURE, IntentContext, check_response, local_preflight, safe_failure, understand
 from trading_companion.research_intent_v2_annotations import load_amendments, revised_rows
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.research_session import ResearchSession
@@ -344,7 +344,7 @@ def _run_rows(rows, *, plan, model, maximum, timeout_seconds, prefixes, baseline
         plan=plan, scope='V2为独立离线候选：本地前置加单次模型理解，outcome仅预计动作；B为历史固定模拟执行。未接产品。',
         authenticity=('no_provider_observation' if live and not stats['attempts'] else
                       'live_provider' if live and not stats['mock_responses'] else 'mock_experiment'),
-        paid_calls=stats['attempts'] if live else 0, rows=results, telemetry=stats,
+        paid_calls=stats['attempts'] if live else 0, temperature=plan.get('temperature'), rows=results, telemetry=stats,
         metrics=views['normalized_revised_gold'], score_views=views, corrections=correction_summary(results),
         gold_amendments=list(amendments.values()),
         scoring_policy='三列均保留全部分母；原样关闭受限规范化，仍执行当前版本通用校验、程序绑定和本地前置（含v2.2起的指数领域检查），并非v2.1同口径成绩。门槛使用规范化+修订gold；改标签不算模型改善。',
@@ -362,7 +362,8 @@ def _live_model(timeout_seconds):
     from trading_companion.deepseek_tool_model import DeepSeekToolModel
     from trading_companion.local_env import load_evaluation_key_environment
     key = load_evaluation_key_environment('DEEPSEEK_API_KEY').get('DEEPSEEK_API_KEY', '')
-    return DeepSeekToolModel(DeepSeekConfig(model=MODEL, api_key=key, timeout_seconds=timeout_seconds, max_output_tokens=1500))
+    return DeepSeekToolModel(DeepSeekConfig(model=MODEL, api_key=key, timeout_seconds=timeout_seconds, max_output_tokens=1500),
+                             temperature=TEMPERATURE, response_diagnostics=True)
 
 
 def evaluate_development(*, live=False, split='dev', maximum=MAX_CALLS, timeout_seconds=45, report_dir=None):

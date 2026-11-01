@@ -108,6 +108,43 @@ class DeepSeekToolModelTests(unittest.TestCase):
         self.assertFalse(result.is_complete)
         execute.assert_not_called()
 
+    def test_temperature_is_explicit_opt_in_with_unchanged_default_envelope(self):
+        self.prepare(provider_payload())
+        self.complete()
+        self.assertNotIn('temperature', self.post.call_args.kwargs['json'])
+        model = DeepSeekToolModel(self.config, temperature=0)
+        model.complete(self.messages, tools=self.tools)
+        body = self.post.call_args.kwargs['json']
+        self.assertEqual(body['temperature'], 0)
+        self.assertEqual(body['thinking'], {'type': 'disabled'})
+        for value in (True, False, -0.1, 2.1, float('nan'), float('inf'), '0'):
+            with self.subTest(value=value), self.assertRaises(ModelConfigurationError):
+                DeepSeekToolModel(self.config, temperature=value)
+
+    def test_opt_in_diagnostics_distinguish_json_call_shape_and_missing_tools(self):
+        model = DeepSeekToolModel(self.config, response_diagnostics=True)
+        cases = ((provider_payload(finish='tool_calls', calls=[]), 'tool_calls_missing'),
+                 (provider_payload(finish='tool_calls', calls=[provider_call(arguments='{"window":')]), 'tool_arguments_json_invalid'),
+                 (provider_payload(finish='tool_calls', calls=[provider_call(arguments='[]')]), 'tool_call_invalid'),
+                 ({'choices': []}, 'response_shape_invalid'))
+        for payload, code in cases:
+            self.post.reset_mock()
+            provider = self.prepare(payload)
+            with self.subTest(code=code), self.assertRaises(ModelCallError) as caught:
+                model.complete(self.messages, tools=self.tools)
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn(DUMMY_KEY, str(caught.exception))
+            self.post.assert_called_once()
+            provider.close.assert_called_once_with()
+        provider = self.prepare(None)
+        provider.json.side_effect = requests.exceptions.JSONDecodeError(DUMMY_KEY, 'invalid', 0)
+        with self.assertRaises(ModelCallError) as caught:
+            model.complete(self.messages, tools=self.tools)
+        self.assertEqual(caught.exception.code, 'response_json_invalid')
+        self.assertNotIn(DUMMY_KEY, str(caught.exception))
+        self.assertTrue(caught.exception.__suppress_context__)
+
+
     def test_empty_call_content_normalizes_to_none_but_nonempty_text_is_preserved(self):
         for content in (None, "", " \n", "Let me inspect the fixture."):
             self.prepare(provider_payload(finish="tool_calls", content=content, calls=[provider_call()]))

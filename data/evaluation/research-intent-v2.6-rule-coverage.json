@@ -1,0 +1,1038 @@
+{
+  "version": "research-intent-v2.6-cases-v1",
+  "rule_count": 85,
+  "uncovered_rules": 0,
+  "rules": {
+    "A.clarify": {
+      "description": "保留澄清，不因找到对象就自动恢复研究",
+      "public_examples": [
+        {
+          "id": "V26D045",
+          "row_sha256": "72b87ac85b98ae2b8f1cc6a39f73116d648766e30807a72f5a7e2ffbeedb161b"
+        },
+        {
+          "id": "V26D054",
+          "row_sha256": "6b95495c487e16b528ed20f63729b34d7b974efe762c133532685ec659c70737"
+        }
+      ]
+    },
+    "A.negated_limit": {
+      "description": "取消唯一范围限制不等于排除该研究领域",
+      "public_examples": [
+        {
+          "id": "V25D073",
+          "row_sha256": "2c391ed20d10e817aa100a1d410a4fadeecd729549be348e61e071b83d3f0f4a"
+        }
+      ]
+    },
+    "A.negative_after": {
+      "description": "否定或移除标记可以在目标之后，不限制相邻及词序",
+      "public_examples": [
+        {
+          "id": "V26D007",
+          "row_sha256": "0f0d72bfe5c203ef98cee79dd14fac5b38480743305e39d14640d6f5714a3d54"
+        },
+        {
+          "id": "V26D008",
+          "row_sha256": "dce2c244805c3bc0eb4c9faa7478ef6e65a86ec2400d1d0e27976e07348c47b9"
+        },
+        {
+          "id": "V26D009",
+          "row_sha256": "c53b0ac4f9d94a61f6de2b68211b7b8a77ba9c098a4736b4be670ea67c62cdb2"
+        }
+      ]
+    },
+    "A.plan_false": {
+      "description": "放弃价位不要求肯定价位依据，不恢复权限",
+      "public_examples": [
+        {
+          "id": "V26D007",
+          "row_sha256": "0f0d72bfe5c203ef98cee79dd14fac5b38480743305e39d14640d6f5714a3d54"
+        },
+        {
+          "id": "V26D008",
+          "row_sha256": "dce2c244805c3bc0eb4c9faa7478ef6e65a86ec2400d1d0e27976e07348c47b9"
+        },
+        {
+          "id": "V26D047",
+          "row_sha256": "3c7b5e29d486abc9f15f16d222c4a37750a52f19f6fb1beec3f9300e17dfd2fa"
+        }
+      ]
+    },
+    "A.removal": {
+      "description": "删除或取消研究内容，保留模型提出的排除项",
+      "public_examples": [
+        {
+          "id": "V26D008",
+          "row_sha256": "dce2c244805c3bc0eb4c9faa7478ef6e65a86ec2400d1d0e27976e07348c47b9"
+        },
+        {
+          "id": "V26D037",
+          "row_sha256": "b1960cff01d59ec129f05d949d66e92d5f237f2021c60fccd860994c65c8e755"
+        },
+        {
+          "id": "V26D064",
+          "row_sha256": "2188e9df3522202259c5581e4ffdfdae6f1d51d1eebef2bfd8c4c353d3545faf"
+        }
+      ]
+    },
+    "A.strict_scope": {
+      "description": "严格范围的原文出处有效即可，不二次匹配限定句式",
+      "public_examples": [
+        {
+          "id": "V26D016",
+          "row_sha256": "b0c9fa5f8819f72b78cd2b33628ec051f4dd87d7568326cf0bb908abf26d21dc"
+        },
+        {
+          "id": "V26D037",
+          "row_sha256": "b1960cff01d59ec129f05d949d66e92d5f237f2021c60fccd860994c65c8e755"
+        },
+        {
+          "id": "V26D039",
+          "row_sha256": "a51f826276917fc40bd1152d050900665500d73e333575419136c5bdc8616383"
+        }
+      ]
+    },
+    "B.consumed": {
+      "description": "最近身份已消耗，不回退到旧缓存",
+      "public_examples": [
+        {
+          "id": "V26D043",
+          "row_sha256": "635e4c412fc04726e05293b74990f38f7a501a83ca766fc0b792b3f93099dc2f"
+        }
+      ]
+    },
+    "B.date_capability": {
+      "description": "历史窗口、非法日期和能力上限仍核验",
+      "public_examples": [
+        {
+          "id": "V26D003",
+          "row_sha256": "8fad72bda986f238dd292e4b56c6eef4345603db6826ab2a218e20edb9eb4206"
+        },
+        {
+          "id": "V26D018",
+          "row_sha256": "ec6acb341b354734803668fcee7a05f25622354dc7a3cd8aee93ebc2207b6d27"
+        },
+        {
+          "id": "V26D032",
+          "row_sha256": "e6ffd7b9550a7ee883a89ad4ae0a8c83a56134bdc04da053507ddbe4a2052e74"
+        }
+      ]
+    },
+    "B.direction_no_plan": {
+      "description": "方向评级本身不授权参考价位",
+      "public_examples": [
+        {
+          "id": "V26D006",
+          "row_sha256": "6ae59a2f6ce63f01639200061abab240d033181b1b3f024ee32822ed936e0711"
+        },
+        {
+          "id": "V26D016",
+          "row_sha256": "b0c9fa5f8819f72b78cd2b33628ec051f4dd87d7568326cf0bb908abf26d21dc"
+        },
+        {
+          "id": "V26D051",
+          "row_sha256": "bb8ce2ed6df00a7525a6f018f3b6554fbad8ec3cfedd1da551d2c7cecbd325c2"
+        }
+      ]
+    },
+    "B.empty_strict_conflict": {
+      "description": "严格范围中所有领域被排除时澄清",
+      "public_examples": [
+        {
+          "id": "V26D058",
+          "row_sha256": "1b16825fc92aad99fef625327e3b3c457a8b53a429d0b366b8d1c3af34c24564"
+        }
+      ]
+    },
+    "B.future_actual": {
+      "description": "未来实际事实不可用，不改写成条件情景",
+      "public_examples": [
+        {
+          "id": "V26D041",
+          "row_sha256": "7bc6822bd1607c3a7faf32f10fea94c89313880b87675be4ca70b748d2cfbd00"
+        }
+      ]
+    },
+    "B.future_state": {
+      "description": "未来创建的状态不得授权对象",
+      "public_examples": [
+        {
+          "id": "V26D044",
+          "row_sha256": "ec008c2f82b6e16e4b20906a9a33624df88aaa180464008f233457e38bbe6d7b"
+        }
+      ]
+    },
+    "B.general_situation": {
+      "description": "泛称情况不凭空指定领域",
+      "public_examples": [
+        {
+          "id": "V25D063",
+          "row_sha256": "df32f4ccb42534f354c4bd2f986b206bcdf734abff1af5f05f8246f94a97333b"
+        }
+      ]
+    },
+    "B.horizon_invalid": {
+      "description": "非法量化期限保留原文并澄清",
+      "public_examples": [
+        {
+          "id": "V26D042",
+          "row_sha256": "2e50e6de5db9fcf9597e2addff0df4853bec9dfca37656cef7675ec2039be279"
+        }
+      ]
+    },
+    "B.identity": {
+      "description": "只从可信目录和程序状态绑定身份",
+      "public_examples": [
+        {
+          "id": "V26D002",
+          "row_sha256": "d9311a960f733f57f97f2703bfc7f4aee5964c5a0a9db866cb72809c1e70c67f"
+        },
+        {
+          "id": "V26D012",
+          "row_sha256": "24cc0865cbf8055e1f30f160a1ccae80e07f2df46338c0d657f3d24a63cc62b2"
+        },
+        {
+          "id": "V26D015",
+          "row_sha256": "d02f2706cfd11ce0e0302186662df623313986ce7442caa0298c3e84f26b5e76"
+        }
+      ]
+    },
+    "B.identity_ambiguous": {
+      "description": "股票名称歧义时不猜身份",
+      "public_examples": [
+        {
+          "id": "V26D033",
+          "row_sha256": "6637e2b0ad706acf2bc962a098bd73ba9d957ca281c4874bd47929c47abada47"
+        },
+        {
+          "id": "V26D054",
+          "row_sha256": "6b95495c487e16b528ed20f63729b34d7b974efe762c133532685ec659c70737"
+        }
+      ]
+    },
+    "B.identity_unknown": {
+      "description": "未知股票名不得制造代码",
+      "public_examples": [
+        {
+          "id": "V25D070",
+          "row_sha256": "4d1ab8866215dda18e8f34c8cc69a64deea30641d8dd3abb11599a6a8489248d"
+        }
+      ]
+    },
+    "B.index_ambiguous": {
+      "description": "指数指称不明确时澄清身份",
+      "public_examples": [
+        {
+          "id": "V25D035",
+          "row_sha256": "caeb6987742aedeb85171562ac10ee2166ab6acbcfa0ded345ca354313a0d3bd"
+        }
+      ]
+    },
+    "B.indicator_supported": {
+      "description": "支持指标及其参数按原文保留",
+      "public_examples": [
+        {
+          "id": "V26D032",
+          "row_sha256": "e6ffd7b9550a7ee883a89ad4ae0a8c83a56134bdc04da053507ddbe4a2052e74"
+        },
+        {
+          "id": "V26D036",
+          "row_sha256": "5a327fadf18572a73ac53afda9c700677f4edb1f327688403c5dfa31228af5b7"
+        },
+        {
+          "id": "V26D052",
+          "row_sha256": "d618b3fd0cac10dcee08ffaafb4a80179c1dc059d2a8afa8800673a0556011f9"
+        }
+      ]
+    },
+    "B.indicator_unsupported": {
+      "description": "未支持指标保留原文并澄清，不新增能力",
+      "public_examples": [
+        {
+          "id": "V25D074",
+          "row_sha256": "743a33712b16c279cf2412f44b4bbf533390474862e11ec84dce81b03f5ecdf4"
+        }
+      ]
+    },
+    "B.memory_off": {
+      "description": "关闭记忆不能沿用对象",
+      "public_examples": [
+        {
+          "id": "V25D078",
+          "row_sha256": "06a90e9abcc2130aeeb1f89dbea124f5c431f831945d9a87575020fe57eccec1"
+        }
+      ]
+    },
+    "B.missing_subject": {
+      "description": "缺对象时先澄清对象",
+      "public_examples": [
+        {
+          "id": "V26D010",
+          "row_sha256": "0a1d0b2e8be8b559099f63eb2d7d31a1e4468829c49bcdd54247129acd41f0a2"
+        }
+      ]
+    },
+    "B.mode_mismatch": {
+      "description": "演示与真实模式不匹配的旧对象不可使用",
+      "public_examples": [
+        {
+          "id": "V26D022",
+          "row_sha256": "e987390f488341c48702be3deb1d4a6a8e3da712024d10403ae461c4d0c2c336"
+        }
+      ]
+    },
+    "B.multi_subject": {
+      "description": "多个明确对象均保留，不遗漏或追加对象",
+      "public_examples": [
+        {
+          "id": "V26D035",
+          "row_sha256": "35c193f94a547ac752c9e21fd99cd63685fd95d952409b9741f3a5c8e12cf3b4"
+        }
+      ]
+    },
+    "B.no_state": {
+      "description": "无程序记录不从普通历史恢复身份",
+      "public_examples": [
+        {
+          "id": "V26D023",
+          "row_sha256": "8f8dccf71cfda28ca43cec4f102e56919322fbad8bdaac233e4b7b1da9183f23"
+        }
+      ]
+    },
+    "B.plan_conflict": {
+      "description": "肯定价位请求与否决冲突时澄清",
+      "public_examples": [
+        {
+          "id": "V26D009",
+          "row_sha256": "c53b0ac4f9d94a61f6de2b68211b7b8a77ba9c098a4736b4be670ea67c62cdb2"
+        }
+      ]
+    },
+    "B.plan_dependency": {
+      "description": "ATR或风险等计划依赖被排除时不得生成计划",
+      "public_examples": [
+        {
+          "id": "V26D017",
+          "row_sha256": "f04c7849aa288e0e51d25b12d08aaa148650c469e72c3f478610aacd42b24d98"
+        }
+      ]
+    },
+    "B.plan_positive": {
+      "description": "价位授权必须来自本句肯定依据或有效同任务待办",
+      "public_examples": [
+        {
+          "id": "V26D001",
+          "row_sha256": "6d8e2711410fab8735f58c2ff2af071a046a05b55010ab540d307127861b5c6c"
+        },
+        {
+          "id": "V26D048",
+          "row_sha256": "a1179c516caf7881ac227832c74447e24d5a71afad129e79f9085d408b76d507"
+        }
+      ]
+    },
+    "B.profile": {
+      "description": "明确公司或业务情况为概况研究",
+      "public_examples": [
+        {
+          "id": "V26D047",
+          "row_sha256": "3c7b5e29d486abc9f15f16d222c4a37750a52f19f6fb1beec3f9300e17dfd2fa"
+        }
+      ]
+    },
+    "B.purchase_plan": {
+      "description": "购买价值请求与明确价位否决分别核对",
+      "public_examples": [
+        {
+          "id": "V26D031",
+          "row_sha256": "5f30e98db1afac2e14a418b2fc3f0f1948e0b72144d9c6d4429d11bbe1904d61"
+        }
+      ]
+    },
+    "B.screening": {
+      "description": "筛选任务保留自身条件，不绑定为单只股票",
+      "public_examples": [
+        {
+          "id": "V26D025",
+          "row_sha256": "fa91faa9b0a9a378f5d209e29529adc5f7e65701cbb6a39a2d56c4769cfe9eaa"
+        },
+        {
+          "id": "V26D040",
+          "row_sha256": "ce58c1fd8d0edb41ddab12a5dc77db6f93ede34afabfd5543f60c8fcc2560df3"
+        }
+      ]
+    },
+    "B.source_mismatch": {
+      "description": "数据来源不匹配的旧对象不可使用",
+      "public_examples": [
+        {
+          "id": "V26D021",
+          "row_sha256": "d46eea6b07a19a3906ef665fb983b2453bcba50c7881b7708f8ed80d5aadf680"
+        }
+      ]
+    },
+    "B.veto": {
+      "description": "价位否决撤销授权，不生成可执行价位",
+      "public_examples": [
+        {
+          "id": "V26D007",
+          "row_sha256": "0f0d72bfe5c203ef98cee79dd14fac5b38480743305e39d14640d6f5714a3d54"
+        },
+        {
+          "id": "V26D059",
+          "row_sha256": "dd9781fb527f492815b66fadd0ebfcc37ff5c34712b5e7af07d6cbfe948793a4"
+        }
+      ]
+    },
+    "C.explain_no_authority": {
+      "description": "解释旧结论不产生新研究和价位权限",
+      "public_examples": [
+        {
+          "id": "V26D026",
+          "row_sha256": "dd7327b5dc637af6e45c02cf831934540a6a41dba0262039aa70bb169fbacefb"
+        }
+      ]
+    },
+    "C.history_not_authority": {
+      "description": "聊天历史不能提供新目标、期限或价位",
+      "public_examples": [
+        {
+          "id": "V26D014",
+          "row_sha256": "8802ea2e2636ad6df9e01ac50b590a0f08c82d39be4a48ad850a0c2d6f8df00a"
+        }
+      ]
+    },
+    "C.history_not_horizon": {
+      "description": "历史样本窗口不充当未来期限",
+      "public_examples": [
+        {
+          "id": "V26D003",
+          "row_sha256": "8fad72bda986f238dd292e4b56c6eef4345603db6826ab2a218e20edb9eb4206"
+        },
+        {
+          "id": "V26D004",
+          "row_sha256": "06bc0c1ccd8416a231288739f92e1c518bd29c1e05f1f25b83f3f6d8b933786f"
+        },
+        {
+          "id": "V26D018",
+          "row_sha256": "ec6acb341b354734803668fcee7a05f25622354dc7a3cd8aee93ebc2207b6d27"
+        }
+      ]
+    },
+    "C.identity_only": {
+      "description": "最近研究只提供对象身份，不提供任务授权",
+      "public_examples": [
+        {
+          "id": "V26D001",
+          "row_sha256": "6d8e2711410fab8735f58c2ff2af071a046a05b55010ab540d307127861b5c6c"
+        },
+        {
+          "id": "V26D011",
+          "row_sha256": "159c4b622e7ed29c59338869b5a50e08a523e7c6694d73b854fc8b953e585070"
+        },
+        {
+          "id": "V26D031",
+          "row_sha256": "5f30e98db1afac2e14a418b2fc3f0f1948e0b72144d9c6d4429d11bbe1904d61"
+        }
+      ]
+    },
+    "C.independent_new": {
+      "description": "完整独立新任务可绕开无效或冲突待办",
+      "public_examples": [
+        {
+          "id": "V26D059",
+          "row_sha256": "dd9781fb527f492815b66fadd0ebfcc37ff5c34712b5e7af07d6cbfe948793a4"
+        }
+      ]
+    },
+    "C.new_subject": {
+      "description": "换对象或新任务不借旧对象授权",
+      "public_examples": [
+        {
+          "id": "V26D013",
+          "row_sha256": "74ce58748a6128a1a5021fb2e6551826bd1c117116ba0254bbc74c7e44a801a9"
+        },
+        {
+          "id": "V26D015",
+          "row_sha256": "d02f2706cfd11ce0e0302186662df623313986ce7442caa0298c3e84f26b5e76"
+        },
+        {
+          "id": "V26D049",
+          "row_sha256": "134455468636fd1b0f6518ba9eabc75fefe8a6f8e7ecacbbb50ea215d08e78ab"
+        }
+      ]
+    },
+    "C.no_old_horizon": {
+      "description": "普通最近研究与旧报告不补未来期限",
+      "public_examples": [
+        {
+          "id": "V26D001",
+          "row_sha256": "6d8e2711410fab8735f58c2ff2af071a046a05b55010ab540d307127861b5c6c"
+        },
+        {
+          "id": "V26D011",
+          "row_sha256": "159c4b622e7ed29c59338869b5a50e08a523e7c6694d73b854fc8b953e585070"
+        },
+        {
+          "id": "V26D027",
+          "row_sha256": "7a06f1124039a903cd0fff899b7acdcae8151893f13e79e141d88d6c14c987f7"
+        }
+      ]
+    },
+    "C.no_old_plan": {
+      "description": "普通旧报告不恢复目标或价位授权",
+      "public_examples": [
+        {
+          "id": "V26D036",
+          "row_sha256": "5a327fadf18572a73ac53afda9c700677f4edb1f327688403c5dfa31228af5b7"
+        },
+        {
+          "id": "V26D050",
+          "row_sha256": "7aa4bec67f40396e1e75f4ad8912a86fea231fe9ab4f051056358aea8ac4f7d5"
+        }
+      ]
+    },
+    "C.operation": {
+      "description": "模型区分new/update/refresh，程序不凭关键词改写",
+      "public_examples": [
+        {
+          "id": "V26D025",
+          "row_sha256": "fa91faa9b0a9a378f5d209e29529adc5f7e65701cbb6a39a2d56c4769cfe9eaa"
+        },
+        {
+          "id": "V26D027",
+          "row_sha256": "7a06f1124039a903cd0fff899b7acdcae8151893f13e79e141d88d6c14c987f7"
+        },
+        {
+          "id": "V26D036",
+          "row_sha256": "5a327fadf18572a73ac53afda9c700677f4edb1f327688403c5dfa31228af5b7"
+        }
+      ]
+    },
+    "C.pending_conflict": {
+      "description": "多待办不猜选，模型理解后澄清冲突",
+      "public_examples": [
+        {
+          "id": "V26D045",
+          "row_sha256": "72b87ac85b98ae2b8f1cc6a39f73116d648766e30807a72f5a7e2ffbeedb161b"
+        }
+      ]
+    },
+    "C.pending_expired": {
+      "description": "待办在900秒边界失效，不延长或恢复授权",
+      "public_examples": [
+        {
+          "id": "V26D046",
+          "row_sha256": "018ae291f35dab74991e03f939783bf1f20400a3cebf19ebccf667c755d35e1b"
+        },
+        {
+          "id": "V26D061",
+          "row_sha256": "d054eb98559e0c59617d188f855a69301bcd77999129e810e781cfcee497bdd3"
+        }
+      ]
+    },
+    "C.pending_identity": {
+      "description": "待办目录身份改变后不得恢复授权",
+      "public_examples": [
+        {
+          "id": "V25D069",
+          "row_sha256": "c7158e3b17dab937f069f12a1909f033c41eb5c92ae4caf7f598600902e0ba11"
+        }
+      ]
+    },
+    "C.pending_mode": {
+      "description": "待办模式改变后不得恢复授权",
+      "public_examples": [
+        {
+          "id": "V25D077",
+          "row_sha256": "72d45140642a1a70ebcc0914314e65591d31431d9aa29e436c432a0cf8690055"
+        }
+      ]
+    },
+    "C.valid_pending": {
+      "description": "唯一有效同任务待办只续接登记字段",
+      "public_examples": [
+        {
+          "id": "V26D019",
+          "row_sha256": "a5f9bf4f3707dd93c13e986b94da1491619e2b452b81d02ad35c0e51e50999fa"
+        },
+        {
+          "id": "V26D020",
+          "row_sha256": "a17aa81ace9c9374450124514540827469982bb48e31298fad601a7352a13add"
+        },
+        {
+          "id": "V26D052",
+          "row_sha256": "d618b3fd0cac10dcee08ffaafb4a80179c1dc059d2a8afa8800673a0556011f9"
+        }
+      ]
+    },
+    "D.command.hit": {
+      "description": "取消清空固定整句命令零调用",
+      "public_examples": [
+        {
+          "id": "V26D028",
+          "row_sha256": "7d9aa8e42f476e40403a7f6a87fa1555a46ab65ae75ebe7544d0072f1df326fd"
+        }
+      ]
+    },
+    "D.command.priority": {
+      "description": "固定命令优先于待办",
+      "public_examples": [
+        {
+          "id": "V26D028",
+          "row_sha256": "7d9aa8e42f476e40403a7f6a87fa1555a46ab65ae75ebe7544d0072f1df326fd"
+        }
+      ]
+    },
+    "D.command.suffix": {
+      "description": "取消清空有附句时完整交模型",
+      "public_examples": [
+        {
+          "id": "V26D049",
+          "row_sha256": "134455468636fd1b0f6518ba9eabc75fefe8a6f8e7ecacbbb50ea215d08e78ab"
+        }
+      ]
+    },
+    "D.explain.semantic": {
+      "description": "宽泛保存结论解释交模型",
+      "public_examples": [
+        {
+          "id": "V26D026",
+          "row_sha256": "dd7327b5dc637af6e45c02cf831934540a6a41dba0262039aa70bb169fbacefb"
+        }
+      ]
+    },
+    "D.general_knowledge.semantic": {
+      "description": "非指标定义的一般知识交模型",
+      "public_examples": [
+        {
+          "id": "V26D056",
+          "row_sha256": "393840594473b9bb27ef48a2a6002f302f55acd6d7212509d5cd9a62092ddbc0"
+        }
+      ]
+    },
+    "D.guard.hit": {
+      "description": "既有执行或注入搜索命中时本地拒绝",
+      "public_examples": [
+        {
+          "id": "V26D029",
+          "row_sha256": "d408ebff2981d180831c1f16bb5a01095f5d97217fd790566a72979c68326bf2"
+        }
+      ]
+    },
+    "D.guard.miss": {
+      "description": "未命中执行注入规则不借研究词提前截走",
+      "public_examples": [
+        {
+          "id": "V26D054",
+          "row_sha256": "6b95495c487e16b528ed20f63729b34d7b974efe762c133532685ec659c70737"
+        }
+      ]
+    },
+    "D.guard.whole_reject": {
+      "description": "执行注入命中时整轮拒绝，不执行前半句研究",
+      "public_examples": [
+        {
+          "id": "V26D029",
+          "row_sha256": "d408ebff2981d180831c1f16bb5a01095f5d97217fd790566a72979c68326bf2"
+        }
+      ]
+    },
+    "D.history.hit": {
+      "description": "固定历史命令零调用，仍校验保存结果",
+      "public_examples": [
+        {
+          "id": "V26D038",
+          "row_sha256": "24149cebfcefd11d60d148118fb12f721518b9d1d4dc192bb40f41ad9cc38118"
+        }
+      ]
+    },
+    "D.history.priority": {
+      "description": "历史命令优先于待办冲突",
+      "public_examples": [
+        {
+          "id": "V25D057",
+          "row_sha256": "93e2f6dcbfad8f0eb617210a23d93fcf269ce4703a8594348baffaaae0f09318"
+        }
+      ]
+    },
+    "D.history.suffix": {
+      "description": "历史命令有附句时完整交模型",
+      "public_examples": [
+        {
+          "id": "V26D050",
+          "row_sha256": "7aa4bec67f40396e1e75f4ad8912a86fea231fe9ab4f051056358aea8ac4f7d5"
+        }
+      ]
+    },
+    "D.horizon.hit": {
+      "description": "有效待办的窄整句期限零调用",
+      "public_examples": [
+        {
+          "id": "V26D019",
+          "row_sha256": "a5f9bf4f3707dd93c13e986b94da1491619e2b452b81d02ad35c0e51e50999fa"
+        },
+        {
+          "id": "V26D062",
+          "row_sha256": "76700535547f2372dbe2ccd6cdf47b2ca5159db248af150386afa099cbff22f6"
+        }
+      ]
+    },
+    "D.horizon.invalid": {
+      "description": "失效或冲突待办的期限输入交模型",
+      "public_examples": [
+        {
+          "id": "V26D046",
+          "row_sha256": "018ae291f35dab74991e03f939783bf1f20400a3cebf19ebccf667c755d35e1b"
+        },
+        {
+          "id": "V26D061",
+          "row_sha256": "d054eb98559e0c59617d188f855a69301bcd77999129e810e781cfcee497bdd3"
+        }
+      ]
+    },
+    "D.horizon.suffix": {
+      "description": "期限带附句时完整交模型",
+      "public_examples": [
+        {
+          "id": "V26D020",
+          "row_sha256": "a17aa81ace9c9374450124514540827469982bb48e31298fad601a7352a13add"
+        },
+        {
+          "id": "V26D052",
+          "row_sha256": "d618b3fd0cac10dcee08ffaafb4a80179c1dc059d2a8afa8800673a0556011f9"
+        }
+      ]
+    },
+    "D.knowledge.hit": {
+      "description": "完整指标定义语法零调用",
+      "public_examples": [
+        {
+          "id": "V26D030",
+          "row_sha256": "5b3bc7138eb08d0ca8e760ddbe4841d69fa71109bf3b50480480a834c0cff18e"
+        }
+      ]
+    },
+    "D.knowledge.macd": {
+      "description": "MACD子项和最多10项的既有约束保留",
+      "public_examples": [
+        {
+          "id": "V26D030",
+          "row_sha256": "5b3bc7138eb08d0ca8e760ddbe4841d69fa71109bf3b50480480a834c0cff18e"
+        }
+      ]
+    },
+    "D.knowledge.suffix": {
+      "description": "指标定义带研究附句时完整交模型",
+      "public_examples": [
+        {
+          "id": "V26D053",
+          "row_sha256": "22a69b89b45c639efcb8dc553b80bf3a6836ca8c08271d473f6d443b67320ed0"
+        }
+      ]
+    },
+    "D.recall.hit": {
+      "description": "固定整句方向评级回顾零调用",
+      "public_examples": [
+        {
+          "id": "V26D005",
+          "row_sha256": "65cd76905311728d09adc115ea4a0a2817a7baeb69b883e06e64633c3073767a"
+        }
+      ]
+    },
+    "D.recall.suffix": {
+      "description": "回顾与新研究混合不截断",
+      "public_examples": [
+        {
+          "id": "V26D051",
+          "row_sha256": "bb8ce2ed6df00a7525a6f018f3b6554fbad8ec3cfedd1da551d2c7cecbd325c2"
+        }
+      ]
+    },
+    "D.unsupported_index.semantic": {
+      "description": "已知不支持指数交模型理解后拒绝",
+      "public_examples": [
+        {
+          "id": "V25H057",
+          "row_sha256": "acfb245a28a5752f83a85eecfc6d7c31926cc6739c610af64c1c0d6d8c4450de"
+        }
+      ]
+    },
+    "E.all_latest": {
+      "description": "全部指代只取最近研究范围的全部对象",
+      "public_examples": [
+        {
+          "id": "V26D058",
+          "row_sha256": "1b16825fc92aad99fef625327e3b3c457a8b53a429d0b366b8d1c3af34c24564"
+        }
+      ]
+    },
+    "E.all_shortlist": {
+      "description": "全部指代只取保存名单范围的全部对象",
+      "public_examples": [
+        {
+          "id": "V26D060",
+          "row_sha256": "6fb0693ee45fa32fa608dfd2d661620415705e3d5e9783ca83ccee9e1373f717"
+        }
+      ]
+    },
+    "E.explicit": {
+      "description": "本句明确对象使用question和none指代结构",
+      "public_examples": [
+        {
+          "id": "V26D002",
+          "row_sha256": "d9311a960f733f57f97f2703bfc7f4aee5964c5a0a9db866cb72809c1e70c67f"
+        },
+        {
+          "id": "V26D013",
+          "row_sha256": "74ce58748a6128a1a5021fb2e6551826bd1c117116ba0254bbc74c7e44a801a9"
+        },
+        {
+          "id": "V26D034",
+          "row_sha256": "bb06df6d7a331e442aa3d898d57f8b13a54f307d8ac0dd9cb42d85ae0f60e0c2"
+        }
+      ]
+    },
+    "E.latest": {
+      "description": "最近范围恰好一个合法对象才可latest绑定",
+      "public_examples": [
+        {
+          "id": "V26D001",
+          "row_sha256": "6d8e2711410fab8735f58c2ff2af071a046a05b55010ab540d307127861b5c6c"
+        },
+        {
+          "id": "V26D011",
+          "row_sha256": "159c4b622e7ed29c59338869b5a50e08a523e7c6694d73b854fc8b953e585070"
+        },
+        {
+          "id": "V26D014",
+          "row_sha256": "8802ea2e2636ad6df9e01ac50b590a0f08c82d39be4a48ad850a0c2d6f8df00a"
+        }
+      ]
+    },
+    "E.latest_ambiguous": {
+      "description": "latest范围多对象时不得偷偷取第一只",
+      "public_examples": [
+        {
+          "id": "V26D012",
+          "row_sha256": "24cc0865cbf8055e1f30f160a1ccae80e07f2df46338c0d657f3d24a63cc62b2"
+        }
+      ]
+    },
+    "E.none": {
+      "description": "完全无对象时source=none且reference=none",
+      "public_examples": [
+        {
+          "id": "V26D023",
+          "row_sha256": "8f8dccf71cfda28ca43cec4f102e56919322fbad8bdaac233e4b7b1da9183f23"
+        }
+      ]
+    },
+    "E.ordinal_latest": {
+      "description": "模型给出最近研究的合法整数序号",
+      "public_examples": [
+        {
+          "id": "V26D057",
+          "row_sha256": "43929f692bfe71c8010866f6c595914fa3afb33635d70c86ac1d5c776333e778"
+        }
+      ]
+    },
+    "E.ordinal_outside": {
+      "description": "序号超出指定范围时澄清，不回退",
+      "public_examples": [
+        {
+          "id": "V25H019",
+          "row_sha256": "c02a53c488b437a121e31289be55fe8de9e77589542d995f1fbe990bddf56cb8"
+        }
+      ]
+    },
+    "E.ordinal_shortlist": {
+      "description": "模型给出保存名单中的合法序号",
+      "public_examples": [
+        {
+          "id": "V26D024",
+          "row_sha256": "c5edcc4c2b9d6fbcbe05636a0fbf61a777b09a0790e2936982aeb6f2d3a353ce"
+        }
+      ]
+    },
+    "E.pending": {
+      "description": "待办指代只查指定待办范围，不借最近研究",
+      "public_examples": [
+        {
+          "id": "V26D019",
+          "row_sha256": "a5f9bf4f3707dd93c13e986b94da1491619e2b452b81d02ad35c0e51e50999fa"
+        },
+        {
+          "id": "V26D020",
+          "row_sha256": "a17aa81ace9c9374450124514540827469982bb48e31298fad601a7352a13add"
+        },
+        {
+          "id": "V26D046",
+          "row_sha256": "018ae291f35dab74991e03f939783bf1f20400a3cebf19ebccf667c755d35e1b"
+        }
+      ]
+    },
+    "E.scope_separation": {
+      "description": "名单与最近研究的身份池不能合并",
+      "public_examples": [
+        {
+          "id": "V26D024",
+          "row_sha256": "c5edcc4c2b9d6fbcbe05636a0fbf61a777b09a0790e2936982aeb6f2d3a353ce"
+        },
+        {
+          "id": "V26D060",
+          "row_sha256": "6fb0693ee45fa32fa608dfd2d661620415705e3d5e9783ca83ccee9e1373f717"
+        }
+      ]
+    },
+    "E.unavailable_scope": {
+      "description": "指定范围不可用时澄清，不换范围猜选",
+      "public_examples": [
+        {
+          "id": "V26D021",
+          "row_sha256": "d46eea6b07a19a3906ef665fb983b2453bcba50c7881b7708f8ed80d5aadf680"
+        },
+        {
+          "id": "V26D022",
+          "row_sha256": "e987390f488341c48702be3deb1d4a6a8e3da712024d10403ae461c4d0c2c336"
+        },
+        {
+          "id": "V26D043",
+          "row_sha256": "635e4c412fc04726e05293b74990f38f7a501a83ca766fc0b792b3f93099dc2f"
+        }
+      ]
+    },
+    "F.no_index_binding": {
+      "description": "产品拒绝后不绑定它跟踪的指数",
+      "public_examples": [
+        {
+          "id": "V26D034",
+          "row_sha256": "bb06df6d7a331e442aa3d898d57f8b13a54f307d8ac0dd9cb42d85ae0f60e0c2"
+        },
+        {
+          "id": "V26D063",
+          "row_sha256": "db7d1f69b711b342ba43d0b3046cea0069f923e2f136def536e70d9eddd75dc2"
+        }
+      ]
+    },
+    "F.product_background": {
+      "description": "产品只作背景不覆盖股票研究",
+      "public_examples": [
+        {
+          "id": "V26D055",
+          "row_sha256": "4c1294367321c99c4ad17d33281286213d6b3693f1bf3b8cdbb6fafda885bf8f"
+        }
+      ]
+    },
+    "F.product_code": {
+      "description": "产品原文可包含代码或括号",
+      "public_examples": [
+        {
+          "id": "V26D063",
+          "row_sha256": "db7d1f69b711b342ba43d0b3046cea0069f923e2f136def536e70d9eddd75dc2"
+        }
+      ]
+    },
+    "F.product_concept": {
+      "description": "产品概念解释不自动拒绝",
+      "public_examples": [
+        {
+          "id": "V26D056",
+          "row_sha256": "393840594473b9bb27ef48a2a6002f302f55acd6d7212509d5cd9a62092ddbc0"
+        }
+      ]
+    },
+    "F.product_target": {
+      "description": "具体不支持产品作为研究对象时拒绝并保留原文",
+      "public_examples": [
+        {
+          "id": "V26D034",
+          "row_sha256": "bb06df6d7a331e442aa3d898d57f8b13a54f307d8ac0dd9cb42d85ae0f60e0c2"
+        },
+        {
+          "id": "V26D063",
+          "row_sha256": "db7d1f69b711b342ba43d0b3046cea0069f923e2f136def536e70d9eddd75dc2"
+        }
+      ]
+    },
+    "F.unsupported_index": {
+      "description": "未支持指数能力边界保留",
+      "public_examples": [
+        {
+          "id": "V25H057",
+          "row_sha256": "acfb245a28a5752f83a85eecfc6d7c31926cc6739c610af64c1c0d6d8c4450de"
+        }
+      ]
+    }
+  },
+  "deferred_checks": {
+    "A": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "错误但合法kind且有真实否定片段：基础检查接受，语义gold仍判错",
+        "无否定方向、伪造phrase、未知kind、重复项、超长数组：拒绝",
+        "模型选择clarify或wants_plan=false：不恢复研究或价位",
+        "多少不构成否定；短标记集不包含单独少；闲置plan_phrase核出处后清空并记录"
+      ]
+    },
+    "B": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "模型删除原否决或把分析片段当plan_phrase不能制造价位",
+        "模型不能写代码映射、bound_subjects、数据源或实际价位",
+        "跨对象不能共享授权或证据；计划依赖继续校验"
+      ]
+    },
+    "C": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "899/900/901秒、未来创建、来源/目录/模式不符、多个待办及关闭记忆",
+        "new/换对象/换任务不续旧授权；本句新条件优先，不能续命"
+      ]
+    },
+    "D": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "每条公开语法逐一测调用次数，知识主体最多10项与MACD子项约束",
+        "命令不清理中间词或附句；无结果历史命令仍零调用"
+      ]
+    },
+    "E": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "reference必填，不补旧协议；none/latest/all/ordinal合法组合",
+        "0/负数/bool/越界序号、未知scope、跨scope或过期名单不绑定",
+        "结构合法但语义序号错误：gold和红线失败，不靠结构检查记正确"
+      ]
+    },
+    "F": {
+      "status": "candidate_checks_not_implemented",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "只核模型声明产品对象片段的后缀，不扫整句覆盖背景",
+        "背景误标对象或产品漏标仍按gold判错；不得恢复指数绑定"
+      ]
+    },
+    "G": {
+      "status": "not_implemented_not_measured",
+      "scored_in_language_accuracy": false,
+      "checks": [
+        "无效提案丢弃，同一原始输入及可信状态退回规则路径",
+        "共享取消、截止时间、调用/token预算与幂等记录；不重置额度、不成循环",
+        "无数据访问或会话残留；规则路径独立做身份、执行及范围检查",
+        "真实规则答复不回填意图失败分数；正式接入及端到端另审"
+      ]
+    }
+  },
+  "review": {
+    "status": "approved",
+    "reviewer": "claude",
+    "approval_message": 434
+  },
+  "note": "只公开规则和公开见证；新封存逐题标签另存隔离包。故障检查及G不冒充已测。"
+}

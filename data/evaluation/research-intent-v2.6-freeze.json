@@ -1,0 +1,292 @@
+{
+  "version": "research-intent-v2.6-cases-v1",
+  "status": "frozen",
+  "author_session_id": "01a1996e-6a36-7311-9c8f-717c3cffd937",
+  "approved_plan_message": 432,
+  "source_commit": "c6a7bf1",
+  "dev_sha256_lf": "74b5fef89b215074419767885b9516c7a45ab096391eb3ec8d90db15e54e731e",
+  "holdout": {
+    "sha256": "b3e5239a0b7712d513de71eb6d2906708036a9ffb181b1dd84f79aad3e8d6d20",
+    "summary": {
+      "count": 96,
+      "families": {
+        "D01-entry-failure": 3,
+        "D02-broad-market": 1,
+        "D03-chinext-market": 1,
+        "D04-star50-history": 1,
+        "D05-rating-recall": 1,
+        "D06-direction-only": 1,
+        "D07-rating-without-prices": 1,
+        "D08-veto-analysis": 3,
+        "D09-conflicting-plan": 3,
+        "D10-no-subject": 1,
+        "D11-expired-subject": 1,
+        "D12-ambiguous-pronoun": 2,
+        "D13-explicit-new-subject": 1,
+        "D14-knowledge-interlude": 1,
+        "D15-stock-index-switch": 1,
+        "D16-strict-sma": 2,
+        "D17-no-atr": 1,
+        "D18-history-vs-future": 1,
+        "D19-horizon-buttons": 2,
+        "D20-button-with-suffix": 2,
+        "D21-source-mismatch": 1,
+        "D22-mode-mismatch": 1,
+        "D23-cleared-state": 1,
+        "D24-shortlist-selection": 1,
+        "D25-shortlist-edit": 1,
+        "D26-explain-published": 1,
+        "D27-refresh-published": 1,
+        "D28-local-commands": 1,
+        "D29-execution-guards": 1,
+        "D30-deterministic-concepts": 1,
+        "D31-current-price-worth": 2,
+        "H01-legacy-historical-range": 4,
+        "H02-ambiguous-issuer": 4,
+        "H03-funds-not-index": 8,
+        "H04-explicit-comparison": 1,
+        "H05-add-indicator": 4,
+        "H06-remove-domain": 6,
+        "H07-history-commands": 1,
+        "H08-news-only": 1,
+        "H09-new-screening": 1,
+        "H10-invalid-dates": 6,
+        "H11-invalid-horizons": 1,
+        "H12-no-fallback-to-old-cache": 1,
+        "H13-future-publication": 1,
+        "H14-pending-conflict": 4,
+        "H15-stale-button-binding": 6,
+        "H16-understanding-faults": 4,
+        "H17-entry-exit-placement": 1
+      },
+      "semantic_calls": 87,
+      "local_zero_calls": 9
+    }
+  },
+  "thresholds": {
+    "all": {
+      "n": 96,
+      "minimum_correct": 92
+    },
+    "implementation_unseen": {
+      "n": 96,
+      "minimum_correct": 92,
+      "minimum_fraction": 0.95
+    },
+    "semantic": {
+      "n": 87,
+      "minimum_correct": 83
+    },
+    "public_dev": {
+      "n": 64,
+      "minimum_correct": 61
+    },
+    "public_regression": {
+      "n": 412,
+      "minimum_correct": 392,
+      "full_reference_n": 414
+    },
+    "families": {
+      "H01-legacy-historical-range": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H02-ambiguous-issuer": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H03-funds-not-index": {
+        "n": 8,
+        "minimum_correct": 7
+      },
+      "H05-add-indicator": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H06-remove-domain": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H10-invalid-dates": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H14-pending-conflict": {
+        "n": 4,
+        "minimum_correct": 4
+      },
+      "H15-stale-button-binding": {
+        "n": 6,
+        "minimum_correct": 5
+      },
+      "H16-understanding-faults": {
+        "n": 4,
+        "minimum_correct": 4
+      }
+    },
+    "small_family_rule": "n<4仅报告，仍计入总分",
+    "common_fields_not_worse": true,
+    "measurable_red_line_violations": 0,
+    "failed_unmeasured_invalid_in_denominator": true,
+    "output_views": [
+      "raw_original",
+      "normalized_original",
+      "normalized_approved"
+    ]
+  },
+  "partition_checks": {
+    "variant_groups": 160,
+    "normalized_shapes": 159,
+    "duplicate_inputs": 0,
+    "cross_split_group_leaks": 0,
+    "cross_split_shape_leaks": 0,
+    "semantic_independence": "机械检查不能证明语义独立；Claude在#434逐题审定且未发现跨侧语义近似；固定本地语法不作为措辞泛化证明。"
+  },
+  "context_preflight": {
+    "dev": {
+      "count": 64,
+      "applicable": 64,
+      "buildable": 64,
+      "not_applicable": [],
+      "unbuildable": [],
+      "expected_legacy_gap": [],
+      "local_contract_mismatch": [],
+      "passed": true,
+      "target_calls": 0,
+      "prediction_rows": 0,
+      "score_rows": 0,
+      "authoring_input_sha256": "f265b4957df3f1886bc7334255593f46fed9d82a1ba7de3b4dbca0ea7e3d788f",
+      "preflight_tool_sha256_lf": "c713649b16417c07b71b8a3a24eabb47823d58cb5a12accd63d3cba7b095ff4a"
+    },
+    "holdout": {
+      "count": 96,
+      "applicable": 96,
+      "buildable": 96,
+      "not_applicable": [],
+      "unbuildable": [],
+      "expected_legacy_gap": [],
+      "local_contract_mismatch": [],
+      "passed": true,
+      "target_calls": 0,
+      "prediction_rows": 0,
+      "score_rows": 0,
+      "authoring_input_sha256": "16efb7d06010175711a6cd5d328494bc1e39fe7b484658f38227cac9b9daab3e",
+      "preflight_tool_sha256_lf": "c713649b16417c07b71b8a3a24eabb47823d58cb5a12accd63d3cba7b095ff4a"
+    },
+    "regression": {
+      "count": 414,
+      "applicable": 412,
+      "buildable": 411,
+      "not_applicable": [
+        "V2222",
+        "V2223"
+      ],
+      "unbuildable": [
+        "V2002"
+      ],
+      "expected_legacy_gap": [
+        "V2002"
+      ],
+      "local_contract_mismatch": [],
+      "passed": true,
+      "target_calls": 0,
+      "prediction_rows": 0,
+      "score_rows": 0,
+      "authoring_input_sha256": "d32133b9501e864a6c686ef67ed9d35a5557478c5b4b0b2048a7e38169214a17",
+      "preflight_tool_sha256_lf": "c713649b16417c07b71b8a3a24eabb47823d58cb5a12accd63d3cba7b095ff4a"
+    }
+  },
+  "public_files_sha256_lf": {
+    "data/evaluation/research-intent-v2.6-dev.jsonl": "74b5fef89b215074419767885b9516c7a45ab096391eb3ec8d90db15e54e731e",
+    "data/evaluation/research-intent-v2.6-dev.manifest.json": "264be622e36748ba8f175e145b03bb4f1fba9c076e4bde5ac79064baf6f6b37a",
+    "data/evaluation/research-intent-v2.6-setups.json": "e0b611b61f5be37f4dda3743de03bdb6022ba114a2cdf64421be4e2b8090a097",
+    "data/evaluation/research-intent-v2.6-amendments.json": "2fdb58d78028713c0586eb8e21cda1f5b9676d5a5ad8ffa85f1055603772e0a9",
+    "data/evaluation/research-intent-v2.6-rule-coverage.json": "e8e4258d1ce07982ff255c40e155f9468848b02a99f16f676e60b8ad698dccd9",
+    "docs/research-intent-v2.6-guard-principles.md": "4a144ecac285944f587a925d4e31722e17d416a23a3156d3362b26c1f8017185",
+    "docs/research-intent-v2.6-plan.md": "7d0dcffaa81c4ef455ba8b5c7d673aa742513d5283c841607d6a2921424d1ac9",
+    "evaluation_tools/research_intent_v26_cases.py": "c713649b16417c07b71b8a3a24eabb47823d58cb5a12accd63d3cba7b095ff4a",
+    "evaluation_tools/preflight_research_intents_v26.py": "0f81ab0d8bf236838ee8f51e9a63aab05cfe85b0e6b8a072a9130dc467f32ea4",
+    "tests/test_research_intent_v26_cases.py": "6b6088daf859dad233cfd3aab3ec21bdfc132b7858ef3c0adab472c5ff834765",
+    "tests/test_research_intent_v25_holdout.py": "a605a73983c65f2ce5fdc0b3dc0d98806fb338bff72075b8c20a2c9aa874bd04"
+  },
+  "sealed_packet_sha256": {
+    "audit_v26.py": "31335284f0d27e4c4c031157d1052b75df5682ea6f3b0c363c84887733cc2e15",
+    "author-session.json": "fe30434f56eb2b27fb6b15749f1174c856feb143ca5bb26163274624d7cb2193",
+    "author_v26.py": "3966df4edea6121115d1da67a2c7bd8f9fba06967b87aa1d250496b59f449efa",
+    "finalize_v26.py": "f78ce8a6ec0d16e4b1be2ecd593df8112078e2a9f6648a5fd7ec67de79359629",
+    "research-intent-v2.6-holdout.jsonl": "b3e5239a0b7712d513de71eb6d2906708036a9ffb181b1dd84f79aad3e8d6d20",
+    "research-intent-v2.6-review.json": "092f598ad198c60586dd4701cf3c03f5f440653d445ebffc59f1cc1d1d379469",
+    "research-intent-v2.6-rule-tags.json": "096e094b87badfc91f5e33eba2022fb0138151b1c51b2306570c7c7b92d81af3",
+    "v26-dev-preflight.json": "0470ccfaf83274c55a9469062c2821cdfd82917cf4ad723740721fa060622793",
+    "v26-holdout-preflight.json": "52582be791bab11a8c955b0fc9ce9abf03a39b4fb508d88231494394f2ac7cfa",
+    "v26-regression-preflight.json": "735e99fe6711ca51269d9b148cdabe58b0a4dd10fa51d40cf7cf1258aca4d5aa"
+  },
+  "review": {
+    "status": "approved",
+    "reviewer": "claude",
+    "approval_message": 434,
+    "reviewed_dev_count": 64,
+    "reviewed_holdout_count": 96,
+    "pending_dev_count": 0,
+    "pending_holdout_count": 0
+  },
+  "isolation": {
+    "statement": "检验题由独立Codex会话起草、Claude审核；实现会话在调参期间不可见",
+    "author_has_seen_targets": true,
+    "implementation_session_must_be_new": true,
+    "implementation_must_not_read_author_logs": true,
+    "author_session_id": "01a1996e-6a36-7311-9c8f-717c3cffd937",
+    "materials_moved_outside_repository": true,
+    "limitations": "仅防误用，不是防篡改证明或独立人类盲测；#434审核已批准；Claude已于2026-11-01将整个隔离目录及作者会话日志移至仓库外 C:/Users/james/Desktop/TC-sealed/research-intent-v2.6/。"
+  },
+  "candidate": {
+    "status": "not_implemented",
+    "production_changed": false,
+    "live_enabled": false,
+    "eligible_for_switch": false
+  },
+  "paid_run": {
+    "status": "requires_separate_approval",
+    "target_calls_authorized": 0,
+    "call_cap": null,
+    "input_token_cap": null,
+    "output_token_cap": null,
+    "cost_cap": null,
+    "format_retry_policy": null,
+    "note": "版本变化不继承旧付费许可；每题调用/重问策略及所有预算运行前另审。"
+  },
+  "regression": {
+    "total": 414,
+    "applicable": 412,
+    "not_applicable": [
+      "V2222",
+      "V2223"
+    ],
+    "retained_setup_gap": [
+      "V2002"
+    ],
+    "pending_amended_cases": 0,
+    "pending_amended_fields": 0,
+    "legacy_originals_unchanged": true,
+    "legacy_scores_preserved": true,
+    "approved_amended_cases": 60,
+    "approved_amended_fields": 76,
+    "approval_message": 434
+  },
+  "rule_coverage": {
+    "rule_count": 85,
+    "uncovered_rules": 0,
+    "public_examples_only": true
+  },
+  "local_distribution_change": {
+    "approval_message": 432,
+    "old_semantic": 79,
+    "old_local": 17,
+    "note": "按新规范实际本地语法分配，不凑17；逐族总数沿用v2.5，语义门槛ceil(0.95*S)。"
+  },
+  "fingerprint_encoding": {
+    "public_files": "SHA256 after CRLF to LF canonicalization",
+    "holdout": "SHA256 of exact bytes"
+  },
+  "frozen_at": "2026-11-02T00:21:56+00:00"
+}

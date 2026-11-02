@@ -134,13 +134,21 @@ def synthetic_fixture(rows=None, raw=None):
 
 
 class AdmissionTests(OfflineTests):
-    def test_real_public_lock_is_self_consistent_without_opening_a_sealed_path(self):
-        snapshot=holdout.validate_lock()
-        self.assertEqual(snapshot['lock']['candidate']['revision'],holdout.CANDIDATE_REVISION)
-        self.assertEqual(snapshot['lock']['candidate']['model']['maximum_target_attempts'],120)
-        self.assertEqual(snapshot['lock']['candidate']['freeze']['thresholds']['maximum_target_attempts'],96)
-        self.assertEqual(len(snapshot['lock']['candidate']['freeze']['public_files_sha256']),18)
-        self.assertEqual(snapshot['lock']['candidate']['freeze']['summary']['semantic_calls'],79)
+    def test_real_public_lock_rejects_post_lock_workspace_without_opening_a_sealed_path(self):
+        # V2.6 adds source files after the one-use v2.5 run. Keep that historical
+        # lock intact and verify rejection; synthetic_fixture still checks valid
+        # admission against an independent, internally consistent snapshot.
+        lock=holdout.read_json(holdout.ROOT/holdout.LOCK_NAME,maximum=500_000)
+        self.assertEqual(digest(lock['candidate']),holdout.CANDIDATE_SHA256)
+        self.assertEqual(lock['candidate']['revision'],holdout.CANDIDATE_REVISION)
+        self.assertEqual(lock['candidate']['model']['maximum_target_attempts'],120)
+        self.assertEqual(lock['candidate']['freeze']['thresholds']['maximum_target_attempts'],96)
+        self.assertEqual(len(lock['candidate']['freeze']['public_files_sha256']),18)
+        self.assertEqual(lock['candidate']['freeze']['summary']['semantic_calls'],79)
+        with patch.object(holdout,'_sealed_bytes',side_effect=AssertionError('No sealed access')), \
+                patch.object(holdout,'_live_model',side_effect=AssertionError('No credentials')), \
+                self.assertRaisesRegex(ValueError,r'Locked (?:file|source inventory) mismatch'):
+            holdout.validate_lock()
 
     def test_default_plan_hashes_even_nonjson_bytes_without_decoding_constructing_or_claiming(self):
         with synthetic_fixture(raw=b'not-json\nnot-json\n') as f, \

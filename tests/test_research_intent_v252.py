@@ -113,8 +113,8 @@ class OrdinalTests(OfflineTests):
         self.assertEqual({call.args[1] for call in scopes.call_args_list}, {'latest_research'})
 
     def test_out_of_range_single_subject_invalid_identity_and_context_still_clarify(self):
-        with self.assertRaises(InputIssue):
-            self.check('上一份比较里的第0只', index=0)
+        result = self.check('上一份比较里的第0只', index=0)
+        self.assertEqual((result.outcome, result.bound_subjects), ('clarify_subject', ()))
         for selection, index in (('上一份比较里的第四只', 4), ('上次研究的第十个', 10)):
             self.assertEqual(self.check(selection, index=index).outcome, 'clarify_subject')
         base = context(previous=True, securities=SECURITIES[:2])

@@ -207,7 +207,7 @@ class ProtocolTests(unittest.TestCase):
                 subject=dict(source='question', mentions=[mention], selection=None))
             log = []
             result = check_response(mention+'要求有冲突', response(value), context=context(), corrections=log)
-            self.assertEqual(result.task, 'clarify')
+            self.assertEqual(result.task, task if task == 'stock_research' else 'clarify')
             self.assertEqual(result.outcome, 'clarify_conflict')
             self.assertTrue(result.low_confidence)
             self.assertNotIn('clarification_task', [c['kind'] for c in log])
@@ -425,15 +425,16 @@ class BindingTests(unittest.TestCase):
                       subject=dict(source='previous', mentions=[], selection='它'))
         log = []
         result = check_response('分析它', response(value), context=context(history=('研究浦发银行',)), corrections=log)
-        self.assertEqual(result.subject_source, 'previous')
+        self.assertEqual(result.subject_source, 'none')
         self.assertEqual(result.bound_subjects, ())
         self.assertEqual(result.outcome, 'clarify_subject')
-        self.assertEqual(log, [])
+        self.assertEqual({entry['kind'] for entry in log}, {'reference_unbound', 'previous_without_record'})
         raw = check_response('分析它', response(value), context=context(), normalize=False)
         self.assertEqual(raw.subject_source, 'previous')
-        for ctx in (context(previous=True), context(previous=True, source='akshare_eastmoney')):
+        for ctx, expected in ((context(previous=True), 'previous'),
+                              (context(previous=True, source='akshare_eastmoney'), 'none')):
             result = checked('分析它', value, ctx)
-            self.assertEqual(result.subject_source, 'previous')
+            self.assertEqual(result.subject_source, expected)
         with self.assertRaises(InputIssue):
             checked('分析它', dict(value, subject=dict(source='previous', mentions=[], selection='不存在的对象')))
 

@@ -38,8 +38,6 @@ NON_TURN_CODES = {
     "missing_objective_evidence": "离线v2评级方向目标缺依据。",
     "pending_authorization_mismatch": "独立v2.6候选拒绝与同任务待办登记授权不一致的依据，不接正式入口。",
     "ungrounded_plan_authorization": "独立v2.6候选未核实本句肯定价位依据或有效待办授权，不执行研究。",
-    "reference_fields_conflict": "独立v2.6候选的指代类别、范围或对象出处组合冲突，不产生研究轮次。",
-    "reference_index_invalid": "独立v2.6候选的指代序号不符合严格整数和类别约束，不产生研究轮次。",
     "product_subject_unsupported": "独立v2.6候选的产品对象与所提任务冲突，不绑定股票或跟踪指数。",
     "product_identity_fragment": "独立v2.6候选拒绝把产品名称中的股票或指数子片段当作完整对象。",
     "index_domain_unsupported": "离线v2拒绝指数不支持的公司/财务领域，不能清空领域掩盖越界。",

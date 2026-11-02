@@ -1,4 +1,4 @@
-"""Public v2.6 candidate evaluation; only frozen dev and exposed regression inputs."""
+"""Public v2.6.1 candidate evaluation; frozen v2.6 dev and exposed regression inputs."""
 
 from copy import deepcopy
 from hashlib import sha256
@@ -22,7 +22,7 @@ NOT_APPLICABLE = cases.NOT_APPLICABLE
 LIMITS = {'dev': 64, 'regression': 414}
 CALL_CAPS = {'dev': 80, 'regression': 520}
 MINIMUM_CORRECT = {'dev': 61, 'regression': 392}
-APPROVAL_MESSAGE = 439
+APPROVAL_MESSAGE = 445
 FAILED_ARGUMENT_NOTICE = previous.FAILED_ARGUMENT_NOTICE
 _git = previous._git
 RunInvalidated = previous.RunInvalidated
@@ -59,7 +59,7 @@ def fingerprints():
     paths.update(ROOT/name for name in (*cases.PUBLIC_FILES, *cases.PARENT_FILES,
         'data/evaluation/research-intent-v2.6-freeze.json', 'data/evaluation/research-intent-v2.4-holdout-population.json',
         'tests/test_deepseek_tool_model.py', 'tests/test_turn_control.py', 'README.md',
-        'docs/research-intent-v2.6-implementation.md'))
+        'docs/research-intent-v2.6-implementation.md', 'docs/research-intent-v2.6.1-implementation.md'))
     return {p.relative_to(ROOT).as_posix(): cases.public_sha256(p) for p in sorted(paths)}
 
 
@@ -67,9 +67,9 @@ def build_plan(split='dev', maximum=None):
     rows, _, _, _ = populations(split)
     if maximum is not None and (type(maximum) is not int or not 1 <= maximum <= CALL_CAPS[split]):
         raise ValueError('Call limit may only tighten the separately approved split cap')
-    if intent.VERSION != 'research-intent-v2.6':
-        raise ValueError('Only the approved v2.6 contract may use this public runner')
-    return dict(kind='research-intent-v2.6-public-plan', contract_version=intent.VERSION,
+    if intent.VERSION != 'research-intent-v2.6.1':
+        raise ValueError('Only the approved v2.6.1 contract may use this public runner')
+    return dict(kind='research-intent-v2.6.1-public-plan', contract_version=intent.VERSION,
         guard_version=intent.GUARD_VERSION, split=split, total=len(rows), max_calls=maximum or CALL_CAPS[split],
         paid_approval_message=APPROVAL_MESSAGE, approved_call_caps=deepcopy(CALL_CAPS), combined_call_cap=600,
         max_attempts_per_target=2, model='deepseek-flash', temperature=0, thinking='disabled', max_output_tokens=1500,
@@ -251,7 +251,8 @@ def report_results(rows, effective, plan, *, live=False):
                 call_ms=attempt['call_ms'], setup_calls=observation['setup_calls'] if index == 0 else 0)))
         if not history:
             metered.append(row)
-    telemetry = core.telemetry(metered)
+    # Meter against the pre-approved amendment, without altering archived/raw gold.
+    telemetry = core.telemetry([dict(r, gold=deepcopy(effective[r['id']])) for r in metered])
     attempts = [r['V2'] for r in metered if r['V2']['attempts']]
     valid_provider = any(a['response'] is not None for a in attempts) and all(a['response'] is None or
         (a['response']['provider'] == 'deepseek' and a['response']['requested_model'] == 'deepseek-flash'
@@ -269,7 +270,7 @@ def report_results(rows, effective, plan, *, live=False):
     retried = [r for r in rows if r['V2'].get('format_retry', {}).get('attempted')]
     recovered = [r for r in retried if r['V2']['format_retry']['successful']]
     applicable = [r for r in approved if r['id'] not in NOT_APPLICABLE]
-    return dict(kind='research-intent-v2.6-public-report', title='v2.6 公开开发与已暴露回归', notice=None,
+    return dict(kind='research-intent-v2.6.1-public-report', title='v2.6.1 公开开发与已暴露回归', notice=None,
         plan=plan, rows=rows, score_views=views, common_comparison=previous._common(applicable), zero_tolerance=redlines(approved),
         thresholds=thresholds, paid_calls=telemetry['attempts'] if live else 0, telemetry=telemetry,
         reference_comparison=[dict(id=r['id'], expected=r['reference_expectation']['reference'],
@@ -321,7 +322,7 @@ def evaluate(*, split='dev', live=False, maximum=None, timeout_seconds=45):
         raise ValueError('Live evaluation requires a clean reviewed commit and complete public preflight')
     assert_current(plan)
     # Approval is per version/split, never renewed by making another commit.
-    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6/public'/split
+    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6.1/public'/split
     folder.mkdir(parents=True, exist_ok=False)
     try:
         plan['live_enabled'] = True

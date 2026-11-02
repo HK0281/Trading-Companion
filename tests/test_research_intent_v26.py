@@ -47,7 +47,7 @@ class V26Tests(unittest.TestCase):
         return intent.check_response(question, response(value or previous_value()), context=ctx or context(previous=True))
 
     def test_version_and_reference_are_required_without_provider_compatibility(self):
-        self.assertEqual(intent.VERSION, 'research-intent-v2.6')
+        self.assertEqual(intent.VERSION, 'research-intent-v2.6.1')
         self.assertEqual(len(self.check().fields()), 14)
         original = previous_value()
         bad = deepcopy(original)
@@ -55,13 +55,16 @@ class V26Tests(unittest.TestCase):
         for value in (bad, dict(original, version='research-intent-v2.5.4')):
             with self.assertRaises(InputIssue):
                 self.check(value=value)
-        for index in (True, False, 0, -1, 1.0, '1', 'null'):
+        for index in (True, False, 1.0, '1', 'null'):
             with self.subTest(index=index), self.assertRaises(InputIssue):
                 self.check(value=previous_value(reference('ordinal', index=index)))
+        with self.assertRaises(InputIssue):
+            self.check(value=previous_value(dict(reference(), extra=True)))
         for ref in (reference('latest', index=1), reference('all', scope=None),
-                    reference('none', scope=None), dict(reference(), extra=True)):
-            with self.subTest(ref=ref), self.assertRaises(InputIssue):
-                self.check(value=previous_value(ref))
+                    reference('none', scope=None), reference('ordinal', index=0), reference('ordinal', index=-1)):
+            with self.subTest(ref=ref):
+                checked = self.check(value=previous_value(ref))
+                self.assertEqual((checked.outcome, checked.bound_subjects), ('clarify_subject', ()))
 
     def test_reference_uses_only_the_chosen_stable_scope_and_never_selection_text(self):
         ctx = replace(context(previous=True, securities=SECURITIES[:2]), quote_source=object())

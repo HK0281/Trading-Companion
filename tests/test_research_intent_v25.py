@@ -139,8 +139,10 @@ class BoundaryTests(unittest.TestCase):
 
     def test_future_actual_data_cannot_become_a_price_scenario(self):
         question = '平安银行未来三天的实际收盘价是多少'
-        with self.assertRaises(InputIssue):
-            self.check(question, draft(objective_kind='decision', objective_phrase='实际收盘价', wants_plan=True, plan_phrase='实际收盘价'))
+        result = self.check(question, draft(objective_kind='decision', objective_phrase='实际收盘价',
+                                          wants_plan=True, plan_phrase='实际收盘价'))
+        self.assertEqual((result.objective_kind, result.wants_plan, result.horizon, result.outcome),
+                         ('analysis', False, None, 'clarify_conditions'))
         result = self.check(question, draft(horizon_expression='未来三天', date_expression='未来三天'))
         self.assertEqual((result.objective_kind, result.wants_plan, result.horizon, result.outcome),
                          ('analysis', False, None, 'clarify_conditions'))

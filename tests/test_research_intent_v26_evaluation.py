@@ -46,9 +46,10 @@ class PublicEvaluationTests(OfflineTests):
     def test_plan_is_offline_and_pins_new_approval_and_split_caps(self):
         with patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')):
             plan = evaluation.evaluate(split='dev')
-        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 439))
+        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 445))
+        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.1')
         self.assertEqual(plan['approved_call_caps'], dict(dev=80, regression=520))
-        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [439])
+        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [445])
         self.assertEqual((plan['paid_calls'], plan['input_usage'], plan['cost']), (0, 'unknown', 'unknown'))
         self.assertFalse(plan['live_enabled'])
         self.assertFalse(plan['eligible_for_switch'])
@@ -131,6 +132,24 @@ class PublicEvaluationTests(OfflineTests):
         self.assertFalse(report['reference_comparison'][0]['matches'])
         self.assertFalse(report['passed'])  # A synthetic response and partial population cannot pass.
 
+    def test_telemetry_uses_effective_gold_without_hiding_real_local_calls(self):
+        amended, real_local = sample(), sample()
+        amended['id'], real_local['id'] = 'amended-local', 'real-local'
+        amended['gold']['zero_intent_calls'] = True
+        real_local['gold']['zero_intent_calls'] = True
+        effective = {r['id']: deepcopy(r['gold']) for r in (amended, real_local)}
+        effective[amended['id']]['zero_intent_calls'] = False
+        output = []
+        for row in (amended, real_local):
+            observation = dict(evaluation._empty('failed', 'synthetic'), attempts=1)
+            observation['attempt_history'] = [dict(response=None, call_ms=1)]
+            output.append(dict(row, V2=observation, A=dict(status='ok', fields=deepcopy(row['gold']))))
+        before = deepcopy(output)
+        report = evaluation.report_results(output, effective, {})
+        self.assertEqual(report['telemetry']['unexpected_local_intent_calls'], ['real-local'])
+        self.assertEqual(report['telemetry']['attempts'], 2)
+        self.assertEqual(output, before)
+
     def test_dirty_or_invalid_preflight_live_run_stops_before_credentials(self):
         with patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')) as factory:
             with patch.object(evaluation, 'build_plan', return_value=dict(workspace_dirty=True)):
@@ -144,7 +163,7 @@ class PublicEvaluationTests(OfflineTests):
     def test_late_drift_removes_passing_report_and_keeps_run_claim(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
-            target = root/'.agentbus/evaluation-runs/research-intent-v2.6/public/dev'
+            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.1/public/dev'
             plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='synthetic', max_calls=1)
             def check(_):
                 if (target/'report.json').exists():

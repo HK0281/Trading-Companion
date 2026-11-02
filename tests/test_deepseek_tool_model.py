@@ -145,6 +145,41 @@ class DeepSeekToolModelTests(unittest.TestCase):
         self.assertTrue(caught.exception.__suppress_context__)
 
 
+    def test_candidate_repair_accepts_only_explicit_supported_single_versions(self):
+        for version in ('research-intent-v2.5.4', 'research-intent-v2.6'):
+            with self.subTest(version=version):
+                tool = ToolDefinition('interpret_research_intent_v2', 'Synthetic candidate.', {
+                    'type': 'object', 'properties': {'version': {'type': 'string', 'enum': [version]}}})
+                self.prepare(provider_payload(finish='tool_calls', content=None, calls=[provider_call(
+                    name=tool.name, arguments='{"objective_kind": analysis}')]))
+                diagnostics = []
+                model = DeepSeekToolModel(self.config, response_diagnostics=True, repair_tool_arguments=True,
+                    save_failed_arguments=True, evaluation_scope='public', argument_diagnostic_sink=diagnostics.append)
+                result = model.complete(self.messages, tools=(tool,))
+                self.assertEqual(result.tool_calls[0].arguments, {'objective_kind': 'analysis'})
+                self.assertTrue(diagnostics)
+                # The same candidate declaration does not enable repair by default.
+                with self.assertRaises(ModelCallError):
+                    DeepSeekToolModel(self.config).complete(self.messages, tools=(tool,))
+
+    def test_candidate_repair_and_capture_reject_other_declarations_before_http(self):
+        for flags in (dict(repair_tool_arguments=True), dict(save_failed_arguments=True)):
+            for versions, name, extra in ((['research-intent-v2.5.4', 'research-intent-v2.6'],
+                    'interpret_research_intent_v2', False),
+                    (['research-intent-v9'], 'interpret_research_intent_v2', False),
+                    (['research-intent-v2.6'], 'inspect_fixture', False),
+                    (['research-intent-v2.6'], 'interpret_research_intent_v2', True)):
+                with self.subTest(flags=flags, versions=versions, name=name, extra=extra):
+                    tool = ToolDefinition(name, 'Synthetic candidate.', {'type': 'object',
+                        'properties': {'version': {'type': 'string', 'enum': versions}}})
+                    model = DeepSeekToolModel(self.config, response_diagnostics=True, evaluation_scope='public',
+                        argument_diagnostic_sink=lambda _: None, **flags)
+                    with self.assertRaises(ModelConfigurationError):
+                        model.complete(self.messages, tools=(tool, self.tool) if extra else (tool,))
+            with self.assertRaises(ModelConfigurationError):
+                DeepSeekToolModel(self.config, argument_diagnostic_sink=lambda _: None, **flags)
+        self.post.assert_not_called()
+
     def test_empty_call_content_normalizes_to_none_but_nonempty_text_is_preserved(self):
         for content in (None, "", " \n", "Let me inspect the fixture."):
             self.prepare(provider_payload(finish="tool_calls", content=content, calls=[provider_call()]))

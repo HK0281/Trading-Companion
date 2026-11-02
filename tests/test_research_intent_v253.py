@@ -221,7 +221,7 @@ class RetryTests(OfflineTests):
 
 
 class ClarificationTests(OfflineTests):
-    def test_unknown_index_task_recovers_without_any_identity_binding_and_raw_stays_original(self):
+    def test_unknown_index_stays_model_clarification_without_identity_or_domain_repair(self):
         for name in ('那个科技指数', '某个制造业指数'):
             question = '研究一下' + name + '的日线'
             value = draft(task='clarify', clarification_reason='subject', confidence='low',
@@ -229,17 +229,20 @@ class ClarificationTests(OfflineTests):
             original, log = deepcopy(value), []
             checked = intent.check_response(question, response(value), context=context(), corrections=log)
             self.assertEqual((checked.task, checked.bound_subjects, checked.outcome, checked.research_kinds),
-                             ('index_research', (), 'clarify_identity', ('technical',)))
-            self.assertIn('clarification_task', [e['kind'] for e in log])
+                             ('clarify', (), 'clarify_identity', ()))
+            self.assertNotIn('clarification_task', [e['kind'] for e in log])
             self.assertEqual(value, original)
             self.assertEqual(intent.check_response(question, response(value), context=context(), normalize=False).task, 'clarify')
 
     def test_unknown_task_recovery_never_grants_fund_identity_or_unsupported_index_domains(self):
         name = '某个制造业指数基金'
         value = draft(task='clarify', clarification_reason='subject', subject=dict(source='question', mentions=[name], selection=None))
+        with self.assertRaises(InputIssue):
+            intent.check_response('研究'+name+'的日线', response(value), context=context())
+        value['task'] = 'unsupported'
         result = intent.check_response('研究'+name+'的日线', response(value), context=context())
         self.assertEqual((result.task, result.outcome, result.bound_subjects), ('unsupported', 'reject', ()))
-        value = draft(task='clarify', clarification_reason='subject', subject=dict(source='question', mentions=['某个科技指数'], selection=None),
+        value = draft(task='index_research', clarification_reason='subject', subject=dict(source='question', mentions=['某个科技指数'], selection=None),
                       research_kinds=[dict(kind='financial', phrase='财务')])
         with self.assertRaises(InputIssue):
             intent.check_response('研究某个科技指数的财务', response(value), context=context())
@@ -256,9 +259,9 @@ class ClarificationTests(OfflineTests):
             log = []
             result = intent.check_response(question, response(value), context=context(previous=True, horizon='未来40个交易日'), corrections=log)
             self.assertEqual((result.horizon, result.outcome), (None, 'clarify_conditions'))
-            self.assertIn('invalid_horizon', [e['kind'] for e in log])
+            self.assertIsNone(result.horizon)
             self.assertEqual(value['horizon_expression'], expression)
-            self.assertEqual(intent.check_response(question, response(value), context=context(), normalize=False).outcome, 'clarify_horizon')
+            self.assertEqual(intent.check_response(question, response(value), context=context(), normalize=False).outcome, 'clarify_conditions')
 
     def test_missing_or_vague_horizon_remains_missing_and_conflict_or_identity_has_priority(self):
         for expression in (None, '以后'):

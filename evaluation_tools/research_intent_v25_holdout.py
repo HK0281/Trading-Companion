@@ -88,7 +88,7 @@ def validate_lock(*, require_clean=False):
             or runner['version'] != RUNNER_VERSION or runner['plan_approval_message'] != 422
             or set(runner['source_sha256_lf']) != set(RUNNER_FILES)
             or set(candidate['source_sha256_lf']) & set(RUNNER_FILES)):
-        raise ValueError('Candidate or runner binding changed')
+        raise ValueError('Locked file mismatch: candidate or runner binding changed')
     freeze = cases.validate_freeze(require_review=True)
     frozen = candidate['freeze']
     if (frozen['path'] != FREEZE_NAME or frozen['sha256_lf'] != _hash(ROOT/FREEZE_NAME)

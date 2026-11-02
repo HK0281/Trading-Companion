@@ -26,12 +26,12 @@ class BoundaryTests(unittest.TestCase):
     def test_products_are_rejected_after_grounding_without_binding_the_index(self):
         for product in ('ETF', '指数基金', '期货', '期权'):
             question = '研究沪深300' + product + '未来2周的走势'
-            value = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None),
+            value = draft(task='unsupported', subject=dict(source='question', mentions=['沪深300'+product], selection=None),
                           horizon_expression='未来2周', objective_kind='outlook', objective_phrase='未来2周的走势')
             log = []
             result = self.check(question, value, corrections=log)
             self.assertEqual((result.task, result.outcome, result.bound_subjects), ('unsupported', 'reject', ()))
-            self.assertIn('unsupported_product', [c['kind'] for c in log])
+            self.assertEqual(result.diagnostics['product_mentions'], ['沪深300'+product])
             self.assertIsNone(intent.local_preflight(question, context()))
             with self.assertRaises(InputIssue):
                 self.check(question, dict(value, objective_phrase='不存在的依据'))
@@ -41,18 +41,21 @@ class BoundaryTests(unittest.TestCase):
     def test_concepts_background_and_mixed_product_research(self):
         for question in ('ETF是什么', '期货合约和现货的区别是什么？', '基金常见风险有哪些？'):
             local = intent.local_preflight(question, context())
-            self.assertEqual((local.task, local.zero_intent_calls), ('knowledge', True))
+            self.assertIsNone(local)
+            proposal = self.check(question, draft(task='knowledge', subject=dict(source='none', mentions=[], selection=None)))
+            self.assertEqual((proposal.task, proposal.zero_intent_calls), ('knowledge', False))
         question = '研究平安银行的公司概况，背景里提到期权激励'
         result = self.check(question, draft(research_kinds=[dict(kind='profile', phrase='公司概况')]))
         self.assertEqual((result.task, result.bound_subjects), ('stock_research', ('000001.SZ',)))
         question = '研究沪深300ETF，同时说明ETF是什么'
-        result = self.check(question, draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None)))
+        result = self.check(question, draft(task='unsupported', subject=dict(source='question', mentions=['沪深300ETF'], selection=None)))
         self.assertEqual((result.task, result.outcome, result.bound_subjects), ('unsupported', 'reject', ()))
 
-    def test_known_unsupported_index_is_local_but_unknown_identity_is_not_rejected(self):
+    def test_unsupported_index_uses_model_and_unknown_identity_stays_unbound(self):
         result = intent.local_preflight('研究中证500的走势', context())
-        self.assertEqual((result.task, result.operation, result.outcome, result.zero_intent_calls),
-                         ('unsupported', 'local', 'reject', True))
+        self.assertIsNone(result)
+        result = self.check('研究中证500的走势', draft(task='unsupported', subject=dict(source='question', mentions=['中证500'], selection=None)))
+        self.assertEqual((result.outcome, result.bound_subjects, result.zero_intent_calls), ('reject', (), False))
         self.assertIsNone(intent.local_preflight('研究科创板指数的日线', context()))
         for name in ('平安', '远帆科技'):
             result = self.check('研究'+name+'的新闻', draft(subject=dict(source='question', mentions=[name], selection=None),
@@ -70,31 +73,32 @@ class BoundaryTests(unittest.TestCase):
         self.assertFalse(result.wants_plan)
         self.assertEqual(result.outcome, 'research')
 
-    def test_only_time_and_negated_only_do_not_grant_strict_scope_or_veto_the_indicator(self):
+    def test_model_scope_is_not_reclassified_and_narrowing_never_adds_permission(self):
         question = '仅研究平安银行2026-08-10至2026-08-28的历史表现'
         result = self.check(question, draft(date_expression='2026-08-10至2026-08-28',
             strict_scope=True, scope_phrase='仅研究'))
-        self.assertFalse(result.strict_scope)
+        self.assertTrue(result.strict_scope)
         self.assertEqual(result.outcome, 'research')
         question = '平安银行不能只用BOLL，也结合新闻'
         value = draft(indicator_mentions=['BOLL'], research_kinds=[dict(kind='technical', phrase='BOLL'),
             dict(kind='news', phrase='新闻')], strict_scope=True, scope_phrase='只用BOLL')
         result = self.check(question, value)
-        self.assertFalse(result.strict_scope)
+        self.assertTrue(result.strict_scope)
         self.assertEqual(result.exclusions, ())
         self.assertEqual(result.indicator_mentions, ('BOLL',))
         self.assertEqual(result.outcome, 'research')
-        with self.assertRaises(InputIssue):
-            self.check(question, dict(value, exclusions=[dict(kind='indicator:boll', phrase='不能只用BOLL')]))
+        narrowed = self.check(question, dict(value, exclusions=[dict(kind='indicator:boll', phrase='不能只用BOLL')]))
+        self.assertEqual(narrowed.indicator_mentions, ())
+        self.assertFalse(narrowed.wants_plan)
 
     def test_indicator_alias_veto_does_not_hit_a_shorter_indicator_and_repeats_are_masked(self):
-        result = self.check('平安银行不用指数移动平均线', draft())
+        result = self.check('平安银行不用指数移动平均线', draft(exclusions=[dict(kind='indicator:ema', phrase='不用指数移动平均线')]))
         self.assertEqual(result.exclusions, ('indicator:ema',))
-        result = self.check('平安银行不看基本面', draft())
+        result = self.check('平安银行不看基本面', draft(exclusions=[dict(kind=k, phrase='不看基本面') for k in ('financial', 'profile')]))
         self.assertEqual(set(result.exclusions), {'financial', 'profile'})
         result = self.check('平安银行不要RSI，再次强调不用RSI2，只用EMA5', draft(
             indicator_mentions=['EMA5'], research_kinds=[dict(kind='technical', phrase='EMA5')],
-            strict_scope=True, scope_phrase='只用EMA5'))
+            strict_scope=True, scope_phrase='只用EMA5', exclusions=[dict(kind='indicator:rsi', phrase='不用RSI2')]))
         self.assertEqual(result.exclusions, ('indicator:rsi',))
         self.assertEqual(result.outcome, 'research')
         result = self.check('平安银行移除20日均线与EMA（13）和ATR14', draft(exclusions=[
@@ -135,8 +139,9 @@ class BoundaryTests(unittest.TestCase):
 
     def test_future_actual_data_cannot_become_a_price_scenario(self):
         question = '平安银行未来三天的实际收盘价是多少'
-        result = self.check(question, draft(objective_kind='decision', objective_phrase='实际收盘价',
-            wants_plan=True, plan_phrase='实际收盘价', horizon_expression='未来三天', date_expression='未来三天'))
+        with self.assertRaises(InputIssue):
+            self.check(question, draft(objective_kind='decision', objective_phrase='实际收盘价', wants_plan=True, plan_phrase='实际收盘价'))
+        result = self.check(question, draft(horizon_expression='未来三天', date_expression='未来三天'))
         self.assertEqual((result.objective_kind, result.wants_plan, result.horizon, result.outcome),
                          ('analysis', False, None, 'clarify_conditions'))
         self.assertEqual(result.historical_window, ())
@@ -151,8 +156,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual((result.outcome, result.wants_plan), ('research', True))
         date_text = (context().reference_date + timedelta(days=2)).isoformat()
         question = '平安银行'+date_text+'的实际收盘价'
-        result = self.check(question, draft(objective_kind='decision', objective_phrase='实际收盘价',
-            wants_plan=True, plan_phrase='实际收盘价', date_expression=date_text))
+        result = self.check(question, draft(date_expression=date_text))
         self.assertEqual((result.objective_kind, result.wants_plan, result.outcome, result.date_expression),
                          ('analysis', False, 'clarify_conditions', date_text))
 

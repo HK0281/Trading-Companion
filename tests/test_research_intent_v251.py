@@ -37,7 +37,7 @@ class TechnicalAndSubjectTests(OfflineTests):
     def check(self, question, value=None, ctx=None, **kwargs):
         return intent.check_response(question, response(value or draft()), context=ctx or context(), **kwargs)
 
-    def test_explicit_technical_cues_normalize_stock_and_index_and_leave_raw_unchanged(self):
+    def test_explicit_technical_domains_require_model_declaration_and_preserve_raw(self):
         for mention, task in (('平安银行', 'stock_research'), ('沪深300', 'index_research')):
             for cue in ('完整日线', '周线', 'K线', 'BOLL'):
                 question = '研究' + mention + '的' + cue
@@ -46,8 +46,10 @@ class TechnicalAndSubjectTests(OfflineTests):
                 original, log = deepcopy(value), []
                 with self.subTest(task=task, cue=cue):
                     result = self.check(question, value, corrections=log)
-                    self.assertEqual(result.research_kinds, ('technical',))
-                    self.assertIn('explicit_technical_cue', [c['kind'] for c in log])
+                    self.assertEqual(result.research_kinds, ())
+                    declared = dict(value, research_kinds=[dict(kind='technical', phrase=cue)])
+                    self.assertEqual(self.check(question, declared).research_kinds, ('technical',))
+                    self.assertNotIn('explicit_technical_cue', [c['kind'] for c in log])
                     self.assertEqual(self.check(question, value, normalize=False).research_kinds, ())
                     self.assertEqual(value, original)
 
@@ -63,49 +65,48 @@ class TechnicalAndSubjectTests(OfflineTests):
         self.assertEqual(self.check('平安银行短线能买么，给参考价', value).research_kinds, ())
         for cue in ('不能只看日线', '不要只用BOLL'):
             value = draft(indicator_mentions=['BOLL'] if 'BOLL' in cue else [])
-            self.assertEqual(self.check('研究平安银行，' + cue, value).research_kinds, ('technical',))
+            self.assertEqual(self.check('研究平安银行，' + cue, value).research_kinds, ())
 
     def test_unknown_indicators_still_clarify_and_grounding_scope_failures_still_reject(self):
         value = draft(indicator_mentions=['神奇指标'])
         result = self.check('研究平安银行的神奇指标', value)
-        self.assertEqual((result.research_kinds, result.outcome), (('technical',), 'clarify_conditions'))
+        self.assertEqual((result.research_kinds, result.outcome), ((), 'clarify_conditions'))
         with self.assertRaises(InputIssue):
             self.check('研究平安银行', value)
-        with self.assertRaises(InputIssue):
-            self.check('研究平安银行，只用BOLL', draft(indicator_mentions=['BOLL']))
-        conflict = self.check('研究平安银行，不用BOLL', draft(indicator_mentions=['BOLL']))
+        self.assertFalse(self.check('研究平安银行，只用BOLL', draft(indicator_mentions=['BOLL'])).strict_scope)
+        conflict = self.check('研究平安银行，不用BOLL', draft(indicator_mentions=['BOLL'], exclusions=[dict(kind='indicator:boll', phrase='不用BOLL')]))
         self.assertEqual((conflict.outcome, conflict.indicator_mentions, conflict.exclusions),
                          ('clarify_conflict', (), ('indicator:boll',)))
 
-    def test_whole_group_reference_precedes_ordinals_and_checks_counts(self):
+    def test_group_and_ordinal_use_structured_reference_without_reparsing_counts(self):
         ctx = context(previous=True, securities=SECURITIES[:2])
         for selection in ('这两只', '前面这两只', '它们', '这些', '这2只股票', '前面的这二只'):
-            value = draft(subject=dict(source='previous', mentions=[], selection=selection))
+            value = draft(reference=dict(kind='all', index=None, scope='latest_research'), subject=dict(source='previous', mentions=[], selection=selection))
             result = self.check('比较' + selection + '的情况', value, ctx)
             self.assertEqual(result.bound_subjects, tuple(s.instrument_id for s in SECURITIES[:2]))
         for selection in ('这三只', '这零只', '这两两只', '前面这1只', '这些'):
-            value = draft(subject=dict(source='previous', mentions=[], selection=selection))
+            value = draft(reference=dict(kind='all', index=None, scope='latest_research'), subject=dict(source='previous', mentions=[], selection=selection))
             target = context(previous=True) if selection == '这些' else ctx
-            self.assertEqual(self.check('研究' + selection, value, target).bound_subjects, ())
-        value = draft(subject=dict(source='previous', mentions=[], selection='第二只'))
+            self.assertEqual(self.check('研究' + selection, value, target).bound_subjects, tuple(s.instrument_id for s in (SECURITIES[:1] if selection == '这些' else SECURITIES[:2])))
+        value = draft(reference=dict(kind='ordinal', index=2, scope='latest_research'), subject=dict(source='previous', mentions=[], selection='第二只'))
         self.assertEqual(self.check('研究第二只', value, ctx).bound_subjects, (SECURITIES[1].instrument_id,))
 
     def test_group_reference_cannot_escape_invalid_context_or_consume_an_explicit_object(self):
-        value = draft(subject=dict(source='previous', mentions=[], selection='前面这两只'))
+        value = draft(reference=dict(kind='all', index=None, scope='latest_research'), subject=dict(source='previous', mentions=[], selection='前面这两只'))
         base = context(previous=True, securities=SECURITIES[:2])
         for ctx in (context(), replace(base, conversation_memory=False), replace(base, source='akshare_eastmoney'),
                     replace(base, development=True), replace(base, now=base.now-timedelta(seconds=1))):
             self.assertEqual(self.check('研究前面这两只', value, ctx).bound_subjects, ())
-        value = draft(subject=dict(source='previous', mentions=[], selection='这些'))
+        value = draft(reference=dict(kind='all', index=None, scope='latest_research'), subject=dict(source='previous', mentions=[], selection='这些'))
         with self.assertRaises(InputIssue):
             self.check('这些和平安银行比较', value, base)
 
-    def test_redundant_explicit_selection_only_removes_exact_mention_and_preserves_raw(self):
+    def test_explicit_selection_rejects_even_redundancy_and_preserves_raw(self):
         value = draft(subject=dict(source='question', mentions=['平安银行'], selection='平安银行'))
         original, log = deepcopy(value), []
-        result = self.check('研究平安银行', value, corrections=log)
-        self.assertEqual(result.bound_subjects, ('000001.SZ',))
-        self.assertIn('redundant_question_selection', [c['kind'] for c in log])
+        with self.assertRaises(InputIssue):
+            self.check('研究平安银行', value, corrections=log)
+        self.assertEqual(log, [])
         self.assertEqual(value, original)
         with self.assertRaises(InputIssue):
             self.check('研究平安银行', value, normalize=False)
@@ -115,13 +116,16 @@ class TechnicalAndSubjectTests(OfflineTests):
         with self.assertRaises(InputIssue):
             self.check('平安银行和浦发银行比较', value)
 
-    def test_grounded_unknown_index_still_clarifies_after_redundant_selection_is_removed(self):
+    def test_unknown_index_rejects_selection_and_cannot_gain_technical_default(self):
         name = '那个科技指数'
         value = draft(task='index_research', confidence='low', clarification_reason='identity',
                       subject=dict(source='question', mentions=[name], selection=name))
+        with self.assertRaises(InputIssue):
+            self.check('研究' + name + '的日线', value)
+        value['subject']['selection'] = None
         result = self.check('研究' + name + '的日线', value)
         self.assertEqual((result.task, result.bound_subjects, result.outcome, result.research_kinds),
-                         ('index_research', (), 'clarify_identity', ('technical',)))
+                         ('index_research', (), 'clarify_identity', ()))
         with self.assertRaises(InputIssue):
             self.check('研究沪深300的日线', value)
 

@@ -31,13 +31,18 @@ def context(*, previous=False, age=0, horizon=None, securities=SECURITIES[:1], k
     return replace(value, **changes)
 
 
-def draft(**changes):
+def draft(*, reference=None, **changes):
+    """Construct current-protocol synthetic inputs; never adapt provider responses."""
     value = dict(version=VERSION, task='stock_research', operation='new', objective_kind='analysis',
         objective_phrase=None, wants_plan=False, plan_phrase=None,
         subject=dict(source='question', mentions=['平安银行'], selection=None),
         horizon_expression=None, date_expression=None, indicator_mentions=[], research_kinds=[],
         exclusions=[], strict_scope=False, scope_phrase=None, confidence='high', clarification_reason=None)
     value.update(changes)
+    value['subject'] = deepcopy(value['subject'])
+    value['subject'].setdefault('reference', reference or dict(
+        kind='latest' if value['subject']['source'] == 'previous' else 'none', index=None,
+        scope='latest_research' if value['subject']['source'] == 'previous' else None))
     return value
 
 
@@ -110,15 +115,15 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(InputIssue):
             checked('研究平安银行', draft(date_expression='近日'))
 
-    def test_update_without_any_program_record_becomes_new_but_never_borrows_history(self):
+    def test_update_without_record_keeps_operation_but_never_borrows_history(self):
         value = draft(task='clarify', operation='update', clarification_reason='subject', confidence='low',
                       subject=dict(source='none', mentions=[], selection=None))
         log = []
         result = check_response('取消之后继续研究', response(value), context=context(history=('研究浦发银行',)), corrections=log)
-        self.assertEqual(result.operation, 'new')
+        self.assertEqual(result.operation, 'update')
         self.assertEqual(result.outcome, 'clarify_subject')
         self.assertEqual(result.bound_subjects, ())
-        self.assertIn('update_without_record', [c['kind'] for c in log])
+        self.assertNotIn('update_without_record', [c['kind'] for c in log])
         for ctx in (context(previous=True), context(previous=True, age=901), context(previous=True, source='akshare_eastmoney')):
             self.assertEqual(checked('取消之后继续研究', value, ctx).operation, 'update')
         for field in ('_pending', '_pending_edit', 'product_pending', 'index_pending', 'screening_saved'):
@@ -135,10 +140,10 @@ class ProtocolTests(unittest.TestCase):
             log, value = [], draft(task=task, subject=subject, objective_kind='outlook',
                 objective_phrase='后续方向', clarification_reason='subject' if task == 'clarify' else None)
             result = check_response(question, response(value), context=context(), corrections=log)
-            self.assertEqual(result.objective_kind, 'decision')
+            self.assertEqual(result.objective_kind, 'decision' if task == 'stock_research' else 'outlook')
             self.assertFalse(result.wants_plan)
             self.assertEqual(result.outcome, 'research' if task == 'stock_research' else 'clarify_subject')
-            self.assertIn('objective_outlook_non_index', [c['kind'] for c in log])
+            self.assertEqual('objective_outlook_non_index' in [c['kind'] for c in log], task == 'stock_research')
             raw = check_response(question, response(value), context=context(), normalize=False)
             self.assertEqual(raw.objective_kind, 'outlook')
         index = checked('沪深300后续方向', draft(task='index_research', objective_kind='outlook',
@@ -165,30 +170,30 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(checked('平安银行未来方向，参考'+extra, value).outcome, 'clarify_conditions')
         self.assertEqual(checked('平安银行未来方向', draft()).outcome, 'clarify_conditions')
 
-    def test_fundamentals_completes_explicit_domains_and_cannot_hide_exclusions(self):
+    def test_model_fundamentals_domains_are_not_automatically_expanded(self):
         log = []
         value = draft(research_kinds=[dict(kind='financial', phrase='基本面')])
         result = check_response('平安银行基本面', response(value), context=context(), corrections=log)
-        self.assertEqual(set(result.research_kinds), {'profile', 'financial'})
-        self.assertEqual(log[0]['kind'], 'fundamental_domains')
+        self.assertEqual(result.research_kinds, ('financial',))
+        self.assertEqual(log, [])
         raw = check_response('平安银行基本面', response(value), context=context(), normalize=False)
         self.assertEqual(raw.research_kinds, ('financial',))
         self.assertEqual(checked('平安银行财报', draft(research_kinds=[dict(kind='financial', phrase='财报')])).research_kinds,
                          ('financial',))
-        conflict = checked('平安银行基本面，不看公司资料', value)
-        self.assertEqual(conflict.outcome, 'clarify_conflict')
+        conflict = checked('平安银行基本面，不看公司资料', dict(value, exclusions=[dict(kind='profile', phrase='不看公司资料')]))
+        self.assertEqual(conflict.outcome, 'research')
         self.assertEqual(conflict.research_kinds, ('financial',))
         self.assertEqual(conflict.exclusions, ('profile',))
         with self.assertRaises(InputIssue):
             checked('平安银行基本面', draft(research_kinds=[dict(kind='financial', phrase='虚构基本面')]))
 
-    def test_indicator_fragments_only_deduplicate_at_the_same_positions(self):
+    def test_grounded_indicator_fragments_are_preserved_without_semantic_repair(self):
         value = draft(indicator_mentions=['SMA5', 'SMA'])
         original, log = deepcopy(value), []
         result = check_response('平安银行参考SMA5', response(value), context=context(), corrections=log)
-        self.assertEqual(result.indicator_mentions, ('SMA5',))
+        self.assertEqual(result.indicator_mentions, ('SMA5', 'SMA'))
         self.assertEqual(value, original)
-        self.assertEqual(log[0]['kind'], 'indicator_fragment')
+        self.assertEqual(log, [])
         raw = check_response('平安银行参考SMA5', response(value), context=context(), normalize=False)
         self.assertEqual(raw.indicator_mentions, ('SMA5', 'SMA'))
         result = checked('平安银行参考SMA5和默认SMA', value)
@@ -196,20 +201,20 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(InputIssue):
             checked('平安银行参考SMA5', draft(indicator_mentions=['SMA5', 'RSI']))
 
-    def test_clarify_task_retains_conflict_but_recovers_the_checked_subject_type(self):
+    def test_clarify_task_retains_conflict_and_never_recovers_research(self):
         for mention, task in (('平安银行', 'stock_research'), ('沪深300', 'index_research')):
             value = draft(task='clarify', clarification_reason='conflict', confidence='low',
                 subject=dict(source='question', mentions=[mention], selection=None))
             log = []
             result = check_response(mention+'要求有冲突', response(value), context=context(), corrections=log)
-            self.assertEqual(result.task, task)
+            self.assertEqual(result.task, 'clarify')
             self.assertEqual(result.outcome, 'clarify_conflict')
             self.assertTrue(result.low_confidence)
-            self.assertIn('clarification_task', [c['kind'] for c in log])
+            self.assertNotIn('clarification_task', [c['kind'] for c in log])
             raw = check_response(mention+'要求有冲突', response(value), context=context(), normalize=False)
             self.assertEqual(raw.task, 'clarify')
         with self.assertRaises(InputIssue):
-            checked('沪深300财报有冲突', draft(task='clarify', clarification_reason='conflict',
+            checked('沪深300财报有冲突', draft(task='index_research', clarification_reason='conflict',
                 subject=dict(source='question', mentions=['沪深300'], selection=None),
                 research_kinds=[dict(kind='financial', phrase='财报')]))
 
@@ -222,7 +227,7 @@ class ProtocolTests(unittest.TestCase):
             value = draft(task='index_research', subject=dict(source='none', mentions=[], selection=None))
             result = checked('创业板'+suffix, value)
             self.assertEqual(result.bound_subjects, ())
-            self.assertEqual(result.outcome, 'reject' if 'ETF' in suffix or '基金' in suffix else 'clarify_subject')
+            self.assertEqual(result.outcome, 'clarify_subject')
 
     def test_nullable_corrections_are_audited_and_raw_response_is_immutable(self):
         value = draft(date_expression='null', horizon_expression=' NONE ', objective_phrase='无')
@@ -276,7 +281,7 @@ class ProtocolTests(unittest.TestCase):
         for question in ('研究大盘指数ETF', '研究沪深300指数基金', '研究创业板期权'):
             result = checked(question, draft(task='index_research', subject=dict(source='none', mentions=[], selection=None)))
             self.assertEqual(result.bound_subjects, ())
-            self.assertEqual(result.outcome, 'reject')
+            self.assertEqual(result.outcome, 'clarify_subject')
 
     def test_index_domain_normalization_cannot_erase_financial_or_strict_exclusion(self):
         value = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None),
@@ -288,7 +293,7 @@ class ProtocolTests(unittest.TestCase):
             checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[],
                 research_kinds=[dict(kind='technical', phrase='技术面'), dict(kind='financial', phrase='财报')]))
         conflict = checked('研究沪深300的财报，不要技术面', dict(value, indicator_mentions=[],
-            research_kinds=[dict(kind='technical', phrase='技术面')]))
+            research_kinds=[dict(kind='technical', phrase='技术面')], exclusions=[dict(kind='technical', phrase='不要技术面')]))
         self.assertEqual(conflict.outcome, 'clarify_conflict')
         self.assertEqual(conflict.research_kinds, ())
         self.assertEqual(conflict.exclusions, ('technical',))
@@ -359,7 +364,7 @@ class ProtocolTests(unittest.TestCase):
         for phrase in ('不要价位', '禁用计划', '不需要风险计划'):
             plain = checked('分析平安银行，'+phrase)
             self.assertFalse(plain.wants_plan)
-            self.assertIn('plan', plain.exclusions)
+            self.assertEqual(plain.exclusions, ())
             contradictory = checked('平安银行给价位，'+phrase,
                 draft(objective_kind='decision', objective_phrase='给价位', wants_plan=True, plan_phrase='给价位'))
             self.assertEqual(contradictory.outcome, 'clarify_conflict')
@@ -369,15 +374,17 @@ class ProtocolTests(unittest.TestCase):
 
     def test_positive_indicators_cannot_override_exclusions_or_drop_strict_scope(self):
         value = draft(indicator_mentions=['SMA3'], strict_scope=True, scope_phrase='只用SMA3',
-                      research_kinds=[dict(kind='technical', phrase='SMA3')])
+                      research_kinds=[dict(kind='technical', phrase='SMA3')], exclusions=[dict(kind='indicator:atr', phrase='禁用ATR')])
         intent = checked('平安银行只用SMA3，禁用ATR', value)
         self.assertEqual(intent.indicator_mentions, ('SMA3',))
         self.assertEqual(intent.exclusions, ('indicator:atr',))
         for bad in (draft(), draft(strict_scope=True, scope_phrase='只用SMA3')):
-            with self.subTest(bad=bad), self.assertRaises(InputIssue):
-                checked('平安银行只用SMA3，禁用ATR', bad)
+            with self.subTest(bad=bad):
+                result = checked('平安银行只用SMA3，禁用ATR', bad)
+                self.assertFalse(result.wants_plan)
+                self.assertEqual(result.strict_scope, bad['strict_scope'])
         conflict = checked('平安银行只用SMA3，禁用ATR',
-            draft(indicator_mentions=['SMA3', 'ATR'], strict_scope=True, scope_phrase='只用SMA3'))
+            draft(indicator_mentions=['SMA3', 'ATR'], strict_scope=True, scope_phrase='只用SMA3', exclusions=[dict(kind='indicator:atr', phrase='禁用ATR')]))
         self.assertEqual(conflict.outcome, 'clarify_conflict')
         self.assertEqual(conflict.indicator_mentions, ('SMA3',))
         self.assertEqual(conflict.exclusions, ('indicator:atr',))
@@ -418,10 +425,10 @@ class BindingTests(unittest.TestCase):
                       subject=dict(source='previous', mentions=[], selection='它'))
         log = []
         result = check_response('分析它', response(value), context=context(history=('研究浦发银行',)), corrections=log)
-        self.assertEqual(result.subject_source, 'none')
+        self.assertEqual(result.subject_source, 'previous')
         self.assertEqual(result.bound_subjects, ())
         self.assertEqual(result.outcome, 'clarify_subject')
-        self.assertEqual(log[0]['kind'], 'previous_without_record')
+        self.assertEqual(log, [])
         raw = check_response('分析它', response(value), context=context(), normalize=False)
         self.assertEqual(raw.subject_source, 'previous')
         for ctx in (context(previous=True), context(previous=True, source='akshare_eastmoney')):
@@ -434,14 +441,9 @@ class BindingTests(unittest.TestCase):
         for selection in ('它', '上一只'):
             value = draft(task='clarify', clarification_reason='subject', confidence='low',
                           subject=dict(source='none', mentions=[], selection=selection))
-            log = []
-            result = check_response('分析'+selection, response(value), context=context(previous=True), corrections=log)
-            self.assertEqual(result.subject_source, 'none')
-            self.assertEqual(result.bound_subjects, ())
-            self.assertEqual(result.outcome, 'clarify_subject')
-            self.assertEqual(log[0]['kind'], 'none_selection')
-            with self.assertRaises(InputIssue):
-                check_response('分析'+selection, response(value), context=context(previous=True), normalize=False)
+            for normalize in (True, False):
+                with self.subTest(selection=selection, normalize=normalize), self.assertRaises(InputIssue):
+                    check_response('分析'+selection, response(value), context=context(previous=True), normalize=normalize)
         with self.assertRaises(InputIssue):
             checked('研究浦发银行', draft(subject=dict(source='none', mentions=['浦发银行'], selection='它')))
 
@@ -455,43 +457,35 @@ class BindingTests(unittest.TestCase):
             self.assertEqual(result.bound_subjects, ('000001.SZ',))
             self.assertIsNone(result.horizon)
             self.assertEqual(result.outcome, 'clarify_horizon')
-            self.assertIn('previous_single_reference', [c['kind'] for c in log])
+            self.assertEqual(log, [])
             raw = check_response(selection+'给参考价', response(value), context=context(previous=True), normalize=False)
-            self.assertEqual(raw.outcome, 'clarify_horizon' if selection == '刚才那只' else 'clarify_subject')
+            self.assertEqual(raw.outcome, 'clarify_horizon')
             for ctx in (context(previous=True, securities=SECURITIES[:2]), context(previous=True, source='akshare_eastmoney')):
                 self.assertEqual(checked(selection+'给参考价', value, ctx).bound_subjects, ())
 
-    def test_unique_checked_explicit_subject_can_retire_its_subject_clarification(self):
-        for reason, expected in (('subject', 'research'), ('conflict', 'clarify_conflict'), ('identity', 'clarify_identity')):
-            value = draft(clarification_reason=reason, confidence='low',
-                          subject=dict(source='none', mentions=[], selection=None))
-            log = []
-            result = check_response('研究平安银行', response(value), context=context(), corrections=log)
-            self.assertEqual(result.task, 'stock_research')
-            self.assertEqual(result.outcome, expected)
-            self.assertTrue(result.low_confidence)
-            self.assertEqual('resolved_subject_clarification' in [c['kind'] for c in log], reason == 'subject')
-        self.assertEqual(checked('研究平安银行', draft(confidence='low', clarification_reason='subject')).outcome,
-                         'research')
-        ambiguous = draft(confidence='low', clarification_reason='subject',
-                          subject=dict(source='none', mentions=[], selection=None))
+    def test_checked_identity_never_retires_model_clarification(self):
+        for reason in ('subject', 'conflict', 'identity'):
+            value = draft(clarification_reason=reason, confidence='low', subject=dict(source='none', mentions=[], selection=None))
+            with self.assertRaises(InputIssue):
+                checked('研究平安银行', value)
+            explicit = draft(clarification_reason=reason, confidence='low')
+            self.assertEqual(checked('研究平安银行', explicit).outcome, 'clarify_'+reason)
         with self.assertRaises(InputIssue):
-            checked('研究平安', ambiguous)
-        # A log reused by a caller must not grant a new correction in this turn.
+            checked('研究平安', value)
         old_log = [dict(kind='explicit_subject')]
         result = check_response('研究它', response(draft(confidence='low', clarification_reason='subject',
             subject=dict(source='previous', mentions=[], selection='它'))), context=context(previous=True), corrections=old_log)
         self.assertEqual(result.outcome, 'clarify_subject')
 
-    def test_subject_clarification_recovers_index_task_but_keeps_ambiguity_and_references(self):
+    def test_subject_clarification_keeps_task_and_checked_identity_separate(self):
         for mention in ('大盘指数', '沪深300', '创业板'):
             question = mention+'中线参考计划'
             value = draft(task='clarify', clarification_reason='subject', confidence='low', objective_kind='decision',
                 objective_phrase='参考计划', wants_plan=True, plan_phrase='参考计划', horizon_expression='中线',
                 subject=dict(source='question', mentions=[mention], selection=None))
             result = checked(question, value)
-            self.assertEqual(result.task, 'index_research')
-            self.assertEqual(result.outcome, 'research')
+            self.assertEqual(result.task, 'clarify')
+            self.assertEqual(result.outcome, 'clarify_subject')
             self.assertTrue(result.low_confidence)
         for question, mentions in (('研究平安', ['平安']), ('比较平安银行和浦发银行', ['平安银行', '浦发银行']),
                                    ('它和浦发银行比较', ['浦发银行'])):
@@ -539,20 +533,20 @@ class BindingTests(unittest.TestCase):
         value = draft(subject=dict(source='previous', mentions=[], selection='浦发银行'), operation='refresh',
                       objective_kind='decision', objective_phrase='给方向')
         log = []
-        result = check_response('浦发银行给方向', response(value), context=ctx, corrections=log)
-        self.assertEqual(result.subject_source, 'question')
-        self.assertEqual(result.operation, 'refresh')
-        self.assertEqual(result.objective_kind, 'decision')
-        self.assertIsNone(result.horizon)
-        self.assertEqual(log[0]['kind'], 'explicit_subject')
+        with self.assertRaises(InputIssue):
+            check_response('浦发银行给方向', response(value), context=ctx, corrections=log)
+        self.assertEqual(log, [])
         with self.assertRaises(InputIssue):
             check_response('浦发银行给方向', response(value), context=ctx, normalize=False)
         for selection in ('第二只', '招商银行'):
             with self.assertRaises(InputIssue):
                 checked('浦发银行给方向', dict(value, subject=dict(source='previous', mentions=[], selection=selection)), ctx)
 
-    def test_unwritten_pronoun_drops_to_null_but_never_selects_among_multiple_objects(self):
+    def test_unwritten_selection_rejects_and_implicit_latest_never_selects_multiple(self):
         value = draft(subject=dict(source='previous', mentions=[], selection='它'))
+        with self.assertRaises(InputIssue):
+            checked('继续分析', value, context(previous=True, securities=SECURITIES[:2]))
+        value['subject']['selection'] = None
         result = checked('继续分析', value, context(previous=True, securities=SECURITIES[:2]))
         self.assertEqual(result.bound_subjects, ())
         self.assertEqual(result.outcome, 'clarify_subject')
@@ -573,20 +567,21 @@ class BindingTests(unittest.TestCase):
         pending = ctx.session.product_pending
         value = draft(operation='update', objective_kind='decision', objective_phrase='能买吗',
             wants_plan=True, plan_phrase='能买吗', horizon_expression='中线',
-            subject=dict(source='question', mentions=['浦发银行'], selection=None))
+            reference=dict(kind='latest', index=None, scope='pending'),
+            subject=dict(source='previous', mentions=[], selection=None))
         log = []
-        result = check_response('中线，改为浦发银行', response(value), context=ctx, corrections=log)
-        self.assertEqual(result.bound_subjects, ('600000.SH',))
+        result = check_response('中线', response(value), context=ctx, corrections=log)
+        self.assertEqual(result.bound_subjects, ('000001.SZ',))
         self.assertEqual(result.horizon, '未来40个交易日')
         self.assertNotEqual(result.historical_window[0], plan.start_date.isoformat())
         self.assertIn(('objective_phrase', 'program_pending'), result.provenance)
-        self.assertEqual({c['kind'] for c in log}, {'pending_evidence'})
+        self.assertEqual(log, [])
         invalid_contexts = (context(history=(pending.original_question,)), replace(ctx, now=NOW+timedelta(minutes=15)),
                             replace(ctx, source='akshare_eastmoney'), replace(ctx, development=True))
         for invalid in invalid_contexts:
             with self.assertRaises(InputIssue):
-                checked('中线，改为浦发银行', value, invalid)
-        for changes in (dict(operation='new'), dict(date_expression='最近一个月'),
+                checked('中线', value, invalid)
+        for changes in (dict(operation='new'), dict(subject=dict(source='question', mentions=['浦发银行'], selection=None, reference=dict(kind='none', index=None, scope=None))), dict(date_expression='最近一个月'),
                         dict(indicator_mentions=['ATR']), dict(scope_phrase='只看技术面')):
             with self.assertRaises(InputIssue):
                 checked('中线，改为浦发银行', dict(value, **changes), ctx)
@@ -594,7 +589,7 @@ class BindingTests(unittest.TestCase):
         ctx.session.stage_research_subject(SECURITIES[1:2], kind='company', source='tencent', development=False,
             now=NOW, scope=SimpleNamespace(objective=ResearchObjective('decision', '未来40个交易日')))
         ctx.session.product_pending = pending
-        continued = draft(operation='update', objective_kind='decision', wants_plan=True,
+        continued = draft(reference=dict(kind='latest', index=None, scope='pending'), operation='update', objective_kind='decision', wants_plan=True,
                           subject=dict(source='previous', mentions=[], selection=None))
         result = checked('继续', continued, ctx)
         self.assertEqual(result.bound_subjects, ('000001.SZ',))
@@ -608,7 +603,7 @@ class BindingTests(unittest.TestCase):
             ctx or context(previous=True))
 
     def test_901_seconds_keeps_identity_but_drops_old_horizon(self):
-        for age, expected in ((899, '未来40个交易日'), (900, None), (901, None)):
+        for age, expected in ((899, None), (900, None), (901, None)):
             with self.subTest(age=age):
                 ctx = context(previous=True, age=age, horizon='未来40个交易日')
                 intent = self.previous(ctx=ctx)
@@ -661,13 +656,16 @@ class BindingTests(unittest.TestCase):
     def test_multiple_previous_objects_need_explicit_same_publication_selection(self):
         ctx = context(previous=True, securities=SECURITIES[:2])
         self.assertEqual(self.previous(ctx=ctx).outcome, 'clarify_subject')
-        value = draft(subject=dict(source='previous', mentions=[], selection='第二只'))
+        value = draft(reference=dict(kind='ordinal', index=2, scope='latest_research'), subject=dict(source='previous', mentions=[], selection='第二只'))
         self.assertEqual(checked('研究第二只', value, ctx).bound_subjects, ('600000.SH',))
         value['subject']['selection'] = '它们'
+        value['subject']['reference'] = dict(kind='all', index=None, scope='latest_research')
         self.assertEqual(checked('研究它们', value, ctx).bound_subjects, ('000001.SZ', '600000.SH'))
         value['subject']['selection'] = '第三只'
+        value['subject']['reference'] = dict(kind='ordinal', index=3, scope='latest_research')
         self.assertEqual(checked('研究第三只', value, ctx).bound_subjects, ())
         value['subject']['selection'] = '第十只'
+        value['subject']['reference']['index'] = 10
         self.assertEqual(checked('研究第十只', value, context(previous=True)).bound_subjects, ())
 
     def test_stocks_indices_and_etfs_do_not_share_identities(self):
@@ -677,7 +675,9 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(checked('研究它', value, index_ctx).bound_subjects, ('000300.SH',))
         index = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None))
         self.assertEqual(checked('研究沪深300', index).bound_subjects, ('000300.SH',))
-        product = checked('研究沪深300ETF', index)
+        with self.assertRaises(InputIssue):
+            checked('研究沪深300ETF', index)
+        product = checked('研究沪深300ETF', draft(task='unsupported', subject=dict(source='question', mentions=['沪深300ETF'], selection=None)))
         self.assertEqual(product.task, 'unsupported')
         self.assertEqual(product.outcome, 'reject')
         self.assertEqual(product.bound_subjects, ())
@@ -701,14 +701,14 @@ class BindingTests(unittest.TestCase):
         pending = gate(plan, now=NOW, reference_date=REFERENCE_DATE, development=False).context
         self.assertIsNotNone(pending)
         ctx.session.product_pending = pending
-        value = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None), objective_kind='decision',
+        value = draft(reference=dict(kind='latest', index=None, scope='pending'), operation='update', subject=dict(source='previous', mentions=[], selection=None), objective_kind='decision',
                       wants_plan=True, horizon_expression='中线')
         intent = checked('中线，禁用ATR', value, ctx)
         self.assertEqual(intent.bound_subjects, ('000001.SZ',))
         self.assertEqual(intent.horizon, '未来40个交易日')
         self.assertEqual(intent.plan_blocked, 'risk_atr_not_authorized')
         self.assertIs(ctx.session.product_pending, pending)
-        wrong = draft(subject=dict(source='previous', mentions=[], selection='第二只'))
+        wrong = draft(reference=dict(kind='ordinal', index=2, scope='pending'), subject=dict(source='previous', mentions=[], selection='第二只'))
         self.assertEqual(checked('研究第二只', wrong, ctx).bound_subjects, ())
         expired = replace(ctx, now=NOW+timedelta(minutes=15))
         self.assertEqual(self.previous(ctx=expired).bound_subjects, ())
@@ -723,7 +723,7 @@ class BindingTests(unittest.TestCase):
         ctx = replace(context(), quote_source=quote_source)
         request = ScreeningRequest((ScreeningCondition('price', 'gt', 0),), limit=3)
         ctx.session.screening_saved = SavedScreening(NOW, request, SECURITIES[:3], quote_source)
-        value = draft(subject=dict(source='previous', mentions=[], selection='第二只'),
+        value = draft(reference=dict(kind='ordinal', index=2, scope='shortlist'), subject=dict(source='previous', mentions=[], selection='第二只'),
                       research_kinds=[dict(kind='technical', phrase='技术面')])
         intent = checked('研究第二只的技术面', value, ctx)
         self.assertEqual(intent.bound_subjects, ('600000.SH',))
@@ -737,11 +737,11 @@ class BindingTests(unittest.TestCase):
         ctx = replace(context(), quote_source=object())
         request = ScreeningRequest((ScreeningCondition('price', 'gt', 0),), limit=3)
         ctx.session.screening_saved = SavedScreening(NOW, request, SECURITIES[:3], ctx.quote_source)
-        value = draft(task='screening', operation='update', subject=dict(source='previous', mentions=[], selection='名单'))
+        value = draft(task='screening', operation='update', subject=dict(source='none', mentions=[], selection=None), scope_phrase='名单')
         result = checked('名单改为8只', value, ctx)
         self.assertEqual(result.subject_source, 'none')
         self.assertEqual(result.bound_subjects, ())
-        self.assertIn(('screening_task', 'program_screening'), result.provenance)
+        self.assertEqual(result.operation, 'update')
         for bad in (dict(value, objective_phrase='新增一个条件'),
                     dict(value, subject=dict(source='previous', mentions=[], selection='第二只'))):
             with self.assertRaises(InputIssue):
@@ -750,8 +750,8 @@ class BindingTests(unittest.TestCase):
             checked('改为8只', value, ctx)  # A fabricated list phrase is not silently discarded.
         for invalid in (replace(ctx, now=NOW+timedelta(minutes=15)), replace(ctx, quote_source=object()),
                         replace(ctx, source='akshare_eastmoney')):
-            with self.assertRaises(InputIssue):
-                checked('名单改为8只', value, invalid)
+            result = checked('名单改为8只', value, invalid)
+            self.assertEqual((result.operation, result.bound_subjects), ('update', ()))
 
 
 class AttemptTests(unittest.TestCase):

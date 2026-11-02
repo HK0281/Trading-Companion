@@ -36,6 +36,11 @@ def draft(**changes):
         horizon_expression=None, date_expression=None, indicator_mentions=[], research_kinds=[],
         exclusions=[], strict_scope=False, scope_phrase=None, confidence='high', clarification_reason=None)
     value.update(changes)
+    # This helper creates new synthetic proposals; archived model outputs are not adapted.
+    value['subject'] = deepcopy(value['subject'])
+    value['subject'].setdefault('reference', dict(
+        kind='latest' if value['subject']['source'] == 'previous' else 'none', index=None,
+        scope='latest_research' if value['subject']['source'] == 'previous' else None))
     return value
 
 
@@ -154,7 +159,7 @@ class AdmissionTests(unittest.TestCase):
 
 
 class ContextTests(unittest.TestCase):
-    def test_explanation_requires_real_saved_bundle_and_never_truncates_research(self):
+    def test_saved_bundle_explanations_and_extra_research_both_reach_model_whole(self):
         prefix = [dict(question='研究浦发银行', script=dict(phases=['company_intent', 'company_answer'],
                     mentions=['浦发银行'], kinds=['profile', 'financial', 'news', 'announcements', 'technical']))]
         latest = dict(kind='company', subjects=['600000.SH'], age_seconds=0, source='tencent',
@@ -166,9 +171,7 @@ class ContextTests(unittest.TestCase):
         self.assertIsNotNone(ctx.session.product_saved.bundle)
         for question in ('说明一下此前的结论', '为何作出该判断', '此前研究的证据说明什么'):
             local = experiment.local_preflight(question, ctx)
-            self.assertEqual(local.operation, 'explain')
-            self.assertTrue(local.zero_intent_calls)
-            self.assertEqual(local.bound_subjects, ('600000.SH',))
+            self.assertIsNone(local)
         for question in ('说明一下此前的结论，再核对最新数据', '解释结论并给评级', '解释结论，改用SMA5',
                          '解释平安银行的结论', '说明此前结论，分析最近20天', '解释结论并给价位'):
             self.assertIsNone(experiment.local_preflight(question, ctx), question)
@@ -205,7 +208,7 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(ctx.model_context()['latest']['age_seconds'], 901)
         self.assertEqual(ctx.source, 'akshare_eastmoney')
         self.assertEqual(ctx.session.latest_research.source, 'tencent')
-        self.assertEqual(ctx.model_context()['latest']['horizon'], '未来40个交易日')
+        self.assertNotIn('horizon', ctx.model_context()['latest'])
         self.assertEqual(ctx.model_context()['capabilities'], dict(company=True, workflow=True, memory=True))
 
     def pending_state(self, question='中线'):
@@ -266,24 +269,25 @@ class PredictionTests(unittest.TestCase):
         model, budget = RecordingModel(), experiment.AttemptBudget(155)
         result = experiment.predict(state('中线能不能买'), prefixes={}, model=model, budget=budget)
         self.assertEqual(result['attempts'], 1)
-        for question in ('短线交易是什么意思', '什么是价值投资', 'RSI是什么指标'):
+        for question in ('短线交易是什么意思', '什么是价值投资', 'RSI是什么指标', 'RSI是什么'):
             result = experiment.predict(state(question), prefixes={}, model=model, budget=budget)
-            self.assertEqual(result['attempts'], 0, question)
-            self.assertEqual(result['fields']['task'], 'knowledge')
+            self.assertEqual(result['attempts'], 0 if question == 'RSI是什么' else 1, question)
+            if question == 'RSI是什么':
+                self.assertEqual(result['fields']['task'], 'knowledge')
 
     def test_new_local_guards_and_existing_general_knowledge_are_identified(self):
         model = RecordingModel()
         budget = experiment.AttemptBudget(155)
-        for question, expected in (('你上次判断看多还是看空', 'v2_recall_choice'),
-                                   ('请提交浦发银行的委托', 'v2_order_submission_guard'),
-                                   ('PE怎么用于估值', 'existing_general_knowledge')):
+        for question, expected in (('你上次说的方向是什么', 'recall.exact'),
+                                   ('请提交浦发银行的委托', 'existing_execution_guard'),
+                                   ('ATR是什么', 'indicator_definition.whole')):
             result = experiment.predict(state(question, history=['已完成研究']), prefixes={}, model=model, budget=budget)
             self.assertEqual(result['attempts'], 0)
             self.assertIn(('preflight', expected), result['metadata']['provenance'])
         self.assertEqual(model.messages, [])
-        for question in ('你上次判断看多还是看空，再研究浦发银行', 'PE怎么用于估值，然后研究浦发银行'):
+        for question in ('你上次判断看多还是看空，再研究浦发银行', 'PE怎么用于估值，然后研究浦发银行', '你上次判断看多还是看空', 'PE怎么用于估值'):
             experiment.predict(state(question, history=['已完成研究']), prefixes={}, model=model, budget=budget)
-        self.assertEqual(len(model.messages), 2)
+        self.assertEqual(len(model.messages), 4)
         ctx, _ = experiment.program_context(state(), {})
         self.assertIsNone(experiment.local_preflight('创业板后续表现如何', ctx))
 
@@ -316,7 +320,7 @@ class PredictionTests(unittest.TestCase):
         model = RecordingModel()
         budget = experiment.AttemptBudget(155)
         for question, task in (('取消研究', 'command'), ('替我下单买入浦发银行', 'unsupported'),
-                               ('SMA是什么', 'knowledge'), ('回顾一下你上一轮的评级', 'recall')):
+                               ('SMA是什么', 'knowledge'), ('你上次给出的评级是什么', 'recall')):
             result = experiment.predict(state(question, history=['历史问题']), prefixes={}, model=model, budget=budget)
             self.assertEqual(result['fields']['task'], task)
             self.assertEqual(result['attempts'], 0)

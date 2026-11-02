@@ -50,7 +50,8 @@ def population():
 def response():
     draft = dict(version=VERSION, task='stock_research', operation='new', objective_kind='analysis',
         objective_phrase=None, wants_plan=False, plan_phrase=None,
-        subject=dict(source='question', mentions=['浦发银行'], selection=None), horizon_expression=None,
+        subject=dict(source='question', mentions=['浦发银行'], selection=None,
+                     reference=dict(kind='none', index=None, scope=None)), horizon_expression=None,
         date_expression=None, indicator_mentions=[], research_kinds=[], exclusions=[], strict_scope=False,
         scope_phrase=None, confidence='high', clarification_reason=None)
     return ToolModelResponse('tool_calls', tool_calls=(ToolCall('independent', TOOL_NAME, draft),),
@@ -212,7 +213,7 @@ class ContextPreflightTests(OfflineTests):
                 self.assertEqual(context.model_context()['pending']['valid'], valid)
                 self.assertEqual(calls, 1)
                 if not valid:
-                    self.assertIsNone(context.model_context()['pending']['original_question'])
+                    self.assertNotIn('original_question', context.model_context()['pending'])
 
     def test_conflict_uses_two_native_objects_and_only_reviewed_seed_conditions(self):
         contexts = []

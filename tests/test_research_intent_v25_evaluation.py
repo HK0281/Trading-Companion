@@ -58,7 +58,9 @@ class EvaluationTests(OfflineTests):
         self.assertEqual(result['unbuildable'], ['V2002'])
         self.assertEqual(set(result['not_applicable']), {'V2222', 'V2223'})
         self.assertEqual((result['target_calls'], result['prediction_rows'], result['score_rows']), (0, 0, 0))
-        # Gold chooses which public contract to assert, never a model input or program branch.
+        # Historical local labels remain frozen. These public cases now require the model
+        # under v2.6's finite whole-input grammar; this is not a gold amendment.
+        model_paths = set('V2021 V2022 V2023 V2024 V2025 V2095 V2126 V2127 V2128 V2129 V2130 V2147 V2148 V2165 V2216 V2217 V2218 V2219 V2220 V2221 V2224 V2225 V25D005 V25D019 V25D026 V25D038 V25D056 V25D059 V25D060 V25D061 V25D065 V25D066 V25D069 V25D077'.split())
         for row in rows:
             if row['id'] in experiment.NOT_APPLICABLE or not effective[row['id']]['zero_intent_calls']:
                 continue
@@ -66,6 +68,10 @@ class EvaluationTests(OfflineTests):
                 ctx, _ = experiment.build_context(row, prefixes, setups)
                 before = dict(ctx.session.__dict__)
                 local = intent.local_preflight(row['question'], ctx)
+                if row['id'] in model_paths:
+                    self.assertIsNone(local)
+                    self.assertEqual(ctx.session.__dict__, before)
+                    continue
                 self.assertIsNotNone(local)
                 self.assertEqual(ctx.session.__dict__, before)
                 for key, value in effective[row['id']].items():

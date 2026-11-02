@@ -112,9 +112,9 @@ class ScalarTests(OfflineTests):
 
 
 class EvidenceAndDateTests(OfflineTests):
-    def test_false_plan_phrase_is_cleared_with_exact_veto_or_unused_reason_and_original_preserved(self):
+    def test_false_plan_evidence_is_grounded_then_cleared_without_semantic_veto_repair(self):
         for phrase, exclusions, kind in (
-                ('不用价位', [dict(kind='plan', phrase='不用价位')], 'vetoed_plan_phrase'),
+                ('不用价位', [dict(kind='plan', phrase='不用价位')], 'unused_plan_phrase'),
                 ('价位', [dict(kind='plan', phrase='不用价位')], 'unused_plan_phrase'),
                 ('平安银行', [], 'unused_plan_phrase')):
             value = draft(plan_phrase=phrase, exclusions=exclusions)
@@ -126,7 +126,7 @@ class EvidenceAndDateTests(OfflineTests):
             self.assertEqual(value, original)
             raw_log = []
             intent.check_response('研究平安银行，不用价位', response(value), context=context(), normalize=False, corrections=raw_log)
-            self.assertFalse(any(e['kind'] in ('vetoed_plan_phrase','unused_plan_phrase') for e in raw_log))
+            self.assertFalse(any(e['kind'] in ('unused_plan_phrase','unused_plan_phrase') for e in raw_log))
 
     def test_grounding_bad_veto_and_true_plan_still_obey_existing_checks(self):
         for value in (draft(plan_phrase='fabricated'), draft(plan_phrase=12),

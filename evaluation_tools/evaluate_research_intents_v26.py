@@ -1,4 +1,4 @@
-"""Plan public v2.6.1 development/regression on the frozen v2.6 populations; live runs by Claude."""
+"""Plan public v2.6.2 development/regression on the frozen v2.6 populations; live runs by Claude."""
 
 import argparse
 from copy import deepcopy

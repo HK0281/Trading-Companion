@@ -432,9 +432,11 @@ class BindingTests(unittest.TestCase):
         raw = check_response('分析它', response(value), context=context(), normalize=False)
         self.assertEqual(raw.subject_source, 'previous')
         for ctx, expected in ((context(previous=True), 'previous'),
-                              (context(previous=True, source='akshare_eastmoney'), 'none')):
+                              (context(previous=True, source='akshare_eastmoney'), 'previous')):
             result = checked('分析它', value, ctx)
             self.assertEqual(result.subject_source, expected)
+            if ctx.source != 'tencent':
+                self.assertEqual((result.bound_subjects, result.outcome), ((), 'clarify_subject'))
         with self.assertRaises(InputIssue):
             checked('分析它', dict(value, subject=dict(source='previous', mentions=[], selection='不存在的对象')))
 

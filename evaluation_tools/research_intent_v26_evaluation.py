@@ -1,4 +1,4 @@
-"""Public v2.6.1 candidate evaluation; frozen v2.6 dev and exposed regression inputs."""
+"""Public v2.6.2 candidate evaluation; frozen v2.6 dev and exposed regression inputs."""
 
 from copy import deepcopy
 from hashlib import sha256
@@ -9,6 +9,7 @@ from threading import Lock
 
 from evaluation_tools import research_intent_v25_evaluation as previous
 from evaluation_tools import research_intent_v26_cases as cases
+from evaluation_tools import research_intent_v262_amendments as amendments
 from trading_companion import research_intent_v2 as intent
 from trading_companion.intent_router_task import digest
 from trading_companion.model import ModelConfigurationError
@@ -22,7 +23,7 @@ NOT_APPLICABLE = cases.NOT_APPLICABLE
 LIMITS = {'dev': 64, 'regression': 414}
 CALL_CAPS = {'dev': 80, 'regression': 520}
 MINIMUM_CORRECT = {'dev': 61, 'regression': 392}
-APPROVAL_MESSAGE = 445
+APPROVAL_MESSAGE = 454
 FAILED_ARGUMENT_NOTICE = previous.FAILED_ARGUMENT_NOTICE
 _git = previous._git
 RunInvalidated = previous.RunInvalidated
@@ -32,7 +33,8 @@ def populations(split):
     if type(split) is not str or split not in LIMITS:
         raise ValueError('Only public dev/regression are accepted; no custom or holdout entry')
     freeze = cases.validate_freeze(require_review=True)
-    legacy, _, amended = cases.load_amendments(require_approved=True)
+    legacy, _, _ = cases.load_amendments(require_approved=True)
+    _, amended = amendments.load_amendments()
     fresh = cases.load_cases(expected_sha256=freeze['dev_sha256_lf'])
     rows = deepcopy(fresh if split == 'dev' else legacy)
     effective = {r['id']: deepcopy(r['gold']) for r in (fresh if split == 'dev' else amended)}
@@ -59,7 +61,9 @@ def fingerprints():
     paths.update(ROOT/name for name in (*cases.PUBLIC_FILES, *cases.PARENT_FILES,
         'data/evaluation/research-intent-v2.6-freeze.json', 'data/evaluation/research-intent-v2.4-holdout-population.json',
         'tests/test_deepseek_tool_model.py', 'tests/test_turn_control.py', 'README.md',
-        'docs/research-intent-v2.6-implementation.md', 'docs/research-intent-v2.6.1-implementation.md'))
+        'docs/research-intent-v2.6-implementation.md', 'docs/research-intent-v2.6.1-implementation.md',
+        'docs/research-intent-v2.6.2-implementation.md',
+        'data/evaluation/research-intent-v2.6.2-amendments.json'))
     return {p.relative_to(ROOT).as_posix(): cases.public_sha256(p) for p in sorted(paths)}
 
 
@@ -67,15 +71,16 @@ def build_plan(split='dev', maximum=None):
     rows, _, _, _ = populations(split)
     if maximum is not None and (type(maximum) is not int or not 1 <= maximum <= CALL_CAPS[split]):
         raise ValueError('Call limit may only tighten the separately approved split cap')
-    if intent.VERSION != 'research-intent-v2.6.1':
-        raise ValueError('Only the approved v2.6.1 contract may use this public runner')
-    return dict(kind='research-intent-v2.6.1-public-plan', contract_version=intent.VERSION,
+    if intent.VERSION != 'research-intent-v2.6.2':
+        raise ValueError('Only the approved v2.6.2 contract may use this public runner')
+    return dict(kind='research-intent-v2.6.2-public-plan', contract_version=intent.VERSION,
         guard_version=intent.GUARD_VERSION, split=split, total=len(rows), max_calls=maximum or CALL_CAPS[split],
         paid_approval_message=APPROVAL_MESSAGE, approved_call_caps=deepcopy(CALL_CAPS), combined_call_cap=600,
         max_attempts_per_target=2, model='deepseek-flash', temperature=0, thinking='disabled', max_output_tokens=1500,
         timeout_seconds=45, observed_token_limit=24000, input_usage='unknown', cost='unknown',
         runtime_revision=_git('rev-parse', 'HEAD'), workspace_dirty=bool(_git('status', '--porcelain')),
         source_sha256_lf=fingerprints(), freeze_sha256_lf=cases.public_sha256(cases.FREEZE),
+        annotation_amendments=amendments.summary(),
         prompt_sha256=sha256(intent.INSTRUCTION.encode('utf-8')).hexdigest(), tool_sha256=digest(intent.TOOL.to_dict()),
         context_preflight=cases.preflight(rows),
         tool_arguments_policy=dict(strict_first=True, candidate_only=True, repair_enabled=True,
@@ -270,8 +275,10 @@ def report_results(rows, effective, plan, *, live=False):
     retried = [r for r in rows if r['V2'].get('format_retry', {}).get('attempted')]
     recovered = [r for r in retried if r['V2']['format_retry']['successful']]
     applicable = [r for r in approved if r['id'] not in NOT_APPLICABLE]
-    return dict(kind='research-intent-v2.6.1-public-report', title='v2.6.1 公开开发与已暴露回归', notice=None,
+    return dict(kind='research-intent-v2.6.2-public-report', title='v2.6.2 公开开发与已暴露回归', notice=None,
         plan=plan, rows=rows, score_views=views, common_comparison=previous._common(applicable), zero_tolerance=redlines(approved),
+        annotation_amendments=(deepcopy(plan['annotation_amendments']) if 'annotation_amendments' in plan
+                               else amendments.summary()),
         thresholds=thresholds, paid_calls=telemetry['attempts'] if live else 0, telemetry=telemetry,
         reference_comparison=[dict(id=r['id'], expected=r['reference_expectation']['reference'],
             actual=r['V2'].get('metadata', {}).get('diagnostics', {}).get('reference'),
@@ -292,6 +299,20 @@ def report_results(rows, effective, plan, *, live=False):
 
 def markdown(report):
     text = previous.markdown(report)
+    annotations = report.get('annotation_amendments')
+    if annotations:
+        lines = ['\n公开标注修订（不计模型改善）：', '',
+                 '| 修订层 | 题号 | 字段 | 原值 | 拟定值 | 状态 | 已应用 | 批准消息 |',
+                 '| --- | --- | --- | --- | --- | --- | --- | --- |']
+        for name in ('previous', 'v262'):
+            layer = annotations[name]
+            for group in ('changes', 'unchanged'):
+                for item in layer.get(group, []):
+                    applied = group == 'changes' and item['status'] == 'approved'
+                    lines.append('| '+' | '.join(str(v) for v in (layer['version'], item['id'], item['field'],
+                        item['before'], item['after'], item['status'], '是' if applied else '否',
+                        item['approval_message']))+' |')
+        text += '\n'.join(lines)+'\n'
     return text + '\nreference、收窄接受和扩权阻断诊断见 report.json 的 metadata.diagnostics；输入用量和费用 unknown。\n'
 
 
@@ -320,9 +341,11 @@ def evaluate(*, split='dev', live=False, maximum=None, timeout_seconds=45):
         return plan
     if plan['workspace_dirty'] or not plan['context_preflight']['passed']:
         raise ValueError('Live evaluation requires a clean reviewed commit and complete public preflight')
+    if plan['annotation_amendments']['v262']['pending_reviews']:
+        raise ValueError('Claude approval required for every v2.6.2 annotation review before live evaluation')
     assert_current(plan)
     # Approval is per version/split, never renewed by making another commit.
-    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6.1/public'/split
+    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6.2/public'/split
     folder.mkdir(parents=True, exist_ok=False)
     try:
         plan['live_enabled'] = True

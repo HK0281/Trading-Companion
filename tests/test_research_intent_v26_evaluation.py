@@ -46,10 +46,12 @@ class PublicEvaluationTests(OfflineTests):
     def test_plan_is_offline_and_pins_new_approval_and_split_caps(self):
         with patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')):
             plan = evaluation.evaluate(split='dev')
-        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 445))
-        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.1')
+        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 454))
+        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.2')
         self.assertEqual(plan['approved_call_caps'], dict(dev=80, regression=520))
-        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [445])
+        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [454])
+        self.assertIn('data/evaluation/research-intent-v2.6.2-amendments.json', plan['source_sha256_lf'])
+        self.assertFalse(plan['annotation_amendments']['model_improvement'])
         self.assertEqual((plan['paid_calls'], plan['input_usage'], plan['cost']), (0, 'unknown', 'unknown'))
         self.assertFalse(plan['live_enabled'])
         self.assertFalse(plan['eligible_for_switch'])
@@ -163,8 +165,9 @@ class PublicEvaluationTests(OfflineTests):
     def test_late_drift_removes_passing_report_and_keeps_run_claim(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
-            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.1/public/dev'
-            plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='synthetic', max_calls=1)
+            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.2/public/dev'
+            plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='synthetic', max_calls=1,
+                        annotation_amendments=dict(v262=dict(pending_reviews=0)))
             def check(_):
                 if (target/'report.json').exists():
                     raise evaluation.RunInvalidated('synthetic late drift')
@@ -184,7 +187,8 @@ class PublicEvaluationTests(OfflineTests):
 
     def test_new_revision_cannot_reopen_same_version_split_or_reload_credentials(self):
         with TemporaryDirectory() as folder:
-            plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='first', max_calls=1)
+            plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='first', max_calls=1,
+                        annotation_amendments=dict(v262=dict(pending_reviews=0)))
             with patch.object(evaluation, 'ROOT', Path(folder)), patch.object(evaluation, 'build_plan', return_value=plan), \
                     patch.object(evaluation, 'assert_current'), \
                     patch.object(evaluation, 'populations', return_value=([], {}, {}, {})), \

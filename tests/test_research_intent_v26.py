@@ -47,7 +47,7 @@ class V26Tests(unittest.TestCase):
         return intent.check_response(question, response(value or previous_value()), context=ctx or context(previous=True))
 
     def test_version_and_reference_are_required_without_provider_compatibility(self):
-        self.assertEqual(intent.VERSION, 'research-intent-v2.6.1')
+        self.assertEqual(intent.VERSION, 'research-intent-v2.6.2')
         self.assertEqual(len(self.check().fields()), 14)
         original = previous_value()
         bad = deepcopy(original)

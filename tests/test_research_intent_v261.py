@@ -191,11 +191,13 @@ class V261Tests(unittest.TestCase):
         checked, _ = self.check(continued, ctx, '中线')
         self.assertTrue(checked.wants_plan)
         self.assertEqual(checked.diagnostics['authorization']['plan_source'], 'program_pending')
-        for value, question in ((dict(continued, operation='new'), '中线'),
-                (draft(operation='update', wants_plan=True, plan_phrase='参考价',
-                    subject=dict(source='question', mentions=['浦发银行'], selection=None)), '研究浦发银行')):
-            with self.assertRaises(InputIssue):
-                self.check(value, ctx, question)
+        with self.assertRaises(InputIssue):
+            self.check(dict(continued, operation='new'), ctx, '中线')
+        value = draft(operation='update', wants_plan=True, plan_phrase='参考价',
+                      subject=dict(source='question', mentions=['浦发银行'], selection=None))
+        checked, _ = self.check(value, ctx, '研究浦发银行')
+        self.assertFalse(checked.wants_plan)
+        self.assertFalse(checked.diagnostics['authorization']['same_task_pending'])
 
 
 if __name__ == '__main__':

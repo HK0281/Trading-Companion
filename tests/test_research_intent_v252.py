@@ -130,9 +130,12 @@ class OrdinalTests(OfflineTests):
         base.session._subject_current = False
         self.assertEqual(self.check('上一份比较里的第一只', base, index=1).outcome, 'clarify_subject')
 
-    def test_neutral_prefix_cannot_select_pending_or_fall_back_to_a_list_without_research(self):
+    def test_conflict_precedes_neutral_prefix_and_missing_research_cannot_fall_back_to_list(self):
         ctx = context(previous=True, securities=SECURITIES[:2])
         ctx.session.product_pending, ctx.session.index_pending = object(), object()
+        result = self.check('上一份比较里的第二只', ctx)
+        self.assertEqual((result.bound_subjects, result.outcome), ((), 'clarify_conflict'))
+        ctx.session.clear_pending()
         self.assertEqual(self.check('上一份比较里的第二只', ctx).bound_subjects, (SECURITIES[1].instrument_id,))
         ctx = context()
         ctx.session.screening_saved = object()

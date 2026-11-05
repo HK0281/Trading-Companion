@@ -47,7 +47,7 @@ class V26Tests(unittest.TestCase):
         return intent.check_response(question, response(value or previous_value()), context=ctx or context(previous=True))
 
     def test_version_and_reference_are_required_without_provider_compatibility(self):
-        self.assertEqual(intent.VERSION, 'research-intent-v2.6.2')
+        self.assertEqual(intent.VERSION, 'research-intent-v2.6.3')
         self.assertEqual(len(self.check().fields()), 14)
         original = previous_value()
         bad = deepcopy(original)
@@ -243,13 +243,14 @@ class V26Tests(unittest.TestCase):
         for changed in (replace(ctx, conversation_memory=False), replace(ctx, now=NOW+timedelta(seconds=900))):
             self.assertIsNone(intent.local_preflight('中线', changed))
 
-    def test_conflicting_or_consumed_pending_cannot_grant_authority_or_block_a_new_task(self):
+    def test_conflicting_or_consumed_pending_cannot_grant_authority(self):
         ctx = pending_context()
         ctx.session._pending = object()
         self.assertEqual(ctx.model_context()['pending'], dict(valid=False, reason='conflict'))
         self.assertIsNone(intent.local_preflight('未来5天', ctx))
         value = draft(subject=dict(source='question', mentions=['浦发银行'], selection=None))
-        self.assertEqual(self.check('研究浦发银行', value, ctx).bound_subjects, ('600000.SH',))
+        result = self.check('研究浦发银行', value, ctx)
+        self.assertEqual((result.bound_subjects, result.outcome), ((), 'clarify_conflict'))
         ctx.session.clear_pending()
         self.assertIsNone(intent.local_preflight('中线', ctx))
         self.assertEqual(self.check(value=previous_value(reference(scope='pending')), ctx=ctx).bound_subjects, ())
@@ -257,11 +258,12 @@ class V26Tests(unittest.TestCase):
     def test_positive_authorization_is_not_lent_to_another_task_or_identity(self):
         ctx = pending_context()
         for value, question in ((previous_value(reference(scope='pending'), operation='new', wants_plan=True), '继续'),
-                (previous_value(reference(scope='pending'), operation='update', task='index_research', wants_plan=True), '继续'),
-                (draft(operation='update', subject=dict(source='question', mentions=['浦发银行'], selection=None),
-                       wants_plan=True, plan_phrase='参考价'), '研究浦发银行')):
+                (previous_value(reference(scope='pending'), operation='update', task='index_research', wants_plan=True), '继续')):
             with self.assertRaises(InputIssue):
                 self.check(question, value, ctx)
+        narrowed = self.check('研究浦发银行', draft(operation='update',
+            subject=dict(source='question', mentions=['浦发银行'], selection=None), wants_plan=True, plan_phrase='参考价'), ctx)
+        self.assertFalse(narrowed.wants_plan)
         # Local commands take priority over conflicting pending state.
         ctx.session._pending = object()
         for question in ('取消研究。', '查看上次结果'):

@@ -27,7 +27,7 @@ NOTICE = '不是新成绩：旧模型响应只改协议版本后离线回放；�
 
 def migrate_response(value, *, source_contract='research-intent-v2.6'):
     """Only change the version on a private copy; never add reference or semantic fields."""
-    if source_contract not in ('research-intent-v2.6', 'research-intent-v2.6.1'):
+    if source_contract not in ('research-intent-v2.6', 'research-intent-v2.6.1', 'research-intent-v2.6.2'):
         raise ValueError('Only the fixed public source contracts are accepted')
     expected = {'status', 'text', 'tool_calls', 'provider', 'requested_model', 'model', 'is_mock', 'finish_reason', 'usage'}
     if (type(value) is not dict or value.keys() != expected or type(value['tool_calls']) is not list
@@ -47,7 +47,7 @@ def migrate_response(value, *, source_contract='research-intent-v2.6'):
 
 def replay_report(split, archived, *, source_contract='research-intent-v2.6'):
     """Use frozen inputs and neutral state builders; scoring data never enters checking."""
-    if (source_contract not in ('research-intent-v2.6', 'research-intent-v2.6.1')
+    if (source_contract not in ('research-intent-v2.6', 'research-intent-v2.6.1', 'research-intent-v2.6.2')
             or archived.get('plan', {}).get('contract_version') != source_contract):
         raise ValueError('Only the fixed public source reports are accepted')
     rows, effective, prefixes, setups = evaluation.populations(split)

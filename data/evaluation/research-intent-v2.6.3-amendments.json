@@ -1,0 +1,96 @@
+{
+  "version": "research-intent-v2.6.3-amendments-v1",
+  "request_message": 459,
+  "parents_sha256_lf": {
+    "data/evaluation/research-intent-v2.jsonl": "a3715709d51c731f5afb60f8de4589c6b7a9221fb101edd094d2cfd5563db73f",
+    "data/evaluation/research-intent-v2-dev-amendments.json": "878a0e389f967d41855cd72bfdba59e4fae68870aa51c6e0ed647a11d46c7c60",
+    "data/evaluation/research-intent-v2.5-amendments.json": "d3dfd47510df5540a883f08a35e7a0f7117bf5a83ca96746c83ce81103c39aaa",
+    "data/evaluation/research-intent-v2.5.1-amendments.json": "7d74257f2a1698874c199b3bdfc80fcd8e626865f1e116d0827da49ca956a873",
+    "data/evaluation/research-intent-v2.5-dev.jsonl": "5e1a47c20038a04653ce69b34a1a6fc07f2b8219c1b81f4bad2e442a8ce5e890",
+    "data/evaluation/research-intent-v2.5-holdout.jsonl": "99a5e163cb7840a1f9e135a68578da8ff096185c3efc3fae33262944debc5a6e",
+    "data/evaluation/research-intent-v2.6-amendments.json": "2fdb58d78028713c0586eb8e21cda1f5b9676d5a5ad8ffa85f1055603772e0a9",
+    "data/evaluation/research-intent-v2.6-freeze.json": "a8567a4152e00dc60af05a69a5ff99daa88c64ea00132a4791d8bb7a25ab005c",
+    "data/evaluation/research-intent-v2.6.2-amendments.json": "9fb370755f044edc262c83e9999912173b5ded449e3bd3713f69d3fe1a5f11a6"
+  },
+  "changes": [
+    {
+      "id": "V2221",
+      "parent_row_sha256": "77364e1b39a5cc14f18fac43cda3c153dc3651d2b981799c3f02e3ecfcfd5ef4",
+      "baseline_gold_sha256": "8960bbb1514d7bf86a5015380d876f2969ad4469da841cefe7d4c749b2af2d7b",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个个股期限待办已过期901秒，本句短线仍回复该待办；失效只撤销身份绑定及目标、价位授权，不抹去记录来源。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    },
+    {
+      "id": "V2224",
+      "parent_row_sha256": "9a8382445fd3487461d0f736a62e8c825201bf1531a3849f314d4b95b40cfe89",
+      "baseline_gold_sha256": "a7fd032964eb6fa976aa2da6be61dde078b0a6b1f6ba6b7d11187a6c6799e6b4",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个个股期限待办创建时间在未来，本句未来20个交易日仍指向该待办；保留previous诊断，不恢复身份、目标或价位授权。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    },
+    {
+      "id": "V2225",
+      "parent_row_sha256": "d3bf28320cd2ae41a057f78b7335ac85134c87655d50523eeb3e936ef00a0170",
+      "baseline_gold_sha256": "8960bbb1514d7bf86a5015380d876f2969ad4469da841cefe7d4c749b2af2d7b",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个个股期限待办已过期1800秒，本句我选短线仍为期限续答；不能把失效等同从未有记录。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    },
+    {
+      "id": "V25D066",
+      "parent_row_sha256": "a28d22aa6bc6d76b1d75daaa57b9efde922e49dd765786ab7099abde15818d30",
+      "baseline_gold_sha256": "8960bbb1514d7bf86a5015380d876f2969ad4469da841cefe7d4c749b2af2d7b",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个科创50期限待办900秒到期，本句用短线仍回复该待办；保留来源previous和本句期限，绑定及旧授权不恢复。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    },
+    {
+      "id": "V25D069",
+      "parent_row_sha256": "c7158e3b17dab937f069f12a1909f033c41eb5c92ae4caf7f598600902e0ba11",
+      "baseline_gold_sha256": "f27a9ca51bde85bf6cc0b467911e59199e43ece70be3a53e1b0b22b3a2c4f556",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个个股待办因目录名称改变而失效，本句准备看长线仍为期限回复；保留曾有待办的来源，不恢复已失效身份和授权。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    },
+    {
+      "id": "V25D077",
+      "parent_row_sha256": "72d45140642a1a70ebcc0914314e65591d31431d9aa29e436c432a0cf8690055",
+      "baseline_gold_sha256": "0af2ba64ec503db3762ad22b45315328565e689141d9061e9655a0bc1a605b57",
+      "field": "subject_source",
+      "before": "none",
+      "after": "previous",
+      "rule": "E",
+      "reason": "规范 E（#459）：单个个股待办因真实转演示模式而失效，本句我打算中期仍回复该待办；来源previous仅为诊断，不恢复绑定或旧授权。",
+      "status": "approved",
+      "reviewer": "claude",
+      "approval_message": 463
+    }
+  ],
+  "unchanged": []
+}

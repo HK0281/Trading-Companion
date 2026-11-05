@@ -107,22 +107,45 @@ class AddendumTests(OfflineTests):
                     self.load(document)
 
     def test_pending_review_blocks_clean_live_run_before_credentials(self):
-        plan = dict(workspace_dirty=False, context_preflight=dict(passed=True),
-                    annotation_amendments=dict(v262=dict(pending_reviews=13)))
-        with patch.object(evaluation, 'build_plan', return_value=plan), \
-                patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')) as factory, \
-                patch.object(evaluation, 'assert_current') as revision_check:
-            with self.assertRaisesRegex(ValueError, 'Claude approval required'):
-                evaluation.evaluate(live=True)
-            factory.assert_not_called()
-            revision_check.assert_not_called()
+        for layer in (addendum, evaluation.amendments):
+            pending = read_json(layer.AMENDMENTS)
+            for item in [*pending['changes'], *pending['unchanged']]:
+                item.update(status='pending', reviewer=None, approval_message=None)
+            with self.subTest(layer=layer.VERSION), \
+                    patch.object(layer, 'read_json', return_value=deepcopy(pending)), \
+                    patch.object(evaluation, '_git', side_effect=lambda *args:
+                        '' if args == ('status', '--porcelain') else 'synthetic-reviewed'), \
+                    patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')) as factory, \
+                    patch.object(evaluation, 'assert_current') as revision_check:
+                with self.assertRaisesRegex(ValueError, 'Claude approval required'):
+                    evaluation.evaluate(live=True)
+                factory.assert_not_called()
+                revision_check.assert_not_called()
 
     def test_pending_population_keeps_baseline_gold_and_original_denominators(self):
-        with patch.object(addendum, 'read_json', return_value=deepcopy(self.pending)):
+        later_pending = read_json(evaluation.amendments.AMENDMENTS)
+        for item in [*later_pending['changes'], *later_pending['unchanged']]:
+            item.update(status='pending', reviewer=None, approval_message=None)
+        with patch.object(addendum, 'read_json', return_value=deepcopy(self.pending)), \
+                patch.object(evaluation.amendments, 'read_json', return_value=deepcopy(later_pending)):
             rows, effective, _, _ = evaluation.populations('regression')
         self.assertEqual(len(rows), 414)
         self.assertEqual(len([r for r in rows if r['id'] not in evaluation.NOT_APPLICABLE]), 412)
         self.assertEqual(effective, {r['id']: r['gold'] for r in self.baseline})
+
+    def test_real_v263_approval_changes_only_the_six_subject_sources(self):
+        _, baseline = addendum.load_amendments(require_approved=True)
+        approved, _ = evaluation.amendments.load_amendments(require_approved=True)
+        changed = {'V2221', 'V2224', 'V2225', 'V25D066', 'V25D069', 'V25D077'}
+        self.assertEqual({item['id'] for item in approved['changes']}, changed)
+        self.assertEqual(len(approved['changes']), 6)
+        expected = {row['id']: deepcopy(row['gold']) for row in baseline}
+        for identifier in changed:
+            self.assertEqual(expected[identifier]['subject_source'], 'none')
+            expected[identifier]['subject_source'] = 'previous'
+        rows, effective, _, _ = evaluation.populations('regression')
+        self.assertEqual(len(rows), 414)
+        self.assertEqual(effective, expected)
 
     def report(self, effective):
         row = deepcopy(next(r for r in self.original if r['id'] == 'V2216'))

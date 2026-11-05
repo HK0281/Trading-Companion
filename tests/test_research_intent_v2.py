@@ -584,10 +584,17 @@ class BindingTests(unittest.TestCase):
         for invalid in invalid_contexts:
             with self.assertRaises(InputIssue):
                 checked('中线', value, invalid)
-        for changes in (dict(operation='new'), dict(subject=dict(source='question', mentions=['浦发银行'], selection=None, reference=dict(kind='none', index=None, scope=None))), dict(date_expression='最近一个月'),
+        for changes in (dict(operation='new'), dict(date_expression='最近一个月'),
                         dict(indicator_mentions=['ATR']), dict(scope_phrase='只看技术面')):
             with self.assertRaises(InputIssue):
                 checked('中线，改为浦发银行', dict(value, **changes), ctx)
+        changed = dict(value, subject=dict(source='question', mentions=['浦发银行'], selection=None,
+                                          reference=dict(kind='none', index=None, scope=None)))
+        result = checked('中线，改为浦发银行', changed, ctx)
+        self.assertEqual((result.bound_subjects, result.objective_kind, result.horizon, result.wants_plan),
+                         (('600000.SH',), 'decision', '未来40个交易日', False))
+        self.assertFalse(result.diagnostics['authorization']['same_task_pending'])
+        self.assertNotIn(('plan_phrase', 'program_pending'), result.provenance)
         # A pending has its own conditions; even a fresh older publication cannot lend a horizon.
         ctx.session.stage_research_subject(SECURITIES[1:2], kind='company', source='tencent', development=False,
             now=NOW, scope=SimpleNamespace(objective=ResearchObjective('decision', '未来40个交易日')))

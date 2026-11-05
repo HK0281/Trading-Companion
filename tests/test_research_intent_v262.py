@@ -118,7 +118,7 @@ class V262Tests(unittest.TestCase):
                          ('recall', 'none', (), True))
         self.assertIsNone(intent.local_preflight('你刚才给的评级是什么？', ctx))
 
-    def test_invalid_pending_and_changed_identity_never_lend_old_phrases(self):
+    def test_invalid_pending_never_lends_old_phrases_and_changed_identity_revokes_them(self):
         for ctx, question, value in (
             (replace(pending_context(), now=NOW+timedelta(seconds=900)), '中线',
              previous_value(reference(scope='pending'), operation='update', objective_kind='decision',
@@ -127,9 +127,14 @@ class V262Tests(unittest.TestCase):
              draft(operation='update', objective_kind='decision', objective_phrase='参考价', wants_plan=True,
                    plan_phrase='参考价', horizon_expression='短线',
                    subject=dict(source='question', mentions=['浦发银行'], selection=None)))):
-            with self.assertRaises(InputIssue) as caught:
-                self.check(value, ctx, question)
-            self.assertEqual(caught.exception.code, 'ungrounded_intent_v2')
+            if ctx.model_context()['pending']['valid']:
+                result, log = self.check(value, ctx, question)
+                self.assertFalse(result.wants_plan)
+                self.assertIn('changed_subject_evidence_revoked', [c['kind'] for c in log])
+            else:
+                with self.assertRaises(InputIssue) as caught:
+                    self.check(value, ctx, question)
+                self.assertEqual(caught.exception.code, 'ungrounded_intent_v2')
 
     def test_operation_and_strict_scope_are_not_keyword_rewritten(self):
         question = '单独研究平安银行的财务，财务部分用更新的数据重算'

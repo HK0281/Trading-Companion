@@ -1,4 +1,4 @@
-"""Public v2.6.2 candidate evaluation; frozen v2.6 dev and exposed regression inputs."""
+"""Public v2.6.3 candidate evaluation; frozen v2.6 dev and exposed regression inputs."""
 
 from copy import deepcopy
 from hashlib import sha256
@@ -9,7 +9,7 @@ from threading import Lock
 
 from evaluation_tools import research_intent_v25_evaluation as previous
 from evaluation_tools import research_intent_v26_cases as cases
-from evaluation_tools import research_intent_v262_amendments as amendments
+from evaluation_tools import research_intent_v263_amendments as amendments
 from trading_companion import research_intent_v2 as intent
 from trading_companion.intent_router_task import digest
 from trading_companion.model import ModelConfigurationError
@@ -23,7 +23,7 @@ NOT_APPLICABLE = cases.NOT_APPLICABLE
 LIMITS = {'dev': 64, 'regression': 414}
 CALL_CAPS = {'dev': 80, 'regression': 520}
 MINIMUM_CORRECT = {'dev': 61, 'regression': 392}
-APPROVAL_MESSAGE = 454
+APPROVAL_MESSAGE = 459
 FAILED_ARGUMENT_NOTICE = previous.FAILED_ARGUMENT_NOTICE
 _git = previous._git
 RunInvalidated = previous.RunInvalidated
@@ -63,7 +63,9 @@ def fingerprints():
         'tests/test_deepseek_tool_model.py', 'tests/test_turn_control.py', 'README.md',
         'docs/research-intent-v2.6-implementation.md', 'docs/research-intent-v2.6.1-implementation.md',
         'docs/research-intent-v2.6.2-implementation.md',
-        'data/evaluation/research-intent-v2.6.2-amendments.json'))
+        'docs/research-intent-v2.6.3-implementation.md',
+        'data/evaluation/research-intent-v2.6.2-amendments.json',
+        'data/evaluation/research-intent-v2.6.3-amendments.json'))
     return {p.relative_to(ROOT).as_posix(): cases.public_sha256(p) for p in sorted(paths)}
 
 
@@ -71,9 +73,9 @@ def build_plan(split='dev', maximum=None):
     rows, _, _, _ = populations(split)
     if maximum is not None and (type(maximum) is not int or not 1 <= maximum <= CALL_CAPS[split]):
         raise ValueError('Call limit may only tighten the separately approved split cap')
-    if intent.VERSION != 'research-intent-v2.6.2':
-        raise ValueError('Only the approved v2.6.2 contract may use this public runner')
-    return dict(kind='research-intent-v2.6.2-public-plan', contract_version=intent.VERSION,
+    if intent.VERSION != 'research-intent-v2.6.3':
+        raise ValueError('Only the approved v2.6.3 contract may use this public runner')
+    return dict(kind='research-intent-v2.6.3-public-plan', contract_version=intent.VERSION,
         guard_version=intent.GUARD_VERSION, split=split, total=len(rows), max_calls=maximum or CALL_CAPS[split],
         paid_approval_message=APPROVAL_MESSAGE, approved_call_caps=deepcopy(CALL_CAPS), combined_call_cap=600,
         max_attempts_per_target=2, model='deepseek-flash', temperature=0, thinking='disabled', max_output_tokens=1500,
@@ -275,7 +277,7 @@ def report_results(rows, effective, plan, *, live=False):
     retried = [r for r in rows if r['V2'].get('format_retry', {}).get('attempted')]
     recovered = [r for r in retried if r['V2']['format_retry']['successful']]
     applicable = [r for r in approved if r['id'] not in NOT_APPLICABLE]
-    return dict(kind='research-intent-v2.6.2-public-report', title='v2.6.2 公开开发与已暴露回归', notice=None,
+    return dict(kind='research-intent-v2.6.3-public-report', title='v2.6.3 公开开发与已暴露回归', notice=None,
         plan=plan, rows=rows, score_views=views, common_comparison=previous._common(applicable), zero_tolerance=redlines(approved),
         annotation_amendments=(deepcopy(plan['annotation_amendments']) if 'annotation_amendments' in plan
                                else amendments.summary()),
@@ -304,7 +306,7 @@ def markdown(report):
         lines = ['\n公开标注修订（不计模型改善）：', '',
                  '| 修订层 | 题号 | 字段 | 原值 | 拟定值 | 状态 | 已应用 | 批准消息 |',
                  '| --- | --- | --- | --- | --- | --- | --- | --- |']
-        for name in ('previous', 'v262'):
+        for name in ('previous', 'v262', 'v263'):
             layer = annotations[name]
             for group in ('changes', 'unchanged'):
                 for item in layer.get(group, []):
@@ -343,9 +345,11 @@ def evaluate(*, split='dev', live=False, maximum=None, timeout_seconds=45):
         raise ValueError('Live evaluation requires a clean reviewed commit and complete public preflight')
     if plan['annotation_amendments']['v262']['pending_reviews']:
         raise ValueError('Claude approval required for every v2.6.2 annotation review before live evaluation')
+    if plan['annotation_amendments']['v263']['pending_reviews']:
+        raise ValueError('Claude approval required for every v2.6.3 annotation review before live evaluation')
     assert_current(plan)
     # Approval is per version/split, never renewed by making another commit.
-    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6.2/public'/split
+    folder = ROOT/'.agentbus/evaluation-runs/research-intent-v2.6.3/public'/split
     folder.mkdir(parents=True, exist_ok=False)
     try:
         plan['live_enabled'] = True

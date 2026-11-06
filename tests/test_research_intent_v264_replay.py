@@ -19,7 +19,7 @@ class V264ReplayTests(OfflineTests):
         saved['tool_calls'][0]['arguments']['version'] = replay.SOURCE_CONTRACT
         original = deepcopy(saved)
         copied = replay.migrate_response(saved).to_dict()
-        self.assertEqual(copied['tool_calls'][0]['arguments']['version'], 'research-intent-v2.6.6')
+        self.assertEqual(copied['tool_calls'][0]['arguments']['version'], 'research-intent-v2.6.7')
         copied['tool_calls'][0]['arguments']['version'] = replay.SOURCE_CONTRACT
         self.assertEqual(copied, original)
         self.assertEqual(saved, original)

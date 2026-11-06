@@ -17,7 +17,7 @@ class V266ReplayTests(OfflineTests):
         archived['tool_calls'][0]['arguments']['version'] = replay.SOURCE_CONTRACT
         before = deepcopy(archived)
         migrated = replay.migrate_response(archived).to_dict()
-        self.assertEqual(migrated['tool_calls'][0]['arguments'].pop('version'), 'research-intent-v2.6.6')
+        self.assertEqual(migrated['tool_calls'][0]['arguments'].pop('version'), 'research-intent-v2.6.7')
         migrated['tool_calls'][0]['arguments']['version'] = replay.SOURCE_CONTRACT
         self.assertEqual(migrated, before)
         self.assertEqual(archived, before)

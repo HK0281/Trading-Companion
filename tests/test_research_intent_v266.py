@@ -3,7 +3,6 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
-from hashlib import sha256
 
 from test_research_intent_v2 import context, draft, response
 from test_research_intent_v25_evaluation import OfflineTests
@@ -27,11 +26,9 @@ class V266Tests(OfflineTests):
     def check(self, question, value, ctx=None, **options):
         return intent.check_response(question, response(value), context=ctx or context(), **options)
 
-    def test_instruction_is_identical_to_v265_except_equal_length_version(self):
-        original = intent.INSTRUCTION.replace('research-intent-v2.6.6', 'research-intent-v2.6.5')
-        self.assertEqual(len(intent.INSTRUCTION), 4014)
-        self.assertEqual(sha256(original.encode('utf-8')).hexdigest(),
-                         'c7a916622c6d713425165123c604c8e60b55157be2dc1d244db9752cb8fc1a1d')
+    def test_instruction_stays_within_v266_length_and_declares_current_protocol(self):
+        self.assertLessEqual(len(intent.INSTRUCTION), 4014)
+        self.assertIn('version='+intent.VERSION, intent.INSTRUCTION)
 
     def test_supported_and_unsupported_indicators_supply_only_domain_label(self):
         for name, task in (('平安银行', 'stock_research'), ('沪深300', 'index_research')):

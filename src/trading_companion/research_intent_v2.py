@@ -1,6 +1,6 @@
 """Opt-in v2 interpretation and checked identity binding; no routing or data execution."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from contextlib import nullcontext
 from copy import deepcopy
 from datetime import date, datetime, timedelta
@@ -1071,7 +1071,7 @@ def check_response(question, response, *, context, normalize=True, corrections=N
 
 
 def understand(question, *, model, context, control=None, retry_json_arguments=False):
-    """Explicit candidate-only format retry; local preflight and semantic errors never retry."""
+    """Keep the standalone candidate's original one/two-attempt lifecycle."""
     if type(context) is not IntentContext:
         raise ModelConfigurationError('Use a trusted v2 context')
     if type(retry_json_arguments) is not bool:
@@ -1081,6 +1081,34 @@ def understand(question, *, model, context, control=None, retry_json_arguments=F
     if type(runtime) is not TurnControl or runtime.limits.model_calls != attempts:
         raise ModelConfigurationError('Candidate retry policy and metered call limit must agree')
     runtime.start()
+    result = None
+    try:
+        result = _understand_in_turn(question, model=model, context=context, control=runtime,
+                                   retry_json_arguments=retry_json_arguments)
+    except TurnStopped as error:
+        result = IntentRun("failed", error.code)
+    finally:
+        stopped = runtime.finish()
+    if stopped:
+        result = replace(result, intent=None, status="failed", code=stopped)
+    return replace(result, runtime=runtime.to_dict())
+
+
+def understand_active(question, *, model, context, control, retry_json_arguments=False):
+    """Reuse validation inside an already running turn; never start or finish it."""
+    result = _understand_in_turn(question, model=model, context=context, control=control,
+                                 retry_json_arguments=retry_json_arguments)
+    control.checkpoint()
+    return result
+
+
+def _understand_in_turn(question, *, model, context, control, retry_json_arguments=False):
+    if type(context) is not IntentContext or type(control) is not TurnControl:
+        raise ModelConfigurationError("Use a trusted active intent context and control")
+    if type(retry_json_arguments) is not bool:
+        raise ModelConfigurationError("Candidate format retry must be an explicit boolean")
+    runtime = control
+    attempts = 2 if retry_json_arguments else 1
     response, intent, status, code = None, None, 'failed', 'intent_v2_unavailable'
     corrections = []
     try:
@@ -1120,10 +1148,6 @@ def understand(question, *, model, context, control=None, retry_json_arguments=F
         status, code = 'failed', safe_failure(error)
     except TurnStopped as error:
         status, code = 'failed', error.code
-    finally:
-        stopped = runtime.finish()
-    if stopped:
-        intent, status, code = None, 'failed', stopped
     return IntentRun(status, code, intent, response, runtime.to_dict(), tuple(corrections))
 
 

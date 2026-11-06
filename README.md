@@ -51,6 +51,10 @@ Key design points:
 
 More detail: [architecture](docs/architecture.md) · [request routing](docs/request-routing-design.md) · [company research](docs/company-research-design.md) · [turn control](docs/turn-control-design.md)
 
+The experimental intent-v2 integration is disabled. Phase 5A adds internal controls only;
+`--research-intent-v2` and `research_intent_v2_enabled=True` fail before startup, including demo mode.
+See [integration status and validation boundaries](docs/research-intent-v2.6-integration.md).
+
 ## Quick start (offline demo)
 
 Windows is the supported platform. In PowerShell, from a checkout with dependencies installed:

@@ -3,8 +3,10 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
+from hashlib import sha256
 import json
 from pathlib import Path
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -15,6 +17,7 @@ from scripts.verify import clean_environment, offline_network
 from test_deepseek_tool_model import provider_call, provider_payload
 from test_research_intent_v2 import context, draft, response
 from test_research_intent_v25_evaluation import sample
+from tests.intent_historical_observer import REVISION, require_historical_revision
 from trading_companion import research_intent_v2 as intent
 from trading_companion.agent_input import InputIssue
 from trading_companion.deepseek_model import DeepSeekConfig
@@ -268,18 +271,33 @@ class ArgumentRepairTests(OfflineTests):
 
 
 class AnnotationAndReplayTests(OfflineTests):
-    def test_only_one_approved_field_changes_and_frozen_records_are_still_valid(self):
-        rows, effective, _, _ = experiment.populations()
+    def test_only_one_approved_field_changes_and_historical_freeze_rejects_new_source(self):
+        rows, _ = experiment.load_corpus()
+        _, _, approved = experiment.cases.load_regression_amendments()
+        parent = {r['id']: r['gold'] for r in approved}
+        effective, completion = experiment.apply_annotation_completion(rows, parent)
         original = next(r for r in rows if r['id'] == 'V2162')
         self.assertIsNone(original['gold']['date_expression'])
         self.assertEqual(effective['V2162']['date_expression'], '今天')
-        _, _, approved = experiment.cases.load_regression_amendments()
-        parent = {r['id']: r['gold'] for r in approved}
         differences = [(r['id'], key) for r in approved for key in r['gold'] if effective[r['id']][key] != parent[r['id']][key]]
         self.assertEqual(differences, [('V2162', 'date_expression')])
-        self.assertEqual(experiment.annotation_completion()['changes'][0]['approval_message'], 404)
-        self.assertFalse(experiment.annotation_completion()['model_improvement'])
-        self.assertTrue(experiment.cases.validate_freeze(require_review=True))
+        self.assertEqual(completion['changes'][0]['approval_message'], 404)
+        self.assertFalse(completion['model_improvement'])
+        self.assertEqual(experiment.annotation_completion(), completion)
+        with self.assertRaisesRegex(ValueError,
+                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+            experiment.cases.validate_freeze(require_review=True)
+        # The immutable record still binds every original public blob, not the new runtime.
+        require_historical_revision()
+        def historical_blob(name):
+            return subprocess.check_output(['git', 'show', REVISION + ':' + name],
+                cwd=experiment.ROOT, timeout=15).replace(b'\r\n', b'\n')
+        freeze_name = experiment.cases.LOCK.relative_to(experiment.ROOT).as_posix()
+        frozen = experiment.cases.read_json(experiment.cases.LOCK)
+        self.assertEqual(json.loads(historical_blob(freeze_name)), frozen)
+        for name, fingerprint in frozen['public_files_sha256'].items():
+            with self.subTest(historical_public_file=name):
+                self.assertEqual(sha256(historical_blob(name)).hexdigest(), fingerprint)
 
     def test_addendum_rejects_drift_extra_fields_unapproved_change_or_wrong_parent(self):
         rows, _ = experiment.load_corpus()

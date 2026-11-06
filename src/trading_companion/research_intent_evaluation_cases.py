@@ -9,7 +9,7 @@ import json
 import re
 
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.intent_rule_baseline import current_baseline
+from trading_companion.intent_rule_baseline import historical_baseline
 from trading_companion.news_triage_reporting import cell
 from trading_companion.typesafe_jev import decode
 from trading_companion.workflow_evaluation_fixtures import PHASES, SCRIPT_KEYS
@@ -170,7 +170,11 @@ def load_corpus(path=CORPUS, manifest_path=MANIFEST):
     require(dict(Counter(r["split"] for r in rows)) == manifest["splits"])
     require(manifest["corpus_sha256"] == sha256(raw).hexdigest()
             and manifest["split_sha256"] == digest([(r["id"], r["family_id"], r["split"]) for r in rows]))
-    baseline = current_baseline()
+    provenance = manifest["baseline"]
+    require(type(provenance) is dict and provenance.keys() ==
+            {"commit", "rule_baseline_version", "source_digest"}, "Invalid v2 corpus baseline identity")
+    baseline = historical_baseline(version=provenance["rule_baseline_version"],
+                                   expected_digest=provenance["source_digest"])
     require(manifest["baseline"] == {"commit": BASE_COMMIT, "rule_baseline_version": baseline["rule_baseline_version"],
                                     "source_digest": baseline["source_digest"]}, "V2 production baseline mismatch")
     reviews = manifest["reviews"]

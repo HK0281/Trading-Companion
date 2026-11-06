@@ -23,6 +23,10 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "intent_context_invalid": "5A 内部上下文校验及阶段元数据类别，不是公开研究结果。",
+    "intent_context_unavailable": "5A 内部上下文不可用类别，公开入口仍禁止启用。",
+    "context_request_too_large": "5A 完整上下文超长的内部回退类别，不是公开研究结果。",
+    "intent_model_failure": "5A 阶段元数据中的固定异常类别，不保存异常正文。",
     "invalid_indicator_granularity": "独立v2.5候选拒绝把日线/周线/K线作为指标的诊断；不接正式入口。",
     "response_json_invalid": "v2评估显式启用的传输JSON诊断类别；生产默认仍为invalid_response。",
     "response_shape_invalid": "v2评估显式启用的响应封装诊断类别，不是正式研究结果。",

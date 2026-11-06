@@ -26,6 +26,7 @@ from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.intent_router_task import digest
 from trading_companion.model import ModelCallError
 from trading_companion.typesafe_jev import ClassifierError
+from tests.intent_historical_observer import require_historical_revision
 
 
 def synthetic_rows(n=2, semantic=None):
@@ -141,11 +142,27 @@ def synthetic_fixture(rows=None, raw=None):
 
 
 class AdmissionTests(OfflineTests):
-    def test_real_lock_validates_without_opening_sealed_bytes_or_credentials(self):
+    def test_real_lock_binds_historical_source_and_rejects_new_source_without_sealed_access(self):
+        require_historical_revision()
         with patch.object(holdout, '_sealed_bytes', side_effect=AssertionError('No sealed access')), \
                 patch.object(holdout, '_live_model', side_effect=AssertionError('No credentials')):
-            snapshot = holdout.validate_lock()
-        candidate = snapshot['lock']['candidate']
+            # No replacement lock and no bypass: current source must be rejected.
+            with self.assertRaises(ValueError):
+                holdout.validate_lock()
+        lock = json.loads((holdout.ROOT/holdout.LOCK_NAME).read_text(encoding='utf-8'))
+        self.assertEqual(digest(lock['candidate']), holdout.CANDIDATE_SHA256)
+        candidate = lock['candidate']
+        revision = 'a11323834b6d0b0d615b39d896bb34c83ba905e4'
+        for mapping in (candidate['source_sha256_lf'], candidate['freeze']['public_files_sha256_lf'],
+                        lock['runner']['source_sha256_lf']):
+            for name, expected in mapping.items():
+                raw = subprocess.check_output(['git', 'show', revision+':'+name], cwd=holdout.ROOT)
+                self.assertEqual(sha256(raw.replace(b'\r\n', b'\n')).hexdigest(), expected, name)
+        captured = json.loads((holdout.ROOT/'tests/fixtures/research-intent-v268-public-replay.json')
+                              .read_text(encoding='utf-8'))['metadata']
+        self.assertEqual(captured['source_commit'], revision)
+        self.assertTrue(captured['historical_lock_validated'])
+        self.assertEqual(captured['candidate_sha256'], holdout.CANDIDATE_SHA256)
         self.assertEqual(candidate['revision'], holdout.CANDIDATE_REVISION)
         self.assertEqual(candidate['freeze']['summary']['semantic_calls'], 87)
         self.assertEqual(candidate['freeze']['thresholds']['semantic']['minimum_correct'], 83)

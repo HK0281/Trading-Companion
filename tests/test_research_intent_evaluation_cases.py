@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from trading_companion import research_intent_evaluation_cases as cases
 from trading_companion import research_intent_evaluation as evaluation
+from trading_companion import intent_rule_baseline as baselines
 
 
 class CorpusTests(unittest.TestCase):
@@ -96,9 +97,31 @@ class CorpusTests(unittest.TestCase):
             self.load_changed(rows=changed, rehash=True)
 
     def test_changed_rule_sources_are_rejected(self):
-        with patch.object(cases, 'current_baseline', side_effect=ValueError('mismatch')):
+        with patch.object(baselines, 'current_baseline', side_effect=ValueError('mismatch')):
             with self.assertRaises(ValueError):
                 cases.load_corpus()
+
+    def test_frozen_corpus_matches_unique_historical_identity_without_rebinding(self):
+        provenance = self.manifest['baseline']
+        current = baselines.current_baseline()
+        self.assertNotEqual(provenance['rule_baseline_version'], current['rule_baseline_version'])
+        self.assertNotEqual(provenance['source_digest'], current['source_digest'])
+        historical = baselines.historical_baseline(version=provenance['rule_baseline_version'],
+                                                   expected_digest=provenance['source_digest'])
+        self.assertEqual(historical['rule_baseline_version'], 'index-scenario-ui-v1')
+        self.assertEqual(baselines.source_digest(historical['sources_sha256_lf']), provenance['source_digest'])
+        _, actual = cases.load_corpus()
+        self.assertEqual(actual, self.manifest)
+
+    def test_manifest_provenance_tampering_is_rejected(self):
+        changes = ({'source_digest': '0'*64}, {'rule_baseline_version': 'unknown-rule'},
+                   {'commit': '0'*40}, {'source_digest': baselines.current_baseline()['source_digest']},
+                   {'rule_baseline_version': baselines.VERSION})
+        for change in changes:
+            manifest = deepcopy(self.manifest)
+            manifest['baseline'].update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.load_changed(manifest=manifest, rehash=True)
 
     def test_draft_can_preview_but_cannot_score_or_call_models(self):
         self.assertEqual(evaluation.build_plan()['planned_A'], 155)

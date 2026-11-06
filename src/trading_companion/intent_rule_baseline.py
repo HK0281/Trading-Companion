@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "index-scenario-ui-v1"
+VERSION = "intent-integration-controls-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -47,3 +47,26 @@ def historical_sources_match(historical):
     value = json.loads(DESCRIPTION.read_text(encoding="utf-8"))
     current_baseline()
     return historical == value["corpus_historical_sources_sha256_lf"]
+
+
+def historical_baseline(*, version, expected_digest):
+    """Resolve immutable corpus provenance, never current execution eligibility."""
+    current_baseline()
+    value = json.loads(DESCRIPTION.read_text(encoding="utf-8"))
+    records = value.get("previous_rules")
+    if type(version) is not str or type(expected_digest) is not str or type(records) is not list:
+        raise ValueError("Invalid historical rule baseline identity")
+    matches = [record for record in records if type(record) is dict
+               and record.get("rule_baseline_version") == version]
+    # Even an exact duplicate is ambiguous; never select by a matching digest alone.
+    if len(matches) != 1:
+        raise ValueError("Historical rule baseline version must be registered exactly once")
+    record = matches[0]
+    sources = record.get("sources_sha256_lf")
+    if (type(sources) is not dict or not sources
+            or any(type(name) is not str or type(fingerprint) is not str
+                   or len(fingerprint) != 64 or any(c not in "0123456789abcdef" for c in fingerprint)
+                   for name, fingerprint in sources.items())
+            or record.get("source_digest") != expected_digest or source_digest(sources) != expected_digest):
+        raise ValueError("Historical rule baseline source mismatch")
+    return record

@@ -13,6 +13,26 @@ from trading_companion.tool_model import ToolCapableModel
 
 
 _PROVIDERS = ("deepseek", "openai")
+INTENT_MODEL = "deepseek-flash"
+INTENT_TIMEOUT_SECONDS = 20
+INTENT_OUTPUT_TOKENS = 1500
+
+
+def configured_intent_model(*, loader=load_model_environment):
+    """Explicit, pure-constructor factory; never used by the disabled service."""
+    if not callable(loader):
+        raise ModelConfigurationError("Use a trusted intent configuration loader")
+    values = loader(provider="deepseek")
+    if not isinstance(values, Mapping):
+        raise ModelConfigurationError("Use the documented DeepSeek settings mapping")
+    config = replace(DeepSeekConfig.from_env(values), model=INTENT_MODEL,
+                     timeout_seconds=INTENT_TIMEOUT_SECONDS, max_output_tokens=INTENT_OUTPUT_TOKENS)
+    # DeepSeekToolModel's wire protocol always disables thinking.
+    factory = partial(DeepSeekToolModel, config, temperature=0,
+        response_diagnostics=True, repair_tool_arguments=True,
+        argument_diagnostic_sink=lambda event: None)
+    factory()
+    return factory
 
 
 def _factory(provider, values):

@@ -1,13 +1,48 @@
 """Public development and independent synthetic admission checks only; no sealed input."""
 
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from evaluation_tools import research_intent_v25_cases as cases
+
+
+@contextmanager
+def independent_freeze():
+    """Exercise the real admission checks against isolated synthetic inputs and a real file hash."""
+    with TemporaryDirectory() as folder, ExitStack() as stack:
+        root = Path(folder)
+        name = 'src/independent.py'
+        source = root / name
+        source.parent.mkdir(parents=True)
+        source.write_text('independent synthetic source\n', encoding='utf-8')
+        dev = [dict(id=f'independent-{i}') for i in range(2)]
+        manifest = dict(review=dict(status='approved'), reviews={
+            row['id']: dict(status='approved', reviewer='claude', approval_message=999) for row in dev})
+        families = {f'independent-{i}': 1 for i in range(96)}
+        summary = dict(count=96, families=families, semantic_calls=90, local_zero_calls=6,
+                       tasks=dict(stock_research=96), outcomes=dict(research=96))
+        lock = dict(version=cases.VERSION, status='frozen', public_files_sha256={name: cases.public_sha256(source)},
+            dev_sha256='1' * 64, holdout=dict(summary=summary), thresholds=cases.thresholds(summary),
+            rule_coverage=dict(rule_count=1, uncovered_rules=0, public_examples_only=True),
+            review=dict(status='approved', reviewer='claude', approval_message=999,
+                        reviewed_dev_count=2, pending_dev_count=0, reviewed_holdout_count=96))
+        path = root / 'independent-freeze.json'
+        path.write_text(json.dumps(lock), encoding='utf-8')
+        for attribute, value in dict(ROOT=root, PUBLIC_FILES=(name,)).items():
+            stack.enter_context(patch.object(cases, attribute, value))
+        # Substitute only independent input readers; validate_freeze and public_sha256 remain real.
+        for attribute, value in dict(load_cases=dev, load_dev_manifest=manifest,
+                load_rule_coverage=dict(rule_count=1),
+                load_corpus=([dict(family_id=f) for f in families], None),
+                load_setups=dict(review=dict(status='approved'))).items():
+            stack.enter_context(patch.object(cases, attribute, return_value=value))
+        yield SimpleNamespace(root=root, path=path, lock=lock, manifest=manifest, dev=dev, source=source)
 
 
 class AdmissionTests(unittest.TestCase):
@@ -131,19 +166,14 @@ class AdmissionTests(unittest.TestCase):
             path.write_text(json.dumps(invalid), encoding='utf8')
             with self.assertRaisesRegex(ValueError, 'review'):
                 cases.load_dev_manifest(rows, path)
-        forged = deepcopy(cases.validate_freeze())
-        forged.update(status='frozen')
-        forged['review'].update(status='approved', reviewer='claude', approval_message=999)
-        pending_manifest = deepcopy(manifest)
-        pending_manifest['reviews'][rows[-1]['id']].update(status='pending', reviewer=None, approval_message=None)
-        pending_count = sum(item['status'] == 'pending' for item in pending_manifest['reviews'].values())
-        forged['review'].update(reviewed_dev_count=len(rows)-pending_count, pending_dev_count=pending_count)
-        with TemporaryDirectory() as folder:
-            path = Path(folder) / 'freeze.json'
-            path.write_text(json.dumps(forged), encoding='utf8')
-            with patch.object(cases, 'load_dev_manifest', return_value=pending_manifest), \
-                    self.assertRaisesRegex(ValueError, 'pending development'):
-                cases.validate_freeze(path, require_review=True)
+        with independent_freeze() as fixture:
+            self.assertEqual(cases.validate_freeze(fixture.path, require_review=True), fixture.lock)
+            fixture.manifest['reviews'][fixture.dev[-1]['id']].update(
+                status='pending', reviewer=None, approval_message=None)
+            fixture.lock['review'].update(reviewed_dev_count=1, pending_dev_count=1)
+            fixture.path.write_text(json.dumps(fixture.lock), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'pending development'):
+                cases.validate_freeze(fixture.path, require_review=True)
 
     def test_rule_coverage_requires_a_real_public_witness_for_each_label(self):
         rows = cases.load_cases()
@@ -184,21 +214,28 @@ class AdmissionTests(unittest.TestCase):
             cases.validate_partition(dev, independent, legacy)
 
     def test_review_pending_and_fingerprint_drift_block_frozen_admission(self):
-        lock = cases.validate_freeze()
-        with TemporaryDirectory() as folder:
-            path = Path(folder) / 'freeze.json'
-            pending = deepcopy(lock)
+        with self.assertRaisesRegex(ValueError,
+                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+            cases.validate_freeze(require_review=True)
+        lock = cases.read_json(cases.LOCK)
+        with independent_freeze() as fixture:
+            self.assertEqual(cases.validate_freeze(fixture.path, require_review=True), fixture.lock)
+            pending = deepcopy(fixture.lock)
             pending['status'] = 'awaiting_claude_review'
             pending['review'].update(status='pending', reviewer=None)
-            path.write_text(json.dumps(pending), encoding='utf-8')
+            fixture.path.write_text(json.dumps(pending), encoding='utf-8')
             with self.assertRaisesRegex(ValueError, 'Claude'):
-                cases.validate_freeze(path, require_review=True)
-            changed = deepcopy(lock)
+                cases.validate_freeze(fixture.path, require_review=True)
+            changed = deepcopy(fixture.lock)
             first = next(iter(changed['public_files_sha256']))
             changed['public_files_sha256'][first] = '0' * 64
-            path.write_text(json.dumps(changed), encoding='utf-8')
-            with self.assertRaisesRegex(ValueError, 'drift'):
-                cases.validate_freeze(path)
+            fixture.path.write_text(json.dumps(changed), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'Frozen public file drift: src/independent.py'):
+                cases.validate_freeze(fixture.path)
+            fixture.path.write_text(json.dumps(fixture.lock), encoding='utf-8')
+            fixture.source.write_text('changed independent synthetic source\n', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'Frozen public file drift: src/independent.py'):
+                cases.validate_freeze(fixture.path)
         self.assertEqual(lock['thresholds']['all']['minimum_correct'], 92)
         self.assertTrue(all(value['n'] >= 4 for value in lock['thresholds']['families'].values()))
         self.assertEqual(lock['thresholds']['semantic']['minimum_correct'],

@@ -98,12 +98,26 @@ class _SessionModel:
         self.history = ()
 
     def complete(self, messages, *, tools):
-        trace_model_identity(self.delegate)
+        return self._forward(self.delegate, messages, tools=tools, history=self.history)
+
+    def _forward(self, delegate, messages, *, tools, history):
+        trace_model_identity(delegate)
         with self._lock:
             if self.forwarded >= self.limit:
                 raise ModelCallError("api_session_call_limit", "Session model allowance exhausted")
             self.forwarded += 1
-        return self.delegate.complete(with_history(messages, self.history, tools=tools), tools=tools)
+        return delegate.complete(with_history(messages, history, tools=tools), tools=tools)
+
+    def intent_view(self, delegate):
+        """Share this session's counter without adding answer digests to intent."""
+        if not callable(getattr(delegate, "complete", None)):
+            raise ModelConfigurationError("Use a trusted intent model")
+        owner = self
+
+        class IntentView:
+            def complete(self, messages, *, tools):
+                return owner._forward(delegate, messages, tools=tools, history=())
+        return IntentView()
 
 
 def with_history(messages, digests, *, tools):
@@ -314,7 +328,13 @@ class ResearchApiService:
                  clock: Callable[[], float] = monotonic, wall_clock=None, control_factory=workflow_turn_control,
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
-                 chart_hourly_loader=None, conversation_store=None, conversation_context=False):
+                 chart_hourly_loader=None, conversation_store=None, conversation_context=False,
+                 research_intent_v2_enabled=False):
+        if type(research_intent_v2_enabled) is not bool:
+            raise ModelConfigurationError("Intent v2 switch must be an explicit boolean")
+        if research_intent_v2_enabled:
+            raise ModelConfigurationError("Intent v2 integration is not available in phase 5A")
+        self._research_intent_v2_enabled = research_intent_v2_enabled
         self.limits = ApiLimits() if limits is None else limits
         if (conversation_store is not None and not isinstance(conversation_store, ConversationStore)
                 or type(conversation_context) is not bool):
@@ -604,6 +624,92 @@ class ResearchApiService:
         with trace_message(self._trace_sink, mode=self._trace_mode, provider=None, history=history):
             return self._message(session_id, token, request_id, question, history=history)
 
+    def _legacy_turn(self, entry, control, question, *, history=False):
+        """Unchanged legacy selection, reusable inside one admitted turn."""
+        trace_phase("directory")
+        timestamp = self._wall_clock()
+        directory = None
+        routing_session = RoutingSessionView.capture(entry.session)
+        # Questions about this conversation itself are answered from program digests.
+        recall = bool(self._conversation_context and not history and entry.digests and is_recall_question(question))
+        education_candidate = not recall and probe_general_knowledge(
+            question, workflow=self._workflow_enabled, history=history, session=routing_session)
+        if education_candidate:
+            try:
+                directory = trace_call("source", "directory", self._directory_loader, timestamp)
+            except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+                # A local identity hint may veto education; its availability or
+                # freshness must never authorize or block a generic explanation.
+                pass
+        decision = None if recall else resolve_general_knowledge(
+            question, candidate=education_candidate, directory=directory)
+        if recall:
+            result = run_conversation_recall_turn(recall_answer(entry.digests), model=entry.model,
+                                                  session=entry.session, control=control)
+        elif decision is not None:
+            trace_route(decision)
+            result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
+        else:
+            if directory is None:
+                try:
+                    directory = trace_call("source", "directory", self._directory_loader, timestamp)
+                except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+                    raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
+            screening_research_source = "csv" if self._development_source is not None else self._research_source
+            trace_phase("routing")
+            decision = route_research_request(question, context=RoutingContext(
+                session=routing_session, directory=directory, history=history, workflow=self._workflow_enabled,
+                company_enabled=self._product_data_service is not None, quote_source=self._screening_source,
+                research_source=screening_research_source, development=self._development_source is not None),
+                clock=self._wall_clock)
+            trace_route(decision)
+            if decision.kind == RouteKind.INDEX_RESEARCH:
+                from trading_companion.index_agent import run_index_research_turn
+                result = run_index_research_turn(question, model=entry.model, directory=directory, session=entry.session,
+                    source=self._research_source, development_source=self._development_source, now=timestamp,
+                    reference_date=self._reference_date, control=control)
+            elif decision.kind == RouteKind.LOCAL_REPLY:
+                if decision.intent == IntentKind.MARKET_RESEARCH:
+                    from trading_companion.market_scope import market_reply_code
+                    code = market_reply_code(question, directory=directory)
+                else:
+                    code = {IntentKind.STATE_CONFLICT: "routing_state_conflict",
+                            IntentKind.KNOWLEDGE_DISABLED: "general_knowledge_disabled"}[decision.intent]
+                result = run_routing_reply_turn(code, model=entry.model, session=entry.session, control=control)
+            elif decision.kind == RouteKind.GENERAL_KNOWLEDGE:
+                result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
+            elif decision.kind == RouteKind.SCREENING_EDIT:
+                from trading_companion.screening_agent import run_screening_edit_turn
+                result = run_screening_edit_turn(question, model=entry.model, session=entry.session,
+                    directory=directory, source=self._screening_source, now=timestamp, control=control,
+                    clock=self._wall_clock, research_source=screening_research_source,
+                    development=self._development_source is not None)
+            elif decision.kind == RouteKind.SCREENING:
+                from trading_companion.screening_agent import run_screening_turn
+                result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
+                    source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock,
+                    research_source=screening_research_source)
+            elif decision.kind == RouteKind.SCREENING_FOLLOWUP:
+                from trading_companion.screening_followup import run_screening_followup_turn
+                result = run_screening_followup_turn(question, model=entry.model, session=entry.session,
+                    directory=directory, quote_source=self._screening_source, source=self._research_source,
+                    now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
+                    data_service=self._product_data_service, market_background_source=self._market_background_source,
+                    clock=self._wall_clock, control=control, workflow=self._workflow_enabled)
+            elif decision.kind == RouteKind.COMPANY_RESEARCH:
+                from trading_companion.product_agent import run_product_research_turn
+                result = run_product_research_turn(question, model=entry.model, directory=directory,
+                    source=self._research_source, development_source=self._development_source,
+                    reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
+                    data_service=self._product_data_service, market_background_source=self._market_background_source,
+                    background_clock=self._wall_clock)
+            else:
+                result = run_natural_research_turn(question, model=entry.model, directory=directory,
+                    source=self._research_source,
+                    development_source=self._development_source, reference_date=self._reference_date,
+                    session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
+        return result, directory, timestamp
+
     def _message(self, session_id, token, request_id, question, *, history=False):
         entry, control, replay = self._admit(session_id, token, request_id, question, history=history)
         if replay is not None:
@@ -613,88 +719,7 @@ class ResearchApiService:
         reset_contexts, remembered = False, None
         entry.model.history = tuple(entry.digests) if self._conversation_context and not history else ()
         try:
-            trace_phase("directory")
-            timestamp = self._wall_clock()
-            directory = None
-            routing_session = RoutingSessionView.capture(entry.session)
-            # Questions about this conversation itself are answered from program digests.
-            recall = bool(self._conversation_context and not history and entry.digests and is_recall_question(question))
-            education_candidate = not recall and probe_general_knowledge(
-                question, workflow=self._workflow_enabled, history=history, session=routing_session)
-            if education_candidate:
-                try:
-                    directory = trace_call("source", "directory", self._directory_loader, timestamp)
-                except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
-                    # A local identity hint may veto education; its availability or
-                    # freshness must never authorize or block a generic explanation.
-                    pass
-            decision = None if recall else resolve_general_knowledge(
-                question, candidate=education_candidate, directory=directory)
-            if recall:
-                result = run_conversation_recall_turn(recall_answer(entry.digests), model=entry.model,
-                                                      session=entry.session, control=control)
-            elif decision is not None:
-                trace_route(decision)
-                result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
-            else:
-                if directory is None:
-                    try:
-                        directory = trace_call("source", "directory", self._directory_loader, timestamp)
-                    except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
-                        raise ApiProblem(503, "directory_unusable", "当前本地证券目录或夹具不可用，未自动刷新或调用模型。") from None
-                screening_research_source = "csv" if self._development_source is not None else self._research_source
-                trace_phase("routing")
-                decision = route_research_request(question, context=RoutingContext(
-                    session=routing_session, directory=directory, history=history, workflow=self._workflow_enabled,
-                    company_enabled=self._product_data_service is not None, quote_source=self._screening_source,
-                    research_source=screening_research_source, development=self._development_source is not None),
-                    clock=self._wall_clock)
-                trace_route(decision)
-                if decision.kind == RouteKind.INDEX_RESEARCH:
-                    from trading_companion.index_agent import run_index_research_turn
-                    result = run_index_research_turn(question, model=entry.model, directory=directory, session=entry.session,
-                        source=self._research_source, development_source=self._development_source, now=timestamp,
-                        reference_date=self._reference_date, control=control)
-                elif decision.kind == RouteKind.LOCAL_REPLY:
-                    if decision.intent == IntentKind.MARKET_RESEARCH:
-                        from trading_companion.market_scope import market_reply_code
-                        code = market_reply_code(question, directory=directory)
-                    else:
-                        code = {IntentKind.STATE_CONFLICT: "routing_state_conflict",
-                                IntentKind.KNOWLEDGE_DISABLED: "general_knowledge_disabled"}[decision.intent]
-                    result = run_routing_reply_turn(code, model=entry.model, session=entry.session, control=control)
-                elif decision.kind == RouteKind.GENERAL_KNOWLEDGE:
-                    result = run_general_knowledge_turn(question, model=entry.model, session=entry.session, control=control)
-                elif decision.kind == RouteKind.SCREENING_EDIT:
-                    from trading_companion.screening_agent import run_screening_edit_turn
-                    result = run_screening_edit_turn(question, model=entry.model, session=entry.session,
-                        directory=directory, source=self._screening_source, now=timestamp, control=control,
-                        clock=self._wall_clock, research_source=screening_research_source,
-                        development=self._development_source is not None)
-                elif decision.kind == RouteKind.SCREENING:
-                    from trading_companion.screening_agent import run_screening_turn
-                    result = run_screening_turn(question, model=entry.model, session=entry.session, directory=directory,
-                        source=self._screening_source, now=timestamp, control=control, clock=self._wall_clock,
-                        research_source=screening_research_source)
-                elif decision.kind == RouteKind.SCREENING_FOLLOWUP:
-                    from trading_companion.screening_followup import run_screening_followup_turn
-                    result = run_screening_followup_turn(question, model=entry.model, session=entry.session,
-                        directory=directory, quote_source=self._screening_source, source=self._research_source,
-                        now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
-                        data_service=self._product_data_service, market_background_source=self._market_background_source,
-                        clock=self._wall_clock, control=control, workflow=self._workflow_enabled)
-                elif decision.kind == RouteKind.COMPANY_RESEARCH:
-                    from trading_companion.product_agent import run_product_research_turn
-                    result = run_product_research_turn(question, model=entry.model, directory=directory,
-                        source=self._research_source, development_source=self._development_source,
-                        reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
-                        data_service=self._product_data_service, market_background_source=self._market_background_source,
-                        background_clock=self._wall_clock)
-                else:
-                    result = run_natural_research_turn(question, model=entry.model, directory=directory,
-                        source=self._research_source,
-                        development_source=self._development_source, reference_date=self._reference_date,
-                        session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
+            result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
             trace_outcome(result)
             trace_phase("projection")
             saved = self._saved_for_view(entry, result, directory, timestamp)

@@ -188,7 +188,7 @@ class IntentEvaluationTests(unittest.TestCase):
             self.assertEqual(report['metrics']['providers']['jev']['cost']['unknown_requests'],1)
 
     def test_rule_versions_reject_old_locks_and_cross_rule_references(self):
-        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'index-scenario-ui-v1')
+        self.assertEqual(self.dev['plan']['rule_baseline_version'], 'intent-integration-controls-v1')
         with tempfile.TemporaryDirectory() as root:
             root=Path(root)
             source=save(self.dev,root/'dev.json')
@@ -200,10 +200,12 @@ class IntentEvaluationTests(unittest.TestCase):
             old['version']='intent-router-threshold-lock-v1'
             save(old,path)
             self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_invalid')
-            old=deepcopy(lock)
-            old['rule_baseline_version']='decision-horizon-v1'
-            save(old,path)
-            self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_incompatible')
+            for version in ('decision-horizon-v1', 'index-scenario-ui-v1'):
+                old=deepcopy(lock)
+                old['rule_baseline_version']=version
+                save(old,path)
+                with self.subTest(version=version):
+                    self.assertEqual(evaluation.build_plan(split='holdout',threshold_lock=path)['code'],'intent_lock_incompatible')
             old_report=deepcopy(self.dev)
             old_report['plan']['rule_baseline_version']='decision-horizon-v1'
             self.assertEqual(evaluation.build_plan(suite='context-ablation',

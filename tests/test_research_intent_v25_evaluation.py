@@ -47,7 +47,25 @@ class OfflineTests(unittest.TestCase):
 
 class EvaluationTests(OfflineTests):
     def test_complete_public_preflight_keeps_known_gap_and_exclusions(self):
-        rows, effective, prefixes, setups = experiment.populations()
+        with self.assertRaisesRegex(ValueError,
+                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+            experiment.populations()
+        # Public construction regression only: read exposed inputs without granting run admission.
+        original, _ = experiment.load_corpus()
+        _, _, approved = experiment.cases.load_regression_amendments()
+        freeze = experiment.cases.read_json(experiment.cases.LOCK)
+        fresh = experiment.cases.load_cases(expected_sha256=freeze['dev_sha256'])
+        population = experiment.read_json(experiment.ROOT / 'data/evaluation/research-intent-v2.4-holdout-population.json')
+        self.assertEqual(set(population['not_applicable']), experiment.NOT_APPLICABLE)
+        self.assertEqual((population['reviewer'], population['approval_message']), ('claude', 383))
+        effective, _ = experiment.apply_annotation_completion(original, {r['id']: r['gold'] for r in [*approved, *fresh]})
+        rows = deepcopy([*original, *fresh])
+        for row in rows:
+            row['dataset'] = 'regression' if row['split'] == 'holdout' else 'dev'
+            if row['dataset'] == 'regression':
+                row['split'] = 'regression'
+        prefixes = experiment.core.prefix_library([r for r in original if r['split'] == 'dev'])
+        setups = experiment.cases.load_setups()
         self.assertEqual(len(rows), 318)
         self.assertEqual(sum(r['dataset'] == 'dev' for r in rows), 233)
         self.assertEqual(sum(r['dataset'] == 'regression' for r in rows), 85)

@@ -10,6 +10,7 @@ from unittest.mock import patch
 from trading_companion.intent_router_task import (CORPUS, load_corpus, definition_digest, input_state, LABELS,
     CRITERIA, digest, row_digest, read_json, MANIFEST, sources_match, frozen_sources, SOURCE_REVISIONS)
 from trading_companion.typesafe_jev import ClassifierError
+from trading_companion import intent_rule_baseline as baselines
 
 
 class IntentTaskTests(unittest.TestCase):
@@ -99,3 +100,61 @@ class IntentTaskTests(unittest.TestCase):
                 path.write_bytes(value)
                 with self.subTest(value=value),self.assertRaises((ClassifierError,ValueError)):
                     read_json(path)
+
+
+class HistoricalBaselineTests(unittest.TestCase):
+    def setUp(self):
+        self.registry = json.loads(baselines.DESCRIPTION.read_text(encoding='utf-8'))
+        self.version = 'index-scenario-ui-v1'
+        self.historical = next(r for r in self.registry['previous_rules']
+                               if r['rule_baseline_version'] == self.version)
+        self.expected = self.historical['source_digest']
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.path = Path(temporary.name)/'registry.json'
+
+    def lookup(self, *, version=None, expected=None):
+        self.path.write_text(json.dumps(self.registry), encoding='utf-8')
+        with patch.object(baselines, 'DESCRIPTION', self.path):
+            return baselines.historical_baseline(version=version or self.version,
+                                                  expected_digest=expected or self.expected)
+
+    def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
+        current = baselines.current_baseline()
+        self.assertEqual(current['rule_baseline_version'], 'intent-integration-controls-v1')
+        self.assertEqual(current['parent_version'], self.version)
+        with patch.object(baselines, 'current_baseline', wraps=baselines.current_baseline) as checked:
+            self.assertEqual(self.lookup(), self.historical)
+        checked.assert_called_once_with()
+
+    def test_exact_version_and_digest_are_both_required(self):
+        for version, expected in ((self.version, '0'*64), ('unregistered', self.expected),
+                                  (baselines.VERSION, self.registry['current']['source_digest'])):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                self.lookup(version=version, expected=expected)
+
+    def test_historical_sources_and_registered_digest_are_recomputed(self):
+        name = next(iter(self.historical['sources_sha256_lf']))
+        self.historical['sources_sha256_lf'][name] = '0'*64
+        with self.assertRaisesRegex(ValueError, 'Historical rule baseline source mismatch'):
+            self.lookup()
+
+    def test_even_identical_or_differently_hashed_duplicate_versions_are_rejected(self):
+        duplicate = deepcopy(self.historical)
+        self.registry['previous_rules'].append(duplicate)
+        for digest_value in (self.expected, '0'*64):
+            duplicate['source_digest'] = digest_value
+            with self.subTest(digest=digest_value), self.assertRaisesRegex(ValueError, 'exactly once'):
+                self.lookup()
+
+    def test_missing_history_is_rejected(self):
+        self.registry['previous_rules'].remove(self.historical)
+        with self.assertRaisesRegex(ValueError, 'exactly once'):
+            self.lookup()
+
+    def test_current_source_drift_is_rejected_even_when_history_matches(self):
+        sources = baselines.source_hashes()
+        name = next(iter(sources))
+        with patch.object(baselines, 'source_hashes', return_value={**sources, name: '0'*64}):
+            with self.assertRaisesRegex(ValueError, 'Current rule baseline source mismatch'):
+                self.lookup()

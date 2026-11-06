@@ -22,10 +22,21 @@ from trading_companion.model import TokenUsage
 SCHEMA_VERSION = "trace-v2"
 _PROVIDERS = frozenset(("fake", "deepseek", "openai"))
 _PHASES = frozenset(("admission", "directory", "routing", "execution", "projection"))
+_INTENT_STAGES = frozenset(("context", "understanding", "legacy", "execution", "local"))
 _STATUSES = {"completed": "completed", "needs_clarification": "clarification", "limited": "limited",
              "failed": "error", "invalid_request": "rejected", "out_of_scope": "rejected", "cancelled": "stopped"}
 _STOPS = frozenset(("turn_cancelled", "turn_deadline_exceeded", "model_call_budget_exhausted",
                     "analysis_budget_exhausted", "token_budget_exhausted"))
+_INTENT_CODES = _STOPS | frozenset((
+    "ok", "local", "intent_invalid", "intent_context_invalid", "intent_context_unavailable",
+    "context_request_too_large", "intent_model_failure", "invalid_intent_v2", "invalid_intent_input",
+    "intent_v2_context_or_conditions_invalid", "intent_v2_checked", "intent_v2_unavailable",
+    *("intent_v2_model_" + code for code in (
+        "timeout", "connection_error", "invalid_response", "incomplete_response", "response_json_invalid",
+        "response_shape_invalid", "tool_arguments_json_invalid", "tool_call_invalid", "tool_calls_missing",
+        "output_limit", "unsupported_response", "authentication_error", "rate_limited", "provider_error",
+        "refused", "unknown_tool", "configuration", "request", "failure")),
+))
 # Exact application codes, never arbitrary exception/response strings or a prefix match.
 # Source-code coverage and reasoned non-turn exclusions live in test_turn_trace.py.
 # Unknown external values still become "other"; source discovery never runs in production.
@@ -373,6 +384,7 @@ class TurnTrace:
         self._summaries = {name: dict.fromkeys(("seen", "entered", *_EVENT_STATUSES), 0) for name in _KINDS.values()}
         self._attempts = self._requests = self._responses = self._complete = self._unknown_transport = 0
         self._totals = dict.fromkeys(_USAGE_KEYS)
+        self._intent_stages = []
 
     def _now(self):
         value = self._clock()
@@ -387,6 +399,23 @@ class TurnTrace:
         with self._lock:
             if not self._done and phase in _PHASES:
                 self._phase = phase
+
+    def intent_stage(self, stage, code, before, after, elapsed_ms, request_characters=None):
+        """Add only bounded counters and fixed categories, never question/context."""
+        if stage not in _INTENT_STAGES:
+            return
+        delta = lambda key: _count(after[key] - before[key])
+        attempts = delta("model_calls_attempted")
+        complete = delta("responses_with_complete_consistent_usage")
+        record = dict(stage=stage, code=code if code in _INTENT_CODES else "other",
+            elapsed_ms=_count(elapsed_ms), model_calls_attempted=attempts,
+            responses_received=delta("responses_received"), observed_tokens=delta("observed_tokens"),
+            usage_complete_for_attempts=complete == attempts)
+        if stage == "context" and type(request_characters) is int and request_characters >= 0:
+            record.update(request_characters=_count(request_characters), request_limit=20000)
+        with self._lock:
+            if not self._done and len(self._intent_stages) < 4:
+                self._intent_stages.append(record)
 
     def control(self, control, provider):
         with self._lock:
@@ -580,9 +609,13 @@ class TurnTrace:
                                  "events": deepcopy(self._events)},
                       **deepcopy(self._summaries), "events": deepcopy(self._details),
                       "truncated": self._dropped > 0, "dropped_events": self._dropped}
-            while len(_line(record)) > self.sink.limits.record_bytes and (record["models"]["events"] or record["events"]):
+            if self._intent_stages:
+                record["intent_stages"] = deepcopy(self._intent_stages)
+            while len(_line(record)) > self.sink.limits.record_bytes and (
+                    record["models"]["events"] or record["events"] or record.get("intent_stages")):
                 models, details = record["models"]["events"], record["events"]
-                destination = models if models and (not details or models[-1]["event_id"] > details[-1]["event_id"]) else details
+                destination = (models if models and (not details or models[-1]["event_id"] > details[-1]["event_id"])
+                               else details if details else record["intent_stages"])
                 destination.pop()
                 record["dropped_events"] += 1
                 record["truncated"] = True
@@ -602,6 +635,10 @@ def _update(method, *args):
 
 def trace_phase(phase):
     _update("phase", phase)
+
+
+def trace_intent_stage(stage, code, before, after, elapsed_ms, request_characters=None):
+    _update("intent_stage", stage, code, before, after, elapsed_ms, request_characters)
 
 
 def trace_control(control, provider=None):

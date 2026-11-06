@@ -121,6 +121,8 @@ def main(argv=None) -> int:
     parser.add_argument("--memory-db", help="Local SQLite conversation history and earlier-turn digests (enabled by start.cmd)")
     parser.add_argument("--no-memory", action="store_true",
                         help="Disable conversation history, including the default enabled by start.cmd")
+    parser.add_argument("--research-intent-v2", action="store_true",
+                        help="Reserved integration switch; unavailable until phase 5B (default: disabled)")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--no-trace", action="store_true",
                         help="Disable metadata tracing, including the default enabled by start.cmd")
@@ -131,6 +133,9 @@ def main(argv=None) -> int:
     parser.add_argument("--screening-coverage", choices=("standard", "expanded"), default="standard",
                         help="Expanded quote sample: up to 1000 records, more requests, same deadline")
     args = parser.parse_args(argv)
+    if args.research_intent_v2:
+        print("[research_intent_v2_not_ready] 新理解路径尚未完成接入，5A 不允许启用；请移除此参数。", file=sys.stderr)
+        return 2
     if args.no_trace:
         args.trace_dir = None
     if not 1 <= args.port <= 65535:

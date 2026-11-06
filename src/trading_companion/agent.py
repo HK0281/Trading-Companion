@@ -1,6 +1,7 @@
 """Bounded research with fact reports, checked relations and grounded model prose."""
 
 from dataclasses import dataclass, field, replace
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
 import json
 import re
@@ -237,7 +238,38 @@ def _stopped(outcome: AgentTurnResult, code: str) -> AgentTurnResult:
                    "本轮已达到运行限制；停止后续调度，迟到内容已丢弃。仅保留停止前核验的事实，未保存为会话结果。")
 
 
-def _controlled(action, *, model, control, default_calls, input_mode, session=None, replace_pending=False):
+@dataclass(frozen=True)
+class _TurnScope:
+    model: object
+    checked_model: object
+    control: TurnControl
+    session: object
+    working: object
+
+
+_TURN_SCOPE = ContextVar("research_agent_turn_scope", default=None)
+
+
+def _replace_pending(working, requested):
+    if (working is not None and requested and not working._replacing_pending
+            and any(item is not None for item in
+                    (working.pending, working.pending_edit, working.product_pending, working.index_pending))):
+        working._replacing_pending = True
+        working.clear_pending()
+
+
+def _controlled(action, *, model, control, default_calls, input_mode, session=None,
+                replace_pending=False, share_nested=False):
+    if type(share_nested) is not bool:
+        raise ModelConfigurationError("Shared turn scope must be an explicit boolean")
+    scope = _TURN_SCOPE.get()
+    if scope is not None:
+        if (control is not scope.control or not (model is scope.model or model is scope.checked_model)
+                or not (session is scope.session or session is scope.working)):
+            raise ModelConfigurationError("Nested execution must use the same session, model and turn control")
+        scope.control.checkpoint()
+        _replace_pending(scope.working, replace_pending)
+        return action(scope.checked_model, scope.working)
     limits = workflow_turn_limits() if default_calls == 6 else TurnLimits(model_calls=default_calls)
     runtime = TurnControl(limits) if control is None else control
     if type(runtime) is not TurnControl:
@@ -246,13 +278,14 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
         return AgentTurnResult(status="needs_clarification", code="session_busy", stage="clarification",
                                message="本会话正在处理另一条消息，请等待该次处理结束；没有重复执行。",
                                input_mode="natural", session_event="busy", session_state={"state": "busy"})
+    scope_token = None
     try:
         runtime.start()
         working = session._fork_for_turn() if session is not None else None
-        if working is not None and replace_pending and any(
-                item is not None for item in (working.pending, working.pending_edit, working.product_pending, working.index_pending)):
-            working._replacing_pending = True
-            working.clear_pending()
+        _replace_pending(working, replace_pending)
+        checked_model = ControlledToolModel(model, runtime)
+        if share_nested:
+            scope_token = _TURN_SCOPE.set(_TurnScope(model, checked_model, runtime, session, working))
 
         def publish(stopped):
             if session is None:
@@ -271,7 +304,7 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
         with bind_turn(runtime):
             try:
                 checkpoint()
-                outcome = action(ControlledToolModel(model, runtime), working)
+                outcome = action(checked_model, working)
             except TurnStopped as stop:
                 outcome = _stopped(outcome, stop.code)
             except BaseException:
@@ -293,6 +326,8 @@ def _controlled(action, *, model, control, default_calls, input_mode, session=No
                        workflow_trace=trace,
                        session_event="turn_stopped" if session is not None and stop_code else outcome.session_event)
     finally:
+        if scope_token is not None:
+            _TURN_SCOPE.reset(scope_token)
         if session is not None:
             session._turn_lock.release()
 

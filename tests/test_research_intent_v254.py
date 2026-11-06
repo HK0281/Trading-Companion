@@ -203,7 +203,12 @@ class MeteredTests(OfflineTests):
             self.assertFalse(result['format_retry']['attempted'])
 
     def test_plan_has_same_global_budget_and_explicit_retry_repair_allowlist(self):
-        plan = experiment.build_plan('dev')
+        rows = [dict(sample(), id=f'independent-budget-{i}') for i in range(233)]
+        with patch.object(experiment, 'populations',
+                return_value=(rows, {r['id']: r['gold'] for r in rows}, {}, {})) as population:
+            plan = experiment.build_plan('dev')
+        population.assert_called_once_with('dev')
+        self.assertEqual((plan['context_preflight']['total'], plan['context_preflight']['buildable']), (233, 233))
         self.assertEqual((plan['max_calls'], plan['max_attempts_per_target']), (233,2))
         self.assertEqual(plan['tool_arguments_policy']['retry_repairs'], ['unquoted_scalar'])
         self.assertIn('unquoted_scalar', plan['tool_arguments_policy']['allowed_repairs'])

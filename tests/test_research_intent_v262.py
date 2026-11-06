@@ -145,15 +145,15 @@ class V262Tests(unittest.TestCase):
                 result, _ = self.check(value, question=question)
                 self.assertEqual((result.operation, result.strict_scope), (operation, strict))
 
-    def test_screening_references_remain_invalid_until_model_uses_task_scope(self):
-        with self.assertRaises(InputIssue) as caught:
-            self.check(previous_value(reference('all', scope='shortlist'), task='screening'),
-                       ctx=context(previous=True), question='把名单数量改为五只')
-        self.assertEqual(caught.exception.code, 'task_fields_conflict')
+    def test_screening_references_are_cleared_and_updates_still_require_valid_task_scope(self):
+        result, log = self.check(previous_value(reference('all', scope='shortlist'), task='screening', operation='update'),
+                                 ctx=context(previous=True), question='把名单数量改为五只')
+        self.assertEqual((result.subject_source, result.bound_subjects, result.outcome), ('none', (), 'clarify_subject'))
+        self.assertIn('screening_subject_cleared', [item['kind'] for item in log])
         value = draft(task='screening', operation='update', subject=dict(source='none', mentions=[], selection=None))
         result, _ = self.check(value, question='把名单数量改为五只')
         self.assertEqual((result.task, result.subject_source, result.bound_subjects, result.operation, result.outcome),
-                         ('screening', 'none', (), 'update', 'research'))
+                         ('clarify', 'none', (), 'update', 'clarify_subject'))
 
     def test_exit_synonym_authorizes_prices_but_not_ratings(self):
         for phrase, allowed in (('在哪里退出合适', True), ('退出评级', False)):

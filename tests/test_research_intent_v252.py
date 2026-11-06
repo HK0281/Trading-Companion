@@ -102,7 +102,7 @@ class OrdinalTests(OfflineTests):
                 self.assertEqual(result.bound_subjects, (SECURITIES[1].instrument_id,))
                 self.assertEqual(result.outcome, 'research')
                 self.assertEqual(result.indicator_mentions, ('RSI8',))
-                self.assertEqual(log, [])
+                self.assertEqual([item['kind'] for item in log], ['explicit_indicator_domain'])
         self.assertEqual(self.check('上一份比较里的第二只', normalize=False).bound_subjects, (SECURITIES[1].instrument_id,))
 
     def test_recent_comparison_never_selects_a_coexisting_screening_list(self):

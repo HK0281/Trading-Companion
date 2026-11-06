@@ -30,8 +30,8 @@ from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelR
 from trading_companion.turn_control import ControlledToolModel, TurnControl, TurnLimits, TurnStopped, bind_turn
 
 
-VERSION = 'research-intent-v2.6.5'
-GUARD_VERSION = 'intent-v2-guards-v15'
+VERSION = 'research-intent-v2.6.6'
+GUARD_VERSION = 'intent-v2-guards-v16'
 TEMPERATURE = 0
 TOOL_NAME = 'interpret_research_intent_v2'
 TASKS = ('stock_research', 'index_research', 'screening', 'knowledge', 'recall', 'unsupported', 'clarify')
@@ -351,6 +351,10 @@ def normalize_horizon(expression):
     else:
         compressed = re.fullmatch(prefix + r'([一二两三四五六七八九])([一二两三四五六七八九])\s*' + unit, text)
         if not compressed:
+            # The model has already extracted and grounded this whole field.
+            # Accept a bare quantified duration; never scan the question here.
+            if re.fullmatch(count + r'\s*' + unit, text):
+                return canonical(parse_outlook_expression('未来' + text).horizon)
             return None if text in ('近期', '最近', '后面', '后续', '以后', '接下来', '将来',
                                         '未来', '现在', '目前', '当前', '近来', '近日') else canonical(parse_outlook_expression(text).horizon)
         low, high, units = _integer(compressed[1]), _integer(compressed[2]), compressed[3]
@@ -740,7 +744,7 @@ def _question_subject(question, subject, context, task, *, normalize=True, corre
 
 
 def check_response(question, response, *, context, normalize=True, corrections=None):
-    """Validate a v2.6.5 proposal; no session mutation, data access or gold-based repairs."""
+    """Validate a v2.6.6 proposal; no session mutation, data access or gold-based repairs."""
     _require(type(question) is str and 0 < len(question.strip()) <= 2000
              and all(c.isprintable() or c in '\n\r\t' for c in question), 'invalid_intent_input')
     _require(type(context) is IntentContext, 'invalid_intent_context')
@@ -772,12 +776,23 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         _require(any(marker in item['phrase'] for marker in NEGATION_MARKERS), 'ungrounded_exclusion')
     _require(not draft['strict_scope'] or draft['scope_phrase'] is not None, 'missing_scope_evidence')
     context.directory.assert_usable(context.reference_date, development=context.development)
-    if normalize and draft['task'] == 'recall':
+    screening_issue = None
+    if normalize and draft['task'] == 'screening' and draft['operation'] == 'update':
+        # Updating the task still needs a valid saved list, not a stock ordinal.
+        screening_issue = _reference_scope(context, 'shortlist')[2]
+    if normalize and draft['task'] in ('recall', 'screening'):
         unbound = dict(source='none', mentions=[], selection=None,
                        reference=dict(kind='none', index=None, scope=None))
         if subject != unbound:
-            _correction(log, 'recall_no_binding', 'subject', subject, unbound, 'recall_is_not_research_authority')
+            screening = draft['task'] == 'screening'
+            _correction(log, 'screening_subject_cleared' if screening else 'recall_no_binding',
+                        'subject', subject, unbound,
+                        'screening_is_not_stock_binding' if screening else 'recall_is_not_research_authority')
             subject.update(unbound)
+    if normalize and draft['task'] == 'screening' and draft['indicator_mentions']:
+        _correction(log, 'screening_indicators_cleared', 'indicator_mentions', draft['indicator_mentions'], [],
+                    'screening_conditions_are_not_research_indicators')
+        draft['indicator_mentions'] = []
     pending = _pending(context)
     pending_conflict = normalize and bool(pending and pending.get('reason') == 'conflict')
     reference_valid = _check_reference(subject)
@@ -799,6 +814,8 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         and bool(subject['mentions']) and subject['selection'] is None)
     if pending_conflict and not independent_candidate:
         bound, binding_issue = (), 'clarify_conflict'
+    elif normalize and draft['task'] == 'screening':
+        bound, binding_issue = (), screening_issue
     elif not reference_valid:
         bound, binding_issue = (), 'clarify_subject'
     elif product:
@@ -1001,6 +1018,13 @@ def check_response(question, response, *, context, normalize=True, corrections=N
         wants_plan, plan_blocked = False, 'explain_no_new_authorization'
     if outcome == 'research' and wants_plan and plan_blocked is None and horizon is None:
         outcome = 'clarify_horizon'
+    # Repair only the domain label after all scope and price-dependency checks.
+    # A missing label must never turn an originally blocked plan into authority.
+    if (normalize and draft['task'] in ('stock_research', 'index_research') and mentions
+            and 'technical' not in kinds and 'technical' not in dependency_exclusions):
+        _correction(log, 'explicit_indicator_domain', 'research_kinds', kinds, (*kinds, 'technical'),
+                    'grounded_positive_indicator_mentions')
+        kinds = (*kinds, 'technical')
     task = 'clarify' if ((binding_issue and binding_issue != 'clarify_identity') or outcome == 'clarify_subject') else draft['task']
     if normalize and task == 'clarify' and task_hint and outcome in ('clarify_identity', 'clarify_conflict'):
         before_task = task

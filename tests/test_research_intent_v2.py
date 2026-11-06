@@ -187,13 +187,14 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(InputIssue):
             checked('平安银行基本面', draft(research_kinds=[dict(kind='financial', phrase='虚构基本面')]))
 
-    def test_grounded_indicator_fragments_are_preserved_without_semantic_repair(self):
+    def test_grounded_indicator_fragments_are_preserved_with_only_domain_label_repair(self):
         value = draft(indicator_mentions=['SMA5', 'SMA'])
         original, log = deepcopy(value), []
         result = check_response('平安银行参考SMA5', response(value), context=context(), corrections=log)
         self.assertEqual(result.indicator_mentions, ('SMA5', 'SMA'))
         self.assertEqual(value, original)
-        self.assertEqual(log, [])
+        self.assertEqual([item['kind'] for item in log], ['explicit_indicator_domain'])
+        self.assertEqual(result.research_kinds, ('technical',))
         raw = check_response('平安银行参考SMA5', response(value), context=context(), normalize=False)
         self.assertEqual(raw.indicator_mentions, ('SMA5', 'SMA'))
         result = checked('平安银行参考SMA5和默认SMA', value)

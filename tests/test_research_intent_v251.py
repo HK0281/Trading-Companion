@@ -37,7 +37,7 @@ class TechnicalAndSubjectTests(OfflineTests):
     def check(self, question, value=None, ctx=None, **kwargs):
         return intent.check_response(question, response(value or draft()), context=ctx or context(), **kwargs)
 
-    def test_explicit_technical_domains_require_model_declaration_and_preserve_raw(self):
+    def test_indicators_supply_domain_but_granularity_needs_model_declaration_and_preserves_raw(self):
         for mention, task in (('平安银行', 'stock_research'), ('沪深300', 'index_research')):
             for cue in ('完整日线', '周线', 'K线', 'BOLL'):
                 question = '研究' + mention + '的' + cue
@@ -46,7 +46,7 @@ class TechnicalAndSubjectTests(OfflineTests):
                 original, log = deepcopy(value), []
                 with self.subTest(task=task, cue=cue):
                     result = self.check(question, value, corrections=log)
-                    self.assertEqual(result.research_kinds, ())
+                    self.assertEqual(result.research_kinds, ('technical',) if cue == 'BOLL' else ())
                     declared = dict(value, research_kinds=[dict(kind='technical', phrase=cue)])
                     self.assertEqual(self.check(question, declared).research_kinds, ('technical',))
                     self.assertNotIn('explicit_technical_cue', [c['kind'] for c in log])
@@ -65,12 +65,13 @@ class TechnicalAndSubjectTests(OfflineTests):
         self.assertEqual(self.check('平安银行短线能买么，给参考价', value).research_kinds, ())
         for cue in ('不能只看日线', '不要只用BOLL'):
             value = draft(indicator_mentions=['BOLL'] if 'BOLL' in cue else [])
-            self.assertEqual(self.check('研究平安银行，' + cue, value).research_kinds, ())
+            self.assertEqual(self.check('研究平安银行，' + cue, value).research_kinds,
+                             ('technical',) if 'BOLL' in cue else ())
 
     def test_unknown_indicators_still_clarify_and_grounding_scope_failures_still_reject(self):
         value = draft(indicator_mentions=['神奇指标'])
         result = self.check('研究平安银行的神奇指标', value)
-        self.assertEqual((result.research_kinds, result.outcome), ((), 'clarify_conditions'))
+        self.assertEqual((result.research_kinds, result.outcome), (('technical',), 'clarify_conditions'))
         with self.assertRaises(InputIssue):
             self.check('研究平安银行', value)
         self.assertFalse(self.check('研究平安银行，只用BOLL', draft(indicator_mentions=['BOLL'])).strict_scope)

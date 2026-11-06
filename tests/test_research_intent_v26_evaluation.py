@@ -46,12 +46,12 @@ class PublicEvaluationTests(OfflineTests):
     def test_plan_is_offline_and_pins_new_approval_and_split_caps(self):
         with patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')):
             plan = evaluation.evaluate(split='dev')
-        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 482))
-        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.7')
-        self.assertEqual(plan['guard_version'], 'intent-v2-guards-v17')
+        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 487))
+        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.8')
+        self.assertEqual(plan['guard_version'], 'intent-v2-guards-v18')
         self.assertEqual(plan['approved_call_caps'], dict(dev=80, regression=520))
-        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [482])
-        self.assertIn('docs/research-intent-v2.6.7-implementation.md', plan['source_sha256_lf'])
+        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [487])
+        self.assertIn('docs/research-intent-v2.6.8-implementation.md', plan['source_sha256_lf'])
         self.assertIn('data/evaluation/research-intent-v2.6.2-amendments.json', plan['source_sha256_lf'])
         self.assertIn('data/evaluation/research-intent-v2.6.3-amendments.json', plan['source_sha256_lf'])
         self.assertEqual((plan['annotation_amendments']['v263']['pending_reviews'],
@@ -170,7 +170,7 @@ class PublicEvaluationTests(OfflineTests):
     def test_late_drift_removes_passing_report_and_keeps_run_claim(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
-            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.7/public/dev'
+            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.8/public/dev'
             plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='synthetic', max_calls=1,
                         annotation_amendments=dict(v262=dict(pending_reviews=0), v263=dict(pending_reviews=0)))
             def check(_):

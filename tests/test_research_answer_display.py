@@ -64,7 +64,7 @@ class AnswerDisplayTests(unittest.TestCase):
                      '仍需观察公司行为（E1）。', '在 E1 条件满足时，继续观察。'):
             with self.subTest(text=text):
                 result = check_claim({'text': text}, instrument='000001.SZ', context=context(), section='current', index=0)
-                self.assertEqual(result[0], text.replace('（E1）', '').replace('E1', '  '))
+                self.assertEqual(result[0], text.replace('（E1）', '').replace(' E1 ', ' '))
                 self.assertEqual(result[2], [])
 
     def test_clause_recovery_cannot_retain_a_dangling_slot(self):

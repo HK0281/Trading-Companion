@@ -7,6 +7,17 @@ _REF = re.compile(r'(?<![A-Za-z0-9_.])(?:E|L)\d+(?![A-Za-z0-9_.])')
 _EMPTY = re.compile(r'[（(]\s*(?:[/、,，;；]\s*)*[）)]')
 
 
+def display_claim(text):
+    """Format accepted prose only, after source/number checks have finished."""
+    # A model may wrap a price/percentage in square brackets and put a visible
+    # reference after it. Reference validation leaves position-preserving spaces;
+    # keep those offsets intact until all checks and clause recovery are done.
+    text = re.sub(r'\[([+−-]?\d+(?:\.\d+)?(?:亿元|万元|元/股|元|%|％|倍|点))\](?!\s*\()', r'\1', text)
+    text = re.sub(r'\[\s*\](?!\s*\()', '', text)
+    text = re.sub(r'[ \t]+', ' ', text)
+    return re.sub(r'\s+([，。！？；：])', r'\1', text).strip()
+
+
 def prepare_claim(text, numbers, context, instrument, *, removed_spans=None):
     from trading_companion.answer_numeric_bindings import InvalidBinding, resolve_ref
     from trading_companion.answer_validation import HARD, unsafe

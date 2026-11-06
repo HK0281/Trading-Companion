@@ -31,6 +31,13 @@ _INTENT_CODES = _STOPS | frozenset((
     "ok", "local", "intent_invalid", "intent_context_invalid", "intent_context_unavailable",
     "context_request_too_large", "intent_model_failure", "invalid_intent_v2", "invalid_intent_input",
     "intent_v2_context_or_conditions_invalid", "intent_v2_checked", "intent_v2_unavailable",
+    # Fixed application validation codes can also reach the fallback stage.
+    *"""explicit_subject_not_bound index_domain_unsupported index_identity_invalid
+    invalid_historical_window invalid_horizon_interval invalid_indicator_granularity invalid_intent_context
+    missing_clarification_reason missing_objective_evidence missing_scope_evidence mixed_subject_types
+    omitted_subject pending_authorization_mismatch product_identity_fragment product_subject_unsupported
+    subject_fields_conflict task_fields_conflict too_many_subjects ungrounded_exclusion ungrounded_intent_v2
+    ungrounded_plan_authorization""".split(),
     *("intent_v2_model_" + code for code in (
         "timeout", "connection_error", "invalid_response", "incomplete_response", "response_json_invalid",
         "response_shape_invalid", "tool_arguments_json_invalid", "tool_call_invalid", "tool_calls_missing",

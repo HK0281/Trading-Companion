@@ -288,6 +288,27 @@ class DispatchTests(unittest.TestCase):
             self.assertLessEqual(len(record.get('intent_stages', [])), 4)
             self.assertNotIn('private', raw.decode())
 
+    def test_stage_trace_registers_fixed_candidate_validation_codes_only(self):
+        import ast
+        from trading_companion import research_intent_v2
+        from trading_companion.turn_trace import _INTENT_CODES
+        tree = ast.parse(Path(research_intent_v2.__file__).read_text(encoding='utf-8'))
+        codes = {'invalid_intent_v2', 'invalid_horizon_interval'}
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == '_require'
+                    and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)):
+                codes.add(node.args[1].value)
+        self.assertLessEqual(codes, _INTENT_CODES)
+        before = TurnControl().to_dict()
+        for code in (*sorted(codes), 'ungrounded_intent_v2:private-provider-text'):
+            with self.subTest(code=code), TemporaryDirectory() as folder:
+                sink = JsonlTraceSink(Path(folder))
+                with trace_message(sink, mode='normal', provider='fake', history=False):
+                    trace_intent_stage('understanding', code, before, before, 2)
+                raw = (Path(folder)/'turns.jsonl').read_text(encoding='utf-8')
+                self.assertNotIn('private', raw)
+                self.assertEqual(json.loads(raw)['intent_stages'][0]['code'], code if code in codes else 'other')
+
     def test_standalone_candidate_counts_late_usage_and_discards_actionable_response(self):
         control = TurnControl(TurnLimits(model_calls=1, observed_tokens=6), clock=lambda: 0)
         self.intent.complete.return_value = response(usage=TokenUsage(4, 2, 6))

@@ -319,7 +319,8 @@ def _explain(checked, question, context, *, model, session, development_source):
     if isinstance(saved_scope, ProductPlan):
         from trading_companion.product_answer import synthesize_product_answer
         saved = session.product_saved
-        run = synthesize_product_answer(question, saved.bundle, model=model, repair_invalid=True)
+        run = synthesize_product_answer('基于刚才保存的研究资料，未重新取数。' + question,
+                                        saved.bundle, model=model, repair_invalid=True)
         return AgentTurnResult(status='completed' if run.answer.status == 'accepted' else 'limited',
             code='product_followup_answered', message='基于已保存的公司研究结果，未重新取数。',
             stage='company_research', input_mode='natural', product_plan=saved.plan,

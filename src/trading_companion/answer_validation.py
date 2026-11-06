@@ -85,6 +85,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
     """Return clean sentences, associated model IDs, issues and sentence counts."""
     from trading_companion.answer_diagnostics import diagnostic_event, diagnostics_enabled
     from trading_companion.answer_numeric_bindings import bindings_for, check_numbers, resolve_ref, InvalidBinding
+    from trading_companion.answer_claim_recovery import display_claim
     def rejected(code, sentence=None):
         if diagnostics_enabled():
             diagnostic_event('rejected_field',instrument_id=instrument,section=section,item_index=index,
@@ -185,7 +186,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
                         # on each retained original span. Never count the verification pass twice.
                         final_code, _ = check_numbers(recovered, records, context, instrument, expected_plan=expected_plan)
                         if final_code is None:
-                            safe.append(recovered)
+                            safe.append(display_claim(recovered))
                             used_ids.extend(kept_ids)
                             safe_source_ids.extend(kept_ids)
                             partially_retained = True
@@ -195,7 +196,7 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
                 issues.append(Issue(code, section, position, "" if code == HARD else sentence, instrument=instrument,
                     path=f'{path or f"{section}[{index}]"}.text.sentence[{position}]', details=tuple(numeric)))
             else:
-                safe.append(re.sub(r'\s+([，。！？；：])', r'\1', sentence).strip())
+                safe.append(display_claim(sentence))
                 used_ids.extend(matched_ids)
                 safe_source_ids.extend(matched_ids)
                 retained_clauses = len(clauses)

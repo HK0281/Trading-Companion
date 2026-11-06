@@ -75,6 +75,40 @@ class ClaimRecoveryTests(unittest.TestCase):
         self.assertNotIn('L2', result[0])
         self.assertNotIn('(', result[0])
 
+    def test_bracketed_numbers_and_reference_padding_are_formatted_after_checks(self):
+        text = '收盘[29.7元]（E1）     附近，营收同比[-5.24%]（E4）    仍需观察。'
+        result, stats = self.check(text, numbers=[dict(text='29.7元', ref='E1')])
+        self.assertEqual(result[0], '收盘29.7元 附近，营收同比-5.24% 仍需观察。')
+        self.assertEqual(result[2], [])
+        self.assertEqual(stats['bound_matched'], 1)
+        self.assertEqual(self.check('收盘[29.7元][E1]，需要观察。')[0][0], '收盘29.7元，需要观察。')
+        # Formatting alone does not rewrite interval notation or Markdown links.
+        from trading_companion.answer_claim_recovery import display_claim
+        text = '收盘区间[29.7—30元]，定义见[资料](说明)。'
+        self.assertEqual(display_claim(text), text)
+        self.assertEqual(display_claim('价格[29.7元](说明)，参见[](补充)。'), '价格[29.7元](说明)，参见[](补充)。')
+
+    def test_display_cleanup_never_recovers_invalid_numbers_sources_or_empty_operands(self):
+        for text in ('收盘[999元]（E1）    附近。', '收盘[29.7元]（E404）    附近。',
+                     '收盘[29.7元]（E5）    附近。', '收盘为（E1）元。'):
+            with self.subTest(text=text):
+                self.assertFalse(self.check(text)[0][0])
+        result, _ = self.check('收盘[29.7元]（E1），另有999元。')
+        self.assertEqual(result[0], '收盘29.7元。')
+        self.assertTrue(result[2])
+
+    def test_public_narrative_drops_brackets_and_padding_without_extra_model_call(self):
+        def change(payload, attempt, ctx):
+            close = next(e for e in ctx['evidence'] if e.get('field') == 'latest_close')
+            payload['narratives'][0]['current'] = dict(
+                text=f"收盘[{close['raw_value']}元]（{close['id']}）     附近，仍需观察。")
+        model = NarrativeModel(change)
+        run = synthesize_narrative_answer('分析走势', decision_bundle(), model=model)
+        self.assertEqual(run.answer.status, 'accepted')
+        self.assertEqual(len(model.calls), 1)
+        self.assertNotIn('[', run.answer.narratives[0]['current']['text'])
+        self.assertNotIn('  ', run.answer.text)
+
     def test_recovery_counts_survive_answer_and_trace_without_model_sidecar(self):
         def change(payload, attempt, ctx):
             self.assertNotIn('_technical_validation', ctx)

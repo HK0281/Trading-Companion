@@ -21,7 +21,7 @@ class V263Tests(OfflineTests):
         ctx.session._pending = object()
         return ctx
 
-    def test_conflict_precedes_model_subject_and_reference_even_with_a_valid_latest(self):
+    def test_conflict_precedes_continuation_references_but_not_a_checked_independent_task(self):
         ctx = self.conflict_context()
         proposals = [draft(task='clarify', clarification_reason='subject',
                           subject=dict(source='none', mentions=[], selection=None))]
@@ -38,7 +38,8 @@ class V263Tests(OfflineTests):
                 self.assertEqual(value, before)
         value = draft(subject=dict(source='question', mentions=['浦发银行'], selection=None))
         result = self.check('研究浦发银行', value, ctx)
-        self.assertEqual((result.subject_source, result.bound_subjects, result.outcome), ('question', (), 'clarify_conflict'))
+        self.assertEqual((result.subject_source, result.bound_subjects, result.outcome),
+                         ('question', ('600000.SH',), 'research'))
         value = previous_value(task='stock_research')
         result = self.check('研究浦发银行', value, ctx)
         self.assertEqual((result.bound_subjects, result.outcome), ((), 'clarify_conflict'))

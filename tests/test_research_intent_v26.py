@@ -47,7 +47,7 @@ class V26Tests(unittest.TestCase):
         return intent.check_response(question, response(value or previous_value()), context=ctx or context(previous=True))
 
     def test_version_and_reference_are_required_without_provider_compatibility(self):
-        self.assertEqual(intent.VERSION, 'research-intent-v2.6.3')
+        self.assertEqual(intent.VERSION, 'research-intent-v2.6.4')
         self.assertEqual(len(self.check().fields()), 14)
         original = previous_value()
         bad = deepcopy(original)
@@ -250,7 +250,11 @@ class V26Tests(unittest.TestCase):
         self.assertIsNone(intent.local_preflight('未来5天', ctx))
         value = draft(subject=dict(source='question', mentions=['浦发银行'], selection=None))
         result = self.check('研究浦发银行', value, ctx)
-        self.assertEqual((result.bound_subjects, result.outcome), ((), 'clarify_conflict'))
+        self.assertEqual((result.bound_subjects, result.outcome), (('600000.SH',), 'research'))
+        self.assertEqual((result.horizon, result.wants_plan), (None, False))
+        self.assertFalse(result.diagnostics['authorization']['same_task_pending'])
+        continued = self.check('继续', previous_value(reference(scope='pending')), ctx)
+        self.assertEqual((continued.bound_subjects, continued.outcome), ((), 'clarify_conflict'))
         ctx.session.clear_pending()
         self.assertIsNone(intent.local_preflight('中线', ctx))
         self.assertEqual(self.check(value=previous_value(reference(scope='pending')), ctx=ctx).bound_subjects, ())

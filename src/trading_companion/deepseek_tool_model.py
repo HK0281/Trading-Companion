@@ -333,7 +333,7 @@ class DeepSeekToolModel:
                 or definitions[0].name != 'interpret_research_intent_v2'
                 or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') not in
                     (['research-intent-v2.5.4'], ['research-intent-v2.6'], ['research-intent-v2.6.1'],
-                     ['research-intent-v2.6.2'], ['research-intent-v2.6.3'])):
+                     ['research-intent-v2.6.2'], ['research-intent-v2.6.3'], ['research-intent-v2.6.4'])):
             raise ModelConfigurationError('Argument repair and capture require an explicitly supported intent candidate')
         body = {
             "model": self.config.model,

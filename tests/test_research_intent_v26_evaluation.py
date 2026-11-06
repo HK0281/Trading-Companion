@@ -46,12 +46,12 @@ class PublicEvaluationTests(OfflineTests):
     def test_plan_is_offline_and_pins_new_approval_and_split_caps(self):
         with patch.object(evaluation, '_live_model', side_effect=AssertionError('No credentials')):
             plan = evaluation.evaluate(split='dev')
-        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 467))
-        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.4')
-        self.assertEqual(plan['guard_version'], 'intent-v2-guards-v14')
+        self.assertEqual((plan['max_calls'], plan['max_attempts_per_target'], plan['paid_approval_message']), (80, 2, 474))
+        self.assertEqual(plan['contract_version'], 'research-intent-v2.6.5')
+        self.assertEqual(plan['guard_version'], 'intent-v2-guards-v15')
         self.assertEqual(plan['approved_call_caps'], dict(dev=80, regression=520))
-        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [467])
-        self.assertIn('docs/research-intent-v2.6.4-implementation.md', plan['source_sha256_lf'])
+        self.assertEqual(plan['tool_arguments_policy']['approval_messages'], [474])
+        self.assertIn('docs/research-intent-v2.6.5-implementation.md', plan['source_sha256_lf'])
         self.assertIn('data/evaluation/research-intent-v2.6.2-amendments.json', plan['source_sha256_lf'])
         self.assertIn('data/evaluation/research-intent-v2.6.3-amendments.json', plan['source_sha256_lf'])
         self.assertEqual((plan['annotation_amendments']['v263']['pending_reviews'],
@@ -170,7 +170,7 @@ class PublicEvaluationTests(OfflineTests):
     def test_late_drift_removes_passing_report_and_keeps_run_claim(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
-            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.4/public/dev'
+            target = root/'.agentbus/evaluation-runs/research-intent-v2.6.5/public/dev'
             plan = dict(workspace_dirty=False, context_preflight=dict(passed=True), runtime_revision='synthetic', max_calls=1,
                         annotation_amendments=dict(v262=dict(pending_reviews=0), v263=dict(pending_reviews=0)))
             def check(_):
@@ -206,7 +206,7 @@ class PublicEvaluationTests(OfflineTests):
                     evaluation.evaluate(live=True)
                 factory.assert_called_once()
 
-    def test_missing_reference_or_authorization_proof_is_unmeasured_and_cannot_pass(self):
+    def test_missing_proof_is_unmeasured_but_only_violations_fail_redlines(self):
         row = sample()
         row['gold'] = dict(row['gold'], subject_source='previous', wants_plan=True)
         observation = dict(evaluation._empty('ok', None), fields=deepcopy(row['gold']))
@@ -214,7 +214,7 @@ class PublicEvaluationTests(OfflineTests):
         for name in ('reference_scope', 'plan_authorization'):
             self.assertEqual(report['checks'][name]['status'], 'unmeasured')
             self.assertEqual(report['checks'][name]['measured'], 0)
-        self.assertFalse(report['passed'])
+        self.assertTrue(report['passed'])
         observation['metadata'] = dict(diagnostics=dict(
             binding=dict(issue=None, scope_subjects=['600000.SH']),
             authorization=dict(plan_source='program_pending', same_task_pending=False, plan_veto=False)))

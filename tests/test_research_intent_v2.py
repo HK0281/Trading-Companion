@@ -201,13 +201,13 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(InputIssue):
             checked('平安银行参考SMA5', draft(indicator_mentions=['SMA5', 'RSI']))
 
-    def test_clarify_task_retains_conflict_and_never_recovers_research(self):
+    def test_clarify_task_preserves_checked_category_and_retains_conflict_without_execution(self):
         for mention, task in (('平安银行', 'stock_research'), ('沪深300', 'index_research')):
             value = draft(task='clarify', clarification_reason='conflict', confidence='low',
                 subject=dict(source='question', mentions=[mention], selection=None))
             log = []
             result = check_response(mention+'要求有冲突', response(value), context=context(), corrections=log)
-            self.assertEqual(result.task, task if task == 'stock_research' else 'clarify')
+            self.assertEqual(result.task, task)
             self.assertEqual(result.outcome, 'clarify_conflict')
             self.assertTrue(result.low_confidence)
             self.assertNotIn('clarification_task', [c['kind'] for c in log])

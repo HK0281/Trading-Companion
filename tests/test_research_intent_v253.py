@@ -221,7 +221,7 @@ class RetryTests(OfflineTests):
 
 
 class ClarificationTests(OfflineTests):
-    def test_unknown_index_stays_model_clarification_without_identity_or_domain_repair(self):
+    def test_unknown_index_preserves_category_without_identity_or_domain_repair(self):
         for name in ('那个科技指数', '某个制造业指数'):
             question = '研究一下' + name + '的日线'
             value = draft(task='clarify', clarification_reason='subject', confidence='low',
@@ -229,7 +229,7 @@ class ClarificationTests(OfflineTests):
             original, log = deepcopy(value), []
             checked = intent.check_response(question, response(value), context=context(), corrections=log)
             self.assertEqual((checked.task, checked.bound_subjects, checked.outcome, checked.research_kinds),
-                             ('clarify', (), 'clarify_identity', ()))
+                             ('index_research', (), 'clarify_identity', ()))
             self.assertNotIn('clarification_task', [e['kind'] for e in log])
             self.assertEqual(value, original)
             self.assertEqual(intent.check_response(question, response(value), context=context(), normalize=False).task, 'clarify')

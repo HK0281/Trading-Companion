@@ -1,6 +1,6 @@
 """Application-owned horizon selection, scoped to one expiring research task."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import timedelta
 import re
 
@@ -15,6 +15,120 @@ PARAMETERS = {"short": ("daily", "1.5", ("1.5", "2.5")),
               "medium": ("daily", "2.5", ("2", "3")),
               "long": ("weekly", "2", ("2", "3.5"))}
 PROMPT = "你打算短线（1-2周）、中线（1-3个月）还是长线（半年以上）？"
+RECALC_NOTICE = "如需按新期限重算价位，请明确提出。"
+# This grammar gates a read-only permission projection, never a new intent route.
+RECALC_PREFIXES = ('那', '那么', '如果', '要是', '按', '用', '看', '换', '换成', '改', '改成', '改为', '调成')
+RECALC_SUFFIXES = ('呢', '吧', '的话', '看看', '试试', '怎么样', '如何', '会怎样')
+
+
+def recalculation_horizon(question):
+    from trading_companion.research_objective import mask_outlook_expressions
+    if type(question) is not str:
+        return None
+    try:
+        outlook = extract_outlook(question)
+        if outlook is None or outlook.horizon is None:
+            return None
+        rest = mask_outlook_expressions(question)
+        words = (*RECALC_PREFIXES, *RECALC_SUFFIXES, '是')
+        grammar = '|'.join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+        if re.fullmatch(r'(?:\s|[，,。.!！?？:：;；]|' + grammar + r')*', rest) is None:
+            return None
+        return canonical(outlook.horizon)
+    except (InputIssue, ValueError):
+        return None
+
+
+@dataclass(frozen=True)
+class DeliveredPrices:
+    """A successful program delivery, separate from unanswered clarification slots."""
+    task: str
+    subjects: tuple
+    source: str
+    development: bool
+    reference_date: object
+    delivered_at: object
+    native_plan: object
+
+    @property
+    def expires_at(self):
+        return self.delivered_at + timedelta(minutes=15)
+
+
+def valid_delivery(session, *, directory, now, reference_date, source, development):
+    record = session._delivered_prices
+    if (type(record) is not DeliveredPrices or record.source != source or record.development != development
+            or record.reference_date != reference_date or not record.delivered_at <= now < record.expires_at):
+        return None
+    from trading_companion.product_plan import ProductPlan
+    from trading_companion.index_contracts import IndexResearchRequest, identity
+    from trading_companion.errors import DataValidationError
+    try:
+        directory.assert_usable(reference_date, development=development)
+    except DataValidationError:
+        return None
+    if record.task == 'stock_research' and type(record.native_plan) is ProductPlan:
+        plan = record.native_plan
+        if (not requires_prices(plan) or not permits_prices(plan)
+                or tuple(s.instrument_id for s in plan.securities) != record.subjects
+                or any(directory.lookup(s.instrument_id).candidates != (s,) for s in plan.securities)):
+            return None
+    elif record.task == 'index_research' and type(record.native_plan) is IndexResearchRequest:
+        if not record.native_plan.scenario_requested or record.subjects != (identity(record.subjects[0]).instrument_id,):
+            return None
+    else:
+        return None
+    return record
+
+
+def project_delivery(context, question, *, development_source=None):
+    """Only a detached context copy sees this synthetic native horizon pending."""
+    from copy import copy
+    session = context.session
+    if any(v is not None for v in (session.pending, session.pending_edit, session.product_pending, session.index_pending)):
+        return context
+    record = valid_delivery(session, directory=context.directory, now=context.now,
+        reference_date=context.reference_date, source=context.source, development=context.development)
+    if record is None or recalculation_horizon(question) is None:
+        return context
+    projected = copy(session)
+    projected._turn_parent = None
+    if record.task == 'stock_research':
+        from trading_companion.product_plan import ProductPlanContext
+        p = record.native_plan
+        projected.product_pending = ProductPlanContext(p.user_question, record.delivered_at, record.expires_at,
+            record.reference_date, record.source, record.development, record.subjects,
+            tuple((s, s) for s in record.subjects), '', (), p.kinds, p.start_date, p.end_date,
+            p.explicit_historical, p.wants_risk, replace(p.objective, horizon=None), p.applied_defaults,
+            p.indicators, p.indicators_explicit, p.scope, stage='horizon', securities=p.securities,
+            checked_prices=True)
+    else:
+        from trading_companion.index_agent import PendingIndexResearch
+        p = record.native_plan
+        projected.index_pending = PendingIndexResearch('请给出建仓价位', record.delivered_at, record.source,
+            development_source, stage='horizon', instrument_id=p.instrument_id,
+            benchmark_defaulted=p.benchmark_defaulted, reference_date=record.reference_date,
+            base=replace(p, horizon=None))
+    return replace(context, session=projected)
+
+
+def remember_delivery(session, result, *, now, reference_date, development):
+    """Call only from checked execution, after answer validation, before atomic publication."""
+    if result.status not in ('completed', 'limited') or result._is_stopped:
+        return
+    plan, bundle, answer = result.product_plan, result.product_bundle, result.product_answer
+    if (plan is not None and bundle is not None and answer is not None and answer.status == 'accepted'
+            and plan.checked_prices is True and permits_prices(plan)
+            and any(any(p.status == 'available' for p in c.trade_plans)
+                    or c.risk is not None and c.risk.status == 'available' for c in bundle.companies)):
+        session._delivered_prices = DeliveredPrices('stock_research', tuple(s.instrument_id for s in plan.securities),
+            plan.source, development, reference_date, now, plan)
+    elif (result.index_result is not None and result.index_research is not None
+            and result.index_result.request.scenario_requested
+            and result.index_research.get('scenario_plan', {}).get('status') == 'available'):
+        p = result.index_result.request
+        session._delivered_prices = DeliveredPrices('index_research', (p.instrument_id,), p.source,
+            development, reference_date, now, p)
 
 
 def is_horizon_reply(question, directory=None):
@@ -55,11 +169,13 @@ def profile(horizon):
 
 
 def requires_prices(plan):
+    if getattr(plan, 'checked_prices', None) is not None:
+        return plan.checked_prices
     return (plan.wants_risk or plan.objective.kind == "decision" and wants_prices(plan.user_question))
 
 
 def permits_prices(plan):
-    return (not excludes_plan(plan.user_question) and "technical" in plan.kinds
+    return (getattr(plan, 'checked_prices', None) is not False and not excludes_plan(plan.user_question) and "technical" in plan.kinds
             and "risk" not in plan.scope.excluded
             and any(spec.kind == "atr" and spec.parameters['window'] == 14 for spec in plan.indicators))
 
@@ -93,7 +209,8 @@ def gate(plan, *, now, reference_date, development):
         tuple((s.instrument_id, s.instrument_id) for s in plan.securities), "", (), plan.kinds,
         plan.start_date, plan.end_date, plan.explicit_historical, plan.wants_risk, plan.objective,
         plan.applied_defaults, plan.indicators, plan.indicators_explicit, plan.scope,
-        stage="horizon", securities=plan.securities)
+        stage="horizon", securities=plan.securities, checked_prices=plan.checked_prices,
+        descriptive_risk=plan.descriptive_risk)
     return replace(plan, status="needs_clarification", code="decision_horizon_required", message=PROMPT,
                    candidates=(), context=context)
 

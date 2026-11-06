@@ -41,6 +41,13 @@ _INTENT_CODES = _STOPS | frozenset((
 # Source-code coverage and reasoned non-turn exclusions live in test_turn_trace.py.
 # Unknown external values still become "other"; source discovery never runs in production.
 _CODES = _STOPS | _ANSWER_CODES | frozenset("""
+intent_company_capability_required intent_empty_scope intent_execution_conditions_invalid intent_execution_not_supported
+intent_historical_window_invalid intent_identity_changed intent_pending_expired intent_pending_mismatch
+intent_saved_scope_unavailable intent_scope_target_missing intent_scope_update_unsupported
+intent_screening_expired intent_screening_mismatch intent_subject_required
+risk_descriptive_only risk_descriptive_unavailable
+intent_v2_reject intent_v2_clarify_subject intent_v2_clarify_identity intent_v2_clarify_conditions
+intent_v2_clarify_conflict intent_v2_clarify_horizon intent_v2_local intent_v2_research
 decision_context_unusable decision_instrument_required decision_insufficient_evidence decision_model_unavailable decision_rating_required
 missing_research_subject no_current_research_subject research_subject_time_invalid research_subject_identity_changed
 research_subject_directory_unusable research_subject_ambiguous
@@ -611,6 +618,9 @@ class TurnTrace:
                       "truncated": self._dropped > 0, "dropped_events": self._dropped}
             if self._intent_stages:
                 record["intent_stages"] = deepcopy(self._intent_stages)
+                stages = {item['stage'] for item in self._intent_stages}
+                record['intent_route_source'] = ('legacy' if 'legacy' in stages else
+                    'intent_v2' if 'execution' in stages else 'local' if 'local' in stages else 'stopped')
             while len(_line(record)) > self.sink.limits.record_bytes and (
                     record["models"]["events"] or record["events"] or record.get("intent_stages")):
                 models, details = record["models"]["events"], record["events"]

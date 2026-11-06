@@ -94,6 +94,7 @@ class ResearchSession:
         self.index_pending = None
         self.index_saved = None
         self.screening_saved = None
+        self._delivered_prices = None
         self._turn_lock = Lock()
         self._turn_parent = None
         self.latest_research = None
@@ -111,6 +112,7 @@ class ResearchSession:
         working.product_pending, working.product_saved = self.product_pending, self.product_saved
         working.index_pending, working.index_saved = self.index_pending, self.index_saved
         working.screening_saved = self.screening_saved
+        working._delivered_prices = self._delivered_prices
         working._turn_parent = self
         working.latest_research = self.latest_research
         working._publication_sequence = self._publication_sequence
@@ -125,6 +127,7 @@ class ResearchSession:
         self.product_pending, self.product_saved = working.product_pending, working.product_saved
         self.index_pending, self.index_saved = working.index_pending, working.index_saved
         self.screening_saved = working.screening_saved
+        self._delivered_prices = working._delivered_prices
         self.latest_research = working.latest_research
         self._publication_sequence = working._publication_sequence
         self._subject_current = working._subject_current
@@ -149,6 +152,7 @@ class ResearchSession:
         return self._confirmed
 
     def clear(self) -> None:
+        self._delivered_prices = None
         self.index_pending = None
         self.index_saved = None
         self.latest_research = None
@@ -173,6 +177,7 @@ class ResearchSession:
 
     def begin_research(self, *, preserve_screening: bool = False) -> None:
         """Old facts remain explicitly viewable, but cannot answer an implicit new-result question."""
+        self._delivered_prices = None
         if not preserve_screening:
             self.clear_screening()
         self.clear_pending()
@@ -229,6 +234,7 @@ class ResearchSession:
         return ResultLookup("ready", "saved_result_ready", "已校验保存结果；未重新取数。", deepcopy(saved), self._result_current)
 
     def clear_pending(self) -> None:
+        self._delivered_prices = None
         self.index_pending = None
         self._pending = None
         self._pending_edit = None

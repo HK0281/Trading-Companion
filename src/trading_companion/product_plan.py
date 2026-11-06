@@ -1,6 +1,6 @@
 """Bounded multi-domain research plans with directory-grounded stock identities."""
 
-from dataclasses import dataclass, field, replace
+from dataclasses import InitVar, dataclass, field, replace
 from datetime import date, datetime, timedelta
 import re
 
@@ -110,6 +110,12 @@ class ProductPlanContext:
     edit: object | None = field(default=None, repr=False)
     stage: str = "identity"
     securities: tuple[Security, ...] = ()
+    checked_prices: InitVar[bool | None] = None
+    descriptive_risk: InitVar[bool] = False
+
+    def __post_init__(self, checked_prices, descriptive_risk):
+        object.__setattr__(self, 'checked_prices', checked_prices)
+        object.__setattr__(self, 'descriptive_risk', descriptive_risk)
 
 
 @dataclass(frozen=True)
@@ -138,6 +144,16 @@ class ProductPlan:
 
     context_created_at: datetime | None = field(default=None, repr=False)
     context_expires_at: datetime | None = field(default=None, repr=False)
+    # None preserves legacy policy; bool is a trusted adapter decision, never public JSON.
+    checked_prices: InitVar[bool | None] = None
+    descriptive_risk: InitVar[bool] = False
+    risk_dependencies_only: InitVar[bool] = False
+
+    def __post_init__(self, checked_prices, descriptive_risk, risk_dependencies_only):
+        # Init-only metadata stays out of the legacy dataclass state inventory and public serialization.
+        object.__setattr__(self, 'checked_prices', checked_prices)
+        object.__setattr__(self, 'descriptive_risk', descriptive_risk)
+        object.__setattr__(self, 'risk_dependencies_only', risk_dependencies_only)
 
     def to_dict(self) -> dict[str, object]:
         result = {
@@ -367,7 +383,8 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
                        explicit_historical=context.explicit_historical, wants_risk=context.wants_risk,
                        objective=context.objective, applied_defaults=context.applied_defaults,
                        indicators=context.indicators, indicators_explicit=context.indicators_explicit, scope=context.scope,
-                       user_question=context.original_question)
+                       user_question=context.original_question, checked_prices=context.checked_prices,
+                       descriptive_risk=context.descriptive_risk)
     validate_research_conditions(context.start_date, context.end_date, context.indicators)
     if context.edit is not None:
         from trading_companion.product_indicator_edit import resume_edit
@@ -420,6 +437,22 @@ def _resume(context, question, *, directory, reference_date, now, source, develo
     return _resolved_plan(base, directory=directory, mentions=mentions, bindings=bindings, now=now,
                           created_at=context.created_at, expires_at=context.expires_at,
                           reference_date=context.reference_date, development=development)
+
+
+def product_defaults(indicators, *, objective, defaults=(), normalization_defaults=(),
+                     indicators_explicit=False, indicator_profile="balanced", prices=False,
+                     strict=False, exclusions=()):
+    """One source for method, horizon and indicator dependency defaults in both interpreters."""
+    defaults = (*normalization_defaults, *defaults, 'plan_method:atr_reference_plan_v2')
+    if objective.horizon is not None:
+        defaults += ('horizon_source:explicit',)
+    if not indicators_explicit and indicator_profile != "balanced":
+        defaults += ('indicators:profile:' + indicator_profile,)
+    if (prices and not strict and not any(spec.kind == 'atr' for spec in indicators)
+            and 'indicator:atr' not in exclusions):
+        indicators += (IndicatorSpec('atr', window=14),)
+        defaults += ('indicator_dependency:atr14_for_risk',)
+    return indicators, defaults
 
 
 def prepare_product_plan(question: str, *, model, directory: SecurityDirectory | None,
@@ -500,17 +533,12 @@ def prepare_product_plan(question: str, *, model, directory: SecurityDirectory |
             objective = ResearchObjective("decision", objective.horizon)
         historical_expression, date_text = historical_date_inputs(historical_expression, mask_outlook_expressions(remaining))
         start, end, defaults = _dates(historical_expression, date_text, reference_date)
-        defaults = (*normalization_defaults, *defaults, 'plan_method:atr_reference_plan_v2')
-        if objective.horizon is not None:
-            defaults += ('horizon_source:explicit',)
-        if not indicator_phrases and selection.profile != "balanced":
-            defaults += ("indicators:profile:" + selection.profile,)
         needs_risk = wants_prices(positive) and not excludes_plan(question)
         strict_indicators = _ONLY.search(positive) is not None and bool(indicator_phrases)
-        if (needs_risk and not strict_indicators and not any(spec.kind == "atr" for spec in indicators)
-                and "indicator:atr" not in excluded_indicators):
-            indicators += (IndicatorSpec("atr", window=14),)
-            defaults += ("indicator_dependency:atr14_for_risk",)
+        indicators, defaults = product_defaults(indicators, objective=objective, defaults=defaults,
+            normalization_defaults=normalization_defaults, indicators_explicit=bool(indicator_phrases),
+            indicator_profile=selection.profile, prices=needs_risk, strict=strict_indicators,
+            exclusions=excluded_indicators)
         indicators = validate_research_conditions(start, end, indicators)
         if not 1 <= (end - start).days + 1 <= 366 or end >= reference_date:
             raise InputIssue("needs_clarification", "product_historical_date_required",

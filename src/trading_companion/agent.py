@@ -75,6 +75,7 @@ class AgentTurnResult:
     user_question: str = field(default="", repr=False)
     workflow_observations: tuple = field(default=(), repr=False)
     workflow_trace: dict | None = field(default=None, repr=False)
+    program_notice: str | None = field(default=None, repr=False)
 
     @property
     def safe_answer(self) -> ResearchReport | None:
@@ -124,6 +125,11 @@ class AgentTurnResult:
 
     @property
     def display_answer(self) -> str | None:
+        text = self._base_display_answer
+        return ((text or self.message) + "\n\n" + self.program_notice) if self.program_notice else text
+
+    @property
+    def _base_display_answer(self) -> str | None:
         """Default display never includes the model's original text or rejected claims."""
         if self.index_answer is not None and self.index_result is not None:
             text = self.index_answer.text(self.index_result)
@@ -355,7 +361,8 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
                               source: str = "tencent", development_source: CsvDailyBarSource | None = None,
                               reference_date: date | None = None, session: ResearchSession | None = None,
                               current_time: datetime | None = None,
-                              control: TurnControl | None = None, workflow: bool = False) -> AgentTurnResult:
+                              control: TurnControl | None = None, workflow: bool = False,
+                              prepared: PreparedResearchInput | None = None, replace_existing=None) -> AgentTurnResult:
     """Route finite knowledge and optional identity/edit/result session flows."""
     _check_configuration(source, development_source)
     if type(workflow) is not bool:
@@ -363,16 +370,16 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
     if session is not None and type(session) is not ResearchSession:
         raise ModelConfigurationError("Use a trusted per-conversation research session")
     from trading_companion.index_agent import owns_index_request, run_index_research_turn
-    if owns_index_request(question, session, directory):
+    if prepared is None and owns_index_request(question, session, directory):
         return run_index_research_turn(question, model=model, directory=directory, session=session, source=source,
             development_source=development_source, now=current_time, reference_date=reference_date, control=control)
     from trading_companion.routing_context import replaces_pending
     return _controlled(lambda checked_model, working: _run_natural(
         question, model=checked_model, directory=directory, source=source,
         development_source=development_source, reference_date=reference_date,
-        session=working, current_time=current_time, workflow=workflow),
+        session=working, current_time=current_time, workflow=workflow, prepared=prepared),
         model=model, control=control, default_calls=6 if workflow else 3, input_mode="natural", session=session,
-        replace_pending=replaces_pending(question, directory))
+        replace_pending=replaces_pending(question, directory) if replace_existing is None else replace_existing)
 
 
 def _run_general_knowledge(question, *, model, directory=None) -> AgentTurnResult:
@@ -432,7 +439,7 @@ def run_conversation_recall_turn(text: str, *, model: ToolCapableModel, session:
 
 
 def _run_natural(question, *, model, directory, source, development_source, reference_date, session, current_time,
-                 workflow=False):
+                 workflow=False, prepared=None):
     if session is not None:
         if type(session) is not ResearchSession or type(directory) is not SecurityDirectory:
             raise ModelConfigurationError("Use a trusted per-conversation research session and directory")
@@ -443,7 +450,7 @@ def _run_natural(question, *, model, directory, source, development_source, refe
         if type(reference) is not date:
             raise ModelConfigurationError("Session reference date must be a trusted date")
         return _run_session_turn(question, session=session, model=model, directory=directory, source=source,
-                                 development_source=development_source, reference=reference, now=now, workflow=workflow)
+                                 development_source=development_source, reference=reference, now=now, workflow=workflow, prepared=prepared)
     if type(question) is str and 0 < len(question) <= MAX_USER_CHARACTERS:
         knowledge = parse_knowledge_question(question)
         if knowledge is not None:
@@ -498,7 +505,7 @@ def _run_prepared(prepared: PreparedResearchInput, *, model: ToolCapableModel,
 def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCapableModel,
                       directory: SecurityDirectory, source: str,
                       development_source: CsvDailyBarSource | None, reference: date,
-                      now: datetime, workflow: bool = False) -> AgentTurnResult:
+                      now: datetime, workflow: bool = False, prepared=None) -> AgentTurnResult:
     def attach(outcome: AgentTurnResult, event: str) -> AgentTurnResult:
         return replace(outcome, session_event=event, session_state=session.to_dict())
 
@@ -513,7 +520,8 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
             preserve_screening = (session.screening_saved is not None and session.confirmed is not None
                                   and prepared.security == session.confirmed.security
                                   and prepared.security in session.screening_saved.securities)
-            session.begin_research(preserve_screening=preserve_screening)
+            session.begin_research(preserve_screening=preserve_screening
+                or 'scope:screening_list' in prepared.applied_defaults)
         outcome = _run_prepared(prepared, model=model, development_source=development_source, question=question,
                                 workflow=workflow)
         if prepared.status == "ready" and prepared.code in ("refresh_latest_ready", "relative_range_ready"):
@@ -528,6 +536,10 @@ def _run_session_turn(question: str, *, session: ResearchSession, model: ToolCap
             session.remember_result(prepared, outcome.research_result, now=now, development_source=development_source)
         return attach(outcome, event)
 
+    if prepared is not None:
+        if type(prepared) is not PreparedResearchInput:
+            raise ModelConfigurationError("Use a trusted prepared technical request")
+        return execute(prepared, "checked_intent_research")
     if type(question) is not str or not question.strip() or len(question) > MAX_USER_CHARACTERS:
         return reply("needs_clarification", "invalid_input", "请用不超过2000字符描述研究问题或选股回复。", "unchanged")
     command = unicodedata.normalize("NFKC", question).strip().rstrip("。.!！").strip()

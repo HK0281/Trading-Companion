@@ -1,4 +1,4 @@
-"""Disabled public service parity and the deliberately unavailable 5A switch."""
+"""Default service parity and explicitly enabled acceptance configuration."""
 
 from contextlib import redirect_stderr
 from io import StringIO
@@ -41,23 +41,26 @@ class DisabledServiceTests(unittest.TestCase):
                         side_effect=AssertionError('No extra configuration')):
                     old.compare_observations(scenario, observer(scenario, **options))
 
-    def test_true_and_non_boolean_fail_before_any_dependency(self):
+    def test_non_boolean_switch_fails_before_any_dependency(self):
         factory = Mock(side_effect=AssertionError('No model or data construction'))
-        for value in (True, 1, 0, None, 'false'):
+        for value in (1, 0, None, 'false'):
             with self.subTest(value=value), self.assertRaises(ModelConfigurationError):
                 ResearchApiService(model_factory=factory, directory_loader=factory,
                                    research_intent_v2_enabled=value)
         factory.assert_not_called()
 
-    def test_cli_switch_is_unavailable_even_in_demo_before_startup_io(self):
-        for extra in ([], ['--demo']):
-            with self.subTest(extra=extra), redirect_stderr(StringIO()) as output, patch(
-                    'trading_companion.api_service.ResearchApiService',
-                    side_effect=AssertionError('No service')), patch(
-                    'trading_companion.local_env._read_local_values',
-                    side_effect=AssertionError('No credentials')):
-                self.assertEqual(main(['--research-intent-v2', *extra]), 2)
-            self.assertIn('research_intent_v2_not_ready', output.getvalue())
+    def test_switch_does_not_construct_intent_factory_for_demo_or_openai(self):
+        from trading_companion.api import create_demo_service
+        from trading_companion.development_fixtures import load_development_fixtures, REFERENCE_DATE
+        source, directory = load_development_fixtures()
+        with patch('trading_companion.model_registry.configured_intent_model',
+                   side_effect=AssertionError('No dedicated model for unrelated providers')):
+            for provider in ('fake', 'openai'):
+                service = ResearchApiService(model_factory=Mock, directory_loader=lambda _: directory,
+                    provider=provider, data_mode='synthetic', development_source=source,
+                    reference_date=REFERENCE_DATE, research_intent_v2_enabled=True)
+                self.addCleanup(service.close)
+                self.assertIsNone(service._intent_model_factory)
 
     def test_intent_view_shares_session_allowance_without_answer_history(self):
         answer, intent = Mock(), Mock()

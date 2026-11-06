@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from hmac import compare_digest
@@ -173,6 +173,7 @@ class _Entry:
     chart_base_cache: dict = field(default_factory=dict, repr=False)
     digests: list = field(default_factory=list, repr=False)
     conversation_id: str | None = None
+    intent_model: object = field(default=None, repr=False)
 
 
 def public_turn(result: AgentTurnResult, *, saved: SavedResearch | None = None) -> dict:
@@ -280,7 +281,8 @@ def public_product_turn(result):
     """Company answers expose sources and coverage, not prompts or execution diagnostics."""
     plan, bundle, answer = result.product_plan, result.product_bundle, result.product_answer
     chart, request, report = None, None, None
-    if bundle is not None and len(bundle.companies) == 1 and bundle.companies[0].technical is not None:
+    if (bundle is not None and not plan.risk_dependencies_only
+            and len(bundle.companies) == 1 and bundle.companies[0].technical is not None):
         technical = bundle.companies[0].technical
         try:
             chart = build_chart_projection(technical, expected_request=technical.request)
@@ -329,11 +331,9 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
-                 research_intent_v2_enabled=False):
+                 research_intent_v2_enabled=False, intent_model_factory=None):
         if type(research_intent_v2_enabled) is not bool:
             raise ModelConfigurationError("Intent v2 switch must be an explicit boolean")
-        if research_intent_v2_enabled:
-            raise ModelConfigurationError("Intent v2 integration is not available in phase 5A")
         self._research_intent_v2_enabled = research_intent_v2_enabled
         self.limits = ApiLimits() if limits is None else limits
         if (conversation_store is not None and not isinstance(conversation_store, ConversationStore)
@@ -355,6 +355,14 @@ class ResearchApiService:
                 or "fake" in factories and set(factories) != {"fake"}):
             raise ModelConfigurationError("Use explicit server-side model factories without mixing demo and live models")
         self._model_factories = factories
+        self._intent_model_factory = None
+        if research_intent_v2_enabled and 'deepseek' in factories:
+            if intent_model_factory is None:
+                from trading_companion.model_registry import configured_intent_model
+                intent_model_factory = configured_intent_model()
+            if not callable(intent_model_factory) or not callable(getattr(intent_model_factory(), 'complete', None)):
+                raise ModelConfigurationError('Use a trusted dedicated intent model factory')
+            self._intent_model_factory = intent_model_factory
         self.available_providers = tuple(factories)
         if (data_mode == "synthetic") != (development_source is not None):
             raise ModelConfigurationError("Synthetic mode requires explicit trusted development data")
@@ -423,10 +431,12 @@ class ResearchApiService:
                 raise ApiProblem(429, "session_capacity", "本机服务会话数已满，请删除不用的会话。")
             try:
                 model = self._model_factories[selected]()
+                intent_model = self._intent_model_factory() if selected == 'deepseek' and self._intent_model_factory else None
             except Exception:
                 raise ApiProblem(503, "model_configuration_error", "服务端模型配置不可用，请在服务端检查。") from None
             session_id, token = uuid4().hex, token_urlsafe(32)
             entry = _Entry(token, self._clock(), _SessionModel(model, self.limits.model_calls), selected)
+            entry.intent_model = intent_model
             # Only conclusions return; pending choices, saved evidence and charts stay with the old session.
             entry.digests, entry.conversation_id = restored, conversation_id
             self._entries[session_id] = entry
@@ -710,6 +720,92 @@ class ResearchApiService:
                     session=entry.session, current_time=timestamp, control=control, workflow=self._workflow_enabled)
         return result, directory, timestamp
 
+    def _intent_turn(self, entry, control, question, *, history=False):
+        from trading_companion.research_intent_context import (
+            IntentContextError, prepare_intent_request, build_intent_context,
+        )
+        from trading_companion.research_intent_dispatch import run_intent_dispatch_turn
+        from trading_companion.research_intent_adapter import execute_checked_intent
+        from trading_companion.decision_horizon import (
+            project_delivery, valid_delivery, RECALC_NOTICE,
+        )
+        from trading_companion.research_objective import extract_outlook
+        from trading_companion.agent_input import InputIssue
+
+        attached = dict(directory=None, timestamp=self._wall_clock())
+
+        def configuration(working, now):
+            return dict(session=working, directory=attached['directory'], now=now,
+                reference_date=self._reference_date, source='csv' if self._development_source else self._research_source,
+                development=self._development_source is not None, digests=entry.digests,
+                quote_source=self._screening_source, company_enabled=self._product_data_service is not None,
+                workflow_enabled=self._workflow_enabled, conversation_memory=self._conversation_context)
+
+        def request_factory(text, working):
+            try:
+                attached['directory'] = trace_call('source', 'directory', self._directory_loader, attached['timestamp'])
+            except (DataSourceError, DataValidationError, InvalidRequestError, OSError):
+                raise IntentContextError('intent_context_unavailable') from None
+            return prepare_intent_request(text, development_source=self._development_source,
+                **configuration(working, attached['timestamp']))
+
+        def legacy(text, *, model, session, control):
+            notify = False
+            requested_horizon = None
+            if attached['directory'] is not None and session._delivered_prices is not None:
+                context = build_intent_context(**configuration(session, self._wall_clock()))
+                delivery = valid_delivery(session, directory=context.directory, now=context.now,
+                    reference_date=context.reference_date, source=context.source, development=context.development)
+                try:
+                    outlook = extract_outlook(question)
+                except InputIssue:
+                    outlook = None
+                notify = delivery is not None and outlook is not None and outlook.horizon is not None
+                requested_horizon = outlook.horizon if outlook is not None else None
+            result, directory, timestamp = self._legacy_turn(replace(entry, model=model, session=session),
+                control, text, history=history)
+            attached.update(directory=directory, timestamp=timestamp)
+            if notify:
+                from trading_companion.decision_horizon import canonical
+                product_prices = (result.product_plan is not None and result.product_bundle is not None
+                    and canonical(result.product_plan.objective.horizon) == canonical(requested_horizon)
+                    and any(any(p.status == 'available' for p in c.trade_plans)
+                            or c.risk is not None and c.risk.status == 'available' for c in result.product_bundle.companies))
+                index_prices = (result.index_result is not None and result.index_research is not None
+                    and canonical(result.index_result.request.horizon) == canonical(requested_horizon)
+                    and result.index_research.get('scenario_plan', {}).get('status') == 'available')
+                if not product_prices and not index_prices:
+                    result = replace(result, program_notice=RECALC_NOTICE)
+            return result
+
+        def execute(checked, *, model, session, control):
+            # Recheck pending and delivery authority at execution time, including time spent understanding.
+            now = self._wall_clock()
+            context = build_intent_context(**configuration(session, now))
+            delivery = valid_delivery(session, directory=context.directory, now=now,
+                reference_date=context.reference_date, source=context.source, development=context.development)
+            try:
+                outlook = extract_outlook(question)
+            except InputIssue:
+                outlook = None
+            notify = delivery is not None and outlook is not None and outlook.horizon is not None
+            context = project_delivery(context, question, development_source=self._development_source)
+            result = execute_checked_intent(checked, question, context=context, model=model,
+                session=session, control=control, development_source=self._development_source,
+                data_service=self._product_data_service, market_background_source=self._market_background_source,
+                clock=self._wall_clock, digests=entry.digests)
+            attached['timestamp'] = now
+            # This application notice is deliberately absent from every model request.
+            delivered = session._delivered_prices
+            if notify and (delivered is None or delivered is delivery):
+                result = replace(result, program_notice=RECALC_NOTICE)
+            return result
+
+        result = run_intent_dispatch_turn(question, model=entry.model,
+            intent_model=entry.model.intent_view(entry.intent_model), session=entry.session, control=control,
+            request_factory=request_factory, legacy=legacy, execute=execute, history=history, clock=self._clock)
+        return result, attached['directory'], attached['timestamp']
+
     def _message(self, session_id, token, request_id, question, *, history=False):
         entry, control, replay = self._admit(session_id, token, request_id, question, history=history)
         if replay is not None:
@@ -719,7 +815,10 @@ class ResearchApiService:
         reset_contexts, remembered = False, None
         entry.model.history = tuple(entry.digests) if self._conversation_context and not history else ()
         try:
-            result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
+            if self._research_intent_v2_enabled and entry.provider == 'deepseek':
+                result, directory, timestamp = self._intent_turn(entry, control, question, history=history)
+            else:
+                result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
             trace_outcome(result)
             trace_phase("projection")
             saved = self._saved_for_view(entry, result, directory, timestamp)

@@ -1,5 +1,5 @@
 """Controlled single-index research and expiring, identity-isolated continuation."""
-from dataclasses import dataclass, replace
+from dataclasses import InitVar, dataclass, replace
 from datetime import datetime, timedelta, timezone
 import re
 import unicodedata
@@ -38,6 +38,10 @@ class SavedIndexResearch:
     saved_at: datetime
     development_source: object = None
     plan_notice: bool = False
+    scope_exclusions: InitVar[tuple] = ()
+
+    def __post_init__(self, scope_exclusions):
+        object.__setattr__(self, 'scope_exclusions', scope_exclusions)
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,10 @@ class PendingIndexResearch:
     benchmark_defaulted: bool = False
     reference_date: object = None
     base: object = None
+    scope_exclusions: InitVar[tuple] = ()
+
+    def __post_init__(self, scope_exclusions):
+        object.__setattr__(self, 'scope_exclusions', scope_exclusions)
 
 
 def owns_index_request(question, session=None, directory=None):
@@ -326,19 +334,11 @@ def _execute(question, *, session, model, directory, source, development_source,
                 start = end-timedelta(days=365)
             if end >= reference:
                 raise InvalidRequestError('Only completed historical index daily bars are supported')
-            request = IndexResearchRequest(index.instrument_id, start, end, indicators, effective_source,
+            request = build_index_request(index.instrument_id, start, end, indicators, effective_source,
                 benchmark_defaulted=defaulted if not continuation else saved.result.request.benchmark_defaulted,
                 horizon=horizon, scenario_requested=requested, historical_explicit=explicit,
                 indicators_strict=strict, scenario_code=blocked)
-        checkpoint()
-        reserve_analysis()
-        if effective_source == 'csv':
-            bars = synthetic_index_bars(request)
-        else:
-            configured = source_factory(request) if source_factory else TencentIndexSource(request)
-            bars = trace_call('source', 'index_daily', configured.read_daily_bars)
-        checkpoint()
-        result = IndexResearchResult(request, tuple(bars), now)
+        result = _collect_request(request, now=now, source_factory=source_factory)
     except InputIssue as issue:
         return _reply(issue.code, str(issue), status=issue.status)
     except (InvalidRequestError, DataValidationError, DataSourceError, ValueError, OSError):
@@ -353,13 +353,63 @@ def _execute(question, *, session, model, directory, source, development_source,
     return _outcome(result, answer, responses=responses + written, plan_notice=plan_notice)
 
 
+def build_index_request(instrument_id, start_date, as_of_date, indicators, source, **options):
+    """Shared completed-bar request defaults, including the long horizon's full year."""
+    from trading_companion.decision_horizon import profile
+    if (options.get('scenario_requested') and not options.get('scenario_code')
+            and options.get('horizon') is not None and profile(options['horizon']) == 'long'
+            and not options.get('historical_explicit')):
+        start_date = as_of_date - timedelta(days=365)
+    return IndexResearchRequest(instrument_id, start_date, as_of_date, indicators, source, **options)
+
+
+def _collect_request(request, *, now, source_factory):
+    checkpoint()
+    reserve_analysis()
+    if request.source == 'csv':
+        bars = synthetic_index_bars(request)
+    else:
+        configured = source_factory(request) if source_factory else TencentIndexSource(request)
+        bars = trace_call('source', 'index_daily', configured.read_daily_bars)
+    checkpoint()
+    return IndexResearchResult(request, tuple(bars), now)
+
+
+def _execute_prepared(question, *, prepared, session, model, directory, source, development_source,
+                      now, reference_date, source_factory, scope_exclusions=()):
+    if type(prepared) is not IndexResearchRequest:
+        raise ModelConfigurationError('Use a trusted prepared index request')
+    effective_source = 'csv' if development_source is not None else source
+    reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
+    if (prepared.source != effective_source or prepared.as_of_date >= reference
+            or effective_source not in ('tencent', 'csv')
+            or effective_source == 'csv' and not getattr(development_source, 'is_synthetic', False)):
+        return _reply('index_source_unsupported', '指数身份、来源或完成日线条件无效，未查询行情。', status='out_of_scope')
+    directory.assert_usable(reference, development=development_source is not None)
+    prepared.__post_init__()
+    session.begin_research()
+    try:
+        result = _collect_request(prepared, now=now, source_factory=source_factory)
+    except (InvalidRequestError, DataValidationError, DataSourceError, ValueError, OSError):
+        return _reply('index_data_unavailable', '指数行情未通过检查；未使用旧研究或自动换源。', status='failed')
+    answer, written = synthesize_index_answer(question, result, model=model, directory=directory)
+    checkpoint()
+    session.index_saved = SavedIndexResearch(result, answer, now, development_source, scope_exclusions=scope_exclusions)
+    session.stage_research_subject((), kind='index', source=effective_source,
+        development=development_source is not None, now=now, scope=prepared)
+    return _outcome(result, answer, responses=written)
+
+
 def run_index_research_turn(question, *, model, directory, session=None, source='tencent', development_source=None,
-                            now=None, reference_date=None, control=None, source_factory=None):
+                            now=None, reference_date=None, control=None, source_factory=None,
+                            prepared=None, replace_existing=None, scope_exclusions=()):
     from trading_companion.agent import _controlled
     from trading_companion.routing_context import replaces_pending
-    return _controlled(lambda checked, working: _execute(question, session=working, model=checked,
+    execute = _execute if prepared is None else lambda *args, **kwargs: _execute_prepared(
+        *args, prepared=prepared, scope_exclusions=scope_exclusions, **kwargs)
+    return _controlled(lambda checked, working: execute(question, session=working, model=checked,
         directory=directory, source=source, development_source=development_source, now=now,
         reference_date=reference_date, source_factory=source_factory), model=model, session=session,
-        control=control, default_calls=3, input_mode='natural', replace_pending=(replaces_pending(question, directory)
+        control=control, default_calls=3, input_mode='natural', replace_pending=(replace_existing if replace_existing is not None else replaces_pending(question, directory)
             and not (session is not None and session.index_pending is not None
                      and session.index_pending.question == question)))

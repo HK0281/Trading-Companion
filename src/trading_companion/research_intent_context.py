@@ -48,12 +48,14 @@ def build_intent_context(*, session, directory, now, reference_date=None, source
         raise IntentContextError("intent_context_invalid") from None
 
 
-def prepare_intent_request(question, **configuration):
+def prepare_intent_request(question, *, development_source=None, **configuration):
     if (type(question) is not str or not 0 < len(question.strip()) <= MAX_USER_CHARACTERS
             or any(not c.isprintable() and c not in "\n\r\t" for c in question)):
         raise IntentContextError("intent_context_invalid")
     context = build_intent_context(**configuration)
     try:
+        from trading_companion.decision_horizon import project_delivery
+        context = project_delivery(context, question, development_source=development_source)
         messages = request_messages(question, context)
         total = sum(len(json.dumps(t.to_dict(), ensure_ascii=True)) for t in (TOOL,))
         total += sum(len(json.dumps(m.to_dict(), ensure_ascii=True)) for m in messages)

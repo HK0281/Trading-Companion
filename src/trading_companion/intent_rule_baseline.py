@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "intent-integration-controls-v1"
+VERSION = "intent-integration-execution-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -21,6 +21,8 @@ SOURCES = (
     "index_chart.py", "index_snapshot.py", "ohlc_weeks.py", "_indicator_values.py", "answer_numeric_bindings.py",
     "answer_technical_validation.py", "answer_validation.py", "answer_clauses.py", "evidence_numbers.py", "research_price_context.py",
     "atr_plan_math.py", "index_scenario.py", "index_scenario_answer.py", "index_demo.py", "conversation_memory.py",
+    "research_intent_v2.py", "research_intent_context.py", "research_intent_dispatch.py",
+    "research_intent_adapter.py", "product_research.py", "model_registry.py", "api_server.py", "turn_trace.py",
 )
 
 

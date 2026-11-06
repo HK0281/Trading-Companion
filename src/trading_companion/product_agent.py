@@ -107,7 +107,17 @@ def saved_product(session, *, directory, now, source, development, reference_dat
 
 def _execute(question, *, session, model, directory, now, reference_date, source,
              development_source, data_service, source_factory, market_background_source, background_clock,
-             selected_securities=(), original_question=None):
+             selected_securities=(), original_question=None, prepared=None):
+    if prepared is not None:
+        if type(prepared) is not ProductPlan:
+            raise ModelConfigurationError("Use a trusted prepared product plan")
+        reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
+        return _execute_plan(prepared, question=question, session=session, model=model, directory=directory,
+            now=now, reference=reference, development_source=development_source, data_service=data_service,
+            source_factory=source_factory, market_background_source=market_background_source,
+            background_clock=background_clock, inherit_horizon=False,
+            continuation=prepared if any(v in prepared.applied_defaults for v in
+                ('scope:previous_research', 'scope:screening_list')) else None)
     from trading_companion.product_answer import synthesize_product_answer
     checkpoint()
     reference = reference_date or now.astimezone(timezone(timedelta(hours=8))).date()
@@ -198,10 +208,22 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             development=development_source is not None, context=session.product_pending,
             allow_context_research=bool(directory.mentioned_spans(effective_question)))
         plan = _inherit_scope(plan, continuation, question)
+    return _execute_plan(plan, question=question, session=session, model=model, directory=directory,
+        now=now, reference=reference, development_source=development_source, data_service=data_service,
+        source_factory=source_factory, market_background_source=market_background_source,
+        background_clock=background_clock, saved=saved, continuation=continuation,
+        selected_securities=selected_securities, original_question=original_question)
+
+
+def _execute_plan(plan, *, question, session, model, directory, now, reference, development_source,
+                  data_service, source_factory, market_background_source, background_clock,
+                  saved=None, continuation=None, selected_securities=(), original_question=None,
+                  inherit_horizon=True):
+    from trading_companion.product_answer import synthesize_product_answer
     from trading_companion.decision_horizon import gate
     if selected_securities and plan.status == 'ready' and plan.securities == selected_securities:
         plan = replace(plan, user_question=original_question)
-    if (plan.status == 'ready' and plan.objective.horizon is None and saved is not None
+    if (inherit_horizon and plan.status == 'ready' and plan.objective.horizon is None and saved is not None
             and plan.securities == saved.plan.securities
             and any(v.startswith('horizon_source:') for v in saved.plan.applied_defaults)):
         plan = replace(plan, objective=replace(plan.objective, kind='outlook' if plan.objective.kind == 'analysis' else plan.objective.kind,
@@ -255,9 +277,9 @@ def _execute(question, *, session, model, directory, now, reference_date, source
 
 def run_product_research_turn(question, *, session, model, directory, now, source, data_service,
                               reference_date=None, development_source=None, control=None, source_factory=None,
-                              market_background_source=None, background_clock=None):
+                              market_background_source=None, background_clock=None, prepared=None, replace_existing=None):
     from trading_companion.index_agent import owns_index_request, run_index_research_turn
-    if owns_index_request(question, session, directory):
+    if prepared is None and owns_index_request(question, session, directory):
         return run_index_research_turn(question, model=model, directory=directory, session=session, now=now,
             source=source, development_source=development_source, reference_date=reference_date, control=control)
     if data_service is None:
@@ -265,6 +287,6 @@ def run_product_research_turn(question, *, session, model, directory, now, sourc
     return _controlled(lambda controlled, working: _execute(question, session=working, model=controlled,
         directory=directory, now=now, reference_date=reference_date, source=source,
         development_source=development_source, data_service=data_service, source_factory=source_factory,
-        market_background_source=market_background_source, background_clock=background_clock),
+        market_background_source=market_background_source, background_clock=background_clock, prepared=prepared),
         model=model, session=session, control=control or company_turn_control(), default_calls=6, input_mode="natural",
-        replace_pending=replaces_pending(question, directory))
+        replace_pending=replaces_pending(question, directory) if replace_existing is None else replace_existing)

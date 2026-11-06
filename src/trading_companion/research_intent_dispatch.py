@@ -1,4 +1,4 @@
-"""Unwired phase-5A orchestration: one control, one pure intent, one legacy fallback."""
+"""One control, one pure intent and at most one legacy fallback."""
 
 from time import monotonic
 from contextvars import ContextVar
@@ -17,7 +17,7 @@ _DISPATCHING = ContextVar("research_intent_dispatching", default=False)
 
 def run_intent_dispatch_turn(question, *, model, intent_model, session, control,
                              request_factory, legacy, execute, history=False, clock=monotonic):
-    """Trusted callbacks only; the service rejects enabling this unfinished path."""
+    """Trusted callbacks only; all nested work shares one turn and session budget."""
     if (type(control) is not TurnControl or type(history) is not bool
             or not all(callable(f) for f in (request_factory, legacy, execute, clock))):
         raise ModelConfigurationError("Use trusted intent dispatch dependencies")

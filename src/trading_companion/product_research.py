@@ -227,7 +227,8 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         item.publication_precision, item.report_period.isoformat() if item.report_period else None,
                         temporal_scope=item.temporal_scope, retrieved_at=item.retrieved_at.isoformat(),
                         raw_value=item.value, unit=item.unit))
-        if "technical" in plan.kinds or plan.wants_risk:
+        if ("technical" in plan.kinds or plan.wants_risk
+                or plan.descriptive_risk and plan.indicators and "technical" not in plan.scope.excluded):
             checkpoint()
             request = MultiIndicatorRequest(security.instrument_id, plan.start_date, plan.end_date,
                 source="csv" if development_source is not None else plan.source, indicators=plan.indicators)
@@ -241,7 +242,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 if usable and result.synthesis_allowed else "unavailable",
                 "code": report.code, "message": result.message, "source": request.source,
                 "retrieved_at": result.retrieved_at.isoformat() if result.retrieved_at else None})
-            if usable:
+            if usable and not plan.risk_dependencies_only:
                 insights = build_technical_insights(result, expected_request=request)
                 if insights.status in ("complete", "limited"):
                     evidence.extend(_insight_evidence(insights, result))
@@ -279,7 +280,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                             publication_precision="date", data_authenticity=result.data_authenticity,
                             temporal_scope="daily_date_filtered_not_versioned_pit", dependencies=item.dependencies,
                             retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
-            if plan.wants_risk:
+            if plan.wants_risk and (plan.checked_prices is None or permits_prices(plan)):
                 if method_for_plan(plan) == HORIZON_METHOD:
                     from trading_companion.horizon_trade_plan import build_horizon_risk_scenario
                     risk = build_horizon_risk_scenario(result, expected_request=request, horizon=plan.objective.horizon)
@@ -300,6 +301,12 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                         publication_precision="date", data_authenticity=result.data_authenticity,
                         temporal_scope="historical_long_scenario", dependencies=risk.evidence_ids,
                         retrieved_at=result.retrieved_at.isoformat() if result.retrieved_at else None))
+        if plan.descriptive_risk:
+            facts, risk_coverage = descriptive_risk_evidence(result, plan)
+            evidence.extend(facts)
+            coverage.append(risk_coverage)
+            if plan.risk_dependencies_only:
+                coverage = [item for item in coverage if item['kind'] != 'technical']
         plans = ()
         if plan.objective.kind == "decision":
             plans = build_trade_plans(result if result is not None else security.instrument_id,
@@ -322,7 +329,7 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 evidence.append(weekly)
         from trading_companion.financial_periods import quarterly_evidence
         evidence.extend(quarterly_evidence(evidence))
-        if result is not None:
+        if result is not None and not plan.risk_dependencies_only:
             from trading_companion.research_price_context import price_context_evidence
             evidence.extend(price_context_evidence(result, allow_extra_means=not plan.indicators_explicit))
         companies.append(ProductCompany(security.instrument_id, security.name, tuple(evidence), tuple(coverage), result, risk, insights, replay, background, plans))
@@ -350,6 +357,43 @@ def collect_product_research(plan, *, data_service, now, development_source=None
         bundle = ProductResearchBundle(plan, tuple(replace(company, evidence=company.evidence + tuple(additions[company.instrument_id]))
                                                     for company in companies))
     return bundle
+
+
+def descriptive_risk_evidence(result, plan):
+    """Reuse checked ATR/BOLL values and volatility relations; never compute a price scenario."""
+    evidence = []
+    allowed = {spec.indicator_id for spec in plan.indicators if spec.kind in ('atr', 'boll')
+               and 'indicator:' + spec.kind not in plan.scope.excluded}
+    available = set()
+    missing = False
+    if result is not None and allowed:
+        report = build_research_report(result, expected_request=result.request)
+        if report.status in ('complete', 'limited'):
+            for item in report.fields:
+                if item.indicator_id in allowed and item.status == 'available' and item.fact_id:
+                    available.add(item.indicator_id)
+                    evidence.append(ProductEvidence(item.fact_id, result.request.instrument_id, 'risk', item.label,
+                        evidence_display(item.value, item.unit), result.request.source, item.trade_date,
+                        data_authenticity=result.data_authenticity, temporal_scope='historical_volatility_only',
+                        raw_value=item.value, unit=item.unit))
+            synthesis = build_research_synthesis(result, expected_request=result.request)
+            for dimension in synthesis.dimensions:
+                if dimension.dimension == 'volatility':
+                    missing = any(item.indicator_id in allowed for item in dimension.missing)
+                    for item in dimension.observations:
+                        if item.indicator_id not in allowed:
+                            continue
+                        evidence.append(ProductEvidence(result.request.request_id + '|' + item.observation_id,
+                            result.request.instrument_id, 'risk', '历史波动关系', item.text,
+                            result.request.source, item.trade_date, content_kind='relation',
+                            data_authenticity=result.data_authenticity, dependencies=item.dependencies,
+                            temporal_scope='historical_volatility_only'))
+    status = 'available' if available and available == allowed and not missing else 'limited' if available else 'unavailable'
+    message = ('仅说明历史波动等已核验事实；未请求价位，未计算建仓/止损/目标。' if available else
+               '当前允许范围或数据不足以说明该项；未计算建仓/止损/目标。')
+    return evidence, dict(kind='risk', status=status,
+        code='risk_descriptive_only' if available else 'risk_descriptive_unavailable',
+        message=message, source=plan.source)
 
 
 def _market_background_evidence(snapshot, security, plan, now):

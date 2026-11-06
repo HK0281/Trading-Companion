@@ -594,6 +594,25 @@ class EnabledApiTests(unittest.TestCase):
                 for kind, _ in excluded:
                     self.assertIn(kind, plan.scope.excluded)
 
+    def test_add_indicator_to_profile_only_research_without_redundant_domain(self):
+        initial = draft(research_kinds=[dict(kind='profile', phrase='公司资料')])
+        addition = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+                         indicator_mentions=['EMA13'], research_kinds=[])
+        service, binding = self.service([initial, addition])
+        first = self.send(service, binding, '分析平安银行公司资料', 'first')
+        self.assertIn(first['status'], ('completed', 'limited'), first)
+        self.assertEqual(service._entries[binding['session_id']].session.product_saved.plan.kinds, ('profile',))
+        self.assertEqual(self.factory.reads, [])
+        result = self.send(service, binding, '上一份补EMA13', 'second')
+        self.assertIn(result['status'], ('completed', 'limited'), result)
+        plan = service._entries[binding['session_id']].session.product_saved.plan
+        self.assertEqual(set(plan.kinds), {'profile', 'technical'})
+        self.assertEqual(self.factory.reads[-1].indicators, plan.indicators)
+        self.assertIn(IndicatorSpec('ema', window=13), plan.indicators)
+        self.assertEqual(service._product_data_service.calls[-1][1], ('profile',))
+        self.assertFalse(plan.checked_prices)
+        self.assertIsNone(plan.objective.horizon)
+
     def test_index_add_boll_and_persist_atr_exclusion_across_updates(self):
         from trading_companion.decision_demo import DecisionDemoModel
         from trading_companion.index_source import synthetic_index_bars

@@ -56,6 +56,28 @@ or `research_intent_v2_enabled=True` enables the candidate for DeepSeek acceptan
 OpenAI and demo sessions retain their existing entry. Production switch eligibility remains false.
 See [integration status and validation boundaries](docs/research-intent-v2.6-integration.md).
 
+The independent integration acceptance tool prints its full public-dev and product-dialogue
+plan by default, including the exact questions, per-flow call bounds and token estimates.
+This command does not read `.env`, start a server, create databases or call a provider:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_research_intent_integration.py
+```
+
+After review and a separately agreed budget, the operator can run that plan with
+`--live --max-calls <approved-limit>`. The limit is required and covers both entries,
+setup turns, retries and fallbacks together. Use `--suite dev` or `--suite products`
+to run a smaller approved batch; add `--json` for a machine-readable plan. Live mode
+loads the normal model settings from `.env` and the environment without logging credentials,
+uses the existing live security directory and Tencent sources, and serves the production
+HTTP routes on a temporary loopback port. Each dialogue and entry gets separate stores
+under a new `.agentbus/tmp/` run directory; `--output` must stay beneath that directory.
+Reports retain failures and unmeasured cases, distinguish injected faults and saved-response
+references, and show cache usage as unknown when the provider omits it. Optional `--prices`
+accepts operator-supplied JSON rates per requested model (`currency`, `input_hit`, `input_miss`,
+`output`, per million tokens); absent or incomplete usage keeps cost unknown.
+This exposed regression run does not replace manual page checks or grant switch eligibility.
+
 ## Quick start (offline demo)
 
 Windows is the supported platform. In PowerShell, from a checkout with dependencies installed:

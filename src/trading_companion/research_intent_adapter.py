@@ -92,8 +92,11 @@ def _delta(question, previous, checked, context):
         indicators = replace_indicator(request, question).indicators
     except (InputIssue, InvalidRequestError):
         pass
+    added = set(checked.research_kinds)
+    if checked.indicator_mentions:
+        added.add('technical')
     return (tuple(s for s in indicators if 'indicator:' + s.kind not in excluded),
-            set(checked.research_kinds), excluded.intersection(RESEARCH_KINDS),
+            added, excluded.intersection(RESEARCH_KINDS),
             {v for v in excluded if v.startswith('indicator:')})
 
 

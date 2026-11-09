@@ -148,12 +148,14 @@ class ProductPlan:
     checked_prices: InitVar[bool | None] = None
     descriptive_risk: InitVar[bool] = False
     risk_dependencies_only: InitVar[bool] = False
+    answer_priority_indicators: InitVar[tuple[str, ...]] = ()
 
-    def __post_init__(self, checked_prices, descriptive_risk, risk_dependencies_only):
+    def __post_init__(self, checked_prices, descriptive_risk, risk_dependencies_only, answer_priority_indicators):
         # Init-only metadata stays out of the legacy dataclass state inventory and public serialization.
         object.__setattr__(self, 'checked_prices', checked_prices)
         object.__setattr__(self, 'descriptive_risk', descriptive_risk)
         object.__setattr__(self, 'risk_dependencies_only', risk_dependencies_only)
+        object.__setattr__(self, 'answer_priority_indicators', answer_priority_indicators)
 
     def to_dict(self) -> dict[str, object]:
         result = {

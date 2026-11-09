@@ -510,6 +510,11 @@ def _insight_evidence(insights, result):
 def model_research_context(bundle, *, limit=14500):
     """Keep domain notes, not complete time series, in a bounded synthesis context."""
     records = []
+    requested = (set(getattr(bundle.plan, 'answer_priority_indicators', ())) & {
+        spec.indicator_id for spec in bundle.plan.indicators}) if 'technical' in bundle.plan.kinds else set()
+    answer_priorities = {}
+    weekly_requested = re.search(r"周线|周均|日周", bundle.plan.user_question) is not None
+    primary_scope = 'completed_week_derived' if weekly_requested else 'daily_date_filtered_not_versioned_pit'
     for index, item in enumerate(bundle.evidence, 1):
         record = {key: value for key, value in item.to_dict().items() if key not in (
             "dependencies", "url", "published_at", "retrieved_at", "raw_value")
@@ -517,6 +522,15 @@ def model_research_context(bundle, *, limit=14500):
         record.update(id=f"E{index}", display=item.display if item.content_kind == "trade_plan" else item.display[:480])
         if item.temporal_scope == "daily_signal_derived" and type(item.raw_value) is str:
             record["signal_state"] = item.raw_value
+        # Fact IDs encode canonical indicator identities as complete |/: components;
+        # dependencies also connect compound relations to their individual indicators.
+        if requested and item.temporal_scope == 'daily_price_context' and item.id.endswith('|price_context:latest_close'):
+            answer_priorities[record['id']] = 0
+        elif requested and item.kind == 'technical' and any(
+                part in requested for identifier in (item.id, *item.dependencies)
+                for part in re.split(r'[|:]', identifier)):
+            reading = item.content_kind == 'fact' and type(item.raw_value) in (int, float)
+            answer_priorities[record['id']] = 1 if reading and item.temporal_scope == primary_scope else 2
         records.append(record)
     payload = {"securities": [{"instrument_id": c.instrument_id, "name": c.name,
                                "coverage": [{key: item[key] for key in ("kind", "status", "code") if key in item}
@@ -565,9 +579,13 @@ def model_research_context(bundle, *, limit=14500):
             return 2
         return 3 if record["content_kind"] in ("relation", "scenario") else 4
 
+    def answer_priority(record):
+        # Preserve the current close, then explicit readings before related/default background.
+        return answer_priorities.get(record['id'], 3), priority(record)
+
     queues = {(company.instrument_id, kind): sorted(
         [r for r in records if r not in pinned and r["instrument_id"] == company.instrument_id and r["kind"] == kind],
-        key=priority)
+        key=answer_priority if requested else priority)
         for company in bundle.companies for kind in domains}
     while any(queues.values()):
         for kind in domains:

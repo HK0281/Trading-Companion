@@ -1,6 +1,6 @@
 """Offline execution checks: program requests, actual reads and shared API lifecycle."""
 from copy import copy
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import timedelta
 import json
 from pathlib import Path
@@ -47,6 +47,41 @@ class IntentFixture:
 
 
 class AdapterTests(unittest.TestCase):
+    def test_answer_priority_is_private_checked_and_limited_to_final_scope(self):
+        for checked, question, expected in (
+            (intent(), '分析平安银行EMA13', ()),
+            (intent(indicator_mentions=('EMA13', 'EMA13', 'SMA11')),
+                '分析平安银行EMA13和SMA11', ('ema(window=13)', 'sma(window=11)')),
+            (intent(indicator_mentions=('EMA13', 'SMA11'), exclusions=('indicator:ema',)),
+                '分析平安银行，不要EMA，只看SMA11', ('sma(window=11)',)),
+            (intent(indicator_mentions=('EMA13',), research_kinds=('profile',), exclusions=('technical',)),
+                '平安银行公司资料，不要技术', ()),
+            (intent(indicator_mentions=('EMA13',), research_kinds=('risk',)),
+                '平安银行风险大吗，不要价位', ()),
+        ):
+            with self.subTest(question=question):
+                p = build_product_plan(checked, question, ctx())
+                self.assertEqual(p.answer_priority_indicators, expected)
+                self.assertNotIn('answer_priority_indicators', p.to_dict())
+                self.assertNotIn('answer_priority_indicators', asdict(p))
+        legacy = prepare_product_plan('平安银行EMA13', model=ProductModelFixture(), directory=directory(),
+            reference_date=NOW.date(), now=NOW, source='tencent')
+        self.assertEqual(legacy.answer_priority_indicators, ())
+
+    def test_answer_priority_is_not_inherited_with_saved_indicator_scope(self):
+        original = build_product_plan(intent(indicator_mentions=('EMA13',)), '平安银行EMA13', ctx())
+        session = ResearchSession()
+        session.product_saved = SavedProductResearch(NOW, original, None, None)
+        session.stage_research_subject(original.securities, kind='company', source='tencent',
+            development=False, now=NOW, scope=original)
+        continued = build_product_plan(intent(operation='update'), '继续上一份研究', ctx(session))
+        self.assertEqual(continued.indicators, original.indicators)
+        self.assertEqual(continued.answer_priority_indicators, ())
+        added = build_product_plan(intent(operation='update', indicator_mentions=('EMA20',)),
+            '上一份补EMA20', ctx(session))
+        self.assertIn(IndicatorSpec('ema', window=13), added.indicators)
+        self.assertEqual(added.answer_priority_indicators, ('ema(window=20)',))
+
     def test_shared_defaults_match_legacy_plan_fields(self):
         for q, value in (
             ('分析平安银行', intent()),

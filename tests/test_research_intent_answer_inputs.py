@@ -1,6 +1,7 @@
 """Compare complete answer/repair requests through both APIs with fixed offline data."""
 from contextlib import ExitStack
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 import json
 import unittest
@@ -10,6 +11,7 @@ from uuid import UUID
 from scripts.verify import clean_environment, offline_network
 from trading_companion.api_service import ResearchApiService
 from trading_companion.conversation_memory import TurnDigest
+from trading_companion.multi_contracts import DEFAULT_INDICATORS
 from trading_companion.product_answer import synthesize_product_answer
 from tests.test_product_agent import ProductModelFixture
 from tests.test_product_narrative_answer import NarrativeModel
@@ -154,6 +156,17 @@ class AnswerInputTests(unittest.TestCase):
         self.assertEqual(new[-1]['captures'][0]['question'], '上一份补EMA13')
         self.assertTrue(any(s.kind == 'ema' and s.parameters['window'] == 13 for s in new[-1]['reads'][-1].indicators))
         self.assertEqual(len(new[-1]['requests']), 2)
+        self.assertEqual(plan.indicators[:-1], DEFAULT_INDICATORS)
+        self.assertEqual(plan.answer_priority_indicators, ('ema(window=13)',))
+        original = next(e for e in new[-1]['captures'][0]['bundle'].evidence if e.label == 'EMA(13)')
+        for request in new[-1]['requests']:
+            context = json.loads(request[2].content.split('\n', 1)[1])
+            with self.subTest(repair=request is new[-1]['requests'][-1]):
+                supplied = next((e for e in context['evidence'] if e['label'] == 'EMA(13)'), None)
+                self.assertIsNotNone(supplied, 'The actual answer request must contain the daily EMA13 reading')
+                self.assertEqual(supplied['raw_value'], original.raw_value)
+                self.assertEqual(supplied['date'], original.date)
+                self.assertEqual(supplied['temporal_scope'], 'daily_date_filtered_not_versioned_pit')
 
     def test_risk_only_diff_is_bounded_evidence_without_new_price_or_prompt(self):
         value = draft(research_kinds=[dict(kind='risk', phrase='风险')],
@@ -167,6 +180,27 @@ class AnswerInputTests(unittest.TestCase):
         self.assertTrue(all(s.kind in ('atr', 'boll') for s in new['reads'][0].indicators))
         self.assertFalse(answer_context(new).get('trade_plans'))
         self.assertEqual(old['requests'][0][:2], new['requests'][0][:2])
+
+    def test_explicit_reading_survives_final_trimming_with_more_company_background(self):
+        followup = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+            reference=dict(kind='latest', index=None, scope='latest_research'), indicator_mentions=['EMA13'])
+        row = observe(['只研究平安银行公司资料', '上一份补EMA13'], [profile_draft(), followup], enabled=True)[-1]
+        bundle = row['captures'][0]['bundle']
+        company = bundle.companies[0]
+        profile = next(e for e in company.evidence if e.kind == 'profile')
+        text = '人工公司背景说明。' * 30
+        extra = tuple(replace(profile, id=f'{profile.id}:{i}', label=f'背景字段{i}', display=text, raw_value=text)
+                      for i in range(7))
+        crowded = replace(bundle, companies=(replace(company, evidence=(*extra, *company.evidence)),))
+        model = AnswerInputModel().answer
+        synthesize_product_answer('上一份补EMA13', crowded, model=model, repair_invalid=True)
+        self.assertEqual(len(model.calls), 2)
+        for request in model.calls:
+            context = json.loads(request[2].content.split('\n', 1)[1])
+            supplied = next((e for e in context['evidence'] if e['label'] == 'EMA(13)'), None)
+            self.assertIsNotNone(supplied)
+            self.assertEqual(supplied['raw_value'], 10.0)
+            self.assertGreater(context['omitted_from_model'], 0)
 
     def test_new_price_wording_intentionally_adds_decision_and_program_plans(self):
         old, new = self.pair(['平安银行短线建仓价位'], [price_draft()])

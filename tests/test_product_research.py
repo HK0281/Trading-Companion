@@ -11,8 +11,11 @@ from trading_companion.company_research_contracts import (
 )
 from trading_companion.daily_bar import DailyBar
 from trading_companion.errors import DataSourceError
+from trading_companion.multi_contracts import IndicatorSpec
 from trading_companion.product_plan import ProductPlan
-from trading_companion.product_research import collect_product_research, model_research_context
+from trading_companion.product_research import (
+    ProductCompany, ProductEvidence, ProductResearchBundle, collect_product_research, model_research_context,
+)
 from trading_companion.security_directory import Security, SecurityDirectory
 from trading_companion.turn_control import TurnStopped, bind_turn, company_turn_control
 
@@ -254,6 +257,76 @@ class ProductResearchTests(unittest.TestCase):
         self.assertGreater(context["omitted_from_model"], 0)
         self.assertEqual(len(bundle.evidence), evidence_count)
         self.assertFalse(any("dependencies" in item for item in context["evidence"]))
+
+
+class AnswerPriorityTests(unittest.TestCase):
+    @staticmethod
+    def evidence(key, label, *, instrument='000001.SZ', scope='daily_date_filtered_not_versioned_pit',
+                 raw_value=10.0, dependencies=(), display='10元/股'):
+        return ProductEvidence('fixture|' + instrument + '|' + key, instrument, 'technical', label, display,
+            'fixture', date='2026-09-25', content_kind='fact' if raw_value is not None else 'relation',
+            raw_value=raw_value, temporal_scope=scope, dependencies=dependencies)
+
+    def bundle(self, evidence, *, question='补EMA13', priority=('ema(window=13)',)):
+        selected = replace(plan(kinds=('technical',)), user_question=question,
+            indicators=(IndicatorSpec('ema', window=20), IndicatorSpec('ema', window=13)),
+            answer_priority_indicators=priority)
+        companies = tuple(ProductCompany(s.instrument_id, s.name,
+            tuple(e for e in evidence if e.instrument_id == s.instrument_id), ()) for s in SECURITIES[:3]
+            if any(e.instrument_id == s.instrument_id for e in evidence))
+        return ProductResearchBundle(selected, companies)
+
+    def test_exact_indicator_and_dependency_matching_ignores_similar_labels(self):
+        evidence = (
+            self.evidence('ema(window=20)|value', '名称提到EMA13，实际为EMA20'),
+            self.evidence('other:relation', 'EMA13方向', raw_value=None,
+                dependencies=('fixture|ema(window=20)|value',)),
+            self.evidence('pair:relation', '均线组合关系', raw_value=None,
+                dependencies=('fixture|ema(window=13)|value',)),
+            self.evidence('ema(window=13)|value', 'EMA(13)'),
+        )
+        context = model_research_context(self.bundle(evidence))
+        self.assertEqual([r['id'] for r in context['evidence'][:2]], ['E4', 'E3'])
+        # No hint retains the original relation-before-reading order, even with EMA13 in the question.
+        legacy = model_research_context(self.bundle(evidence, priority=()))
+        self.assertEqual([r['id'] for r in legacy['evidence']], ['E2', 'E3', 'E1', 'E4'])
+        # An out-of-scope hint cannot change selection or expand the research scope.
+        out_of_scope = model_research_context(self.bundle(evidence, priority=('ema(window=12)',)))
+        self.assertEqual(out_of_scope, legacy)
+
+    def test_explicit_reading_follows_timeframe_and_keeps_essential_price_first(self):
+        evidence = (
+            self.evidence('weekly:ema(window=20):value', '周EMA20', scope='completed_week_derived'),
+            self.evidence('weekly:ema(window=13):value', '周EMA13', scope='completed_week_derived'),
+            self.evidence('timeframes:alignment', '日周方向', raw_value=None, scope='cross_timeframe_derived',
+                dependencies=('fixture|weekly:ema(window=13):value',)),
+            self.evidence('ema(window=13)|value', 'EMA(13)'),
+            self.evidence('price_context:latest_close', '收盘价', scope='daily_price_context'),
+            self.evidence('price_context:return_5d', '近5日涨跌幅', scope='daily_price_context'),
+        )
+        for question, first_reading in (('补EMA13', 'E4'), ('补周线EMA13', 'E2')):
+            with self.subTest(question=question):
+                context = model_research_context(self.bundle(evidence, question=question))
+                self.assertEqual([r['id'] for r in context['evidence'][:2]], ['E5', first_reading])
+                self.assertGreater(next(i for i, r in enumerate(context['evidence']) if r['id'] == 'E6'), 1)
+                self.assertLess(next(i for i, r in enumerate(context['evidence']) if r['id'] == 'E3'),
+                                next(i for i, r in enumerate(context['evidence']) if r['id'] == 'E1'))
+
+    def test_three_stocks_keep_named_readings_under_small_budget_without_mutating_evidence(self):
+        evidence = tuple(e for security in SECURITIES[:3] for e in (
+            *(self.evidence(f'ema(window=20)|field{i}', '默认指标', instrument=security.instrument_id,
+                display='人工默认指标资料。' * 40) for i in range(8)),
+            self.evidence('price_context:latest_close', '收盘价', instrument=security.instrument_id,
+                scope='daily_price_context'),
+            self.evidence('ema(window=13)|value', 'EMA(13)', instrument=security.instrument_id),
+        ))
+        bundle = self.bundle(evidence)
+        context = model_research_context(bundle, limit=4200)
+        self.assertLessEqual(len(json.dumps(context, ensure_ascii=False)), 4200)
+        self.assertEqual({r['instrument_id'] for r in context['evidence'] if r['label'] == 'EMA(13)'},
+                         {s.instrument_id for s in SECURITIES[:3]})
+        self.assertGreater(context['omitted_from_model'], 0)
+        self.assertEqual(bundle.evidence, evidence)
 
 
 if __name__ == "__main__":

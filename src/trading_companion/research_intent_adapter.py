@@ -201,7 +201,10 @@ def build_product_plan(checked, question, context):
     if plan.indicators:
         validate_research_conditions(plan.start_date, plan.end_date, plan.indicators)
     plan.scope.validate(plan.kinds, plan.indicators)
-    return plan
+    # This turn's checked mentions prioritize existing evidence, never inherited scope or permissions.
+    priority = tuple(dict.fromkeys(s.indicator_id for phrase in checked.indicator_mentions for s in _indicator(phrase)
+        if 'technical' in plan.kinds and s in plan.indicators))
+    return replace(plan, answer_priority_indicators=priority)
 
 
 def build_technical_input(checked, question, context):

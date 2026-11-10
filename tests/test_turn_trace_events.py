@@ -21,7 +21,7 @@ from trading_companion.development_fixtures import REFERENCE_DATE, load_developm
 from trading_companion.errors import DataSourceError
 from trading_companion.knowledge_retrieval import default_knowledge_retriever
 from trading_companion.model import ModelCallError, TokenUsage
-from trading_companion.open_knowledge import answer_general_knowledge
+from trading_companion.open_knowledge import KNOWLEDGE_VALIDATION_REASONS, _Invalid, answer_general_knowledge
 from trading_companion.product_answer import synthesize_legacy_product_answer as synthesize_product_answer
 from trading_companion.research_intent import prepare_research_question
 from trading_companion.research_tool import TOOL_NAME
@@ -191,7 +191,8 @@ class TraceEventTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "src" / "trading_companion"
         reasons = set()
         for filename, exception in (("company_research.py", "_Rejected"), ("company_news_sina.py", "_Unavailable"),
-                                    ("product_answer.py", "_Invalid"), ("research_response.py", "_Invalid"),
+                                    ("product_answer.py", "_Invalid"), ("open_knowledge.py", "_Invalid"),
+                                    ("research_response.py", "_Invalid"),
                                     ("collection_execution.py", "CollectionUnavailable")):
             tree = ast.parse((root / filename).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
@@ -200,6 +201,19 @@ class TraceEventTests(unittest.TestCase):
                     reasons.add(node.args[0].value)
         self.assertGreater(len(reasons), 35)
         self.assertFalse(reasons - _CODES - _EVENT_CODES)
+
+    def test_all_knowledge_reason_categories_survive_trace_without_private_details(self):
+        self.assertEqual(len(KNOWLEDGE_VALIDATION_REASONS), 32)
+        self.assertFalse(KNOWLEDGE_VALIDATION_REASONS - _EVENT_CODES)
+        for reason in (*sorted(KNOWLEDGE_VALIDATION_REASONS), PRIVATE):
+            def reject():
+                raise _Invalid(reason)
+            with self.scope(), self.assertRaises(_Invalid):
+                trace_call('check', 'knowledge_answer', reject)
+            event = self.events('check', 'knowledge_answer')[0]
+            self.assertEqual(event['code'], reason if reason in KNOWLEDGE_VALIDATION_REASONS else 'other')
+            self.assertEqual(event['status'], 'rejected')
+            self.assertNotIn(PRIVATE, json.dumps(self.record()))
 
     def test_actual_parallel_company_collector_keeps_parent_and_source_counts(self):
         from trading_companion.collection_execution import CollectionExecutor
@@ -371,6 +385,7 @@ class TraceEventTests(unittest.TestCase):
         event = self.events("source")[0]
         self.assertEqual((event["source"], event["access"]), ("local_knowledge", "local"))
         self.assertEqual(self.events("check", "knowledge_answer")[0]["status"], "rejected")
+        self.assertEqual(self.events('check', 'knowledge_answer')[0]['code'], 'knowledge_payload_keys_invalid')
 
     def run_repair(self, *values, repair=True, budget=2, callback=None):
         delegate = ScriptedModel(*values, callback=callback)

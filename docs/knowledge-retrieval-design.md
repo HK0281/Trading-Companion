@@ -1,6 +1,6 @@
 # 有来源的交易知识问答
 
-更新：2026-10-26。一般交易问答默认先检索本地知识片段，再用一次无工具模型调用解释。原有指标定义快捷路径保持零模型调用；本文不把知识说明扩展为个股实时研究或交易操作。
+更新：2026-11-09。一般交易问答默认先检索本地知识片段，再用一次无工具模型调用解释。原有指标定义快捷路径保持零模型调用；本文不把知识说明扩展为个股实时研究或交易操作。
 
 ## 1. 解决的问题与流程
 
@@ -83,3 +83,65 @@ answer_general_knowledge(question, model=model, directory=directory, mentions=()
 仍有明确边界：成员检查只证明引用确实在本次检索结果中，不能证明自由文字的每个结论由片段推出。假设算例没有全面数值推导认证，词法召回也可能漏掉近义表达。现有24条内容并非完整知识库、实时法规服务或基于全文的检索系统；真实回答相关性与解释质量需要独立抽查。
 
 扩充语料时应逐条核对参考链接与解释，区分维护日期和外部发布时间，修改内容版本，并给重要近义问题补检索案例。不要通过给所有主题添加泛化别名来提高表面的命中率。
+
+## 6. 仅记录类别的拒绝诊断
+
+知识结果的 `to_dict()` 新增 `diagnostics` 字段，既有回答版本、状态、大类错误码和失败提示保持不变。例如：
+
+```json
+{
+  "version": "knowledge-validation-v1",
+  "state": "rejected",
+  "reason": "knowledge_bracket_reference"
+}
+```
+
+`state=accepted` 表示输出检查通过；`rejected` 表示输出检查失败；`not_run` 表示还没有检查输出，例如检索失败、模型拒答或返回不完整。前后两种非拒绝状态的 `reason` 为 `null`。拒绝原因只取下面的固定白名单，未知值归为 `other`，不返回问题、模型正文、引用别名、命中字词或异常详情。返回的字典与内部对象分离。
+
+每个原因均以 `knowledge_` 开头，后缀如下：
+
+| 类别 | 固定原因后缀 |
+| --- | --- |
+| 响应文本 | `response_type_invalid`、`response_too_long` |
+| JSON 解析 | `json_invalid`、`json_too_deep`、`json_duplicate_key`、`json_nonfinite_number` |
+| 顶层结构 | `payload_type_invalid`、`payload_keys_invalid`、`version_invalid`、`paragraphs_type_invalid`、`paragraph_count_invalid` |
+| 段落格式 | `paragraph_type_invalid`、`paragraph_empty`、`paragraph_too_long`、`paragraph_nonprintable` |
+| 内容范围 | `html_forbidden`、`link_forbidden`、`claimed_access`、`guaranteed_return`、`current_number_claim`、`bracket_reference` |
+| 引用集合 | `citations_type_invalid`、`citation_count_invalid`、`citation_shape_invalid` |
+| 段落索引 | `citation_index_invalid`、`citation_index_duplicate` |
+| 引用来源 | `citation_sources_type_invalid`、`citation_source_count_invalid`、`citation_source_unknown`、`citation_source_duplicate`、`citation_missing` |
+| 无匹配声明 | `no_match_notice_too_long` |
+
+共 32 类，按原来的检查顺序只报告首次拒绝点；不能据此认为其余规则都已通过。重复 JSON 键与非有限数字的原因不会被通用解析错误覆盖。现有 `check/knowledge_answer` 追踪事件使用同一原因类别，仍走固定白名单；原有追踪格式和旧记录读取方式不变。
+
+本阶段只补诊断，没有放宽规则或增加生产模型调用。例如【计算步骤】、EMA[12] 仍会被原来的引用标记规则拒绝，段内换行仍被拒绝；12/26/9、DIF/DEA、普通 EMA 递推式本身不会触发当前行情数字规则。有资料时仍要求每段引用本轮片段，无资料时仍要求空引用；引用检查不证明自由文字的真实性。
+
+### 有界真实诊断
+
+`scripts/diagnose_general_knowledge.py` 默认仅输出包含公开测试问题的计划，不读取模型配置、不联网、不创建目录或会话数据：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/diagnose_general_knowledge.py
+```
+
+固定批次是四种 MACD 问法各三次，加“ETF是什么”两次，共 14 题。只调用生产的通用知识实现，使用现有 DeepSeek 回答模型配置、提示词与知识资料；不调用意图模型、不改提示词、不保存对话、不创建行情数据源。该诊断不能替代新旧入口的完整验收，也不评价解释质量。
+
+真实诊断预算由总线消息 #541 预先批准；第一阶段审核、提交后由 Claude 执行以下命令。输出目录必须全新且位于 `.agentbus/tmp/` 内，每个批次另取目录名：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B scripts/diagnose_general_knowledge.py --live --max-calls 14 --output .agentbus/tmp/macd-diagnostic-run1
+```
+
+`--live` 必须同时给出 `--max-calls` 和 `--output`；上限只能是 1–14，失败尝试也计数。每题只有一次模型额度，连接错误不重发、输出失败不重写，全局请求观察器在发请求前计数。达到上限后剩余题目标为 `not_measured`；中断或启动失败也保留完整的 14 题分母，不自动追加调用。
+
+批次目录里的 `report.json` 仅保存 case_id、重复序号、状态、固定错误类别、调用次数、用量、耗时及 run_id，不保存计划中的问题文本、任何模型正文或 reasoning、引用别名、请求消息、凭据或异常原文。`summary.reason_by_case` 给出“拒绝原因码 × case_id”的次数表，`case_counts` 保留每种问法的计划数、通过数、失败数和未测数。缺失的 token 用量保留为 `null`，不当作零。
+
+同目录 `trace/` 仅保存现有的无正文追踪元数据，可用终端工具汇总原因：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.trace_cli --trace-dir .agentbus/tmp/macd-diagnostic-run1/trace --format json
+```
+
+小批次未复现失败时，只能报告“本批未复现”；后续修复与追加真实调用另行讨论。诊断材料不会写入 Git。
+
+当前源码登记更新为 `intent-knowledge-diagnostics-v1`，上一版 `intent-integration-default-on-v1` 完整移入历史登记。既有冻结题目、观察器、快照和历史报告不改写；当前回归测试先严格核对新增诊断字段，再移除这一已核对字段，与原始快照比较其余全部结果、状态和调用数。额外字段、错误诊断状态或正文变化仍会让测试失败。

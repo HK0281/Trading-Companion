@@ -20,6 +20,19 @@ from trading_companion.turn_trace import trace_call
 
 
 GENERAL_KNOWLEDGE_VERSION = "general-knowledge-answer-v1"
+KNOWLEDGE_VALIDATION_VERSION = "knowledge-validation-v1"
+KNOWLEDGE_VALIDATION_REASONS = frozenset("""
+knowledge_response_type_invalid knowledge_response_too_long knowledge_json_invalid knowledge_json_too_deep
+knowledge_json_duplicate_key knowledge_json_nonfinite_number knowledge_payload_type_invalid
+knowledge_payload_keys_invalid knowledge_version_invalid knowledge_paragraphs_type_invalid
+knowledge_paragraph_count_invalid knowledge_paragraph_type_invalid knowledge_paragraph_empty
+knowledge_paragraph_too_long knowledge_paragraph_nonprintable knowledge_html_forbidden knowledge_link_forbidden
+knowledge_claimed_access knowledge_guaranteed_return knowledge_current_number_claim knowledge_bracket_reference
+knowledge_citations_type_invalid knowledge_citation_count_invalid knowledge_citation_shape_invalid
+knowledge_citation_index_invalid knowledge_citation_index_duplicate knowledge_citation_sources_type_invalid
+knowledge_citation_source_count_invalid knowledge_citation_source_unknown knowledge_citation_source_duplicate
+knowledge_citation_missing knowledge_no_match_notice_too_long
+""".split())
 MAX_PARAGRAPHS = 6
 MAX_PARAGRAPH_CHARACTERS = 800
 MAX_RESPONSE_CHARACTERS = 6500
@@ -212,10 +225,21 @@ class GeneralKnowledgeAnswer:
     question: str | None = field(default=None, repr=False)
     citations: tuple[KnowledgeCitation, ...] = ()
     retrieval: KnowledgeRetrieval | None = field(default=None, repr=False)
+    validation_reason: str | None = field(default=None, repr=False)
 
     @property
     def paragraphs(self) -> tuple[str, ...]:
         return tuple(self.text.split("\n\n"))
+
+    @property
+    def diagnostics(self) -> dict[str, object]:
+        """First rejection category only; never copy exception or model text."""
+        state, reason = "not_run", None
+        if self.status == "accepted":
+            state = "accepted"
+        elif self.code == "general_knowledge_output_invalid":
+            state, reason = "rejected", _validation_reason(self.validation_reason)
+        return {"version": KNOWLEDGE_VALIDATION_VERSION, "state": state, "reason": reason}
 
     def to_dict(self) -> dict[str, object]:
         payload = {"version": GENERAL_KNOWLEDGE_VERSION,
@@ -223,7 +247,8 @@ class GeneralKnowledgeAnswer:
                 "status": self.status, "code": self.code, "text": self.text,
                 "paragraphs": list(self.paragraphs), "citations": [item.to_dict() for item in self.citations],
                 "market_data_requested": False, "trading_enabled": False,
-                "validation_scope": "format_scope_and_citation_membership_not_prose_semantics"}
+                "validation_scope": "format_scope_and_citation_membership_not_prose_semantics",
+                "diagnostics": self.diagnostics}
         if self.retrieval is not None:
             payload["retrieval"] = self.retrieval.to_dict()
         return payload
@@ -237,21 +262,27 @@ class GeneralKnowledgeRun:
     failure_code: str | None = None
 
 
+def _validation_reason(value):
+    return value if type(value) is str and value in KNOWLEDGE_VALIDATION_REASONS else "other"
+
+
 class _Invalid(ValueError):
-    pass
+    def __init__(self, reason):
+        self.reason = _validation_reason(reason)
+        super().__init__(self.reason)
 
 
 def _pairs(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise _Invalid()
+            raise _Invalid("knowledge_json_duplicate_key")
         result[key] = value
     return result
 
 
 def _constant(value):
-    raise _Invalid()
+    raise _Invalid("knowledge_json_nonfinite_number")
 
 
 def _positive_claim(text, pattern):
@@ -264,51 +295,85 @@ def _positive_claim(text, pattern):
 
 @trace_call("check", "knowledge_answer")
 def _paragraphs(text, retrieval):
-    if type(text) is not str or len(text) > MAX_RESPONSE_CHARACTERS:
-        raise _Invalid()
+    if type(text) is not str:
+        raise _Invalid("knowledge_response_type_invalid")
+    if len(text) > MAX_RESPONSE_CHARACTERS:
+        raise _Invalid("knowledge_response_too_long")
     try:
         payload = json.loads(text, object_pairs_hook=_pairs, parse_constant=_constant)
-    except (ValueError, RecursionError):
-        raise _Invalid() from None
-    if (type(payload) is not dict or payload.keys() not in ({"version", "paragraphs", "citations"}, {"version", "paragraphs"})
-            or payload["version"] != GENERAL_KNOWLEDGE_VERSION
-            or type(payload["paragraphs"]) is not list or not 1 <= len(payload["paragraphs"]) <= MAX_PARAGRAPHS):
-        raise _Invalid()
+    except _Invalid:
+        raise
+    except ValueError:
+        raise _Invalid("knowledge_json_invalid") from None
+    except RecursionError:
+        raise _Invalid("knowledge_json_too_deep") from None
+    if type(payload) is not dict:
+        raise _Invalid("knowledge_payload_type_invalid")
+    if payload.keys() not in ({"version", "paragraphs", "citations"}, {"version", "paragraphs"}):
+        raise _Invalid("knowledge_payload_keys_invalid")
+    if payload["version"] != GENERAL_KNOWLEDGE_VERSION:
+        raise _Invalid("knowledge_version_invalid")
+    if type(payload["paragraphs"]) is not list:
+        raise _Invalid("knowledge_paragraphs_type_invalid")
+    if not 1 <= len(payload["paragraphs"]) <= MAX_PARAGRAPHS:
+        raise _Invalid("knowledge_paragraph_count_invalid")
     output = []
     for paragraph in payload["paragraphs"]:
-        if (type(paragraph) is not str or not paragraph.strip() or not 1 <= len(paragraph) <= MAX_PARAGRAPH_CHARACTERS
-                or any(not character.isprintable() for character in paragraph)
-                or _HTML.search(paragraph) or _LINK.search(paragraph)
-                or _positive_claim(paragraph, _CLAIMED_ACCESS) or _positive_claim(paragraph, _GUARANTEE)
-                or _CURRENT_NUMBER_CLAIM.search(paragraph)
-                or re.search(r"\[(?:K[0-9]+|[0-9]+)\]|【[^】]{1,40}】", paragraph)):
-            raise _Invalid()
+        if type(paragraph) is not str:
+            raise _Invalid("knowledge_paragraph_type_invalid")
+        if not paragraph.strip():
+            raise _Invalid("knowledge_paragraph_empty")
+        if len(paragraph) > MAX_PARAGRAPH_CHARACTERS:
+            raise _Invalid("knowledge_paragraph_too_long")
+        if any(not character.isprintable() for character in paragraph):
+            raise _Invalid("knowledge_paragraph_nonprintable")
+        if _HTML.search(paragraph):
+            raise _Invalid("knowledge_html_forbidden")
+        if _LINK.search(paragraph):
+            raise _Invalid("knowledge_link_forbidden")
+        if _positive_claim(paragraph, _CLAIMED_ACCESS):
+            raise _Invalid("knowledge_claimed_access")
+        if _positive_claim(paragraph, _GUARANTEE):
+            raise _Invalid("knowledge_guaranteed_return")
+        if _CURRENT_NUMBER_CLAIM.search(paragraph):
+            raise _Invalid("knowledge_current_number_claim")
+        if re.search(r"\[(?:K[0-9]+|[0-9]+)\]|【[^】]{1,40}】", paragraph):
+            raise _Invalid("knowledge_bracket_reference")
         output.append(paragraph.strip())
     references = payload.get("citations", [])
-    if type(references) is not list or len(references) > MAX_PARAGRAPHS:
-        raise _Invalid()
+    if type(references) is not list:
+        raise _Invalid("knowledge_citations_type_invalid")
+    if len(references) > MAX_PARAGRAPHS:
+        raise _Invalid("knowledge_citation_count_invalid")
     allowed = {hit.alias: hit for hit in retrieval.hits}
     indices, bindings = set(), {}
     for reference in references:
-        if (type(reference) is not dict or reference.keys() != {"paragraph", "sources"}
-                or type(reference["paragraph"]) is not int or not 0 <= reference["paragraph"] < len(output)
-                or reference["paragraph"] in indices or type(reference["sources"]) is not list
-                or not 1 <= len(reference["sources"]) <= len(allowed)
-                or any(type(alias) is not str or alias not in allowed for alias in reference["sources"])
-                or len(set(reference["sources"])) != len(reference["sources"])):
-            raise _Invalid()
+        if type(reference) is not dict or reference.keys() != {"paragraph", "sources"}:
+            raise _Invalid("knowledge_citation_shape_invalid")
+        if type(reference["paragraph"]) is not int or not 0 <= reference["paragraph"] < len(output):
+            raise _Invalid("knowledge_citation_index_invalid")
+        if reference["paragraph"] in indices:
+            raise _Invalid("knowledge_citation_index_duplicate")
+        if type(reference["sources"]) is not list:
+            raise _Invalid("knowledge_citation_sources_type_invalid")
+        if not 1 <= len(reference["sources"]) <= len(allowed):
+            raise _Invalid("knowledge_citation_source_count_invalid")
+        if any(type(alias) is not str or alias not in allowed for alias in reference["sources"]):
+            raise _Invalid("knowledge_citation_source_unknown")
+        if len(set(reference["sources"])) != len(reference["sources"]):
+            raise _Invalid("knowledge_citation_source_duplicate")
         index = reference["paragraph"]
         indices.add(index)
         for alias in reference["sources"]:
             bindings.setdefault(alias, []).append(index)
     if allowed and indices != set(range(len(output))):
-        raise _Invalid()
+        raise _Invalid("knowledge_citation_missing")
     citations = tuple(KnowledgeCitation(hit, tuple(sorted(bindings[hit.alias])))
                       for hit in retrieval.hits if hit.alias in bindings)
     if not retrieval.hits:
         output[0] = _NO_MATCH_NOTICE + output[0]
         if len(output[0]) > MAX_PARAGRAPH_CHARACTERS:
-            raise _Invalid()
+            raise _Invalid("knowledge_no_match_notice_too_long")
     return tuple(output), citations
 
 
@@ -370,10 +435,11 @@ def answer_general_knowledge(question: str, *, model: ToolCapableModel,
         paragraphs, citations = _paragraphs(response.text, retrieval)
         return GeneralKnowledgeRun(GeneralKnowledgeAnswer("accepted", "general_knowledge_answered",
             "\n\n".join(paragraphs), question, citations, retrieval), calls, response)
-    except _Invalid:
+    except _Invalid as error:
         code = "general_knowledge_output_invalid"
         return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
-            "这次知识解答没有通过格式与引用检查，没有展示模型原文。", question, retrieval=retrieval), calls, response, code)
+            "这次知识解答没有通过格式与引用检查，没有展示模型原文。", question, retrieval=retrieval,
+            validation_reason=error.reason), calls, response, code)
     except (ModelCallError, ModelConfigurationError, ModelRequestError):
         code = "general_knowledge_model_unavailable"
         return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,

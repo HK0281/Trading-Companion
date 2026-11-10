@@ -8,6 +8,7 @@ import unittest
 
 from scripts.verify import clean_environment, offline_network
 from tests import routing_baseline_support as old
+from tests.knowledge_diagnostics_baseline_support import compare_observations
 from tests.intent_integration_support import BASELINE, observe
 from tests.intent_historical_observer import (
     fixed_index_observe, historical_index_observation, require_historical_revision,
@@ -44,7 +45,7 @@ class DisabledServiceTests(unittest.TestCase):
                 with self.subTest(scenario=scenario['id'], options=options), patch(
                         'trading_companion.model_registry.configured_intent_model',
                         side_effect=AssertionError('No extra configuration')):
-                    old.compare_observations(scenario, observer(scenario, **options))
+                    compare_observations(scenario, observer(scenario, **options))
 
     def test_non_boolean_switch_fails_before_any_dependency(self):
         factory = Mock(side_effect=AssertionError('No model or data construction'))

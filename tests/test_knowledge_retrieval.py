@@ -5,6 +5,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from trading_companion import open_knowledge as knowledge
 from trading_companion.knowledge_data import CORPUS_VERSION
 from trading_companion.knowledge_retrieval import (
     KnowledgeEntry, KnowledgeHit, KnowledgeRetrieval, KnowledgeRetriever, KnowledgeSource,
@@ -279,11 +280,61 @@ class RetrievedEducationTests(unittest.TestCase):
         run = answer_general_knowledge(question, model=ContextModel(payload))
         self.assertLess(len(run.answer.retrieval.hits), 4)
         self.assertEqual(run.answer.code, "general_knowledge_output_invalid")
+        self.assertEqual(run.answer.diagnostics['reason'], 'knowledge_citation_source_unknown')
 
     def test_citation_membership_is_not_claimed_to_prove_prose_entailment(self):
         answer = answer_general_knowledge("PE是什么", model=ContextModel()).answer
         self.assertIn("not_prose_semantics", answer.to_dict()["validation_scope"])
         self.assertIn("not_link_fulltext_or_current_rule_verification", answer.to_dict()["retrieval"]["scope"])
+
+
+class KnowledgeCitationDiagnosticsTests(unittest.TestCase):
+    def test_each_citation_rejection_has_a_fixed_reason_and_retains_first_failure(self):
+        def ref(index=0, sources=None):
+            return dict(paragraph=index, sources=['K1'] if sources is None else sources)
+
+        cases = (
+            ('citations_type_invalid', None), ('citations_type_invalid', {}),
+            ('citation_count_invalid', [ref()] * 7),
+            ('citation_shape_invalid', ['private-citation-body']),
+            ('citation_shape_invalid', [dict(paragraph=0)]),
+            ('citation_shape_invalid', [dict(**ref(), url='https://example.com')]),
+            *((('citation_index_invalid', [ref(index)])) for index in (True, '0', -1, 1)),
+            ('citation_index_duplicate', [ref(), ref()]),
+            ('citation_sources_type_invalid', [ref(sources='K1')]),
+            ('citation_source_count_invalid', [ref(sources=[])]),
+            ('citation_source_count_invalid', [ref(sources=['K1', 'K2', 'K3'])]),
+            ('citation_source_unknown', [ref(sources=['K999'])]),
+            ('citation_source_unknown', [ref(sources=[{}])]),
+            ('citation_source_duplicate', [ref(sources=['K1', 'K1'])]),
+            ('citation_missing', []),
+        )
+        for reason, citations in cases:
+            with self.subTest(reason=reason, citations=citations):
+                model = ContextModel(dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念说明。'],
+                                          citations=citations))
+                run = answer_general_knowledge('PE和PB怎么理解', model=model)
+                self.assertEqual(run.answer.diagnostics['reason'], 'knowledge_' + reason)
+                self.assertEqual((len(model.calls), run.model_calls_attempted), (1, 1))
+                self.assertEqual(run.answer.citations, ())
+        for payload in (dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念。']),
+                        dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念。', '补充。'], citations=[ref()])):
+            run = answer_general_knowledge('PE是什么', model=ContextModel(payload))
+            self.assertEqual(run.answer.diagnostics['reason'], 'knowledge_citation_missing')
+
+    def test_no_match_notice_length_boundary_and_retrieval_failure_are_distinct(self):
+        retriever = KnowledgeRetriever(())
+        for size, state, reason in ((800 - len(knowledge._NO_MATCH_NOTICE), 'accepted', None),
+                                    (801 - len(knowledge._NO_MATCH_NOTICE), 'rejected',
+                                     'knowledge_no_match_notice_too_long')):
+            with self.subTest(size=size):
+                payload = dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['学' * size], citations=[])
+                run = answer_general_knowledge('ETF是什么', model=ContextModel(payload), retriever=retriever)
+                self.assertEqual((run.answer.diagnostics['state'], run.answer.diagnostics['reason']), (state, reason))
+        with patch.object(KnowledgeRetriever, 'search', side_effect=ValueError('private-retrieval-detail')):
+            run = answer_general_knowledge('PE是什么', model=ContextModel())
+        self.assertEqual(run.answer.diagnostics['state'], 'not_run')
+        self.assertEqual(run.model_calls_attempted, 0)
 
 
 if __name__ == "__main__":

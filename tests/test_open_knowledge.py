@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from trading_companion import open_knowledge as knowledge
 from trading_companion.development_fixtures import load_development_fixtures
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError, TokenUsage
 from trading_companion.open_knowledge import (
@@ -284,6 +285,99 @@ class OpenKnowledgeAnswerTests(GuardedTests):
                 self.assertEqual(len(model.calls), 1)
                 self.assertNotIn(PRIVATE, repr(run))
                 self.assertEqual(run.answer.to_dict()["origin"], "application")
+
+
+class KnowledgeValidationDiagnosticsTests(GuardedTests):
+    def test_format_and_scope_failures_report_exact_first_reason(self):
+        def encoded(**changes):
+            payload = json.loads(response().text)
+            payload.update(changes)
+            return json.dumps(payload, ensure_ascii=False)
+
+        cases = (
+            ('response_type_invalid', None), ('response_type_invalid', 2),
+            ('response_too_long', ' ' * 6501),
+            ('json_invalid', 'not JSON ' + PRIVATE), ('json_invalid', '```json\n{}\n```'),
+            ('json_invalid', response().text + ' trailing'),
+            ('json_duplicate_key', '{"version":1,"version":2}'),
+            ('json_duplicate_key', '{"nested":{"x":1,"x":2}}'),
+            *((('json_nonfinite_number', '{"x":' + value + '}') for value in ('NaN', 'Infinity', '-Infinity'))),
+            *((('payload_type_invalid', value) for value in ('[]', 'null', '"text"'))),
+            ('payload_keys_invalid', encoded(extra=PRIVATE)), ('payload_keys_invalid', '{}'),
+            ('version_invalid', encoded(version='wrong')), ('version_invalid', encoded(version=False)),
+            ('paragraphs_type_invalid', encoded(paragraphs='text')),
+            ('paragraph_count_invalid', encoded(paragraphs=[])),
+            ('paragraph_count_invalid', encoded(paragraphs=['a'] * 7)),
+            *((('paragraph_type_invalid', encoded(paragraphs=[value])) for value in (1, True, {}))),
+            ('paragraph_empty', encoded(paragraphs=[''])), ('paragraph_empty', encoded(paragraphs=['   '])),
+            ('paragraph_too_long', encoded(paragraphs=['a' * 801])),
+            *((('paragraph_nonprintable', encoded(paragraphs=['DIF' + value + 'DEA']))
+               for value in ('\n', '\t', '\u200b'))),
+            ('html_forbidden', encoded(paragraphs=['<b>' + PRIVATE + '</b>'])),
+            ('html_forbidden', encoded(paragraphs=['<!-- comment -->'])),
+            *((('link_forbidden', encoded(paragraphs=[value])) for value in
+               ('https://example.com', 'example.cn', '[source](https://example.com)', 'javascript:alert(1)'))),
+            ('claimed_access', encoded(paragraphs=['我已联网查询股价。'])),
+            ('claimed_access', encoded(paragraphs=['订单已经成交。'])),
+            *((('guaranteed_return', encoded(paragraphs=[value])) for value in ('保证收益', '金叉必涨', '零风险'))),
+            ('current_number_claim', encoded(paragraphs=['今日股价为20元。'])),
+            ('current_number_claim', encoded(paragraphs=['假设当前股价为20元，仅作示例。'])),
+            *((('bracket_reference', encoded(paragraphs=[value])) for value in
+               ('公式[K1]', '公式[1]', '【来源】', '【计算步骤】', 'EMA[12]减EMA[26]'))),
+        )
+        retrieval = knowledge.default_knowledge_retriever().search(QUESTION)
+        for reason, text in cases:
+            with self.subTest(reason=reason, text=text):
+                with self.assertRaises(knowledge._Invalid) as raised:
+                    knowledge._paragraphs(text, retrieval)
+                self.assertEqual(raised.exception.reason, 'knowledge_' + reason)
+                self.assertNotIn(PRIVATE, str(raised.exception))
+        with patch.object(knowledge.json, 'loads', side_effect=RecursionError(PRIVATE)):
+            with self.assertRaises(knowledge._Invalid) as raised:
+                knowledge._paragraphs('{}', retrieval)
+        self.assertEqual(raised.exception.reason, 'knowledge_json_too_deep')
+
+    def test_diagnostics_are_safe_detached_and_only_describe_checks_that_ran(self):
+        paragraph = '【计算步骤】' + PRIVATE + ' EMA[12]'
+        run = answer_general_knowledge(QUESTION, model=RecordingModel(response((paragraph,))))
+        expected = dict(version='knowledge-validation-v1', state='rejected', reason='knowledge_bracket_reference')
+        self.assertEqual(run.answer.diagnostics, expected)
+        self.assertEqual(run.answer.to_dict()['diagnostics'], expected)
+        run.answer.to_dict()['diagnostics']['reason'] = PRIVATE
+        self.assertEqual(run.answer.diagnostics, expected)
+        for raw in (paragraph, PRIVATE, QUESTION, 'K1'):
+            self.assertNotIn(raw, json.dumps(run.answer.diagnostics, ensure_ascii=False))
+        forged = replace(run.answer, validation_reason=PRIVATE)
+        self.assertEqual(forged.diagnostics['reason'], 'other')
+        for value in ([], {}, False, None):
+            self.assertEqual(replace(run.answer, validation_reason=value).diagnostics['reason'], 'other')
+        self.assertEqual(knowledge._Invalid(PRIVATE).reason, 'other')
+        accepted = answer_general_knowledge(QUESTION, model=RecordingModel())
+        self.assertEqual(accepted.answer.diagnostics, dict(version='knowledge-validation-v1', state='accepted', reason=None))
+        for question, model in (('', RecordingModel()), ('中际旭创PE多少', RecordingModel()),
+                                (QUESTION, RecordingModel(error=ModelCallError(PRIVATE, PRIVATE))),
+                                (QUESTION, RecordingModel(ToolModelResponse('refused', PRIVATE))),
+                                (QUESTION, RecordingModel(ToolModelResponse('incomplete', PRIVATE)))):
+            with self.subTest(question=question):
+                answer = answer_general_knowledge(question, model=model).answer
+                self.assertEqual(answer.diagnostics, dict(version='knowledge-validation-v1', state='not_run', reason=None))
+
+    def test_numeric_formulas_negations_and_existing_size_boundaries_are_unchanged(self):
+        paragraphs = ('MACD常用参数为12、26、9。DIF=EMA(收盘价,12)-EMA(收盘价,26)，DEA=EMA(DIF,9)，柱值=2*(DIF-DEA)。',
+                      'EMA_t=2/(N+1)*收盘价_t+(N-1)/(N+1)*EMA_(t-1)。EMA[N]表示窗口。',
+                      'DIF高于DEA只是当前关系；金叉不等于未来必涨。本轮没有查询行情。')
+        model = RecordingModel(response(paragraphs))
+        run = answer_general_knowledge('MACD怎么计算', model=model)
+        self.assertEqual(run.answer.paragraphs, paragraphs)
+        self.assertEqual((run.answer.status, len(model.calls)), ('accepted', 1))
+        retrieval = knowledge.default_knowledge_retriever().search(QUESTION)
+        for count in (1, 6):
+            self.assertEqual(len(knowledge._paragraphs(response(['a' * 800] * count).text, retrieval)[0]), count)
+        text = response().text.ljust(6500)
+        self.assertEqual(knowledge._paragraphs(text, retrieval)[0], PARAGRAPHS)
+        with self.assertRaises(knowledge._Invalid) as raised:
+            knowledge._paragraphs(text + ' ', retrieval)
+        self.assertEqual(raised.exception.reason, 'knowledge_response_too_long')
 
 
 class GeneralKnowledgeControlTests(GuardedTests):

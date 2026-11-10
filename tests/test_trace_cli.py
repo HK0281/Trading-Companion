@@ -89,6 +89,27 @@ class TraceCliTests(unittest.TestCase):
         self.assertEqual(report["models"]["attempted"], 6)
         self.assertEqual(report["models"]["reported_usage"]["total_tokens"], None)
 
+    def test_real_knowledge_reason_round_trips_with_legacy_records_without_raw_text(self):
+        from trading_companion.open_knowledge import GENERAL_KNOWLEDGE_VERSION, answer_general_knowledge
+        from trading_companion.tool_model import FakeToolModel, ToolModelResponse
+        from trading_companion.turn_trace import JsonlTraceSink, trace_message, trace_outcome
+        question = 'MACD怎么计算'
+        paragraph = '【计算步骤】' + PRIVATE
+        self.write(LEGACY.read_bytes())
+        model = FakeToolModel([ToolModelResponse('complete', json.dumps(dict(
+            version=GENERAL_KNOWLEDGE_VERSION, paragraphs=[paragraph],
+            citations=[dict(paragraph=0, sources=['K1'])]), ensure_ascii=False))])
+        with trace_message(JsonlTraceSink(self.path), mode='demo', provider='fake', history=False):
+            run = answer_general_knowledge(question, model=model)
+            trace_outcome(SimpleNamespace(status='failed', code=run.answer.code, workflow_trace=None))
+        status, report = self.invoke()
+        self.assertEqual(status, 0)
+        self.assertEqual(report['versions'], {'trace-v1': 1, 'trace-v2': 1})
+        checks = [row for row in report['retained_event_distribution'] if row['operation'] == 'knowledge_answer']
+        self.assertEqual([(row['code'], row['count']) for row in checks], [('knowledge_bracket_reference', 1)])
+        for raw in (PRIVATE, question, paragraph, 'K1'):
+            self.assertNotIn(raw, json.dumps(report, ensure_ascii=False))
+
     def test_evaluation_projection_keeps_only_safe_intent_and_event_metadata(self):
         raw = record()
         item = event(raw, status="stopped", source="private-viewer-source")

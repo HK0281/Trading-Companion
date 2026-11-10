@@ -98,6 +98,7 @@ class RoutingBaselineTests(unittest.TestCase):
                 validate_expectations(scenario, scenario["observed"])
 
     def test_real_entry_matches_independent_v2_targets_and_every_v1_delta(self):
+        from tests.knowledge_diagnostics_baseline_support import compare_observations
         original, target = read_baseline(), read_baseline(TARGET)
         self.assertEqual(target["metadata"]["base_revision"], BASE_REVISION)
         self.assertEqual(target["metadata"]["source_kind"], "uncommitted_worktree_candidate")

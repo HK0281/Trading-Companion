@@ -97,6 +97,10 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.assertEqual((turn["status"], turn["code"], turn["stage"]),
                          ("completed", "general_knowledge_answered", "knowledge"))
         self.assertEqual(turn["answer"], TEXT)
+        self.assertEqual(turn['knowledge']['diagnostics'],
+                         dict(version='knowledge-validation-v1', state='accepted', reason=None))
+        for raw in (TEXT, QUESTION, 'K1', PRIVATE):
+            self.assertNotIn(raw, json.dumps(turn['knowledge']['diagnostics'], ensure_ascii=False))
         self.assert_no_research_views(turn)
         self.assertEqual((turn["model_calls_attempted"], turn["analyses_used"]), (1, 0))
         self.assertEqual((turn["runtime"]["responses_received"], turn["runtime"]["observed_tokens"]), (1, 30))
@@ -220,6 +224,7 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.model.error = ModelCallError(PRIVATE, PRIVATE)
         turn = self.send()["result"]
         self.assertEqual((turn["status"], turn["code"]), ("failed", "general_knowledge_model_unavailable"))
+        self.assertEqual(turn['knowledge']['diagnostics']['state'], 'not_run')
         self.assertIsInstance(turn["answer"], str)
         self.assertLess(len(turn["answer"]), 100)
         self.assertNotIn(PRIVATE, json.dumps(turn))
@@ -231,6 +236,10 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         self.model.knowledge_response = ToolModelResponse("complete", PRIVATE + "<script>bad</script>")
         turn = self.send()["result"]
         self.assertEqual(turn["code"], "general_knowledge_output_invalid")
+        self.assertEqual(turn['knowledge']['diagnostics'],
+                         dict(version='knowledge-validation-v1', state='rejected', reason='knowledge_json_invalid'))
+        for raw in (PRIVATE, QUESTION, TEXT, 'K1', '<script>'):
+            self.assertNotIn(raw, json.dumps(turn['knowledge']['diagnostics'], ensure_ascii=False))
         self.assertNotIn(PRIVATE, json.dumps(turn))
         self.assertNotIn("<script>", json.dumps(turn))
         self.assertEqual(len(self.model.calls), 1)

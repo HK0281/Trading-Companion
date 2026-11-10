@@ -74,20 +74,78 @@ COMPANIES = (
     ("688256.SH", "寒武纪", "star", "semiconductor_name_collision"),
     ("688981.SH", "中芯国际", "star", "semiconductor"),
 )
+# Second approved pilot: distinct issuers, same board quotas, locally verified names.
+# Common words, geographic/group names are intentional candidates, not known mismatches.
+SECOND_COMPANIES = (
+    ("600008.SH", "首创环保", "sh_main", "environment_common_name"),
+    ("600010.SH", "包钢股份", "sh_main", "steel_geographic_name"),
+    ("600085.SH", "同仁堂", "sh_main", "healthcare_common_name"),
+    ("600108.SH", "亚盛集团", "sh_main", "agriculture_group_name"),
+    ("600120.SH", "浙江东方", "sh_main", "finance_geographic_name"),
+    ("600153.SH", "建发股份", "sh_main", "trade_group_name"),
+    ("600170.SH", "上海建工", "sh_main", "construction_geographic_name"),
+    ("600177.SH", "雅戈尔", "sh_main", "consumer_group_name"),
+    ("600246.SH", "万通发展", "sh_main", "property_common_name"),
+    ("600611.SH", "大众交通", "sh_main", "transport_common_name"),
+    ("600637.SH", "东方明珠", "sh_main", "media_geographic_name"),
+    ("600675.SH", "中华企业", "sh_main", "property_common_name"),
+    ("600834.SH", "申通地铁", "sh_main", "transport_common_name"),
+    ("601919.SH", "中远海控", "sh_main", "shipping_group_name"),
+    ("603288.SH", "海天味业", "sh_main", "consumer_common_name"),
+    ("000009.SZ", "中国宝安", "sz_main", "industrial_geographic_name"),
+    ("000021.SZ", "深科技", "sz_main", "electronics_common_name"),
+    ("000028.SZ", "国药一致", "sz_main", "healthcare_group_name"),
+    ("000031.SZ", "大悦城", "sz_main", "property_common_name"),
+    ("000090.SZ", "天健集团", "sz_main", "construction_group_name"),
+    ("000400.SZ", "许继电气", "sz_main", "industrial_group_name"),
+    ("000423.SZ", "东阿阿胶", "sz_main", "healthcare_geographic_name"),
+    ("000681.SZ", "视觉中国", "sz_main", "media_common_name"),
+    ("000963.SZ", "华东医药", "sz_main", "healthcare_geographic_name"),
+    ("002007.SZ", "华兰生物", "sz_main", "healthcare_common_name"),
+    ("002008.SZ", "大族激光", "sz_main", "industrial_common_name"),
+    ("002129.SZ", "TCL中环", "sz_main", "energy_group_name"),
+    ("002230.SZ", "科大讯飞", "sz_main", "software_common_name"),
+    ("002271.SZ", "东方雨虹", "sz_main", "materials_common_name"),
+    ("002304.SZ", "洋河股份", "sz_main", "consumer_geographic_name"),
+    ("300024.SZ", "机器人", "chinext", "industrial_common_word"),
+    ("300075.SZ", "数字政通", "chinext", "software_common_name"),
+    ("300085.SZ", "银之杰", "chinext", "finance_common_name"),
+    ("300118.SZ", "东方日升", "chinext", "energy_common_name"),
+    ("300251.SZ", "光线传媒", "chinext", "media_common_name"),
+    ("300315.SZ", "掌趣科技", "chinext", "software_common_name"),
+    ("300364.SZ", "中文在线", "chinext", "media_common_words"),
+    ("300433.SZ", "蓝思科技", "chinext", "electronics_common_name"),
+    ("300454.SZ", "深信服", "chinext", "software_common_name"),
+    ("300785.SZ", "值得买", "chinext", "consumer_common_words"),
+    ("688001.SH", "华兴源创", "star", "industrial_common_name"),
+    ("688003.SH", "天准科技", "star", "industrial_common_name"),
+    ("688006.SH", "杭可科技", "star", "battery_geographic_name"),
+    ("688009.SH", "中国通号", "star", "transport_group_name"),
+    ("688016.SH", "心脉医疗", "star", "healthcare_common_name"),
+    ("688023.SH", "安恒信息", "star", "software_common_name"),
+    ("688088.SH", "虹软科技", "star", "software_common_name"),
+    ("688099.SH", "晶晨股份", "star", "semiconductor_common_name"),
+    ("688208.SH", "道通科技", "star", "industrial_common_name"),
+    ("688343.SH", "云天励飞", "star", "software_common_name"),
+)
+BATCHES = {"first": COMPANIES, "second": SECOND_COMPANIES}
 _ENDPOINTS = frozenset(("https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllNewsStock.php",
                         "https://np-anotice-stock.eastmoney.com/api/security/ann"))
 KINDS = ("news", "announcements")
 
 
-def build_plan(*, selected=None, max_requests=None):
+def build_plan(*, selected=None, max_requests=None, batch="first"):
+    if type(batch) is not str or batch not in BATCHES:
+        raise ValueError("Select one fixed collection batch")
+    universe = BATCHES[batch]
     if max_requests is not None and (type(max_requests) is not int or not 1 <= max_requests <= 100):
         raise ValueError("Use a public-request limit between 1 and 100")
-    chosen = set(selected) if selected is not None else {row[0] for row in COMPANIES}
-    if not chosen or chosen - {row[0] for row in COMPANIES}:
+    chosen = set(selected) if selected is not None else {row[0] for row in universe}
+    if not chosen or chosen - {row[0] for row in universe}:
         raise ValueError("Select only companies from the fixed collection list")
     companies = [{"instrument_id": code, "name": name, "board": board, "coverage": coverage}
-                 for code, name, board, coverage in COMPANIES if code in chosen]
-    return {"version": "news-title-collection-v1", "status": "planned", "companies": companies,
+                 for code, name, board, coverage in universe if code in chosen]
+    return {"version": "news-title-collection-v2", "batch": batch, "status": "planned", "companies": companies,
             "sources": ["sina_company_news", "eastmoney_announcements"],
             "kinds": list(KINDS), "lookback_days": 30, "titles_per_source": 5,
             "planned_network_requests": 2 * len(companies), "network_request_limit": max_requests,
@@ -134,7 +192,7 @@ def collect_titles(plan, *, output_root=COLLECTION_ROOT, clock=None, timer=None,
     """Explicit live execution entry; tests inject HTTP fixtures, time and local output."""
     # Revalidate rather than treating a caller-supplied plan as permission to expand collection.
     expected = build_plan(selected=[c["instrument_id"] for c in plan["companies"]],
-                          max_requests=plan["network_request_limit"])
+                          max_requests=plan["network_request_limit"], batch=plan["batch"])
     if plan != expected or plan["network_request_limit"] is None:
         raise ValueError("Review a bounded collection plan before live execution")
     import requests
@@ -199,10 +257,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--live", action="store_true", help="Fetch public title lists, never models or full articles")
     parser.add_argument("--max-requests", type=int, help="Required for --live; all failed attempts count (1..100)")
+    parser.add_argument("--batch", choices=tuple(BATCHES), default="first", help="One fixed 50-company batch per run")
     parser.add_argument("--company", action="append", help="Optional qualified identifier from the fixed 50-company list")
     args = parser.parse_args(argv)
     try:
-        plan = build_plan(selected=args.company, max_requests=args.max_requests)
+        plan = build_plan(selected=args.company, max_requests=args.max_requests, batch=args.batch)
         if args.live and args.max_requests is None:
             raise ValueError("--live requires --max-requests")
     except ValueError:

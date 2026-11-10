@@ -707,7 +707,12 @@ def product_checks(identifier, step, item, *, enabled):
         if step.get('question') == '只用EMA13':
             checks['only_ema13'] = specs == [dict(kind='ema', parameters=dict(window=13))] if scope else None
     if identifier in ('company_prices', 'index_prices') and step.get('needs') == 'prices':
-        checks['medium_recalculation'] = scope.get('horizon') == '未来40个交易日' if scope else False
+        plans = ((result.get('company_research') or {}).get('trade_plans', []) if identifier == 'company_prices'
+            else [(result.get('index_research') or {}).get('scenario_plan') or {}])
+        checks['medium_recalculation'] = bool(scope and scope.get('checked_prices') is True
+            and scope.get('horizon') == '未来40个交易日' and result.get('status') in ('completed', 'limited')
+            and any(p.get('status') == 'available' and p.get('horizon_profile') == 'medium'
+                and p.get('horizon') == scope['horizon'] for p in plans))
     if identifier == 'expiry' and step['action'] == 'message' and step.get('needs') == 'prices' and enabled:
         checks['expired_delivery_not_used'] = scope is None or scope.get('checked_prices') is not True
     if identifier in ('configuration', 'mode_mismatch', 'pending_expiry') and item['step'] == 3 and enabled:

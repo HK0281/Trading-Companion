@@ -287,6 +287,32 @@ class TransportAcceptanceTests(unittest.TestCase):
 
 
 class HttpAcceptanceTests(unittest.TestCase):
+    def test_medium_recalculation_requires_current_available_prices_and_authority(self):
+        for identifier in ('company_prices', 'index_prices'):
+            def item(plan, **changes):
+                scope = dict(horizon='未来40个交易日', checked_prices=True)
+                scope.update(changes)
+                result = dict(status='limited')
+                if identifier == 'company_prices':
+                    result['company_research'] = dict(trade_plans=[plan] if plan is not None else [])
+                else:
+                    result['index_research'] = dict(scenario_plan=plan or {})
+                return dict(http_status=200, actual_scope=scope, result=result)
+            available = dict(status='available', horizon_profile='medium', horizon='未来40个交易日')
+            for current, expected in (
+                (item(None), False),
+                (item(available), True),
+                (item({**available, 'status': 'unavailable'}), False),
+                (item({**available, 'horizon_profile': 'short'}), False),
+                (item({**available, 'horizon': '未来10个交易日'}), False),
+                (item(available, checked_prices=False), False),
+                (item(available, horizon='未来10个交易日'), False),
+            ):
+                with self.subTest(identifier=identifier, current=current):
+                    checks = acceptance.product_checks(identifier,
+                        dict(action='message', needs='prices'), current, enabled=True)
+                    self.assertIs(checks['medium_recalculation'], expected)
+
     def test_screening_report_keeps_executed_conditions_and_shortlist_scope(self):
         from dataclasses import replace
         from fastapi.testclient import TestClient

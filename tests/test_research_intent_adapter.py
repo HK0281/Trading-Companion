@@ -351,6 +351,64 @@ class EnabledApiTests(unittest.TestCase):
         self.assertFalse(any(RECALC_NOTICE in m.content for calls in (self.intent_model.calls, self.answer_model.calls)
                              for messages, _ in calls for m in messages))
 
+    def test_partial_answer_with_visible_prices_registers_and_recalculates(self):
+        from tests.test_product_narrative_answer import NarrativeModel
+        def invalid_sentence(payload, attempt, context):
+            payload['narratives'][0]['current']['text'] = '仍需观察走势。收盘999元。'
+        initial = draft(objective_kind='decision', objective_phrase='建仓价位', wants_plan=True,
+            plan_phrase='建仓价位')
+        change = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+            reference=dict(kind='latest', index=None, scope='pending'), objective_kind='decision',
+            objective_phrase='建仓价位', wants_plan=True, plan_phrase='建仓价位', horizon_expression='中线')
+        service, b = self.service([initial, change], answer=NarrativeModel(invalid_sentence))
+        self.assertEqual(self.send(service, b, '平安银行建仓价位', 'first')['code'], 'decision_horizon_required')
+        second = self.send(service, b, '短线', 'second')
+        self.assertEqual((second['status'], second['company_research']['code']), ('limited', 'answer_partial'))
+        self.assertNotIn('999', second['answer'])
+        public = second['company_research']
+        selected = next(p for p in public['trade_plans'] if p['plan_id'] == public['decisions'][0]['plan_id'])
+        self.assertEqual((selected['status'], selected['horizon_profile']), ('available', 'short'))
+        entry = service._entries[b['session_id']]
+        original = entry.session._delivered_prices
+        self.assertIsNotNone(original)
+        before = len(self.factory.reads)
+        third = self.send(service, b, '换成中线呢', 'third')
+        self.assertEqual(len(self.factory.reads), before + 1)
+        saved = entry.session.product_saved.plan
+        self.assertTrue(saved.checked_prices)
+        self.assertEqual(saved.objective.horizon, '未来40个交易日')
+        self.assertTrue(any(p['status'] == 'available' and p['horizon_profile'] == 'medium'
+            for p in third['company_research']['trade_plans']))
+        self.assertIsNot(entry.session._delivered_prices, original)
+        self.assertNotIn(RECALC_NOTICE, third['answer'])
+
+    def test_unpublished_prices_do_not_register_even_when_bundle_has_available_plans(self):
+        initial = draft(objective_kind='decision', objective_phrase='建仓价位', wants_plan=True,
+            plan_phrase='建仓价位', horizon_expression='短线')
+        service, b = self.service([initial])
+        with patch('trading_companion.product_narrative_answer._context', side_effect=ValueError('invalid context')):
+            result = self.send(service, b, '平安银行短线建仓价位')
+        self.assertEqual(result['status'], 'limited')
+        self.assertEqual(result['company_research']['code'], 'answer_context_unusable')
+        self.assertFalse(result['company_research'].get('trade_plans'))
+        entry = service._entries[b['session_id']]
+        self.assertTrue(any(p.status == 'available' for c in entry.session.product_saved.bundle.companies
+            for p in c.trade_plans))
+        self.assertIsNone(entry.session._delivered_prices)
+
+    def test_unformed_verdict_still_registers_the_visible_program_price_card(self):
+        from tests.test_product_narrative_answer import NarrativeModel
+        initial = draft(objective_kind='decision', objective_phrase='建仓价位', wants_plan=True,
+            plan_phrase='建仓价位', horizon_expression='短线')
+        service, b = self.service([initial], answer=NarrativeModel(lambda *args: '{'))
+        result = self.send(service, b, '平安银行短线建仓价位')
+        public = result['company_research']
+        self.assertEqual(public['code'], 'answer_facts_only')
+        self.assertEqual(public['decisions'][0]['status'], 'unavailable')
+        self.assertTrue(any(p['status'] == 'available' and p['purpose'] == 'conditional_entry'
+            for p in public['trade_plans']))
+        self.assertIsNotNone(service._entries[b['session_id']].session._delivered_prices)
+
     def test_understanding_failure_falls_back_once_but_does_not_register_delivery(self):
         from trading_companion.model import ModelCallError
         service, b = self.service([ModelCallError('timeout', 'private')])

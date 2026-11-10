@@ -112,15 +112,29 @@ def project_delivery(context, question, *, development_source=None):
     return replace(context, session=projected)
 
 
+def _visible_product_prices(bundle, answer):
+    # The public decision view shows the selected plan, or the entry plan when no verdict formed.
+    if answer.decision_mode:
+        for decision in answer.decisions:
+            plans = tuple(p for p in answer.trade_plans if p.instrument_id == decision['instrument_id'])
+            selected = (next((p for p in plans if p.plan_id == decision['plan_id']), None)
+                or next((p for p in plans if p.purpose == 'conditional_entry'), None))
+            if (selected is not None and selected.status == 'available'
+                    and any(selected in c.trade_plans for c in bundle.companies)):
+                return True
+    # Retain the existing nondecision scenario delivery path.
+    return answer.status == 'accepted' and any(c.risk is not None and c.risk.status == 'available'
+        for c in bundle.companies)
+
+
 def remember_delivery(session, result, *, now, reference_date, development):
     """Call only from checked execution, after answer validation, before atomic publication."""
     if result.status not in ('completed', 'limited') or result._is_stopped:
         return
     plan, bundle, answer = result.product_plan, result.product_bundle, result.product_answer
-    if (plan is not None and bundle is not None and answer is not None and answer.status == 'accepted'
+    if (plan is not None and bundle is not None and answer is not None
             and plan.checked_prices is True and permits_prices(plan)
-            and any(any(p.status == 'available' for p in c.trade_plans)
-                    or c.risk is not None and c.risk.status == 'available' for c in bundle.companies)):
+            and _visible_product_prices(bundle, answer)):
         session._delivered_prices = DeliveredPrices('stock_research', tuple(s.instrument_id for s in plan.securities),
             plan.source, development, reference_date, now, plan)
     elif (result.index_result is not None and result.index_research is not None

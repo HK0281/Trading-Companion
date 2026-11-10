@@ -121,8 +121,8 @@ class HistoricalBaselineTests(unittest.TestCase):
 
     def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
         current = baselines.current_baseline()
-        self.assertEqual(current['rule_baseline_version'], 'intent-integration-risk-scope-v1')
-        self.assertEqual(current['parent_version'], 'intent-integration-indicator-evidence-v1')
+        self.assertEqual(current['rule_baseline_version'], 'intent-integration-price-delivery-v1')
+        self.assertEqual(current['parent_version'], 'intent-integration-risk-scope-v1')
         with patch.object(baselines, 'current_baseline', wraps=baselines.current_baseline) as checked:
             self.assertEqual(self.lookup(), self.historical)
         checked.assert_called_once_with()

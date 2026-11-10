@@ -71,7 +71,7 @@ class KnowledgeLauncherTests(unittest.TestCase):
         with (patch("trading_companion.model_registry.configured_models", return_value={"deepseek": lambda: model}) as models,
               patch("uvicorn.run", side_effect=run) as server,
               redirect_stdout(StringIO()), redirect_stderr(StringIO())):
-            status = api_server.main(["--directory", str(self.path)])
+            status = api_server.main(["--directory", str(self.path), "--no-research-intent-v2"])
         self.assertEqual(status, 0)
         models.assert_called_once()
         server.assert_called_once()

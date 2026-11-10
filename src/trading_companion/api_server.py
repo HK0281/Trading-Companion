@@ -121,8 +121,10 @@ def main(argv=None) -> int:
     parser.add_argument("--memory-db", help="Local SQLite conversation history and earlier-turn digests (enabled by start.cmd)")
     parser.add_argument("--no-memory", action="store_true",
                         help="Disable conversation history, including the default enabled by start.cmd")
-    parser.add_argument("--research-intent-v2", action="store_true",
-                        help="Enable the candidate intent path for DeepSeek acceptance only (default: disabled)")
+    parser.add_argument("--research-intent-v2", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use intent v2 for DeepSeek sessions (default: enabled); "
+                             "restore the legacy entry with start.cmd --no-research-intent-v2; "
+                             "OpenAI and demo sessions keep their existing entry")
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--no-trace", action="store_true",
                         help="Disable metadata tracing, including the default enabled by start.cmd")

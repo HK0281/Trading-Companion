@@ -360,7 +360,8 @@ class TurnTraceApiTests(unittest.TestCase):
             "trading_companion.api.create_app", side_effect=app_factory), patch(
             "trading_companion.model_registry.configured_models",
             return_value={"deepseek": lambda: DeepSeekToolModel(DeepSeekConfig("trace-model", PRIVATE))}):
-            self.assertEqual(server_main(["--data", "synthetic", "--trace-dir", str(self.path)]), 0)
+            self.assertEqual(server_main(["--data", "synthetic", "--trace-dir", str(self.path),
+                                          "--no-research-intent-v2"]), 0)
         self.assertEqual([item["mode"] for item in read_records(self.path)], ["normal", "development"])
 
 

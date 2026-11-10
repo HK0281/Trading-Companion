@@ -51,9 +51,11 @@ Key design points:
 
 More detail: [architecture](docs/architecture.md) · [request routing](docs/request-routing-design.md) · [company research](docs/company-research-design.md) · [turn control](docs/turn-control-design.md)
 
-The experimental intent-v2 integration is disabled by default. Explicit `--research-intent-v2`
-or `research_intent_v2_enabled=True` enables the candidate for DeepSeek acceptance sessions only;
-OpenAI and demo sessions retain their existing entry. Production switch eligibility remains false.
+The command-line server enables intent v2 by default for DeepSeek sessions, following the user's
+approval on November 9, 2026. Run `start.cmd --no-research-intent-v2` to restore the legacy entry;
+OpenAI and demo sessions retain their existing entry. Direct `ResearchApiService` callers still
+default to `research_intent_v2_enabled=False`. The switch follows user approval, not a passing
+sealed evaluation; historical eligibility reports remain unchanged.
 See [integration status and validation boundaries](docs/research-intent-v2.6-integration.md).
 
 The independent integration acceptance tool prints its full public-dev and product-dialogue
@@ -118,6 +120,12 @@ Then start normal mode:
 
 `start.cmd` builds missing frontend assets, refreshes a missing or expired security-name directory from the public SSE/SZSE lists, enables local tracing in `data/traces/`, and opens <http://127.0.0.1:8765/>. It never installs packages or overwrites configuration. Normal questions can call paid model APIs and public data sources.
 
+DeepSeek sessions use intent v2 by default. To start with the legacy entry:
+
+```powershell
+.\start.cmd --no-research-intent-v2
+```
+
 Useful options (also accepted by `python -m trading_companion.api_server`):
 
 | Option | Effect |
@@ -125,6 +133,7 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--port 8767` | Use another port |
 | `--no-open-browser` | Do not open a browser |
 | `--provider openai` | Default to OpenAI when only it is configured |
+| `--no-research-intent-v2` | Restore legacy DeepSeek routing for this server run |
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
 | `--screening-coverage expanded` | Larger, slower screening sample |
@@ -150,7 +159,7 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
-- **Research intent v2.** A candidate that lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program only guards actions that would expand authority. It is evaluated on frozen development, regression and sealed holdout sets with full denominators. Production chat still uses the existing router. See [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
+- **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
 - **Headline triage.** A low-cost classifier (Jev) is being measured against DeepSeek on news and announcement titles; it is not yet used in answers. See [news triage evaluation](docs/news-triage-design.md).
 
 Not in scope yet: full article and filing understanding, whole-market completeness, calibrated forecasts, strategy backtesting and public deployment.

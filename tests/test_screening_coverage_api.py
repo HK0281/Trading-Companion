@@ -214,7 +214,8 @@ class CoverageLauncherTests(unittest.TestCase):
                     return_value={"deepseek": lambda: Model()}), patch("trading_companion.api.create_app", wraps=create_app) as app,
                     patch("trading_companion.screening_source.configured_quote_source", wraps=configured_quote_source) as factory,
                     patch("uvicorn.run"), redirect_stdout(StringIO())):
-                self.assertEqual(api_server.main(["--screening-data", provider, "--screening-coverage", "expanded"]), 0)
+                self.assertEqual(api_server.main(["--screening-data", provider, "--screening-coverage", "expanded",
+                                                 "--no-research-intent-v2"]), 0)
                 factory.assert_called_once_with(provider, "expanded", max_workers=3)
                 options = next(call.kwargs for call in app.call_args_list if "development_service" in call.kwargs)
                 service, dev = options["service"], options["development_service"]

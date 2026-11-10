@@ -300,7 +300,7 @@ class ResponseTests(unittest.TestCase):
                 patch("trading_companion.deepseek_model.DeepSeekConfig.from_env", return_value=configured), \
                 patch("trading_companion.model_registry.DeepSeekToolModel") as constructor, \
                 patch("uvicorn.run", side_effect=serve), redirect_stdout(StringIO()):
-            self.assertEqual(main(["--provider", "deepseek", "--data", "synthetic"]), 0)
+            self.assertEqual(main(["--provider", "deepseek", "--data", "synthetic", "--no-research-intent-v2"]), 0)
         self.assertEqual(constructor.call_args.args[0].max_output_tokens, ANSWER_OUTPUT_TOKENS)
         self.assertEqual(configured.max_output_tokens, 512)
 

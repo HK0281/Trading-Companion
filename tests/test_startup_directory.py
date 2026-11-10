@@ -65,7 +65,8 @@ class StartupDirectoryTests(unittest.TestCase):
     def invoke(self, args=()):
         output, errors = StringIO(), StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
-            status = api_server.main(list(args))
+            # These directory checks exercise the explicitly preserved legacy entry.
+            status = api_server.main([*args, "--no-research-intent-v2"])
         self.assertNotIn(PRIVATE, output.getvalue() + errors.getvalue())
         return status, output.getvalue(), errors.getvalue()
 

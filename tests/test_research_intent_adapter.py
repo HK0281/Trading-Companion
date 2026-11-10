@@ -255,6 +255,15 @@ class DeliveryTests(unittest.TestCase):
         self.record = DeliveredPrices('stock_research', ('000001.SZ',), 'tencent', False, NOW.date(), NOW, self.plan)
         self.session._delivered_prices = self.record
 
+    def test_projection_removes_old_inline_and_reply_horizons_without_losing_request_scope(self):
+        original = '平安银行2026-01-01至2026-01-31短线建仓价位；参考EMA13；短线；换成中线呢'
+        record = replace(self.record, native_plan=replace(self.plan, user_question=original))
+        self.session._delivered_prices = record
+        pending = project_delivery(ctx(self.session), '换成长线呢').session.product_pending
+        self.assertEqual(pending.original_question,
+            '平安银行2026-01-01至2026-01-31 建仓价位；参考EMA13')
+        self.assertEqual(self.session._delivered_prices.native_plan.user_question, original)
+
     def test_projection_whole_grammar_and_no_new_zero_model_route(self):
         for question in ('那中线呢', '按中线看看', '如果是长线呢', '中线的话怎么样', '改长线试试',
                          '换成中线呢', '那么用中线吧', '调成未来40个交易日如何'):
@@ -596,6 +605,70 @@ class EnabledApiTests(unittest.TestCase):
             self.assertEqual(reads[-1].horizon, '未来120个交易日')
             self.assertEqual(len(self.intent_model.calls), 2)
             self.assertEqual(third['model_calls_attempted'], 2)
+
+    def test_index_recalculation_answer_question_uses_current_program_horizon(self):
+        from trading_companion.decision_demo import DecisionDemoModel
+        from trading_companion.index_source import synthetic_index_bars
+        initial = draft(task='index_research', subject=dict(source='question', mentions=['沪深300'], selection=None),
+            objective_kind='decision', objective_phrase='建仓价位', wants_plan=True, plan_phrase='建仓价位')
+        def update(horizon):
+            return draft(task='index_research', operation='update',
+                subject=dict(source='previous', mentions=[], selection=None),
+                reference=dict(kind='latest', index=None, scope='pending'), objective_kind='decision',
+                objective_phrase='建仓价位', wants_plan=True, plan_phrase='建仓价位', horizon_expression=horizon)
+        answer = Mock(wraps=DecisionDemoModel())
+        service, b = self.service([initial, update('中线'), update('长线')], answer=answer)
+        with patch('trading_companion.index_agent.TencentIndexSource', side_effect=lambda request:
+                Mock(read_daily_bars=lambda: synthetic_index_bars(request))):
+            self.send(service, b, '沪深300建仓价位', 'first')
+            self.send(service, b, '短线', 'second')
+            for current, obsolete, canonical in (
+                ('中线', ('短线',), '未来40个交易日'),
+                ('长线', ('短线', '中线'), '未来120个交易日'),
+            ):
+                answer.reset_mock()
+                result = self.send(service, b, '换成' + current + '呢', current)
+                self.assertTrue(answer.complete.call_args_list)
+                for call in answer.complete.call_args_list:
+                    messages = call.args[0]
+                    question = next(m.content for m in messages if m.role == 'user')
+                    self.assertIn(current, question)
+                    for old in obsolete:
+                        self.assertNotIn(old, question)
+                    context = json.loads(messages[2].content.split('\n', 1)[1])
+                    self.assertEqual(context['scenario_basis']['horizon'], canonical)
+                self.assertEqual(result['index_research']['scenario_plan']['status'], 'available')
+
+    def test_price_veto_suppresses_recalculation_notice_in_checked_and_fallback_paths(self):
+        from trading_companion.decision_demo import DecisionDemoModel
+        from trading_companion.index_source import synthetic_index_bars
+        from trading_companion.model import ModelCallError
+        for index in (False, True):
+            name = '沪深300' if index else '平安银行'
+            task = 'index_research' if index else 'stock_research'
+            for fallback in (False, True):
+                for veto in ('不要价位', '价位先免了'):
+                    with self.subTest(index=index, fallback=fallback, veto=veto):
+                        initial = draft(task=task, subject=dict(source='question', mentions=[name], selection=None),
+                            objective_kind='decision', objective_phrase='建仓价位', wants_plan=True,
+                            plan_phrase='建仓价位', horizon_expression='短线')
+                        change = draft(task=task, operation='update',
+                            subject=dict(source='previous', mentions=[], selection=None), horizon_expression='中线',
+                            exclusions=[dict(kind='plan', phrase=veto)])
+                        service, b = self.service([initial, ModelCallError('timeout', 'private') if fallback else change],
+                            answer=DecisionDemoModel() if index else ProductModelFixture())
+                        with patch('trading_companion.index_agent.TencentIndexSource', side_effect=lambda request:
+                                Mock(read_daily_bars=lambda: synthetic_index_bars(request))):
+                            self.send(service, b, name + '短线建仓价位', 'first')
+                            self.assertIsNotNone(service._entries[b['session_id']].session._delivered_prices)
+                            result = self.send(service, b, '换成中线，但' + veto, 'second')
+                        self.assertNotIn(RECALC_NOTICE, result.get('answer') or result['message'])
+                        if index:
+                            self.assertNotEqual((result.get('index_research') or {}).get('scenario_plan', {}).get('status'),
+                                'available')
+                        else:
+                            self.assertFalse(any(p['status'] == 'available'
+                                for p in (result.get('company_research') or {}).get('trade_plans', [])))
 
     def test_public_updates_reach_actual_source_without_old_price_permission(self):
         initial = draft(objective_kind='decision', objective_phrase='现在能买吗', wants_plan=True,

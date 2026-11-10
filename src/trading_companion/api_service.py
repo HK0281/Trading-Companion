@@ -730,9 +730,12 @@ class ResearchApiService:
             project_delivery, valid_delivery, RECALC_NOTICE,
         )
         from trading_companion.research_objective import extract_outlook
+        from trading_companion.research_decision import excludes_plan
+        from trading_companion.research_intent_v2 import _permission_vetoes
         from trading_companion.agent_input import InputIssue
 
         attached = dict(directory=None, timestamp=self._wall_clock())
+        question_plan_veto = excludes_plan(question) or 'plan' in _permission_vetoes(question)
 
         def configuration(working, now):
             return dict(session=working, directory=attached['directory'], now=now,
@@ -760,7 +763,8 @@ class ResearchApiService:
                     outlook = extract_outlook(question)
                 except InputIssue:
                     outlook = None
-                notify = delivery is not None and outlook is not None and outlook.horizon is not None
+                notify = (not question_plan_veto and delivery is not None
+                    and outlook is not None and outlook.horizon is not None)
                 requested_horizon = outlook.horizon if outlook is not None else None
             result, directory, timestamp = self._legacy_turn(replace(entry, model=model, session=session),
                 control, text, history=history)
@@ -788,7 +792,10 @@ class ResearchApiService:
                 outlook = extract_outlook(question)
             except InputIssue:
                 outlook = None
-            notify = delivery is not None and outlook is not None and outlook.horizon is not None
+            authorization = checked.diagnostics.get('authorization', {})
+            notify = (not question_plan_veto and 'plan' not in checked.exclusions
+                and not authorization.get('plan_veto') and checked.plan_blocked != 'plan_veto'
+                and delivery is not None and outlook is not None and outlook.horizon is not None)
             context = project_delivery(context, question, development_source=self._development_source)
             result = execute_checked_intent(checked, question, context=context, model=model,
                 session=session, control=control, development_source=self._development_source,

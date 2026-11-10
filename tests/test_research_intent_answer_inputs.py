@@ -98,6 +98,40 @@ class AnswerInputTests(unittest.TestCase):
         return (observe(questions, values, enabled=False, **kwargs),
                 observe(questions, values, enabled=True, **kwargs))
 
+    def test_recalculation_answer_question_retains_request_without_old_horizons(self):
+        for initial_question, initial_horizon in (
+            ('平安银行建仓价位；参考EMA13', None),
+            ('平安银行短线建仓价位；参考EMA13', '短线'),
+        ):
+            initial = price_draft()
+            initial.update(horizon_expression=initial_horizon, indicator_mentions=['EMA13'])
+            def update(horizon):
+                return draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+                    reference=dict(kind='latest', index=None, scope='pending'), objective_kind='decision',
+                    objective_phrase='建仓价位', wants_plan=True, plan_phrase='建仓价位', horizon_expression=horizon)
+            questions = [initial_question] + (['短线'] if initial_horizon is None else [])
+            questions += ['换成中线呢', '换成长线呢']
+            with self.subTest(initial_horizon=initial_horizon):
+                rows = observe(questions, [initial, update('中线'), update('长线')], enabled=True)
+                for row, current, obsolete, canonical in (
+                    (rows[-2], '中线', ('短线',), '未来40个交易日'),
+                    (rows[-1], '长线', ('短线', '中线'), '未来120个交易日'),
+                ):
+                    self.assertTrue(row['requests'])
+                    for messages in row['requests']:
+                        question = next(m.content for m in messages if m.role == 'user')
+                        for old in obsolete:
+                            self.assertNotIn(old, question)
+                        for retained in ('平安银行', '建仓价位', 'EMA13', current):
+                            self.assertIn(retained, question)
+                        context = json.loads(messages[2].content.split('\n', 1)[1])
+                        self.assertEqual(context['objective']['horizon'], canonical)
+                    plans = row['result']['company_research']['trade_plans']
+                    self.assertTrue(plans)
+                    self.assertTrue(all(p['horizon'] == canonical for p in plans))
+                    if current == '中线':
+                        self.assertTrue(any(p['status'] == 'available' for p in plans))
+
     def test_broad_analysis_and_repair_messages_match_with_and_without_history(self):
         for history in ((), (TurnDigest('此前只做知识说明', 'knowledge', 'completed'),)):
             with self.subTest(history=bool(history)):

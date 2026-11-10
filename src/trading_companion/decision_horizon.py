@@ -81,6 +81,14 @@ def valid_delivery(session, *, directory, now, reference_date, source, developme
     return record
 
 
+def _request_without_horizon_replies(question):
+    """Retain the research request and its scope, without accumulated horizon selections."""
+    from trading_companion.research_objective import mask_outlook_expressions
+    parts = (part for part in question.split('；') if recalculation_horizon(part) is None)
+    return '；'.join(clean for part in parts
+        if (clean := ' '.join(mask_outlook_expressions(part).split()).strip(' ，,。.!！?？:：;；')))
+
+
 def project_delivery(context, question, *, development_source=None):
     """Only a detached context copy sees this synthetic native horizon pending."""
     from copy import copy
@@ -96,7 +104,8 @@ def project_delivery(context, question, *, development_source=None):
     if record.task == 'stock_research':
         from trading_companion.product_plan import ProductPlanContext
         p = record.native_plan
-        projected.product_pending = ProductPlanContext(p.user_question, record.delivered_at, record.expires_at,
+        projected.product_pending = ProductPlanContext(_request_without_horizon_replies(p.user_question),
+            record.delivered_at, record.expires_at,
             record.reference_date, record.source, record.development, record.subjects,
             tuple((s, s) for s in record.subjects), '', (), p.kinds, p.start_date, p.end_date,
             p.explicit_historical, p.wants_risk, replace(p.objective, horizon=None), p.applied_defaults,

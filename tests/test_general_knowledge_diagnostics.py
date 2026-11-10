@@ -43,10 +43,10 @@ class GeneralKnowledgeDiagnosticTests(unittest.TestCase):
     def model(self):
         return DeepSeekToolModel(DeepSeekConfig(model='synthetic-answer', api_key=PRIVATE))
 
-    def provider_response(self, question=None):
+    def provider_response(self, question=None, *, invalid=False):
         etf = question == diagnostic.CASES[-1][1]
         answer = dict(version=GENERAL_KNOWLEDGE_VERSION,
-                      paragraphs=[('概念说明。' if etf else '【计算步骤】') + PRIVATE],
+                      paragraphs=[('【K1】' if invalid else '概念说明。' if etf else '【计算步骤】') + PRIVATE],
                       citations=[] if etf else [dict(paragraph=0, sources=['K1'])])
         result = Mock(status_code=200)
         result.json.return_value = dict(model='synthetic-answer', choices=[dict(finish_reason='stop',
@@ -71,11 +71,11 @@ class GeneralKnowledgeDiagnosticTests(unittest.TestCase):
             self.assertEqual(diagnostic.main([]), 0)
         plan = json.loads(out.getvalue())
         self.assertEqual(plan['planned_attempts'], 14)
-        self.assertEqual(plan['approval_message_id'], 541)
+        self.assertEqual(plan['approval_message_id'], 543)
         self.assertIsNone(plan['max_calls'])
         self.assertEqual(sum(c['repeats'] for c in plan['cases']), 14)
         self.assertFalse(plan['retry'])
-        self.assertFalse(plan['rewrite'])
+        self.assertTrue(plan['rewrite'])
 
     def test_live_requires_explicit_approved_ceiling_and_output_before_configuration(self):
         with patch.object(diagnostic, 'load_live_model', side_effect=AssertionError('No model construction')), \
@@ -95,22 +95,52 @@ class GeneralKnowledgeDiagnosticTests(unittest.TestCase):
         self.assertEqual(post.call_count, 14)
         self.assertEqual(report['status'], 'observations_recorded')
         self.assertEqual(len(report['rows']), 14)
-        self.assertEqual(report['summary']['status_counts'], dict(failed=12, accepted=2))
+        self.assertEqual(report['summary']['status_counts'], dict(accepted=14))
+        self.assertEqual(report['summary']['acceptance_counts'], dict(first_pass=14, after_rewrite=0))
         self.assertEqual(report['summary']['model_calls_attempted'], 14)
         self.assertEqual(report['summary']['provider_attempts'], 14)
         self.assertEqual(report['summary']['wire_started'], 14)
         self.assertEqual(report['summary']['responses_received'], 14)
-        self.assertEqual(report['summary']['reason_by_case'], [
-            dict(reason='knowledge_bracket_reference', case_id=case_id, count=3)
-            for case_id in sorted(c[0] for c in diagnostic.CASES[:-1])])
+        self.assertEqual(report['summary']['reason_by_case'], [])
+        self.assertEqual(report['summary']['first_reason_by_case'], [])
         self.assertTrue(all(r['usage'] == dict(prompt_tokens=10, completion_tokens=20, total_tokens=30)
                             and r['usage_complete'] for r in report['rows']))
         for row in report['rows']:
             self.assertEqual(set(row), {'case_id', 'repeat', 'status', 'reason', 'code', 'diagnostics',
                                        'model_calls_attempted', 'responses_received', 'elapsed_ms', 'usage',
                                        'usage_complete', 'run_id'})
-            self.assertEqual(set(row['diagnostics']), {'version', 'state', 'reason'})
+            self.assertEqual(set(row['diagnostics']), {'version', 'state', 'reason', 'first_reason',
+                                                     'rewrite_attempts', 'acceptance', 'adjustments'})
         self.assertEqual(json.loads((self.output / 'report.json').read_text(encoding='utf-8')), report)
+        self.assert_private(self.output)
+
+    def test_rewrites_share_global_budget_and_keep_first_rejection_categories(self):
+        with patch('requests.post', side_effect=[self.provider_response(invalid=True), self.provider_response(),
+                self.provider_response(), self.provider_response(invalid=True), self.provider_response(invalid=True)]) as post:
+            report = diagnostic.run_live(max_calls=5, output=self.output, model_factory=self.model)
+        self.assertEqual(post.call_count, 5)
+        self.assertEqual(report['status'], 'incomplete')
+        self.assertEqual(report['summary']['status_counts'], dict(accepted=2, failed=1, not_measured=11))
+        self.assertEqual(report['summary']['acceptance_counts'], dict(first_pass=1, after_rewrite=1))
+        self.assertEqual(report['summary']['first_reason_by_case'],
+                         [dict(reason='knowledge_bracket_reference', case_id='macd_base', count=2)])
+        self.assertEqual(report['summary']['reason_by_case'],
+                         [dict(reason='knowledge_bracket_reference', case_id='macd_base', count=1)])
+        self.assertEqual(report['summary']['responses_received'], 5)
+        self.assertEqual(report['summary']['provider_attempts'], 5)
+        self.assertEqual([r['model_calls_attempted'] for r in report['rows'][:3]], [2, 1, 2])
+        self.assertEqual([r['usage']['total_tokens'] for r in report['rows'][:3]], [60, 30, 60])
+        for request in post.call_args_list:
+            self.assertTrue(all(PRIVATE not in m['content'] for m in request.kwargs['json']['messages']))
+        self.assert_private(self.output)
+
+    def test_last_budget_slot_keeps_failure_without_starting_a_rewrite(self):
+        with patch('requests.post', return_value=self.provider_response(invalid=True)) as post:
+            report = diagnostic.run_live(max_calls=1, output=self.output, model_factory=self.model)
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(report['rows'][0]['diagnostics']['reason'], 'knowledge_bracket_reference')
+        self.assertEqual(report['rows'][0]['diagnostics']['rewrite_attempts'], 0)
+        self.assertEqual(report['summary']['status_counts'], dict(failed=1, not_measured=13))
         self.assert_private(self.output)
 
     def test_failed_transport_attempts_count_toward_cap_and_are_never_retried(self):
@@ -137,9 +167,9 @@ class GeneralKnowledgeDiagnosticTests(unittest.TestCase):
         self.assertEqual(post.call_count, 2)
         self.assertEqual((report['status'], report['reason']), ('incomplete', 'interrupted'))
         self.assertEqual(len(report['rows']), 14)
-        self.assertEqual(report['rows'][0]['diagnostics']['reason'], 'knowledge_bracket_reference')
+        self.assertEqual(report['rows'][0]['diagnostics']['acceptance'], 'first_pass')
         self.assertEqual(report['summary']['model_calls_attempted'], 2)
-        self.assertEqual(report['summary']['status_counts'], dict(failed=1, not_measured=13))
+        self.assertEqual(report['summary']['status_counts'], dict(accepted=1, not_measured=13))
         self.assertTrue(all(r['reason'] == 'interrupted' for r in report['rows'][1:]))
         self.assert_private(self.output)
 

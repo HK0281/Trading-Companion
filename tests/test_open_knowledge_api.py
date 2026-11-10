@@ -98,7 +98,8 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
                          ("completed", "general_knowledge_answered", "knowledge"))
         self.assertEqual(turn["answer"], TEXT)
         self.assertEqual(turn['knowledge']['diagnostics'],
-                         dict(version='knowledge-validation-v1', state='accepted', reason=None))
+                         dict(version='knowledge-validation-v2', state='accepted', reason=None,
+                              first_reason=None, rewrite_attempts=0, acceptance='first_pass', adjustments=[]))
         for raw in (TEXT, QUESTION, 'K1', PRIVATE):
             self.assertNotIn(raw, json.dumps(turn['knowledge']['diagnostics'], ensure_ascii=False))
         self.assert_no_research_views(turn)
@@ -237,11 +238,38 @@ class GeneralKnowledgeApiTests(unittest.TestCase):
         turn = self.send()["result"]
         self.assertEqual(turn["code"], "general_knowledge_output_invalid")
         self.assertEqual(turn['knowledge']['diagnostics'],
-                         dict(version='knowledge-validation-v1', state='rejected', reason='knowledge_json_invalid'))
+                         dict(version='knowledge-validation-v2', state='rejected', reason='knowledge_json_invalid',
+                              first_reason='knowledge_json_invalid', rewrite_attempts=1, acceptance=None, adjustments=[]))
         for raw in (PRIVATE, QUESTION, TEXT, 'K1', '<script>'):
             self.assertNotIn(raw, json.dumps(turn['knowledge']['diagnostics'], ensure_ascii=False))
         self.assertNotIn(PRIVATE, json.dumps(turn))
         self.assertNotIn("<script>", json.dumps(turn))
+        self.assertEqual(len(self.model.calls), 2)
+
+    def test_rewrite_succeeds_with_shared_usage_and_no_rejected_text_in_request_or_result(self):
+        original = self.model.knowledge_response
+        self.model.knowledge_response = ToolModelResponse('complete', PRIVATE,
+            usage=TokenUsage(prompt_tokens=3, completion_tokens=4, total_tokens=7))
+        self.model.callback = lambda: setattr(self.model, 'knowledge_response', original) if len(self.model.calls) == 2 else None
+        turn = self.send()['result']
+        self.assertEqual(turn['code'], 'general_knowledge_answered')
+        self.assertEqual(turn['answer'], TEXT)
+        self.assertEqual(turn['knowledge']['diagnostics']['acceptance'], 'after_rewrite')
+        self.assertEqual(turn['knowledge']['diagnostics']['first_reason'], 'knowledge_json_invalid')
+        self.assertEqual(turn['runtime']['reported_usage']['total_tokens'], 37)
+        self.assertEqual(turn['runtime']['responses_received'], 2)
+        self.assertEqual(self.service.inspect(self.sid, self.token)['model_calls_forwarded'], 2)
+        self.assertNotIn(PRIVATE, json.dumps(turn))
+        self.assertTrue(all(PRIVATE not in m.content for m in self.model.calls[1][0]))
+
+    def test_session_ceiling_during_rewrite_preserves_original_validation_failure(self):
+        self.install(limits=ApiLimits(model_calls=1))
+        self.model.knowledge_response = ToolModelResponse('complete', PRIVATE)
+        turn = self.send()['result']
+        self.assertEqual(turn['code'], 'general_knowledge_output_invalid')
+        self.assertEqual(turn['knowledge']['diagnostics']['first_reason'], 'knowledge_json_invalid')
+        self.assertEqual(turn['runtime']['responses_received'], 1)
+        self.assertEqual(self.service.inspect(self.sid, self.token)['model_calls_forwarded'], 1)
         self.assertEqual(len(self.model.calls), 1)
 
     def test_cancellation_discards_the_late_knowledge_answer_and_replays_without_calling_again(self):

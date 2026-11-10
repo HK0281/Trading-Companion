@@ -94,7 +94,7 @@ class TraceCliTests(unittest.TestCase):
         from trading_companion.tool_model import FakeToolModel, ToolModelResponse
         from trading_companion.turn_trace import JsonlTraceSink, trace_message, trace_outcome
         question = 'MACD怎么计算'
-        paragraph = '【计算步骤】' + PRIVATE
+        paragraph = '【K1】' + PRIVATE
         self.write(LEGACY.read_bytes())
         model = FakeToolModel([ToolModelResponse('complete', json.dumps(dict(
             version=GENERAL_KNOWLEDGE_VERSION, paragraphs=[paragraph],

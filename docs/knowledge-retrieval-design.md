@@ -1,6 +1,6 @@
 # 有来源的交易知识问答
 
-更新：2026-11-09。一般交易问答默认先检索本地知识片段，再用一次无工具模型调用解释。原有指标定义快捷路径保持零模型调用；本文不把知识说明扩展为个股实时研究或交易操作。
+更新：2026-11-10。一般交易问答默认先检索本地知识片段，再用无工具模型调用解释；检查失败时，可在整轮剩余额度内重写一次。此次放宽来自2026-11-09真实诊断与用户“错误率高就放宽”的原则（总线消息#543）。原有指标定义快捷路径保持零模型调用。
 
 ## 1. 解决的问题与流程
 
@@ -10,10 +10,12 @@
 flowchart LR
     Question[通过原知识路由的问题] --> Search[本地别名门控与BM25排序]
     Search --> Context[最多4条版本化片段]
-    Context --> Model[一次模型调用 无工具]
-    Model --> Check[格式 范围 逐段引用成员检查]
+    Context --> Model[首稿模型调用 无工具]
+    Model --> Check[格式 范围 引用成员检查]
     Check -->|通过| Answer[自然段与可追溯出处]
-    Check -->|不通过| Fallback[简短应用回退]
+    Check -->|首稿失败且有剩余额度| Rewrite[只反馈原因码 重写一次]
+    Rewrite --> Check
+    Check -->|第二稿失败或无额度| Fallback[简短应用回退]
 ```
 
 `knowledge_data.py`保存内容与参考元数据；`knowledge_retrieval.py`负责确定性检索；`open_knowledge.py`组织上下文、检查输出和生成公开答复。没有新增向量服务、数据库、抓取任务或模型提供方，也不自动访问片段里的链接。
@@ -56,7 +58,7 @@ flowchart LR
 answer_general_knowledge(question, model=model, directory=directory, mentions=())
 ```
 
-新增可选`retriever`用于注入本地语料，不赋予浏览或市场权限。原有知识路由仍先拒绝个股数值查询、保存结果追问和交易执行请求。
+可选`retriever`用于注入本地语料。可选`repair_invalid=False`保留直接调用的单稿行为；生产Agent入口及诊断脚本显式启用重写，且必须使用现有`ControlledToolModel`（统一计量调用、时间及用量的模型包装器）并有剩余额度。原有知识路由仍先拒绝个股数值查询、保存结果追问和交易执行请求，不赋予浏览或市场权限。
 
 消息顺序保持现有协议：系统指令、原始用户问题、`LOCAL_KNOWLEDGE_CONTEXT\n`开头的应用资料、最终格式请求。资料以数据处理，不作为新的系统指令；模型不能执行其中内容。
 
@@ -70,7 +72,16 @@ answer_general_knowledge(question, model=model, directory=directory, mentions=()
 }
 ```
 
-命中资料时每段必须引用至少一条已送入本次模型上下文的片段；索引从0开始。拒绝未知别名、漏引段落、重复引用、错误索引、额外字段和正文内另造的链接或引文标记。没有命中时引用必须为空；旧的无`citations`模型JSON仅在这个路径兼容。任何不合格输出直接回退，不重试或二次取数。
+命中资料时，保留下来的正文中至少一段引用本轮资料即可；未引用段落照常显示，不给它补挂来源。索引从0开始，未知别名、重复引用、非法索引、额外字段和正文内另造的链接或引文标记仍拒绝。没有命中时引用必须为空；旧的无`citations`模型JSON仅在这个路径兼容。
+
+首稿系统指令、资料和格式请求保持原样；校验边界做以下局部放宽：
+
+- 超过6段时，先检查全部原始段落，再把第7段起的内容按顺序、用空格并入第6段。合并后最多800字；遇到放不下的整段时，从那里截掉剩余尾段，不截半句话。诊断分别记录`knowledge_paragraphs_merged`、`knowledge_paragraphs_truncated`。空段、超长原始段、段内换行和总响应6500字上限不变。
+- 引用先按原始索引检查，再映射到合并后的段落，合并产生的同一来源同一位置去重；被截掉段落的引用不再显示。引用记录数量上限为6与原始段落数的较大值，使7段各有引用的正常回答也能合并；原始重复索引仍拒绝。若唯一引用随尾段被截掉，仍按`citation_missing`失败。
+- 当前数字规则只放行同一分句、时点词之前带“假设、假如、例如、比如、举例、设、若”的算例。“假设当前股价为20元”通过，“今日股价为20元”仍拒绝；前一分句的假设不能覆盖后一分句的真实行情断言。
+- 普通标题【计算步骤】和公式EMA[12]通过；【K1】【1】【来源】【资料1】、[K1]、独立[1]等引用标记仍拒绝。数字方括号必须紧挨英文字母才按公式处理。
+
+仍不通过时，生产入口最多重写一稿：在最后的格式请求内附上固定原因码和重写说明，不带首稿原文，不新增工具或重新取数。两稿均完整校验，第二稿再次违反行情数字、实时访问声明、收益保证、链接、HTML等红线即失败。两稿响应都计入用量及响应元数据。共享整轮、时间、token和会话额度不扩大；独立知识轮的默认1次额度保持，只有剩余额度时才能重写。重写遇到会话额度不足、模型错误或拒答时保留原来的校验失败；取消、期限和token停止信号继续向外传递。
 
 `GeneralKnowledgeAnswer`原位置参数及`to_dict()`的版本、状态、正文、段落、无行情/无交易字段继续存在。公开`citations`从空列表扩展为维护者片段与可信元数据，按片段聚合`paragraph_indices`；可选`retrieval`给出语料版本、分类、命中情况和无网络标记，不暴露原始问题或模型内部响应。
 
@@ -90,13 +101,17 @@ answer_general_knowledge(question, model=model, directory=directory, mentions=()
 
 ```json
 {
-  "version": "knowledge-validation-v1",
+  "version": "knowledge-validation-v2",
   "state": "rejected",
-  "reason": "knowledge_bracket_reference"
+  "reason": "knowledge_bracket_reference",
+  "first_reason": "knowledge_json_invalid",
+  "rewrite_attempts": 1,
+  "acceptance": null,
+  "adjustments": []
 }
 ```
 
-`state=accepted` 表示输出检查通过；`rejected` 表示输出检查失败；`not_run` 表示还没有检查输出，例如检索失败、模型拒答或返回不完整。前后两种非拒绝状态的 `reason` 为 `null`。拒绝原因只取下面的固定白名单，未知值归为 `other`，不返回问题、模型正文、引用别名、命中字词或异常详情。返回的字典与内部对象分离。
+`state=accepted`表示输出检查通过；`rejected`表示失败；`not_run`表示还没有检查输出，例如检索失败或首稿不完整。非拒绝状态的`reason`为`null`。`first_reason`保留首稿拒绝类别，`reason`为最终拒绝类别；`rewrite_attempts`为0或1，统计是否尝试提交重写（会话可能在下层拒绝转发）。成功时`acceptance=first_pass`或`after_rewrite`，其他状态为`null`。`adjustments`只含上述合并/截尾固定标记，描述最后接受检查的稿件。所有类别走固定白名单，陌生原因归`other`，不返回问题、模型正文、引用别名、命中字词或异常详情。返回的字典与列表均与内部对象分离。
 
 每个原因均以 `knowledge_` 开头，后缀如下：
 
@@ -112,9 +127,9 @@ answer_general_knowledge(question, model=model, directory=directory, mentions=()
 | 引用来源 | `citation_sources_type_invalid`、`citation_source_count_invalid`、`citation_source_unknown`、`citation_source_duplicate`、`citation_missing` |
 | 无匹配声明 | `no_match_notice_too_long` |
 
-共 32 类，按原来的检查顺序只报告首次拒绝点；不能据此认为其余规则都已通过。重复 JSON 键与非有限数字的原因不会被通用解析错误覆盖。现有 `check/knowledge_answer` 追踪事件使用同一原因类别，仍走固定白名单；原有追踪格式和旧记录读取方式不变。
+共32类，每稿只报告首次拒绝点，不能据此认为其余规则都已通过。重复JSON键与非有限数字的原因不会被通用解析错误覆盖。`check/knowledge_answer`追踪事件使用同一原因类别，重写复用`repair/model_rewrite`事件；追踪记录只含执行类别，格式及旧记录读取方式不变。
 
-本阶段只补诊断，没有放宽规则或增加生产模型调用。例如【计算步骤】、EMA[12] 仍会被原来的引用标记规则拒绝，段内换行仍被拒绝；12/26/9、DIF/DEA、普通 EMA 递推式本身不会触发当前行情数字规则。有资料时仍要求每段引用本轮片段，无资料时仍要求空引用；引用检查不证明自由文字的真实性。
+2026-11-09首轮真实诊断共14次：MACD四种问法12次中失败3次，分别为7段超限、漏引一段和当前数字规则；ETF两次通过。报告未保存原文，因此第三类是否确为假设算例只能推测。此次按#543放宽形式要求并增加一次重写，实际成功率仍需Claude复测。12/26/9、DIF/DEA及普通EMA递推式原本就不触发当前行情数字规则；引用成员检查始终不证明自由文字的真实性。
 
 ### 有界真实诊断
 
@@ -126,22 +141,22 @@ answer_general_knowledge(question, model=model, directory=directory, mentions=()
 
 固定批次是四种 MACD 问法各三次，加“ETF是什么”两次，共 14 题。只调用生产的通用知识实现，使用现有 DeepSeek 回答模型配置、提示词与知识资料；不调用意图模型、不改提示词、不保存对话、不创建行情数据源。该诊断不能替代新旧入口的完整验收，也不评价解释质量。
 
-真实诊断预算由总线消息 #541 预先批准；第一阶段审核、提交后由 Claude 执行以下命令。输出目录必须全新且位于 `.agentbus/tmp/` 内，每个批次另取目录名：
+首轮诊断按#541执行后，#543授权在本次审核、提交后由Claude用总共14次真实请求复测。输出目录必须全新且位于`.agentbus/tmp/`内，每个批次另取目录名，保留run1历史报告：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B scripts/diagnose_general_knowledge.py --live --max-calls 14 --output .agentbus/tmp/macd-diagnostic-run1
+.\.venv\Scripts\python.exe -X utf8 -B scripts/diagnose_general_knowledge.py --live --max-calls 14 --output .agentbus/tmp/macd-diagnostic-run2
 ```
 
-`--live` 必须同时给出 `--max-calls` 和 `--output`；上限只能是 1–14，失败尝试也计数。每题只有一次模型额度，连接错误不重发、输出失败不重写，全局请求观察器在发请求前计数。达到上限后剩余题目标为 `not_measured`；中断或启动失败也保留完整的 14 题分母，不自动追加调用。
+`--live`必须同时给出`--max-calls`和`--output`；上限只能是1–14，首稿、重写和失败尝试都计数。每题最多2次且不超过全局剩余额度，连接错误不重发，全局请求观察器在发请求前扣数。重写可能使14题无法全测，剩余题目标为`not_measured`；中断或启动失败也保留完整14题分母，不自动追加调用。
 
-批次目录里的 `report.json` 仅保存 case_id、重复序号、状态、固定错误类别、调用次数、用量、耗时及 run_id，不保存计划中的问题文本、任何模型正文或 reasoning、引用别名、请求消息、凭据或异常原文。`summary.reason_by_case` 给出“拒绝原因码 × case_id”的次数表，`case_counts` 保留每种问法的计划数、通过数、失败数和未测数。缺失的 token 用量保留为 `null`，不当作零。
+批次目录里的`report.json`（版本`general-knowledge-diagnostic-report-v2`）仅保存case_id、重复序号、状态、安全诊断、调用次数、用量、耗时及run_id，不保存问题、任何模型正文或reasoning、引用别名、请求消息、凭据或异常原文。`summary.acceptance_counts`分别统计首次通过和重写后通过；`first_reason_by_case`保留包括修复成功在内的首稿拒绝原因，`reason_by_case`只统计最终拒绝；`case_counts`保留计划数、通过数、失败数和未测数。缺失token用量保留`null`，不当作零。
 
 同目录 `trace/` 仅保存现有的无正文追踪元数据，可用终端工具汇总原因：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.trace_cli --trace-dir .agentbus/tmp/macd-diagnostic-run1/trace --format json
+.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.trace_cli --trace-dir .agentbus/tmp/macd-diagnostic-run2/trace --format json
 ```
 
 小批次未复现失败时，只能报告“本批未复现”；后续修复与追加真实调用另行讨论。诊断材料不会写入 Git。
 
-当前源码登记更新为 `intent-knowledge-diagnostics-v1`，上一版 `intent-integration-default-on-v1` 完整移入历史登记。既有冻结题目、观察器、快照和历史报告不改写；当前回归测试先严格核对新增诊断字段，再移除这一已核对字段，与原始快照比较其余全部结果、状态和调用数。额外字段、错误诊断状态或正文变化仍会让测试失败。
+当前源码登记更新为`intent-knowledge-rewrite-v1`，上一版`intent-knowledge-diagnostics-v1`完整移入历史登记。既有冻结题目、观察器、快照和历史报告不改写；当前回归测试先严格核对v2诊断契约，再仅移除这一已核对字段，与原始快照比较其余全部结果、状态和调用数。额外字段、错误诊断状态或正文变化仍会让测试失败。

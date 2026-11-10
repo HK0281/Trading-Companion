@@ -1,4 +1,4 @@
-"""One-call education grounded in bounded, versioned local knowledge snippets."""
+"""Bounded education grounded in local notes, with one optional metered rewrite."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
@@ -15,12 +15,13 @@ from trading_companion.market_scope import market_reply_code
 from trading_companion.tool_model import (
     MAX_USER_CHARACTERS, ToolCapableModel, ToolMessage, ToolModelResponse, validate_tool_messages,
 )
-from trading_companion.turn_control import checkpoint
-from trading_companion.turn_trace import trace_call
+from trading_companion.turn_control import ControlledToolModel, checkpoint
+from trading_companion.turn_trace import trace_call, trace_event
 
 
 GENERAL_KNOWLEDGE_VERSION = "general-knowledge-answer-v1"
-KNOWLEDGE_VALIDATION_VERSION = "knowledge-validation-v1"
+KNOWLEDGE_VALIDATION_VERSION = "knowledge-validation-v2"
+KNOWLEDGE_ADJUSTMENTS = ("knowledge_paragraphs_merged", "knowledge_paragraphs_truncated")
 KNOWLEDGE_VALIDATION_REASONS = frozenset("""
 knowledge_response_type_invalid knowledge_response_too_long knowledge_json_invalid knowledge_json_too_deep
 knowledge_json_duplicate_key knowledge_json_nonfinite_number knowledge_payload_type_invalid
@@ -143,6 +144,12 @@ _CURRENT_NUMBER_CLAIM = re.compile(
     r"(?:实时|最新|目前|当前|今日|今天)(?:的)?(?:股价|价格|市盈率|市净率|营收|净利润|PE|PB)"
     r"\s*(?:为|是|报|达到|收于|[:：=])\s*[0-9零〇一二两三四五六七八九十百]", re.IGNORECASE)
 _NEGATION = re.compile(r"不能|无法|没有|未|不曾|尚未|不存在|不可能|不会|不应|不要|避免|警惕|拒绝|远离|并非|不是|不")
+_HYPOTHESIS = re.compile(r"假设|假如|例如|比如|举例|设|若")
+_BRACKET_REFERENCE = re.compile(
+    r"\[K[0-9]+\]|(?<![A-Za-z])\[[0-9]+\]|"
+    r"【\s*(?:K[0-9]+|[0-9]+|(?:来源|资料|参考(?:资料|文献)?|引用|出处)\s*(?:K?[0-9]+)?)\s*】",
+    re.IGNORECASE,
+)
 
 
 def _normalized_question(question):
@@ -226,6 +233,9 @@ class GeneralKnowledgeAnswer:
     citations: tuple[KnowledgeCitation, ...] = ()
     retrieval: KnowledgeRetrieval | None = field(default=None, repr=False)
     validation_reason: str | None = field(default=None, repr=False)
+    first_validation_reason: str | None = field(default=None, repr=False)
+    rewrite_attempts: int = 0
+    validation_adjustments: tuple[str, ...] = ()
 
     @property
     def paragraphs(self) -> tuple[str, ...]:
@@ -233,13 +243,19 @@ class GeneralKnowledgeAnswer:
 
     @property
     def diagnostics(self) -> dict[str, object]:
-        """First rejection category only; never copy exception or model text."""
+        """Fixed categories only; never copy exception or model text."""
         state, reason = "not_run", None
         if self.status == "accepted":
             state = "accepted"
         elif self.code == "general_knowledge_output_invalid":
             state, reason = "rejected", _validation_reason(self.validation_reason)
-        return {"version": KNOWLEDGE_VALIDATION_VERSION, "state": state, "reason": reason}
+        rewrites = int(type(self.rewrite_attempts) is int and self.rewrite_attempts == 1)
+        first_reason = (_validation_reason(self.first_validation_reason)
+                        if self.first_validation_reason is not None else reason)
+        return {"version": KNOWLEDGE_VALIDATION_VERSION, "state": state, "reason": reason,
+                "first_reason": first_reason, "rewrite_attempts": rewrites,
+                "acceptance": ("after_rewrite" if rewrites else "first_pass") if state == "accepted" else None,
+                "adjustments": [code for code in KNOWLEDGE_ADJUSTMENTS if code in self.validation_adjustments]}
 
     def to_dict(self) -> dict[str, object]:
         payload = {"version": GENERAL_KNOWLEDGE_VERSION,
@@ -260,6 +276,7 @@ class GeneralKnowledgeRun:
     model_calls_attempted: int = 0
     model_response: ToolModelResponse | None = field(default=None, repr=False)
     failure_code: str | None = None
+    model_responses: tuple[ToolModelResponse, ...] = field(default=(), repr=False)
 
 
 def _validation_reason(value):
@@ -293,8 +310,16 @@ def _positive_claim(text, pattern):
     return False
 
 
+def _current_number_claim(text):
+    for match in _CURRENT_NUMBER_CLAIM.finditer(text):
+        prefix = re.split(r"[，,。.;；!?！？\n]", text[:match.start()])[-1]
+        if not _HYPOTHESIS.search(prefix):
+            return True
+    return False
+
+
 @trace_call("check", "knowledge_answer")
-def _paragraphs(text, retrieval):
+def _paragraphs(text, retrieval, *, adjustments=None):
     if type(text) is not str:
         raise _Invalid("knowledge_response_type_invalid")
     if len(text) > MAX_RESPONSE_CHARACTERS:
@@ -315,7 +340,7 @@ def _paragraphs(text, retrieval):
         raise _Invalid("knowledge_version_invalid")
     if type(payload["paragraphs"]) is not list:
         raise _Invalid("knowledge_paragraphs_type_invalid")
-    if not 1 <= len(payload["paragraphs"]) <= MAX_PARAGRAPHS:
+    if not payload["paragraphs"]:
         raise _Invalid("knowledge_paragraph_count_invalid")
     output = []
     for paragraph in payload["paragraphs"]:
@@ -335,22 +360,40 @@ def _paragraphs(text, retrieval):
             raise _Invalid("knowledge_claimed_access")
         if _positive_claim(paragraph, _GUARANTEE):
             raise _Invalid("knowledge_guaranteed_return")
-        if _CURRENT_NUMBER_CLAIM.search(paragraph):
+        if _current_number_claim(paragraph):
             raise _Invalid("knowledge_current_number_claim")
-        if re.search(r"\[(?:K[0-9]+|[0-9]+)\]|【[^】]{1,40}】", paragraph):
+        if _BRACKET_REFERENCE.search(paragraph):
             raise _Invalid("knowledge_bracket_reference")
         output.append(paragraph.strip())
+    # Check every original paragraph before trimming, including text that will not be shown.
+    original_count = len(output)
+    kept_count = original_count
+    changes = []
+    if original_count > MAX_PARAGRAPHS:
+        reduced = output[:MAX_PARAGRAPHS]
+        for index in range(MAX_PARAGRAPHS, original_count):
+            merged = reduced[-1] + " " + output[index]
+            if len(merged) > MAX_PARAGRAPH_CHARACTERS:
+                kept_count = index
+                changes.append("knowledge_paragraphs_truncated")
+                break
+            reduced[-1] = merged
+            if "knowledge_paragraphs_merged" not in changes:
+                changes.append("knowledge_paragraphs_merged")
+        output = reduced
+    if adjustments is not None:
+        adjustments.extend(changes)
     references = payload.get("citations", [])
     if type(references) is not list:
         raise _Invalid("knowledge_citations_type_invalid")
-    if len(references) > MAX_PARAGRAPHS:
+    if len(references) > max(MAX_PARAGRAPHS, original_count):
         raise _Invalid("knowledge_citation_count_invalid")
     allowed = {hit.alias: hit for hit in retrieval.hits}
     indices, bindings = set(), {}
     for reference in references:
         if type(reference) is not dict or reference.keys() != {"paragraph", "sources"}:
             raise _Invalid("knowledge_citation_shape_invalid")
-        if type(reference["paragraph"]) is not int or not 0 <= reference["paragraph"] < len(output):
+        if type(reference["paragraph"]) is not int or not 0 <= reference["paragraph"] < original_count:
             raise _Invalid("knowledge_citation_index_invalid")
         if reference["paragraph"] in indices:
             raise _Invalid("knowledge_citation_index_duplicate")
@@ -364,9 +407,10 @@ def _paragraphs(text, retrieval):
             raise _Invalid("knowledge_citation_source_duplicate")
         index = reference["paragraph"]
         indices.add(index)
-        for alias in reference["sources"]:
-            bindings.setdefault(alias, []).append(index)
-    if allowed and indices != set(range(len(output))):
+        if index < kept_count:
+            for alias in reference["sources"]:
+                bindings.setdefault(alias, set()).add(min(index, MAX_PARAGRAPHS - 1))
+    if allowed and not bindings:
         raise _Invalid("knowledge_citation_missing")
     citations = tuple(KnowledgeCitation(hit, tuple(sorted(bindings[hit.alias])))
                       for hit in retrieval.hits if hit.alias in bindings)
@@ -396,8 +440,9 @@ def _knowledge_messages(question, retrieval):
 def answer_general_knowledge(question: str, *, model: ToolCapableModel,
                              directory: SecurityDirectory | None = None,
                              mentions: Sequence[str] = (),
-                             retriever: KnowledgeRetriever | None = None) -> GeneralKnowledgeRun:
-    """Make at most one text completion with zero tools; outer control owns cancellation.
+                             retriever: KnowledgeRetriever | None = None,
+                             repair_invalid: bool = False) -> GeneralKnowledgeRun:
+    """Optionally rewrite once using the same controlled model and remaining turn budget.
 
     Shape/scope guards cannot establish the truth or all implications of free text.
     Model responses remain internal; only checked paragraphs enter the public answer.
@@ -411,6 +456,11 @@ def answer_general_knowledge(question: str, *, model: ToolCapableModel,
     response = None
     calls = 0
     retrieval = None
+    responses = []
+    first_reason = None
+    rewrites = 0
+    invalid = None
+    adjustments = []
     try:
         checkpoint()
         try:
@@ -423,24 +473,58 @@ def answer_general_knowledge(question: str, *, model: ToolCapableModel,
                 "本地知识资料暂时不可用，请稍后再试。", question), failure_code=code)
         checkpoint()
         messages, retrieval = _knowledge_messages(question, retrieval)
-        calls = 1
-        response = model.complete(messages, tools=())
-        checkpoint()
-        if type(response) is not ToolModelResponse or response.status != "complete":
-            code = ("general_knowledge_" + response.status if type(response) is ToolModelResponse
-                    and response.status in ("refused", "incomplete") else "general_knowledge_invalid_response")
-            return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
-                "这次没有取得完整的知识解答，可以稍后重新提问。", question, retrieval=retrieval), calls,
-                response if type(response) is ToolModelResponse else None, code)
-        paragraphs, citations = _paragraphs(response.text, retrieval)
-        return GeneralKnowledgeRun(GeneralKnowledgeAnswer("accepted", "general_knowledge_answered",
-            "\n\n".join(paragraphs), question, citations, retrieval), calls, response)
+        for attempt in range(2):
+            calls += 1
+            with trace_event("repair", "model_rewrite", enabled=attempt == 1):
+                response = model.complete(messages, tools=())
+            if type(response) is ToolModelResponse:
+                responses.append(response)
+            checkpoint()
+            if type(response) is not ToolModelResponse or response.status != "complete":
+                if invalid is not None:
+                    raise invalid
+                code = ("general_knowledge_" + response.status if type(response) is ToolModelResponse
+                        and response.status in ("refused", "incomplete") else "general_knowledge_invalid_response")
+                return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
+                    "这次没有取得完整的知识解答，可以稍后重新提问。", question, retrieval=retrieval), calls,
+                    responses[-1] if responses else None, code, tuple(responses))
+            adjustments = []
+            try:
+                paragraphs, citations = _paragraphs(response.text, retrieval, adjustments=adjustments)
+            except _Invalid as error:
+                invalid = error
+                if first_reason is None:
+                    first_reason = error.reason
+                if (attempt or not repair_invalid or not isinstance(model, ControlledToolModel)
+                        or not model.control.can_retry_model()):
+                    raise
+                # Only a fixed category is fed back. Never include the rejected draft.
+                messages = (*messages[:-1], ToolMessage("user", messages[-1].content
+                    + "\n上次回答未通过检查，原因码：" + error.reason
+                    + "。请重新回答原始问题，遵守原有格式、引用及内容范围要求，只输出完整JSON。"))
+                validate_tool_messages(messages, tools=())
+                rewrites = 1
+                continue
+            return GeneralKnowledgeRun(GeneralKnowledgeAnswer("accepted", "general_knowledge_answered",
+                "\n\n".join(paragraphs), question, citations, retrieval,
+                first_validation_reason=first_reason, rewrite_attempts=rewrites,
+                validation_adjustments=tuple(adjustments)), calls, response, model_responses=tuple(responses))
     except _Invalid as error:
         code = "general_knowledge_output_invalid"
         return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
             "这次知识解答没有通过格式与引用检查，没有展示模型原文。", question, retrieval=retrieval,
-            validation_reason=error.reason), calls, response, code)
+            validation_reason=error.reason, first_validation_reason=first_reason,
+            rewrite_attempts=rewrites, validation_adjustments=tuple(adjustments)), calls,
+            responses[-1] if responses else None, code, tuple(responses))
     except (ModelCallError, ModelConfigurationError, ModelRequestError):
+        if invalid is not None:
+            code = "general_knowledge_output_invalid"
+            return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
+                "这次知识解答没有通过格式与引用检查，没有展示模型原文。", question, retrieval=retrieval,
+                validation_reason=invalid.reason, first_validation_reason=first_reason,
+                rewrite_attempts=rewrites, validation_adjustments=tuple(adjustments)), calls,
+                responses[-1] if responses else None, code, tuple(responses))
         code = "general_knowledge_model_unavailable"
         return GeneralKnowledgeRun(GeneralKnowledgeAnswer("failed", code,
-            "这次暂时没能生成知识解答，没有自动重试。", question, retrieval=retrieval), calls, response, code)
+            "这次暂时没能生成知识解答，没有自动重试。", question, retrieval=retrieval), calls,
+            responses[-1] if responses else None, code, tuple(responses))

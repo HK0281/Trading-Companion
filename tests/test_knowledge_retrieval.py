@@ -185,10 +185,13 @@ class RetrievedEducationTests(unittest.TestCase):
                 self.assertEqual((run.model_calls_attempted, len(model.calls)), (1, 1))
                 self.assertEqual(run.answer.to_dict()["citations"], [])
 
-    def test_every_paragraph_requires_a_reference_when_retrieval_matched(self):
+    def test_uncited_paragraphs_are_shown_without_attaching_sources(self):
         model = ContextModel({"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": ["PE定义。", "PE假设算例。"],
                               "citations": [{"paragraph": 0, "sources": ["K1"]}]})
-        self.assertEqual(answer_general_knowledge("PE是什么", model=model).answer.status, "failed")
+        answer = answer_general_knowledge("PE是什么", model=model).answer
+        self.assertEqual(answer.status, "accepted")
+        self.assertEqual(answer.paragraphs, ("PE定义。", "PE假设算例。"))
+        self.assertEqual([c['paragraph_indices'] for c in answer.to_dict()['citations']], [[0]])
 
     def test_multiple_used_references_are_aggregated_without_inventing_bindings(self):
         payload = {"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": ["PE与PB分母不同。", "两种角度需要结合。"],
@@ -318,7 +321,7 @@ class KnowledgeCitationDiagnosticsTests(unittest.TestCase):
                 self.assertEqual((len(model.calls), run.model_calls_attempted), (1, 1))
                 self.assertEqual(run.answer.citations, ())
         for payload in (dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念。']),
-                        dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念。', '补充。'], citations=[ref()])):
+                        dict(version=GENERAL_KNOWLEDGE_VERSION, paragraphs=['概念。', '补充。'], citations=[])):
             run = answer_general_knowledge('PE是什么', model=ContextModel(payload))
             self.assertEqual(run.answer.diagnostics['reason'], 'knowledge_citation_missing')
 

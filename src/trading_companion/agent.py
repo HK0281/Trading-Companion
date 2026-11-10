@@ -383,13 +383,13 @@ def run_natural_research_turn(question: str, *, model: ToolCapableModel, directo
 
 
 def _run_general_knowledge(question, *, model, directory=None) -> AgentTurnResult:
-    run = answer_general_knowledge(question, model=model, directory=directory)
+    run = answer_general_knowledge(question, model=model, directory=directory, repair_invalid=True)
     answer = run.answer
     return AgentTurnResult(status="completed" if answer.status == "accepted" else "failed",
         code=answer.code, message="知识解释已完成，未查询行情。" if answer.status == "accepted" else answer.text,
         stage="knowledge", input_mode="natural", general_knowledge_answer=answer,
         model_calls_attempted=run.model_calls_attempted,
-        model_responses=(run.model_response,) if run.model_response is not None else (),
+        model_responses=run.model_responses,
         failure_code=run.failure_code, user_question=question)
 
 

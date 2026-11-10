@@ -12,7 +12,8 @@ def compare_observations(scenario, observations, *, diagnostic_dir=None):
         if result.get('code') == 'general_knowledge_answered':
             knowledge = result.get('knowledge')
             if not isinstance(knowledge, dict) or knowledge.get('diagnostics') != {
-                    'version': 'knowledge-validation-v1', 'state': 'accepted', 'reason': None}:
+                    'version': 'knowledge-validation-v2', 'state': 'accepted', 'reason': None,
+                    'first_reason': None, 'rewrite_attempts': 0, 'acceptance': 'first_pass', 'adjustments': []}:
                 raise AssertionError('Successful knowledge answer must expose exactly the fixed accepted diagnostics')
             # Remove only this asserted additive field. Every old field, state and call still matches the frozen digest.
             del knowledge['diagnostics']

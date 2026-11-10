@@ -220,7 +220,7 @@ class OpenKnowledgeAnswerTests(GuardedTests):
             '{"version":"general-knowledge-answer-v1","version":"general-knowledge-answer-v1","paragraphs":["PE是概念。"]}',
             '{"version":"general-knowledge-answer-v1","paragraphs":[NaN]}',
             json.dumps({"version": GENERAL_KNOWLEDGE_VERSION, "paragraphs": [False]}),
-            response((), extra=1).text, response(()).text, response(["a"] * (MAX_PARAGRAPHS + 1)).text,
+            response((), extra=1).text, response(()).text,
             response(["a" * (MAX_PARAGRAPH_CHARACTERS + 1)]).text,
             response([" " * 800 + "PE"]).text, response(["   "]).text,
             response(["PE第一段\n第二段"]).text, response(["PE\t定义"]).text,
@@ -307,7 +307,6 @@ class KnowledgeValidationDiagnosticsTests(GuardedTests):
             ('version_invalid', encoded(version='wrong')), ('version_invalid', encoded(version=False)),
             ('paragraphs_type_invalid', encoded(paragraphs='text')),
             ('paragraph_count_invalid', encoded(paragraphs=[])),
-            ('paragraph_count_invalid', encoded(paragraphs=['a'] * 7)),
             *((('paragraph_type_invalid', encoded(paragraphs=[value])) for value in (1, True, {}))),
             ('paragraph_empty', encoded(paragraphs=[''])), ('paragraph_empty', encoded(paragraphs=['   '])),
             ('paragraph_too_long', encoded(paragraphs=['a' * 801])),
@@ -321,9 +320,8 @@ class KnowledgeValidationDiagnosticsTests(GuardedTests):
             ('claimed_access', encoded(paragraphs=['订单已经成交。'])),
             *((('guaranteed_return', encoded(paragraphs=[value])) for value in ('保证收益', '金叉必涨', '零风险'))),
             ('current_number_claim', encoded(paragraphs=['今日股价为20元。'])),
-            ('current_number_claim', encoded(paragraphs=['假设当前股价为20元，仅作示例。'])),
             *((('bracket_reference', encoded(paragraphs=[value])) for value in
-               ('公式[K1]', '公式[1]', '【来源】', '【计算步骤】', 'EMA[12]减EMA[26]'))),
+               ('公式[K1]', '公式[1]', '【来源】', '【K1】', '【1】', '【资料1】'))),
         )
         retrieval = knowledge.default_knowledge_retriever().search(QUESTION)
         for reason, text in cases:
@@ -338,9 +336,10 @@ class KnowledgeValidationDiagnosticsTests(GuardedTests):
         self.assertEqual(raised.exception.reason, 'knowledge_json_too_deep')
 
     def test_diagnostics_are_safe_detached_and_only_describe_checks_that_ran(self):
-        paragraph = '【计算步骤】' + PRIVATE + ' EMA[12]'
+        paragraph = '【K1】' + PRIVATE + ' EMA[12]'
         run = answer_general_knowledge(QUESTION, model=RecordingModel(response((paragraph,))))
-        expected = dict(version='knowledge-validation-v1', state='rejected', reason='knowledge_bracket_reference')
+        expected = dict(version='knowledge-validation-v2', state='rejected', reason='knowledge_bracket_reference',
+                        first_reason='knowledge_bracket_reference', rewrite_attempts=0, acceptance=None, adjustments=[])
         self.assertEqual(run.answer.diagnostics, expected)
         self.assertEqual(run.answer.to_dict()['diagnostics'], expected)
         run.answer.to_dict()['diagnostics']['reason'] = PRIVATE
@@ -349,18 +348,28 @@ class KnowledgeValidationDiagnosticsTests(GuardedTests):
             self.assertNotIn(raw, json.dumps(run.answer.diagnostics, ensure_ascii=False))
         forged = replace(run.answer, validation_reason=PRIVATE)
         self.assertEqual(forged.diagnostics['reason'], 'other')
+        forged = replace(run.answer, first_validation_reason=PRIVATE, rewrite_attempts=20,
+                         validation_adjustments=(PRIVATE, 'knowledge_paragraphs_truncated'))
+        self.assertEqual(forged.diagnostics['first_reason'], 'other')
+        self.assertEqual(forged.diagnostics['rewrite_attempts'], 0)
+        self.assertEqual(forged.diagnostics['adjustments'], ['knowledge_paragraphs_truncated'])
+        detached = forged.diagnostics
+        detached['adjustments'].append(PRIVATE)
+        self.assertEqual(forged.diagnostics['adjustments'], ['knowledge_paragraphs_truncated'])
         for value in ([], {}, False, None):
             self.assertEqual(replace(run.answer, validation_reason=value).diagnostics['reason'], 'other')
         self.assertEqual(knowledge._Invalid(PRIVATE).reason, 'other')
         accepted = answer_general_knowledge(QUESTION, model=RecordingModel())
-        self.assertEqual(accepted.answer.diagnostics, dict(version='knowledge-validation-v1', state='accepted', reason=None))
+        self.assertEqual(accepted.answer.diagnostics, dict(version='knowledge-validation-v2', state='accepted', reason=None,
+                         first_reason=None, rewrite_attempts=0, acceptance='first_pass', adjustments=[]))
         for question, model in (('', RecordingModel()), ('中际旭创PE多少', RecordingModel()),
                                 (QUESTION, RecordingModel(error=ModelCallError(PRIVATE, PRIVATE))),
                                 (QUESTION, RecordingModel(ToolModelResponse('refused', PRIVATE))),
                                 (QUESTION, RecordingModel(ToolModelResponse('incomplete', PRIVATE)))):
             with self.subTest(question=question):
                 answer = answer_general_knowledge(question, model=model).answer
-                self.assertEqual(answer.diagnostics, dict(version='knowledge-validation-v1', state='not_run', reason=None))
+                self.assertEqual(answer.diagnostics, dict(version='knowledge-validation-v2', state='not_run', reason=None,
+                                 first_reason=None, rewrite_attempts=0, acceptance=None, adjustments=[]))
 
     def test_numeric_formulas_negations_and_existing_size_boundaries_are_unchanged(self):
         paragraphs = ('MACD常用参数为12、26、9。DIF=EMA(收盘价,12)-EMA(收盘价,26)，DEA=EMA(DIF,9)，柱值=2*(DIF-DEA)。',

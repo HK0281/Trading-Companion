@@ -236,10 +236,14 @@ def build_dataset(capture_dir, directory_path):
 
 
 def load_dataset(path):
-    dataset = read_json(path)
+    return _validate_dataset(read_json(path), descriptor())
+
+
+def _validate_dataset(dataset, expected_task):
+    """Shared integrity checks; the public loader always requires the current task."""
     body = {k: v for k, v in dataset.items() if k != "dataset_sha256"}
     if (dataset["version"] != DATA_VERSION or dataset["dataset_sha256"] != digest(body)
-            or dataset["task"] != descriptor() or not dataset["rows"]
+            or dataset["task"] != expected_task or not dataset["rows"]
             or len({r["id"] for r in dataset["rows"]}) != len(dataset["rows"])):
         raise ValueError("Dataset integrity or rule version mismatch; prepare again")
     debug = {r["group_id"] for r in dataset["rows"] if r["split"] == "debug"}

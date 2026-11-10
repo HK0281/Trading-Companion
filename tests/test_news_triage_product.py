@@ -8,7 +8,7 @@ from unittest.mock import Mock
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.news_triage import questions as v1_questions
 from trading_companion.news_triage_product import (
-    OPTIONS, descriptor, digest, filter_allowed, identity_precheck, input_state, normalized, questions, route_reasons,
+    OPTIONS, POLICY_RULES, descriptor, digest, filter_allowed, identity_precheck, input_state, normalized, questions, route_reasons,
 )
 from trading_companion.news_triage_product_models import ProductDeepSeek, ProductJev
 from trading_companion.security_directory import Security
@@ -42,8 +42,17 @@ class ProductTaskTests(unittest.TestCase):
         self.assertEqual(set(questions()), {"relevance", "tone", "importance"})
         self.assertIn("event_type", v1_questions())
         self.assertEqual(descriptor()["task_version"], "news-triage-product-v2")
+        self.assertEqual(descriptor()["rule_version"], "news-triage-product-rules-v3")
         self.assertEqual(descriptor(), json.loads((Path(__file__).resolve().parents[1] /
                          "data/evaluation/news-triage-product-v2.rules.json").read_text("utf-8")))
+
+    def test_user_rules_reach_all_three_questions_with_small_move_precedence(self):
+        self.assertEqual(len(POLICY_RULES), 6)
+        for question in questions().values():
+            self.assertTrue(all(rule in question["instructions"] for rule in POLICY_RULES))
+        self.assertIn("不到1%", questions()["tone"]["criteria"]["neutral"])
+        self.assertIn("规则3优先", POLICY_RULES[5])
+        self.assertIn("行业对比、排名", questions()["importance"]["criteria"]["ordinary"])
 
     def test_verified_unnamed_announcement_is_preserved(self):
         row = sample("关于召开股东大会的通知", source="eastmoney_announcements")

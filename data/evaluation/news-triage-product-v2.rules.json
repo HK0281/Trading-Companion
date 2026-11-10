@@ -1,15 +1,15 @@
 {
   "task_version": "news-triage-product-v2",
-  "rule_version": "news-triage-product-rules-v2",
-  "definition_sha256": "a6e3f289e6aa6f967b732967ec99b4f03b7e8c06254b19364ae812bdb3e7fb14",
+  "rule_version": "news-triage-product-rules-v3",
+  "definition_sha256": "cfdd80a5e64e1918e9cb4c079f3e46eb10fde20a10e82479fdbedf8fc72b135b",
   "sources_sha256_lf": {
-    "news_triage_product.py": "0a63479470097df679186deceaf8b481bf36d2bbc1463b9388146806dbd4978a",
-    "news_triage_product_data.py": "8a3713b5a3e0435d55122975f53cd9ee3402cdae3d82650359a2dc81b458da81",
+    "news_triage_product.py": "078668357f11365b8a7d824f5c934df9826bcb6c491c869264145495b5b506ae",
+    "news_triage_product_data.py": "d725739cf5a60a82ca50ea7c42f10943abaf78c377a1fc533df49449e693ce52",
     "news_triage_product_split.py": "f500bb75cbe4c2d5e4c4abf47b7ee5fe2146904e1cb125677fb07832b52f0bac",
     "news_triage_product_annotations.py": "9013d23d20df1f46e0c6cc7a967f032fce57cc113c352fed28949718728c655b",
     "news_triage_product_models.py": "e3192e3d2b10bd1e02df69a7ae432c99883864d2c27e978f1518e84b2ab571fa",
     "news_triage_product_evaluation.py": "f4926fe489719a64a926f1e57209d24b35bbd2a0217241e794b73235a69682a3",
     "news_triage_product_metrics.py": "6d253815b9b8b551ee41a5c89c90c95d2ad60bd6bfa350809f298fb31a8c2fdd"
   },
-  "source_digest": "e165e1121188b0a7116419d48e8ad31500b66da506dc3732bcb3f31cded5a49d"
+  "source_digest": "27bdd6478dd00f2b1636fb7127eb055a47ecd4433e9f39562b74e8e985237d34"
 }

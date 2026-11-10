@@ -168,18 +168,52 @@ class AnswerInputTests(unittest.TestCase):
                 self.assertEqual(supplied['date'], original.date)
                 self.assertEqual(supplied['temporal_scope'], 'daily_date_filtered_not_versioned_pit')
 
-    def test_risk_only_diff_is_bounded_evidence_without_new_price_or_prompt(self):
+    def test_broad_risk_uses_all_default_domains_with_risk_facts_without_price_or_new_prompt(self):
         value = draft(research_kinds=[dict(kind='risk', phrase='风险')],
                       exclusions=[dict(kind='plan', phrase='不要价位')])
         old, new = self.pair(['平安银行风险大吗，不要价位'], [value])
         old, new = old[0], new[0]
         self.assertEqual(old['captures'][0]['plan'].kinds, ('profile', 'financial', 'news', 'announcements', 'technical'))
-        self.assertEqual(new['captures'][0]['plan'].kinds, ())
-        self.assertTrue(new['captures'][0]['plan'].risk_dependencies_only)
+        self.assertEqual(new['captures'][0]['plan'].kinds, old['captures'][0]['plan'].kinds)
+        self.assertFalse(new['captures'][0]['plan'].risk_dependencies_only)
         self.assertFalse(new['captures'][0]['plan'].checked_prices)
-        self.assertTrue(all(s.kind in ('atr', 'boll') for s in new['reads'][0].indicators))
+        self.assertEqual(new['reads'][0].indicators, DEFAULT_INDICATORS)
+        self.assertIsNone(new['captures'][0]['plan'].objective.horizon)
+        self.assertEqual({e.kind for e in new['captures'][0]['bundle'].evidence},
+            {'profile', 'financial', 'news', 'announcements', 'technical', 'risk'})
         self.assertFalse(answer_context(new).get('trade_plans'))
         self.assertEqual(old['requests'][0][:2], new['requests'][0][:2])
+
+    def test_broad_risk_followup_fetches_full_scope_after_profile_only(self):
+        followup = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+            reference=dict(kind='latest', index=None, scope='latest_research'),
+            research_kinds=[dict(kind='risk', phrase='风险')], exclusions=[dict(kind='plan', phrase='不要价位')])
+        first, second = observe(['只研究平安银行公司资料', '上一份风险大吗，不要价位'],
+            [profile_draft(), followup], enabled=True)
+        self.assertEqual(first['captures'][0]['plan'].kinds, ('profile',))
+        plan = second['captures'][0]['plan']
+        self.assertEqual(plan.kinds, ('profile', 'financial', 'news', 'announcements', 'technical'))
+        self.assertEqual(second['reads'][-1].indicators, DEFAULT_INDICATORS)
+        self.assertEqual({e.kind for e in second['captures'][0]['bundle'].evidence},
+            {'profile', 'financial', 'news', 'announcements', 'technical', 'risk'})
+        self.assertFalse(plan.checked_prices)
+        self.assertIsNone(plan.objective.horizon)
+        self.assertEqual(second['result']['company_research']['risk_scenarios'], [])
+        self.assertFalse(answer_context(second).get('trade_plans'))
+
+    def test_broad_risk_followup_does_not_inherit_delivered_price_permission(self):
+        followup = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),
+            reference=dict(kind='latest', index=None, scope='latest_research'),
+            research_kinds=[dict(kind='risk', phrase='风险')], exclusions=[dict(kind='plan', phrase='不要价位')])
+        first, second = observe(['平安银行短线建仓价位', '上一份风险大吗，不要价位'],
+            [price_draft(), followup], enabled=True)
+        self.assertTrue(answer_context(first)['trade_plans'])
+        plan = second['captures'][0]['plan']
+        self.assertFalse(plan.checked_prices)
+        self.assertIsNone(plan.objective.horizon)
+        self.assertEqual(second['reads'][-1].indicators, DEFAULT_INDICATORS)
+        self.assertFalse(answer_context(second).get('trade_plans'))
+        self.assertEqual(second['result']['company_research']['risk_scenarios'], [])
 
     def test_explicit_reading_survives_final_trimming_with_more_company_background(self):
         followup = draft(operation='update', subject=dict(source='previous', mentions=[], selection=None),

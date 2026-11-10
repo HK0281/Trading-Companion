@@ -100,6 +100,14 @@ def _delta(question, previous, checked, context):
             {v for v in excluded if v.startswith('indicator:')})
 
 
+def _broad_risk_defaults(checked, exclusions):
+    """A price veto does not narrow the user's otherwise unbounded risk research."""
+    return (checked.task == 'stock_research' and set(checked.research_kinds) == {'risk'}
+        and not checked.wants_plan and not checked.strict_scope and not checked.indicator_mentions
+        and not set(('risk', *RESEARCH_KINDS)).intersection(exclusions)
+        and not any(value.startswith('indicator:') for value in exclusions))
+
+
 def merge_non_authorizing_scope(plan, previous, checked, question, context):
     """Only dates, indicators, domains and exclusions cross an ordinary update."""
     if previous is None or checked.operation != 'update':
@@ -111,7 +119,7 @@ def merge_non_authorizing_scope(plan, previous, checked, question, context):
             explicit_historical=getattr(previous, 'explicit_historical', getattr(previous, 'historical_explicit', False)),
             applied_defaults=tuple(v for v in plan.applied_defaults if not v.startswith(('cutoff:', 'range:', 'relative_unit:')))
                 + tuple(v for v in old_defaults if v.startswith(('cutoff:', 'range:', 'relative_unit:'))))
-    if checked.strict_scope:
+    if checked.strict_scope or _broad_risk_defaults(checked, plan.scope.excluded):
         return plan
     if not checked.indicator_mentions and not checked.research_kinds and not checked.exclusions:
         indicators = previous.indicators
@@ -150,9 +158,10 @@ def build_product_plan(checked, question, context):
     exclusions = set(checked.exclusions) | set(checked.diagnostics.get('authorization', {}).get('permission_vetoes', ()))
     kinds = tuple(k for k in RESEARCH_KINDS if k in checked.research_kinds and k not in exclusions)
     risk = 'risk' in checked.research_kinds and not checked.wants_plan and 'risk' not in exclusions
-    if not kinds and not checked.strict_scope and not risk:
+    broad_risk = _broad_risk_defaults(checked, exclusions)
+    if not kinds and not checked.strict_scope and (not risk or broad_risk):
         kinds = tuple(k for k in RESEARCH_KINDS if k not in exclusions)
-    selection = select_complementary_indicators(question)
+    selection = select_complementary_indicators('' if broad_risk else question)
     indicators = (tuple(s for phrase in checked.indicator_mentions for s in _indicator(phrase))
                   if checked.indicator_mentions else selection.indicators)
     indicators = tuple(dict.fromkeys(s for s in indicators if 'indicator:' + s.kind not in exclusions))
@@ -180,7 +189,7 @@ def build_product_plan(checked, question, context):
         if not checked.date_expression:
             plan = replace(plan, start_date=pending.start_date, end_date=pending.end_date, as_of=pending.end_date,
                 explicit_historical=pending.explicit_historical, applied_defaults=pending.applied_defaults)
-        if not checked.indicator_mentions and not checked.strict_scope:
+        if not checked.indicator_mentions and not checked.strict_scope and not broad_risk:
             plan = replace(plan, indicators=pending.indicators, indicators_explicit=pending.indicators_explicit)
         if not checked.research_kinds and not checked.strict_scope:
             plan = replace(plan, kinds=pending.kinds, scope=pending.scope)

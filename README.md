@@ -136,6 +136,7 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--no-research-intent-v2` | Restore legacy DeepSeek routing for this server run |
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
+| `--capture-news-titles` | Opt in to bounded public-title capture for live DeepSeek company research; no classifier calls |
 | `--screening-coverage expanded` | Larger, slower screening sample |
 
 When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/local-environment.md) and [Dev Mode design](docs/dev-mode-design.md).
@@ -160,7 +161,7 @@ Inspect trace metadata without starting the server:
 ## Current work
 
 - **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
-- **Headline triage.** A low-cost classifier (Jev) is being measured against DeepSeek on news and announcement titles; it is not yet used in answers. See [news triage evaluation](docs/news-triage-design.md).
+- **Headline triage.** Jev is not yet used in answers. An opt-in title recorder and a fixed 50-company collection script now prepare real inputs for shadow evaluation; the script previews its plan by default and requires `--live --max-requests` to fetch public titles. This stage has not run live collection or classification. See [capture and integration boundaries](docs/news-triage-integration-design.md) and [the earlier synthetic evaluation](docs/news-triage-design.md).
 
 Not in scope yet: full article and filing understanding, whole-market completeness, calibrated forecasts, strategy backtesting and public deployment.
 

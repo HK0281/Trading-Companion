@@ -128,6 +128,8 @@ def main(argv=None) -> int:
     parser.add_argument("--trace-dir", help="Opt-in bounded local run metadata; excludes questions, answers and credentials")
     parser.add_argument("--no-trace", action="store_true",
                         help="Disable metadata tracing, including the default enabled by start.cmd")
+    parser.add_argument("--capture-news-titles", action="store_true",
+                        help="Opt-in bounded local public-title capture for live DeepSeek company research; no classifier calls")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
                         help="Company/Tencent quote I/O width sharing three slots; Eastmoney stays serial (default: 3)")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
@@ -151,6 +153,7 @@ def main(argv=None) -> int:
     if (args.demo or args.data == "synthetic") and args.screening_coverage != "standard":
         parser.error("Synthetic mode uses fixed fixtures, not expanded live sampling")
     service = development_service = snapshot_store = memory_store = None
+    headline_capture = None
     try:
         ensure_data_mode_dependencies("synthetic" if args.demo else args.data)
         import uvicorn
@@ -190,6 +193,10 @@ def main(argv=None) -> int:
             from trading_companion.company_research import ResearchDataService
             from trading_companion.market_context_live import ExchangeMarketContextSource
             from trading_companion.screening_source import configured_quote_source
+            if args.capture_news_titles and source is None:
+                from trading_companion.news_triage_shadow import NewsTitleCapture
+                headline_capture = NewsTitleCapture(warning=lambda: print(
+                    "[news_title_capture_unavailable] 标题记录已停止；研究回答不受影响。", file=sys.stderr))
             screening_source = configured_quote_source(args.screening_data, args.screening_coverage,
                 max_workers=args.collection_workers) if source is None else None
             background_source = ExchangeMarketContextSource() if source is None and not args.market_context else None
@@ -215,7 +222,7 @@ def main(argv=None) -> int:
                 snapshot_store=snapshot_store,
                 screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink,
                 conversation_store=memory_store, conversation_context=memory_store is not None,
-                research_intent_v2_enabled=args.research_intent_v2)
+                research_intent_v2_enabled=args.research_intent_v2, headline_capture=headline_capture)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service(trace_sink=trace_sink)
     except DataModeDependencyError:
@@ -250,6 +257,8 @@ def main(argv=None) -> int:
         print("对话记录未开启：不保存聊天内容，也不向模型提供前几轮摘要；start.cmd 默认开启。")
     if trace_sink is not None:
         print("本地运行记录已开启：仅运行元数据，有容量上限；不保存问题、答案、密钥或令牌。")
+    if headline_capture is not None:
+        print("公共新闻/公告标题记录已开启：仅正常 DeepSeek 公司研究，容量有限；不记录提问，不调用分类模型。")
     print("固定离线脚本 / 人工行情，不是自由问答模型。" if args.demo else
           f"正常服务默认模型：{args.provider}；发送研究问题后调用所选提供方。")
     if not args.demo:

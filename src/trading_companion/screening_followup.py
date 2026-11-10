@@ -11,7 +11,7 @@ from trading_companion.turn_control import checkpoint
 
 
 def _execute(question, *, model, session, directory, quote_source, source, development_source,
-             now, reference_date, data_service, market_background_source, clock, workflow):
+             now, reference_date, data_service, market_background_source, clock, workflow, headline_capture=None):
     selection = select_screening(question, saved=session.screening_saved, directory=directory,
         quote_source=quote_source, source="csv" if development_source is not None else source,
         development=development_source is not None, now=clock())
@@ -49,13 +49,15 @@ def _execute(question, *, model, session, directory, quote_source, source, devel
     outcome = execute_product(effective, model=model, session=session, directory=directory, now=now,
         reference_date=reference_date, source=source, development_source=development_source,
         data_service=data_service, source_factory=None, market_background_source=market_background_source,
-        background_clock=clock, selected_securities=selection.securities, original_question=question)
+        background_clock=clock, selected_securities=selection.securities, original_question=question,
+        headline_capture=headline_capture)
     return replace(outcome, user_question=question)
 
 
 def run_screening_followup_turn(question, *, model, session, directory, quote_source, source, now,
                                 reference_date=None, development_source=None, data_service=None,
-                                market_background_source=None, clock=None, control=None, workflow=True):
+                                market_background_source=None, clock=None, control=None, workflow=True,
+                                headline_capture=None):
     from datetime import datetime, timedelta, timezone
     from trading_companion.turn_control import company_turn_control, workflow_turn_control
 
@@ -64,7 +66,8 @@ def run_screening_followup_turn(question, *, model, session, directory, quote_so
     return _controlled(lambda checked, working: _execute(question, model=checked, session=working,
         directory=directory, quote_source=quote_source, source=source, development_source=development_source,
         now=now, reference_date=reference, data_service=data_service,
-        market_background_source=market_background_source, clock=clock, workflow=workflow),
+        market_background_source=market_background_source, clock=clock, workflow=workflow,
+        headline_capture=headline_capture),
         model=model, session=session, control=control or (company_turn_control() if data_service is not None
                                                          else workflow_turn_control()),
         default_calls=6, input_mode="natural")

@@ -113,6 +113,24 @@ class BrowserStartupTests(unittest.TestCase):
             self.assertEqual(main(["--data", "synthetic", "--open-browser"]), 2)
         browser.assert_not_called()
 
+    def test_title_capture_flag_only_constructs_a_sink_for_normal_live_data(self):
+        from trading_companion.api_service import ResearchApiService
+        from trading_companion.news_triage_shadow import NewsTitleCapture
+        from tests.test_product_agent import ProductModelFixture
+        for data, expected in (("synthetic", False), ("tencent", True)):
+            with self.subTest(data=data), redirect_stdout(StringIO()), patch("uvicorn.run"), \
+                    patch("trading_companion.api_server._prepare_startup_directory"), \
+                    patch("trading_companion.model_registry.configured_models", return_value={"deepseek": ProductModelFixture}), \
+                    patch("trading_companion.api_service.ResearchApiService", wraps=ResearchApiService) as factory:
+                self.assertEqual(main(["--data", data, "--capture-news-titles", "--no-research-intent-v2"]), 0)
+                sink = factory.call_args.kwargs["headline_capture"]
+                self.assertEqual(type(sink) is NewsTitleCapture, expected)
+                if sink is not None:
+                    self.assertIsNone(sink.directory)
+        with redirect_stdout(StringIO()), patch("uvicorn.run"), \
+                patch("trading_companion.news_triage_shadow.NewsTitleCapture", side_effect=AssertionError("No demo capture")):
+            self.assertEqual(main(["--demo", "--capture-news-titles"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

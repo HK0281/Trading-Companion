@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "intent-knowledge-rewrite-v1"
+VERSION = "intent-news-title-capture-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -24,6 +24,7 @@ SOURCES = (
     "atr_plan_math.py", "index_scenario.py", "index_scenario_answer.py", "index_demo.py", "conversation_memory.py",
     "research_intent_v2.py", "research_intent_context.py", "research_intent_dispatch.py",
     "research_intent_adapter.py", "product_research.py", "model_registry.py", "api_server.py", "turn_trace.py",
+    "news_triage_shadow.py",
 )
 
 

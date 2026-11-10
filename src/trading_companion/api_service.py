@@ -331,7 +331,10 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
-                 research_intent_v2_enabled=False, intent_model_factory=None):
+                 research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None):
+        from trading_companion.news_triage_shadow import NewsTitleCapture
+        if headline_capture is not None and type(headline_capture) is not NewsTitleCapture:
+            raise ModelConfigurationError("Use a trusted public-title capture sink")
         if type(research_intent_v2_enabled) is not bool:
             raise ModelConfigurationError("Intent v2 switch must be an explicit boolean")
         self._research_intent_v2_enabled = research_intent_v2_enabled
@@ -375,6 +378,7 @@ class ResearchApiService:
         # A development service cannot gain network access through injected add-ons.
         self._screening_source = screening_source if data_mode != "synthetic" else None
         self._market_background_source = market_background_source if data_mode != "synthetic" else None
+        self._headline_capture = headline_capture if data_mode != "synthetic" and trace_mode == "normal" else None
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
@@ -705,14 +709,16 @@ class ResearchApiService:
                     directory=directory, quote_source=self._screening_source, source=self._research_source,
                     now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
                     data_service=self._product_data_service, market_background_source=self._market_background_source,
-                    clock=self._wall_clock, control=control, workflow=self._workflow_enabled)
+                    clock=self._wall_clock, control=control, workflow=self._workflow_enabled,
+                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
             elif decision.kind == RouteKind.COMPANY_RESEARCH:
                 from trading_companion.product_agent import run_product_research_turn
                 result = run_product_research_turn(question, model=entry.model, directory=directory,
                     source=self._research_source, development_source=self._development_source,
                     reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
                     data_service=self._product_data_service, market_background_source=self._market_background_source,
-                    background_clock=self._wall_clock)
+                    background_clock=self._wall_clock,
+                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
             else:
                 result = run_natural_research_turn(question, model=entry.model, directory=directory,
                     source=self._research_source,
@@ -800,7 +806,8 @@ class ResearchApiService:
             result = execute_checked_intent(checked, question, context=context, model=model,
                 session=session, control=control, development_source=self._development_source,
                 data_service=self._product_data_service, market_background_source=self._market_background_source,
-                clock=self._wall_clock, digests=entry.digests)
+                clock=self._wall_clock, digests=entry.digests,
+                headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
             attached['timestamp'] = now
             # This application notice is deliberately absent from every model request.
             delivered = session._delivered_prices

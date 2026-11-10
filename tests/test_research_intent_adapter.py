@@ -319,6 +319,42 @@ class EnabledApiTests(unittest.TestCase):
     def send(self, service, binding, question, identifier='one'):
         return service.message(binding['session_id'], binding['access_token'], identifier, question)['result']
 
+    def test_title_capture_is_identical_through_v2_and_legacy_and_replay_does_not_write_again(self):
+        from trading_companion.news_triage_shadow import NewsTitleCapture
+        from tests.test_news_triage_shadow import public_data
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled), TemporaryDirectory() as temporary:
+                outputs, contexts = [], []
+                capture = NewsTitleCapture(Path(temporary) / 'capture')
+                for sink in (None, capture):
+                    service, binding = self.service([draft(research_kinds=['news', 'announcements'])], enabled=enabled,
+                        product_data_service=public_data(), headline_capture=sink)
+                    result = self.send(service, binding, '分析平安银行的新闻和公告')
+                    entry = service._entries[binding['session_id']]
+                    outputs.append((result['status'], result['answer'], result['model_calls_attempted'],
+                                    entry.session.product_saved.bundle.to_dict()))
+                    contexts.append(self.answer_model.contexts)
+                    # Same request ID is idempotent: neither source reads nor capture repeats.
+                    self.send(service, binding, '分析平安银行的新闻和公告')
+                self.assertEqual(outputs[0], outputs[1])
+                self.assertEqual(contexts[0], contexts[1])
+                self.assertEqual(capture.status()['records_written'], 1)
+                self.assertEqual(capture.status()['titles_written'], 2)
+
+    def test_openai_session_does_not_use_live_title_capture(self):
+        from trading_companion.news_triage_shadow import NewsTitleCapture
+        from tests.test_news_triage_shadow import public_data
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'capture'
+            service = ResearchApiService(model_factory=ProductModelFixture, provider='openai',
+                directory_loader=lambda _: directory(), data_mode='tencent', wall_clock=lambda: NOW,
+                reference_date=NOW.date(), product_data_service=public_data(), headline_capture=NewsTitleCapture(root))
+            self.addCleanup(service.close)
+            binding = service.create_session()
+            result = self.send(service, binding, '分析平安银行的新闻和公告')
+            self.assertEqual(result['model_calls_attempted'], 2)
+            self.assertFalse(root.exists())
+
     def test_company_replaces_old_understanding_and_replays_without_more_calls(self):
         service, b = self.service([draft()])
         result = self.send(service, b, '分析平安银行')

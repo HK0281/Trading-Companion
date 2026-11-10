@@ -348,7 +348,7 @@ def _explain(checked, question, context, *, model, session, development_source):
 
 def execute_checked_intent(checked, question, *, context, model, session, control,
                            development_source=None, data_service=None, market_background_source=None,
-                           clock=None, digests=()):
+                           clock=None, digests=(), headline_capture=None):
     """One shared controlled executor; errors here never re-enter legacy interpretation."""
     from trading_companion.agent import _controlled, AgentTurnResult
     from trading_companion.turn_control import checkpoint
@@ -397,7 +397,8 @@ def execute_checked_intent(checked, question, *, context, model, session, contro
                         session=working, directory=context.directory, now=context.now, source=context.source,
                         reference_date=context.reference_date, development_source=development_source,
                         control=control, data_service=data_service, market_background_source=market_background_source,
-                        background_clock=clock, replace_existing=checked.operation in ('new', 'refresh'))
+                        background_clock=clock, replace_existing=checked.operation in ('new', 'refresh'),
+                        headline_capture=headline_capture)
                 else:
                     from trading_companion.agent import run_natural_research_turn
                     prepared = build_technical_input(checked, question, context)

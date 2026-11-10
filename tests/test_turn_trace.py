@@ -23,6 +23,9 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "capture_capacity_reached": "公共标题记录器达到独立本地容量上限，不改变研究轮次状态，也不发送到轮次 trace。",
+    "capture_record_too_large": "公共标题单份本地记录过大，只停止记录器，不是研究失败码。",
+    "capture_unavailable": "公共标题本地记录不可写或资料格式无效，只停止记录器，不是研究结果码。",
     "intent_context_invalid": "5A 内部上下文校验及阶段元数据类别，不是公开研究结果。",
     "intent_context_unavailable": "5A 内部上下文不可用类别，公开入口仍禁止启用。",
     "context_request_too_large": "5A 完整上下文超长的内部回退类别，不是公开研究结果。",

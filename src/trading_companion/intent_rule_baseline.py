@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "intent-news-title-capture-v1"
+VERSION = "intent-news-triage-sorting-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -25,6 +25,8 @@ SOURCES = (
     "research_intent_v2.py", "research_intent_context.py", "research_intent_dispatch.py",
     "research_intent_adapter.py", "product_research.py", "model_registry.py", "api_server.py", "turn_trace.py",
     "news_triage_shadow.py",
+    "news_triage_sorting.py", "news_triage_sorting_control.py", "news_triage_sorting_replay.py",
+    "turn_control.py", "product_answer.py", "product_narrative_answer.py",
 )
 
 

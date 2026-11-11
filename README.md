@@ -137,6 +137,7 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
 | `--capture-news-titles` | Opt in to bounded public-title capture for live DeepSeek company research; no classifier calls |
+| `--news-triage-sorting` | Default off: prioritize important related headlines in the new DeepSeek research path; paired live acceptance and user approval are still pending ([design](docs/news-triage-integration-design.md)) |
 | `--screening-coverage expanded` | Larger, slower screening sample |
 
 When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/local-environment.md) and [Dev Mode design](docs/dev-mode-design.md).

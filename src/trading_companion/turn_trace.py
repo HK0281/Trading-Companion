@@ -409,6 +409,46 @@ class TurnTrace:
         self._attempts = self._requests = self._responses = self._complete = self._unknown_transport = 0
         self._totals = dict.fromkeys(_USAGE_KEYS)
         self._intent_stages = []
+        self._news_triage = None
+
+    def news_triage(self, summary):
+        """Bounded classifier ledger; late settlement is a separate metadata record."""
+        record = {key: _count(summary.get(key)) for key in
+                  ("candidates", "covered", "promoted", "capacity_fallbacks", "elapsed_ms")}
+        reasons = frozenset("not_run no_titles triage_budget triage_unavailable triage_workers_busy triage_timeout "
+            "triage_budget_or_timeout triage_call_budget triage_protocol usage_unknown classified applied "
+            "context_capacity turn_stopped invalid_response timeout connection_error rate_limited auth_failed "
+            "http_error overloaded redirect_refused response_too_large".split())
+        record.update(version="news-triage-sorting-v1",
+                      reason=summary.get("reason") if summary.get("reason") in reasons else "other", calls=[])
+        for call in summary.get("calls", [])[:11]:
+            record["calls"].append(dict(id=_count(call.get("id")),
+                provider=call.get("provider") if call.get("provider") in ("jev", "deepseek") else None,
+                requested_model=_model_name(call.get("requested_model")), model=_model_name(call.get("model")),
+                usage={key: _count((call.get("usage") or {}).get(key)) for key in _USAGE_KEYS},
+                status=call.get("status") if call.get("status") in ("ok", "failed", "pending", "usage_unknown") else "other",
+                elapsed_ms=_count(call.get("elapsed_ms")), late=call.get("late") is True))
+        record["totals"] = {}
+        record["omitted_calls"] = 0
+        for provider in ("jev", "deepseek"):
+            calls = [call for call in record["calls"] if call["provider"] == provider]
+            record["totals"][provider] = dict(attempts=len(calls),
+                known_tokens=_count(sum(call["usage"]["total_tokens"] or 0 for call in calls)),
+                unknown_calls=sum(call["usage"]["total_tokens"] is None for call in calls))
+        with self._lock:
+            late = self._done
+            if not late:
+                self._news_triage = record
+        if late:
+            self._write_news_triage(record)
+
+    def _write_news_triage(self, summary):
+        record = dict(schema_version=SCHEMA_VERSION, record_type="news_triage_settlement",
+                      run_id=self.run_id, news_triage=deepcopy(summary))
+        while len(_line(record)) > self.sink.limits.record_bytes and record["news_triage"]["calls"]:
+            record["news_triage"]["calls"].pop()
+            record["news_triage"]["omitted_calls"] += 1
+        self.sink.write(record)
 
     def _now(self):
         value = self._clock()
@@ -638,6 +678,8 @@ class TurnTrace:
                 stages = {item['stage'] for item in self._intent_stages}
                 record['intent_route_source'] = ('legacy' if 'legacy' in stages else
                     'intent_v2' if 'execution' in stages else 'local' if 'local' in stages else 'stopped')
+            if self._news_triage is not None:
+                record["news_triage"] = deepcopy(self._news_triage)
             while len(_line(record)) > self.sink.limits.record_bytes and (
                     record["models"]["events"] or record["events"] or record.get("intent_stages")):
                 models, details = record["models"]["events"], record["events"]
@@ -646,8 +688,15 @@ class TurnTrace:
                 destination.pop()
                 record["dropped_events"] += 1
                 record["truncated"] = True
+            triage_overflow = None
+            if len(_line(record)) > self.sink.limits.record_bytes and "news_triage" in record:
+                triage_overflow = record.pop("news_triage")
+                record["dropped_events"] += 1
+                record["truncated"] = True
         # Never hold collector, control, API or publication locks during disk I/O.
         self.sink.write(record)
+        if triage_overflow is not None:
+            self._write_news_triage(triage_overflow)
 
 
 def _update(method, *args):
@@ -691,6 +740,12 @@ def trace_replay(original_run_id, code=None):
 def trace_run_id():
     trace = _CURRENT.get()
     return trace.run_id if trace is not None else None
+
+
+def news_triage_sink():
+    """Capture this turn only, including settlement after its normal trace is closed."""
+    trace = _CURRENT.get()
+    return None if trace is None else trace.news_triage
 
 
 def safe_answer_validation(value):

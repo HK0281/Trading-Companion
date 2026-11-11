@@ -331,8 +331,12 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
-                 research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None):
+                 research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None,
+                 news_triage_sorting=False, news_sorter=None):
         from trading_companion.news_triage_shadow import NewsTitleCapture
+        from trading_companion.news_triage_sorting import NewsTriageSorter
+        if type(news_triage_sorting) is not bool or news_sorter is not None and type(news_sorter) is not NewsTriageSorter:
+            raise ModelConfigurationError("Use an explicit sorting switch and trusted sorter")
         if headline_capture is not None and type(headline_capture) is not NewsTitleCapture:
             raise ModelConfigurationError("Use a trusted public-title capture sink")
         if type(research_intent_v2_enabled) is not bool:
@@ -379,6 +383,8 @@ class ResearchApiService:
         self._screening_source = screening_source if data_mode != "synthetic" else None
         self._market_background_source = market_background_source if data_mode != "synthetic" else None
         self._headline_capture = headline_capture if data_mode != "synthetic" and trace_mode == "normal" else None
+        self._news_sorter = ((news_sorter or NewsTriageSorter()) if news_triage_sorting
+            and research_intent_v2_enabled and data_mode != "synthetic" and trace_mode == "normal" else None)
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
@@ -807,7 +813,8 @@ class ResearchApiService:
                 session=session, control=control, development_source=self._development_source,
                 data_service=self._product_data_service, market_background_source=self._market_background_source,
                 clock=self._wall_clock, digests=entry.digests,
-                headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
+                headline_capture=self._headline_capture if entry.provider == "deepseek" else None,
+                headline_sorter=self._news_sorter if entry.provider == "deepseek" else None)
             attached['timestamp'] = now
             # This application notice is deliberately absent from every model request.
             delivered = session._delivered_prices

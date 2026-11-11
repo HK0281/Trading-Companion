@@ -597,6 +597,7 @@ def model_research_context(bundle, *, limit=14500):
                 trial = {**payload, "evidence": [*selected, candidate]}
                 if len(json.dumps(trial, ensure_ascii=False)) <= limit:
                     selected.append(candidate)
-    payload["evidence"] = selected
+    from trading_companion.news_triage_sorting import apply_context_order
+    payload["evidence"] = apply_context_order(selected, records)
     payload["omitted_from_model"] = len(records) - len(selected)
     return payload

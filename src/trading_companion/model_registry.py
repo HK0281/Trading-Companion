@@ -18,6 +18,17 @@ INTENT_TIMEOUT_SECONDS = 20
 INTENT_OUTPUT_TOKENS = 1500
 
 
+def configured_news_sorting():
+    """Lazy, explicit per-turn configuration. Missing either key disables both calls."""
+    from trading_companion.local_env import load_evaluation_key_environment
+    from trading_companion.typesafe_jev import JevConfig
+    first = load_evaluation_key_environment("TYPESAFE_API_KEY")
+    second = load_evaluation_key_environment("DEEPSEEK_API_KEY")
+    return (JevConfig(first.get("TYPESAFE_API_KEY", ""), timeout_seconds=2),
+            DeepSeekConfig("deepseek-flash", second.get("DEEPSEEK_API_KEY", ""),
+                           timeout_seconds=1.5, max_output_tokens=2048))
+
+
 def configured_intent_model(*, loader=load_model_environment):
     """Explicit, pure-constructor factory; never used by the disabled service."""
     if not callable(loader):

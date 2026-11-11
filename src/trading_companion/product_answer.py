@@ -621,7 +621,8 @@ def synthesize_legacy_product_answer(question: str, bundle: ProductResearchBundl
         response if type(response) is ToolModelResponse else None, code, tuple(responses))
 
 
-def synthesize_product_answer(question, bundle, *, model, repair_invalid=False):
+def synthesize_product_answer(question, bundle, *, model, repair_invalid=False, headline_order=None):
     """Current company and decision answers share local sentence validation."""
     from trading_companion.product_narrative_answer import synthesize_narrative_answer
-    return synthesize_narrative_answer(question, bundle, model=model, repair_invalid=repair_invalid)
+    return synthesize_narrative_answer(question, bundle, model=model, repair_invalid=repair_invalid,
+                                       headline_order=headline_order)

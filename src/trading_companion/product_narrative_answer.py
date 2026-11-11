@@ -700,7 +700,36 @@ def _answer(bundle, context, narratives, decisions, issues, generated, deleted, 
         decision_mode=bundle.plan.objective.kind == "decision", narratives=tuple(narratives), quality=quality)
 
 
-def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False):
+def prepare_answer_context(question, bundle, *, headline_order=None):
+    from trading_companion.news_triage_sorting import bind_sort_order
+    with bind_sort_order(headline_order):
+        context = _context(bundle)
+    _trim_answer_context(question, context)
+    return context
+
+
+def _trim_answer_context(question, context):
+    # Keep the original repair reserve and trimming policy for both paths.
+    while True:
+        try:
+            reserve = [Issue(STRUCTURE,'structure',i,'文'*80,instrument='000001.SZ',path='narratives[0].current') for i in range(4)]
+            reserve_messages = _messages(question,context,reserve)
+            reserve_messages = (*reserve_messages[:-1],ToolMessage('user','文'*700))
+            validate_tool_messages(reserve_messages, tools=())
+            break
+        except ModelRequestError:
+            eligible = [i for i in range(len(context['evidence'])-1,-1,-1)
+                        if context['evidence'][i].get('content_kind')!='trade_plan']
+            removable = next((i for i in eligible if context['evidence'][i].get('temporal_scope')!='daily_price_context'),
+                              eligible[0] if eligible else None)
+            if removable is None:
+                raise ValueError("context_too_large")
+            removed = context["evidence"].pop(removable)
+            context["price_levels"] = [r for r in context["price_levels"] if r.get('evidence_id') != removed['id']]
+            context["omitted_from_model"] += 1
+
+
+def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False, headline_order=None):
     checkpoint()
     if type(bundle) is not ProductResearchBundle:
         return ProductAnswerRun(_fallback(bundle, "product_answer_invalid_input"))
@@ -715,29 +744,23 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
     try:
         if type(question) is not str or not question.strip() or len(question) > MAX_USER_CHARACTERS:
             raise ValueError("invalid_input")
+        # Assign before trimming so failure preserves the established fallback shape.
         context = _context(bundle)
-        # Reserve space for concrete repair feedback under the existing message budget.
-        while True:
-            try:
-                reserve = [Issue(STRUCTURE,'structure',i,'文'*80,instrument='000001.SZ',path='narratives[0].current') for i in range(4)]
-                reserve_messages = _messages(question,context,reserve)
-                # Entries (500) plus guidance fit within 700 Chinese characters.
-                reserve_messages = (*reserve_messages[:-1],ToolMessage('user','文'*700))
-                validate_tool_messages(reserve_messages, tools=())
-                break
-            except ModelRequestError:
-                eligible = [i for i in range(len(context['evidence'])-1,-1,-1)
-                            if context['evidence'][i].get('content_kind')!='trade_plan']
-                removable = next((i for i in eligible if context['evidence'][i].get('temporal_scope')!='daily_price_context'),
-                                  eligible[0] if eligible else None)
-                if removable is None:
-                    raise ValueError("context_too_large")
-                removed = context["evidence"].pop(removable)
-                context["price_levels"] = [r for r in context["price_levels"]
-                                           if r.get('evidence_id') != removed['id']]
-                context["omitted_from_model"] += 1
+        _trim_answer_context(question, context)
         if not context["evidence"]:
             raise ValueError("no_evidence")
+        if headline_order is not None:
+            from trading_companion.news_triage_sorting import compatible_context
+            try:
+                candidate = prepare_answer_context(question, bundle, headline_order=headline_order)
+                if compatible_context(context, candidate, headline_order):
+                    context = candidate
+                    headline_order.round.reason = "applied"
+                else:
+                    headline_order.round.reason = "context_capacity"
+            except (ValueError, ModelRequestError):
+                headline_order.round.reason = "context_capacity"
+            headline_order.round.publish()
         if diagnostics_enabled():
             diagnostic_event('model_context', context={k: v for k, v in context.items() if not k.startswith('_')})
         for attempt in range(2 if repair_invalid else 1):

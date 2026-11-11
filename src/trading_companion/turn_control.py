@@ -129,6 +129,30 @@ class TurnControl:
             self._check()
             return self._model_calls < self.limits.model_calls
 
+    def optional_model_available(self, estimated_tokens, answer_reserve, *, reserve=False):
+        """Optional work must leave two attempts and the estimated answer allowance.
+
+        Refusal is not a turn stop. Estimates are not a remote billing guarantee.
+        """
+        if any(type(n) is not int or n < 0 for n in (estimated_tokens, answer_reserve)):
+            raise ModelConfigurationError("Use nonnegative trusted token estimates")
+        with self._lock:
+            self._check()
+            allowed = (self._model_calls + 3 <= self.limits.model_calls
+                       and self._observed_tokens + estimated_tokens + answer_reserve < self.limits.observed_tokens
+                       and self.limits.timeout_seconds - self._elapsed >= 19)
+            if allowed and reserve:
+                self._model_calls += 1
+            return allowed
+
+    def observe_optional_response(self, usage):
+        """A late classifier settles its own ledger even after publication."""
+        with self._lock:
+            if self._finished:
+                return False
+            self._observe_response(usage)
+            return True
+
     def reserve_analysis(self):
         with self._lock:
             self._check()
@@ -140,24 +164,26 @@ class TurnControl:
     def observe_response(self, usage: TokenUsage | None):
         """Record even late responses, before rejecting their actionable content."""
         with self._lock:
-            if self._started_at is None or self._finished:
-                raise ModelConfigurationError("Turn control is not active")
-            self._responses += 1
-            if type(usage) is TokenUsage:
-                for name, old in self._reported.items():
-                    value = getattr(usage, name)
-                    if value is not None:
-                        self._reported[name] = (old or 0) + value
-                parts = (usage.prompt_tokens or 0) + (usage.completion_tokens or 0)
-                self._observed_tokens += max(usage.total_tokens or 0, parts)
-                if (None not in (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens)
-                        and usage.total_tokens == parts):
-                    self._complete_usage += 1
-            # Cancellation/deadline take precedence over an observed-token threshold.
-            self._check()
-            if self._observed_tokens >= self.limits.observed_tokens:
-                self._stop_code = "token_budget_exhausted"
-                raise TurnStopped(self._stop_code)
+            self._observe_response(usage)
+
+    def _observe_response(self, usage):
+        if self._started_at is None or self._finished:
+            raise ModelConfigurationError("Turn control is not active")
+        self._responses += 1
+        if type(usage) is TokenUsage:
+            for name, old in self._reported.items():
+                value = getattr(usage, name)
+                if value is not None:
+                    self._reported[name] = (old or 0) + value
+            parts = (usage.prompt_tokens or 0) + (usage.completion_tokens or 0)
+            self._observed_tokens += max(usage.total_tokens or 0, parts)
+            if (None not in (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens)
+                    and usage.total_tokens == parts):
+                self._complete_usage += 1
+        self._check()
+        if self._observed_tokens >= self.limits.observed_tokens:
+            self._stop_code = "token_budget_exhausted"
+            raise TurnStopped(self._stop_code)
 
     def finish(self, commit: Callable[[bool], None] | None = None) -> str | None:
         """Linearize final state publication against cancel(); callback must be bounded local work."""
@@ -191,6 +217,10 @@ class TurnControl:
 
 
 _ACTIVE: ContextVar[TurnControl | None] = ContextVar("research_turn_control", default=None)
+
+
+def current_control():
+    return _ACTIVE.get()
 
 
 @contextmanager

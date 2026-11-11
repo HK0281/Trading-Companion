@@ -130,6 +130,8 @@ def main(argv=None) -> int:
                         help="Disable metadata tracing, including the default enabled by start.cmd")
     parser.add_argument("--capture-news-titles", action="store_true",
                         help="Opt-in bounded local public-title capture for live DeepSeek company research; no classifier calls")
+    parser.add_argument("--news-triage-sorting", action="store_true",
+                        help="Opt-in headline ordering for intent-v2 DeepSeek company research (default: disabled)")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
                         help="Company/Tencent quote I/O width sharing three slots; Eastmoney stays serial (default: 3)")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
@@ -222,7 +224,8 @@ def main(argv=None) -> int:
                 snapshot_store=snapshot_store,
                 screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink,
                 conversation_store=memory_store, conversation_context=memory_store is not None,
-                research_intent_v2_enabled=args.research_intent_v2, headline_capture=headline_capture)
+                research_intent_v2_enabled=args.research_intent_v2, headline_capture=headline_capture,
+                news_triage_sorting=args.news_triage_sorting)
             # A separate fixture-only service can never alter the normal service's source or budget.
             development_service = create_demo_service(trace_sink=trace_sink)
     except DataModeDependencyError:

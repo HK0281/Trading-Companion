@@ -121,11 +121,11 @@ class HistoricalBaselineTests(unittest.TestCase):
 
     def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
         current = baselines.current_baseline()
-        self.assertEqual(current['rule_baseline_version'], 'intent-news-title-capture-v1')
-        self.assertEqual(current['parent_version'], 'intent-knowledge-rewrite-v1')
+        self.assertEqual(current['rule_baseline_version'], 'intent-news-triage-sorting-v1')
+        self.assertEqual(current['parent_version'], 'intent-news-title-capture-v1')
         previous = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == current['parent_version'])
-        self.assertEqual(previous['source_digest'], '048ab82da3cb4b3dd331e1ac94277c4f2a3e97258aa26f853082684a7de3cfb6')
+        self.assertEqual(previous['source_digest'], '238690ad604c62dcf839ae32bde21ad2943432131375705e0c0f46fb395a3ff5')
         original = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == 'intent-integration-default-on-v1')
         self.assertEqual(original['source_digest'], '3a7455512339f92fda14c35ca79e6d87855e629e071188aff7ebb58b5531f1b1')

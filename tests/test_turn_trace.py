@@ -23,6 +23,14 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    "triage_workers_busy": "标题分类全局在途槽已满，记录于独立news_triage字段并回原序，不是研究轮次失败。",
+    "triage_budget": "可选标题分类预留不足，独立流水记录跳过原因，回答继续。",
+    "triage_budget_or_timeout": "分类子窗口或独立用量到限，写分类流水，不替代整轮停止码。",
+    "triage_call_budget": "标题分类独立尝试次数限制，记录分类回退原因。",
+    "triage_protocol": "批量标题分类项目未全部有效，独立记录整轮原序的原因。",
+    "triage_timeout": "标题分类的可选子窗口结束，写分类字段，原研究截止规则另行处理。",
+    "usage_unknown": "标题分类计费用量未知，独立分类流水停止后续请求，不是研究结果码。",
+    "pair_budget_exhausted": "固定资料配对验收的独立全局请求额度耗尽，不是线上研究结果。",
     "capture_capacity_reached": "公共标题记录器达到独立本地容量上限，不改变研究轮次状态，也不发送到轮次 trace。",
     "capture_record_too_large": "公共标题单份本地记录过大，只停止记录器，不是研究失败码。",
     "capture_unavailable": "公共标题本地记录不可写或资料格式无效，只停止记录器，不是研究结果码。",

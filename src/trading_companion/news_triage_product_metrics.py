@@ -46,17 +46,16 @@ def scores(rows, arm):
                                    "human_unresolved": sum(n for (g, p), n in confusion.items() if g not in options),
                                    "confusion": [{"gold": g, "prediction": p, "count": n}
                                                  for (g, p), n in sorted(confusion.items())], "per_class": per_class}
-    filters = [r for r in rows if r["results"][arm].get("proposed_filter")]
+    filters = []  # User abandoned stage C; classification never removes materials.
     good = sum(r["gold"]["relevance"] == "unrelated" for r in filters)
     relevant = [r for r in rows if r["gold"]["relevance"] in ("primary", "mentioned")]
-    removed = sum(r["results"][arm].get("proposed_filter", False) for r in relevant)
-    high_removed = sum(r["results"][arm].get("proposed_filter", False) and r["gold"]["importance"] == "high" for r in relevant)
+    removed = high_removed = 0
     lower = wilson_lower(good, len(filters))
     result["filter_policy"] = {"proposed": len(filters), "correct": good, "precision": ratio(good, len(filters)),
                                "wilson_95_lower": lower, "relevant_support": len(relevant),
                                "relevant_removed": removed, "relevant_retention": ratio(len(relevant)-removed, len(relevant)),
                                "important_relevant_removed": high_removed,
-                               "unclassified_policy": "retain_original_title"}
+                               "unclassified_policy": "retain_original_title", "policy": "retain_all"}
     high = result["questions"]["importance"]["per_class"]["high"]
     tone = result["questions"]["tone"]["per_class"]
     result["gates"] = {
@@ -68,13 +67,8 @@ def scores(rows, arm):
                         "passed": all(tone[t]["support"] >= 30 and tone[t]["predicted"] >= 30
                                       and (tone[t]["precision"] or 0) >= .95 for t in ("positive", "negative")),
                         "required_support_each": 30, "required_precision_each": .95},
-        "unrelated_filtering": {"sufficient_support": len(filters) >= 50,
-                                "passed": len(filters) >= 50 and good/len(filters) >= .98
-                                and lower >= .90 and bool(relevant) and (len(relevant)-removed)/len(relevant) >= .99
-                                and high_removed == 0,
-                                "required_proposed": 50, "required_precision": .98,
-                                "required_wilson_95_lower": .90, "required_relevant_retention": .99,
-                                "allowed_important_relevant_removed": 0}}
+        "unrelated_filtering": {"status": "abandoned", "passed": False,
+                                "reason": "user_authorized_retain_all_2026_11_10"}}
     return result
 
 
@@ -96,5 +90,7 @@ def metrics(rows, arms, ledger, models, prices):
         scored["handoffs"] = sum(bool(r["results"][arm].get("route_reasons")) for r in rows)
         scored["issuer_conflicts"] = sum(r["results"][arm].get("issuer_conflict", False) for r in rows)
         scored["scope"] = "separate_actual_calls_no_counterfactual_savings" if arm.startswith("cascade") else "independent_classifier"
+        if arm == "split_jev_deepseek_batch":
+            scored["scope"] = "separate_actual_question_split_and_importance_batches"
         output[arm] = scored
     return output

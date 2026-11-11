@@ -116,7 +116,8 @@ class ProductEvaluationTests(unittest.TestCase):
         models = {"jev": Mock(classify=Mock(return_value=response(confidence=.99))),
                   "deepseek": Mock(classify=Mock(return_value=response(relevance="unrelated", importance="ordinary", confidence=None)))}
         report = run_experiment(plan, self.dataset, annotation, prices, models)
-        self.assertTrue(report["rows"][0]["results"]["cascade_0.65"]["proposed_filter"])
+        self.assertFalse(report["rows"][0]["results"]["cascade_0.65"]["proposed_filter"])
+        self.assertEqual(report["rows"][0]["results"]["cascade_0.65"]["answers"]["relevance"]["choice"], "unrelated")
         models["deepseek"].classify.assert_called_once()
 
     def test_failures_consume_budget_preserve_metadata_and_do_not_expose_error_body(self):

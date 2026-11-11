@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from scripts.collect_news_titles import COMPANIES, SECOND_COMPANIES, _LimitedTransport, build_plan, collect_titles, main
+from scripts.collect_news_titles import COMPANIES, SECOND_COMPANIES, THIRD_COMPANIES, _LimitedTransport, build_plan, collect_titles, main
 from tests.test_company_news_sina import html, response as html_response, URL
 from tests.test_company_research import announcement, announcements, response as json_response
 from tests.test_product_research import NOW
@@ -42,7 +42,7 @@ class PublicSession:
         if "sina.com.cn" in url:
             symbol = kwargs["params"]["symbol"]
             code = symbol[2:] + "." + symbol[:2].upper()
-            name = next(row[1] for row in (*COMPANIES, *SECOND_COMPANIES) if row[0] == code)
+            name = next(row[1] for row in (*COMPANIES, *SECOND_COMPANIES, *THIRD_COMPANIES) if row[0] == code)
             rows = [] if self.empty else [("2026-09-25 12:10", name + "人工新闻" + str(i), URL) for i in range(8)]
             return html_response(html(rows, title=f"{name}({symbol[2:]})个股资讯_新浪财经_新浪网"))
         code = kwargs["params"]["stock_list"]
@@ -108,6 +108,26 @@ class CollectNewsTitlesTests(unittest.TestCase):
 
     def test_second_batch_also_stops_at_one_hundred_serial_paced_attempts(self):
         report = self.collect(selected=None, batch="second", limit=100)
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual(report["network_requests_attempted"], 100)
+        self.assertEqual(report["capture"]["titles_written"], 500)
+        self.assertTrue(all(b-a >= 1 for a, b in zip(self.session.starts, self.session.starts[1:])))
+
+    def test_third_batch_is_distinct_locally_verified_feature_sample_and_paced(self):
+        from trading_companion.security_directory import load_security_directory
+        directory = load_security_directory(Path(__file__).resolve().parents[1]/"data/security_directory_live.json")
+        names = {s.instrument_id: s.name for s in directory.securities}
+        old = {r[0] for r in (*COMPANIES, *SECOND_COMPANIES)}
+        self.assertEqual(len(THIRD_COMPANIES), 50)
+        self.assertFalse(old & {r[0] for r in THIRD_COMPANIES})
+        self.assertEqual(len({r[0] for r in THIRD_COMPANIES}), 50)
+        self.assertEqual({b: sum(r[2] == b for r in THIRD_COMPANIES) for b in ("sh_main", "sz_main", "chinext", "star")},
+                         {"sh_main": 15, "sz_main": 15, "chinext": 10, "star": 10})
+        for code, name, _, rationale in THIRD_COMPANIES:
+            self.assertEqual(name, names[code])
+            self.assertTrue(rationale)
+        self.assertGreaterEqual(sum("ST" in r[1] for r in THIRD_COMPANIES), 10)
+        report = self.collect(selected=None, batch="third", limit=100)
         self.assertEqual(report["status"], "completed")
         self.assertEqual(report["network_requests_attempted"], 100)
         self.assertEqual(report["capture"]["titles_written"], 500)

@@ -1,4 +1,4 @@
-"""Explicit v2-to-v3 rule migration of one independent sheet, without relabeling."""
+"""Registered single-sheet migration and semantically identical finalized rebinding."""
 
 from copy import deepcopy
 import csv
@@ -49,8 +49,8 @@ def migrate(dataset_path, sheet_path, output_root, *, write=False):
     """Validate first; preview by default, or write a fresh, answer-preserving copy."""
     old = _validate_dataset(read_json(dataset_path), legacy_descriptor())
     current = descriptor()
-    if current["rule_version"] != "news-triage-product-rules-v3":
-        raise ValueError("This migration only targets rules-v3")
+    if current["rule_version"] != "news-triage-product-rules-v4":
+        raise ValueError("This migration only targets rules-v4")
     new = deepcopy(old)
     new["task"] = current
     new["dataset_sha256"] = digest({k: v for k, v in new.items() if k != "dataset_sha256"})
@@ -96,4 +96,25 @@ def migrate(dataset_path, sheet_path, output_root, *, write=False):
     if (target / Path(sheet_path).name).read_bytes() != raw:
         raise ValueError("Output sheet bytes differ from the validated snapshot")
     write_json(target / "migration.json", manifest)
+    return {**result, "status": "migrated", "output_written": True, "directory": str(target)}
+
+
+def migrate_finalized(dataset_path, annotations_path, output_root, *, write=False):
+    """Rebind only a verified, semantically identical v3/current finalized pair."""
+    from trading_companion.news_triage_product_parent import load_parent_pair, rebound
+    old, annotations = load_parent_pair(dataset_path, annotations_path)
+    new, new_annotations = rebound(old, annotations)
+    result = {"status": "planned", "output_written": False, "model_calls": 0,
+              "source_dataset_sha256": old["dataset_sha256"], "dataset_sha256": new["dataset_sha256"],
+              "source_annotations_sha256": annotations["annotations_sha256"],
+              "annotations_sha256": new_annotations["annotations_sha256"], "rows": len(new["rows"]),
+              "answers_changed": 0, "context_changed": 0}
+    if not write:
+        return result
+    target = Path(output_root) / uuid4().hex
+    target.mkdir(parents=True, exist_ok=False)
+    write_json(target / "dataset.json", new)
+    write_json(target / "annotations.json", new_annotations)
+    write_json(target / "task.json", {"task": new["task"], "instructions": INSTRUCTIONS, "questions": questions()})
+    write_json(target / "migration.json", {**result, "policy": "identical_v3_label_definition_only_rebind_no_relabel"})
     return {**result, "status": "migrated", "output_written": True, "directory": str(target)}

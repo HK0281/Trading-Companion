@@ -8,7 +8,7 @@ import re
 import unicodedata
 
 TASK_VERSION = "news-triage-product-v2"
-RULE_VERSION = "news-triage-product-rules-v3"
+RULE_VERSION = "news-triage-product-rules-v4"
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_RULES = (
     "规则1：标题看不出具体议题的董事会、股东会决议公告，重要性为ordinary。",
@@ -55,7 +55,9 @@ CRITERIA = {
 OPTIONS = {q: tuple(values) for q, values in CRITERIA.items()}
 UNRESOLVED = "unresolved"
 SOURCES = ("news_triage_product.py", "news_triage_product_data.py", "news_triage_product_split.py", "news_triage_product_annotations.py",
-           "news_triage_product_models.py", "news_triage_product_evaluation.py", "news_triage_product_metrics.py")
+           "news_triage_product_models.py", "news_triage_product_evaluation.py", "news_triage_product_metrics.py",
+           "news_triage_product_batch.py", "news_triage_product_append.py", "news_triage_product_parent.py",
+           "news_triage_product_migration.py")
 
 
 def digest(value):
@@ -177,6 +179,5 @@ def route_reasons(identity, result, threshold):
 
 
 def filter_allowed(identity, result, *, deepseek_reviewed):
-    return bool(deepseek_reviewed and result["status"] == "ok" and identity["mismatch_basis"]
-                and not identity["credible_target_evidence"]
-                and result["answers"]["relevance"]["choice"] == "unrelated")
+    """Stage C was abandoned by the user on 2026-11-10; retain every title."""
+    return False

@@ -125,6 +125,31 @@ def _event_text(row):
     return re.sub(r"[^\w\u4e00-\u9fff]", "", text)
 
 
+def event_features(row):
+    text = _event_text(row)
+    return (text, {text[i:i+2] for i in range(len(text)-1)},
+            {k for k, p in EVENT_PATTERNS.items() if re.search(p, text)},
+            {row["instrument_id"], *row["identity"]["other_instruments"]})
+
+
+def event_link(left, right, left_features, right_features):
+    a, grams_a, events_a, issuers_a = left_features
+    b, grams_b, events_b, issuers_b = right_features
+    days = abs((date.fromisoformat(left["published_date"]) - date.fromisoformat(right["published_date"])).days)
+    same_issuer = left["instrument_id"] == right["instrument_id"]
+    if left["normalized_title"] == right["normalized_title"]:
+        return "identical_title_all_dates"
+    if left["url"] == right["url"]:
+        return "same_source_article"
+    if days <= 7 and same_issuer and events_a & events_b:
+        return "same_issuer_event_family_7d"
+    if days <= 7 and (same_issuer or issuers_a & issuers_b):
+        overlap = len(grams_a & grams_b) / max(1, min(len(grams_a), len(grams_b)))
+        if min(len(a), len(b)) >= 10 and (overlap >= .64 or SequenceMatcher(None, a, b).ratio() >= .70):
+            return "near_title_shared_issuer_7d"
+    return None
+
+
 def group_rows(rows):
     """Union conservative links across sources/issuers; variants never straddle splits."""
     unique = {r["id"]: r for r in rows}
@@ -135,33 +160,12 @@ def group_rows(rows):
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
-    features = []
-    for row in records:
-        text = _event_text(row)
-        features.append((text, {text[i:i+2] for i in range(len(text)-1)},
-                         {k for k, p in EVENT_PATTERNS.items() if re.search(p, text)},
-                         {row["instrument_id"], *row["identity"]["other_instruments"]}))
+    features = [event_features(row) for row in records]
     links = []
     for i, left in enumerate(records):
-        a, grams_a, events_a, issuers_a = features[i]
         for j in range(i):
             right = records[j]
-            b, grams_b, events_b, issuers_b = features[j]
-            days = abs((date.fromisoformat(left["published_date"]) - date.fromisoformat(right["published_date"])).days)
-            same_issuer = left["instrument_id"] == right["instrument_id"]
-            reason = None
-            if left["normalized_title"] == right["normalized_title"]:
-                reason = "identical_title_all_dates"
-            elif left["url"] == right["url"]:
-                reason = "same_source_article"
-            elif days <= 7 and same_issuer and events_a & events_b:
-                # Intentionally overgroup repeated corporate-event families. This loses
-                # sample count rather than treating rewrites as independent evidence.
-                reason = "same_issuer_event_family_7d"
-            elif days <= 7 and (same_issuer or issuers_a & issuers_b):
-                overlap = len(grams_a & grams_b) / max(1, min(len(grams_a), len(grams_b)))
-                if min(len(a), len(b)) >= 10 and (overlap >= .64 or SequenceMatcher(None, a, b).ratio() >= .70):
-                    reason = "near_title_shared_issuer_7d"
+            reason = event_link(left, right, features[i], features[j])
             if reason:
                 parent[root(i)] = root(j)
                 links.append({"left": left["id"], "right": right["id"], "reason": reason})
@@ -222,7 +226,7 @@ def build_dataset(capture_dir, directory_path):
                            "human_gate_support": {key: {"required": need, "verified": 0, "verified_shortfall": need,
                                                          "available_after_annotation": None, "status": "not_annotated"}
                                                   for key, need in (("importance_high", 30), ("tone_positive", 30),
-                                                                    ("tone_negative", 30), ("proposed_filter", 50))},
+                                                                    ("tone_negative", 30))},
                            "program_mismatch_candidates": sum(bool(r["identity"]["mismatch_basis"]) for r in representatives),
                            **split},
                "group_review": "pending_independent_human_confirmation",
@@ -273,6 +277,21 @@ def _validate_dataset(dataset, expected_task):
             raise ValueError("Company assignment mismatch")
     if not balance_report(dataset["rows"], assignment)["passed"]:
         raise ValueError("Source or board imbalance")
+    if "append" in dataset:
+        manifest = dataset["append"]
+        frozen, added = manifest["frozen_ids"], manifest["added_ids"]
+        if (manifest["version"] != "news-triage-product-append-v1"
+                or len(set(frozen)) != len(frozen) or len(set(added)) != len(added)
+                or set(frozen) & set(added) or set(frozen) | set(added) != {r["id"] for r in dataset["rows"]}
+                or manifest["new_natural_limit_per_split"] != 150
+                or any(sum(r["id"] in set(added) and r["stratum"] == "natural" and r["split"] == side
+                           for r in dataset["rows"]) > 150 for side in ("debug", "sealed"))):
+            raise ValueError("Invalid append partition or natural sample cap")
+        group_companies = {g["id"]: {m["instrument_id"] for m in g["members"]} for g in dataset["groups"]}
+        for gid, codes in manifest["new_company_bindings"].items():
+            if (gid not in group_companies or set(codes)-assignment.keys()
+                    or gid not in excluded and len({assignment[c] for c in group_companies[gid] | set(codes)}) != 1):
+                raise ValueError("New event contradicts fixed parent linkage")
     return dataset
 
 
@@ -282,11 +301,20 @@ def write_json(path, value):
         stream.write("\n")
 
 
-def prepare(capture_dir, directory_path, output_root):
+def prepare(capture_dir, directory_path, output_root, *, base_dataset=None, base_annotations=None):
     from trading_companion.news_triage_product_annotations import write_blind_sheets
-    dataset = build_dataset(capture_dir, directory_path)
+    if (base_dataset is None) != (base_annotations is None):
+        raise ValueError("Both parent dataset and finalized annotations are required")
+    if base_dataset is None:
+        dataset = build_dataset(capture_dir, directory_path)
+    else:
+        from trading_companion.news_triage_product_append import build_append_dataset
+        dataset = build_append_dataset(capture_dir, directory_path, base_dataset, base_annotations)
     if not dataset["summary"]["balance"]["passed"]:
         return {"status": "imbalanced", "summary": dataset["summary"], "output_written": False,
+                "model_calls": 0, "annotations_filled": 0}
+    if "append" in dataset and not dataset["append"]["added_ids"]:
+        return {"status": "no_new_rows", "summary": dataset["summary"], "output_written": False,
                 "model_calls": 0, "annotations_filled": 0}
     target = Path(output_root) / uuid4().hex
     target.mkdir(parents=True, exist_ok=False)

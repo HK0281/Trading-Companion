@@ -17,10 +17,13 @@ def main(argv=None):
     parser.add_argument("--codex", required=True)
     parser.add_argument("--claude", required=True)
     parser.add_argument("--adjudications")
+    parser.add_argument("--base-dataset")
+    parser.add_argument("--base-annotations")
     parser.add_argument("--output-root", default=str(ROOT / ".agentbus/tmp/news-triage-product-annotations"))
     args = parser.parse_args(argv)
     try:
-        result = write_merge(args.dataset, args.codex, args.claude, args.output_root, adjudications=args.adjudications)
+        result = write_merge(args.dataset, args.codex, args.claude, args.output_root, adjudications=args.adjudications,
+                             base_dataset=args.base_dataset, base_annotations=args.base_annotations)
     except Exception:
         print(json.dumps({"status": "invalid_request", "detail": "标注字段、原始资料、规则版本或裁定无效。"}, ensure_ascii=False))
         return 2

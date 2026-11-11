@@ -42,7 +42,7 @@ class ProductTaskTests(unittest.TestCase):
         self.assertEqual(set(questions()), {"relevance", "tone", "importance"})
         self.assertIn("event_type", v1_questions())
         self.assertEqual(descriptor()["task_version"], "news-triage-product-v2")
-        self.assertEqual(descriptor()["rule_version"], "news-triage-product-rules-v3")
+        self.assertEqual(descriptor()["rule_version"], "news-triage-product-rules-v4")
         self.assertEqual(descriptor(), json.loads((Path(__file__).resolve().parents[1] /
                          "data/evaluation/news-triage-product-v2.rules.json").read_text("utf-8")))
 
@@ -95,11 +95,11 @@ class ProductTaskTests(unittest.TestCase):
         row["gold"] = "never_send_this"
         self.assertEqual(set(input_state(row)), {"title", "company_name", "instrument_id", "identity"})
 
-    def test_filter_requires_program_mismatch_deepseek_and_no_conflict(self):
+    def test_abandoned_filter_retains_even_reviewed_mismatches(self):
         check = sample("产品编号600000发行")["identity"]
         result = {"status": "ok", **response(relevance="unrelated")}
         self.assertFalse(filter_allowed(check, result, deepseek_reviewed=False))
-        self.assertTrue(filter_allowed(check, result, deepseek_reviewed=True))
+        self.assertFalse(filter_allowed(check, result, deepseek_reviewed=True))
         self.assertFalse(filter_allowed(sample()["identity"], result, deepseek_reviewed=True))
 
 

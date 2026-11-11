@@ -123,7 +123,7 @@ class SortingReplayTests(unittest.TestCase):
         guard.preflight(False,budget)
         self.assertEqual(budget.stop_reason,"pair_money_budget")
 
-    def test_existing_answer_transport_retry_is_counted_before_stopping_next_arm(self):
+    def test_existing_answer_timeout_retry_is_estimated_and_all_pairs_continue(self):
         from trading_companion.model import ModelCallError
         class RetryOnce(Answer):
             failed=False
@@ -133,15 +133,53 @@ class SortingReplayTests(unittest.TestCase):
                     raise ModelCallError("timeout","synthetic timeout")
                 return super().complete(messages,tools=tools)
         report=self.run_case(model_factory=RetryOnce)
-        self.assertEqual(report["stop_reason"],"answer_usage_unknown")
-        self.assertEqual(len(report["rows"]),1)
+        self.assertIsNone(report["stop_reason"])
+        self.assertEqual(len(report["rows"]),30)
         arms=report["rows"][0]["arms"]
-        self.assertEqual(set(arms),{"on"})
+        self.assertEqual(set(arms),{"on","off"})
         calls=arms["on"]["answer_calls"]
         self.assertEqual(len(calls),2)
         self.assertIsNone(calls[0]["usage"])
+        self.assertEqual(calls[0]["status"],"timeout_estimated")
+        self.assertEqual(calls[0]["reserved_tokens"],24000)
         self.assertEqual(calls[1]["usage"]["total_tokens"],15)
-        self.assertEqual(report["attempts"]["deepseek"],3)
+        self.assertGreater(report["attempts"]["deepseek"],60)
+
+    def test_timeout_reserves_are_not_observed_usage_and_late_settlement_never_double_charges(self):
+        prices=dict(jev=VerifiedPrice("j","j",Decimal(1),Decimal(0)),
+                    deepseek=VerifiedPrice("d","d",Decimal(2),Decimal(8)))
+        guard=VerifiedCostGuard(prices);budget=PairBudget()
+        call=dict(id=1,provider="deepseek",requested_model="d",model=None,usage=None,
+                  status="timeout_estimated",response_received=False,reserved_tokens=5000)
+        arm=dict(answer_calls=[],triage=dict(calls=[call]))
+        costs=guard.reconcile(arm,budget,ledger_key="same-call")
+        self.assertTrue(costs["known"])
+        self.assertEqual(Decimal(costs["observed_CNY"]),0)
+        self.assertEqual(Decimal(costs["timeout_estimated_CNY"]),Decimal("0.04"))
+        self.assertIsNone(budget.stop_reason)
+        guard.reconcile(arm,budget,ledger_key="same-call")
+        self.assertEqual(guard.spent["deepseek"],Decimal("0.04"))
+        call.update(status="ok",response_received=True,model="d",
+                    usage=dict(prompt_tokens=1000,completion_tokens=1000,total_tokens=2000))
+        guard.reconcile(arm,budget,ledger_key="same-call")
+        self.assertEqual(guard.spent["deepseek"],Decimal("0.04"))
+        call["usage"]=dict(prompt_tokens=1000,completion_tokens=7000,total_tokens=8000)
+        guard.reconcile(arm,budget,ledger_key="same-call")
+        self.assertEqual(guard.spent["deepseek"],Decimal("0.058"))
+
+    def test_received_missing_or_inconsistent_usage_and_unreserved_timeout_still_stop(self):
+        prices=dict(jev=VerifiedPrice("j","j",Decimal(1),Decimal(0)),
+                    deepseek=VerifiedPrice("d","d",Decimal(2),Decimal(8)))
+        base=dict(provider="deepseek",requested_model="d",model="d",usage=None,
+                  status="timeout_estimated",response_received=False,reserved_tokens=5000)
+        for change in (dict(response_received=True),dict(usage=dict(prompt_tokens=1,completion_tokens=1,total_tokens=3)),
+                       dict(reserved_tokens=None),dict(model="different")):
+            guard=VerifiedCostGuard(prices);budget=PairBudget()
+            self.assertFalse(guard.reconcile(dict(answer_calls=[],triage=dict(calls=[{**base,**change}])),budget)["known"])
+            self.assertEqual(budget.stop_reason,"price_or_usage_unknown")
+        guard=VerifiedCostGuard(prices);guard.spent["deepseek"]=Decimal("14.98");budget=PairBudget()
+        guard.reconcile(dict(answer_calls=[],triage=dict(calls=[base])),budget)
+        self.assertEqual(budget.stop_reason,"pair_money_budget")
 
 
 if __name__=="__main__":unittest.main()

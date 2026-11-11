@@ -14,11 +14,13 @@ from trading_companion.news_triage_sorting_annotations import (
     seal_annotations, write_blind, summarize_blind,
 )
 from trading_companion.news_triage_sorting_artifacts import read_json, write_json
-from trading_companion.news_triage_sorting_live import CLAIM, preflight, run_live
+from trading_companion.news_triage_sorting_live import CLAIM, RERUN_CLAIM, preflight, run_live
 from trading_companion.news_triage_sorting_replay import PairBudget, VerifiedCostGuard, VerifiedPrice
 from tests.test_news_triage_sorting import settings, Transport
 from tests.test_news_triage_sorting_replay import Answer
 from tests.test_news_triage_sorting_freeze import manifest_files
+from tests.test_news_triage_shadow import public_data
+from trading_companion.typesafe_jev import ClassifierError, JEV_URL
 
 PRICES=Path(__file__).resolve().parents[1]/"data/evaluation/model-prices.json"
 
@@ -27,7 +29,8 @@ class LiveTests(unittest.TestCase):
     def setUp(self):
         self.temp=TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
-        self.manifest,self.digest,self.codex,self.claude=manifest_files(self.root)
+        with patch("tests.test_news_triage_sorting_freeze.CompanyDataFixture",public_data):
+            self.manifest,self.digest,self.codex,self.claude=manifest_files(self.root)
         seal_annotations(self.manifest,self.codex,self.claude)
         self.output=self.root/"run"
         for guard in (patch("socket.socket.connect",side_effect=AssertionError("no real connections")),
@@ -37,7 +40,8 @@ class LiveTests(unittest.TestCase):
     def live(self, **kwargs):
         return run_live(self.manifest,self.digest,PRICES,self.codex,self.claude,
                         kwargs.pop("max_requests",570),self.output,configure=kwargs.pop("configure",settings),
-                        answer_factory=kwargs.pop("answer_factory",lambda config:Answer()),sorter_post=Transport(),**kwargs)
+                        answer_factory=kwargs.pop("answer_factory",lambda config:Answer()),
+                        sorter_post=kwargs.pop("sorter_post",Transport()),**kwargs)
 
     def test_preview_missing_args_invalid_hash_annotations_or_price_never_load_keys_or_claim(self):
         with patch("sys.stdout",new=StringIO()):
@@ -92,6 +96,85 @@ class LiveTests(unittest.TestCase):
         with self.assertRaises(OSError):broken.attempt("deepseek")
         with self.assertRaises(Exception):broken.attempt("jev")
         self.assertEqual(broken.counts,dict(jev=0,deepseek=1))
+
+    def test_triage_transport_timeouts_restore_baseline_and_complete_all_sixty_turns(self):
+        import requests
+        transport=Transport()
+        def post(url,**kwargs):
+            if url!=JEV_URL:raise requests.exceptions.ReadTimeout()
+            return transport(url,**kwargs)
+        report=self.live(sorter_post=post)
+        self.assertEqual(report["status"],"awaiting_blind_review",report["stop_reason"])
+        self.assertEqual(len(list(self.output.glob("turn-*.json"))),60)
+        for row in report["rows"]:
+            arm=row["arms"]["on"]
+            self.assertEqual(arm["contexts"],row["arms"]["off"]["contexts"])
+            self.assertEqual(arm["triage"]["promoted"],0)
+            call=arm["triage"]["calls"][-1]
+            self.assertEqual(call["status"],"timeout_estimated")
+            self.assertTrue(arm["costs"]["known"])
+            self.assertGreater(Decimal(arm["costs"]["timeout_estimated_CNY"]),0)
+        self.assertLess(Decimal(report["rows"][-1]["arms"]["off"]["costs"]["charged_CNY"]),15)
+
+    def test_only_approved_interrupted_report_allows_one_new_complete_run_and_keeps_old_costs(self):
+        transport=Transport()
+        def legacy_failure(url,**kwargs):
+            if url!=JEV_URL:raise ClassifierError("invalid_response")
+            return transport(url,**kwargs)
+        interrupted=self.live(sorter_post=legacy_failure)
+        self.assertEqual(interrupted["status"],"partial")
+        self.assertEqual(interrupted["stop_reason"],"price_or_usage_unknown")
+        previous=self.output;report_path=previous/"report.json"
+        original_report=report_path.read_bytes();original_claim=(self.root/CLAIM).read_bytes()
+        _,digest=read_json(report_path)
+        self.output=self.root/"rerun"
+        configure=Mock(side_effect=AssertionError("no keys on rejected rerun"))
+        with self.assertRaises(ValueError):self.live(rerun_interrupted=previous,configure=configure)
+        configure.assert_not_called()
+        with patch("trading_companion.news_triage_sorting_live.APPROVED_INTERRUPTED_REPORT_SHA256",digest):
+            # Binding or output changes must be rejected before credentials are read.
+            with self.assertRaises(ValueError):self.live(rerun_interrupted=previous,max_requests=569,configure=configure)
+            self.output=previous/"nested-rerun"
+            with self.assertRaises(ValueError):self.live(rerun_interrupted=previous,configure=configure)
+            self.output=self.root/"rerun"
+            report=self.live(rerun_interrupted=previous)
+            self.assertEqual(report["status"],"awaiting_blind_review",report["stop_reason"])
+            self.assertEqual(len(list(self.output.glob("turn-*.json"))),60)
+            prior=report["run"]["interrupted_rerun"]
+            self.assertEqual(prior["report_sha256"],digest)
+            self.assertEqual(prior["attempts"],interrupted["attempts"])
+            self.assertGreater(Decimal(prior["costs"]["timeout_estimated_CNY"]),0)
+            self.assertTrue((self.root/RERUN_CLAIM).exists())
+            self.output=self.root/"third-run"
+            with self.assertRaises(ValueError):self.live(rerun_interrupted=previous,configure=configure)
+        self.assertEqual(report_path.read_bytes(),original_report)
+        self.assertEqual((self.root/CLAIM).read_bytes(),original_claim)
+        configure.assert_not_called()
+
+    def test_rerun_argument_requires_explicit_live_mode(self):
+        with patch("sys.stdout",new=StringIO()):
+            self.assertEqual(main(["--rerun-interrupted","previous"]),2)
+            self.assertEqual(main(["--make-blind","--rerun-interrupted","previous","--report","r","--output","o"]),2)
+
+    def test_received_response_without_usage_still_stops_after_current_arm(self):
+        transport=Transport()
+        def missing_usage(url,**kwargs):
+            response=transport(url,**kwargs)
+            if url!=JEV_URL:
+                payload=json.loads(response.raw)
+                payload.pop("usage")
+                response.raw=json.dumps(payload).encode("utf-8")
+            return response
+        report=self.live(sorter_post=missing_usage)
+        self.assertEqual(report["status"],"partial")
+        self.assertEqual(report["stop_reason"],"price_or_usage_unknown")
+        self.assertEqual(len(report["rows"]),1)
+        arm=report["rows"][0]["arms"]["on"]
+        self.assertEqual(set(report["rows"][0]["arms"]),{"on"})
+        self.assertEqual(arm["triage"]["calls"][-1]["status"],"usage_unknown")
+        self.assertTrue(arm["triage"]["calls"][-1]["response_received"])
+        self.assertIsNotNone(arm["answer"])
+        self.assertFalse((self.output/"blind").exists())
 
     def test_exception_after_completed_turn_keeps_partial_report_and_never_resumes(self):
         count=0

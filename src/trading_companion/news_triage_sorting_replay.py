@@ -204,6 +204,9 @@ class VerifiedCostGuard:
             raise ValueError("Use an explicit estimation policy")
         self.jev_alias_estimate=jev_alias_estimate
         self.alias_mismatches=0
+        self.lock=Lock()
+        self.entries={}
+        self.serial=0
         self.spent = dict(jev=Decimal(0), deepseek=Decimal(0))
         self.limits = dict(jev=Decimal("1"), deepseek=Decimal("15"))
 
@@ -219,26 +222,55 @@ class VerifiedCostGuard:
             if self.spent[provider]+reserve >= self.limits[provider]:
                 budget.stop_reason = budget.stop_reason or "pair_money_budget"
 
-    def reconcile(self, arm, budget):
-        calls = [*(arm.get("triage") or {}).get("calls", []), *arm["answer_calls"]]
+    def reconcile(self, arm, budget, *, ledger_key=None):
+        with self.lock:
+            if ledger_key is None:
+                self.serial+=1
+                ledger_key=("standalone",self.serial)
+            return self._reconcile(arm,budget,ledger_key)
+
+    def _reconcile(self, arm, budget, ledger_key):
+        calls = [("triage",c.get("id",i),c) for i,c in enumerate((arm.get("triage") or {}).get("calls", []))]
+        calls += [("answer",i,c) for i,c in enumerate(arm["answer_calls"])]
         known = True
-        for call in calls:
+        for kind, index, call in calls:
+            key=(ledger_key,kind,index)
             provider = call.get("provider")
             price = self.prices.get(provider)
             usage = token_usage(call)
             estimated=provider=="jev" and self.jev_alias_estimate
-            if (price is None or usage is None or call.get("requested_model") != price.requested_model
-                    or not call.get("model") or not estimated and call.get("model") != price.model):
+            reserved=call.get("reserved_tokens")
+            no_response=(call.get("status")=="timeout_estimated" and call.get("response_received") is False
+                         and call.get("usage") is None and type(reserved) is int
+                         and 0 < reserved <= (40000 if provider=="jev" else 24000))
+            if (price is None or call.get("requested_model") != price.requested_model
+                    or not no_response and (usage is None or not call.get("model"))
+                    or call.get("model") is not None and not estimated and call["model"] != price.model):
                 known = False
                 budget.stop_reason = budget.stop_reason or "price_or_usage_unknown"
                 continue
-            if estimated and call.get("model")!=price.model:self.alias_mismatches+=1
-            self.spent[provider] += (Decimal(usage.prompt_tokens)*price.input_rate
-                + Decimal(usage.completion_tokens)*price.output_rate)/1000000
+            prior=self.entries.get(key,{"amount":Decimal(0),"observed":Decimal(0),"alias":False})
+            mismatch=estimated and call.get("model") is not None and call["model"]!=price.model
+            if mismatch and not prior["alias"]:self.alias_mismatches+=1
+            observed=(Decimal(usage.prompt_tokens)*price.input_rate
+                + Decimal(usage.completion_tokens)*price.output_rate)/1000000 if usage else Decimal(0)
+            amount=Decimal(reserved)*max(price.input_rate,price.output_rate)/1000000 if no_response else observed
+            # Late observations can top up an estimate, but never release its reserve
+            # or charge the same attempted request twice.
+            amount=max(prior["amount"],amount)
+            self.spent[provider] += amount-prior["amount"]
+            self.entries[key]=dict(provider=provider,amount=amount,observed=max(prior["observed"],observed),
+                                   alias=prior["alias"] or mismatch)
             if self.spent[provider] >= self.limits[provider]:
                 budget.stop_reason = budget.stop_reason or "pair_money_budget"
-        return dict(known=known, observed_CNY=str(self.spent["deepseek"]),
-                    observed_USD=None if self.jev_alias_estimate else str(self.spent["jev"]),
+        observed_ds=sum((e["observed"] for e in self.entries.values() if e["provider"]=="deepseek"),Decimal(0))
+        estimated_cost={p:sum((e["amount"]-e["observed"] for e in self.entries.values() if e["provider"]==p),Decimal(0))
+                        for p in self.prices}
+        return dict(known=known, observed_CNY=str(observed_ds), charged_CNY=str(self.spent["deepseek"]),
+                    charged_USD=str(self.spent["jev"]), timeout_estimated_CNY=str(estimated_cost["deepseek"]),
+                    timeout_estimated_USD=str(estimated_cost["jev"]),
+                    observed_USD=None if self.jev_alias_estimate else str(sum(
+                        (e["observed"] for e in self.entries.values() if e["provider"]=="jev"),Decimal(0))),
                     jev_estimated_USD=str(self.spent["jev"]) if self.jev_alias_estimate else None,
                     jev_cost_status="estimated_unverified" if self.jev_alias_estimate else "verified_identity",
                     jev_alias_mismatches=self.alias_mismatches)
@@ -298,18 +330,30 @@ def run_pairs(cases, *, model_factory, sorter_factory, cost_guard, budget=None, 
                     for message in messages:
                         if message.content.startswith("UNTRUSTED_RESEARCH_CONTEXT\n"):
                             contexts.append(json.loads(message.content.partition("\n")[2]))
+                    reservation=24000  # Whole-turn conservative token allowance, recorded before sending.
+                    requested=cost_guard.prices["deepseek"].requested_model
                     try:
                         response=model.complete(messages,tools=tools)
-                    except Exception:
-                        responses.append(dict(provider="deepseek",requested_model=None,model=None,usage=None,phase=phase,
+                    except Exception as error:
+                        no_response=isinstance(error,ModelCallError) and error.code in ("timeout","connection_error")
+                        responses.append(dict(provider="deepseek",requested_model=requested,model=None,usage=None,phase=phase,
+                                              reserved_tokens=reservation,response_received=not no_response,
+                                              status="timeout_estimated" if no_response else "usage_unknown",
                                               elapsed_ms=round((clock()-call_started)*1000)))
                         raise
                     responses.append(dict(provider=response.provider,requested_model=response.requested_model,
                         model=response.model,usage=asdict(response.usage) if response.usage else None,phase=phase,
+                        reserved_tokens=reservation,response_received=True,status="ok",
                         elapsed_ms=round((clock()-call_started)*1000)))
                     return response
-            def receive(summary, *, case_id=case.id, side="on" if enabled else "off", saved=triage):
-                saved.append(summary)
+            settlement={"ready":False,"lock":Lock()}
+            ledger_key=(case.id,"on" if enabled else "off")
+            def receive(summary, *, case_id=case.id, side="on" if enabled else "off", saved=triage,
+                        state=settlement,key=ledger_key):
+                with state["lock"]:
+                    saved.append(summary)
+                    if state["ready"]:
+                        cost_guard.reconcile(dict(triage=summary,answer_calls=[]),budget,ledger_key=key)
                 if triage_sink is not None:triage_sink(case_id,side,summary)
             sorter=sorter_factory(receive,budget.attempt) if enabled else None
             if sorter is not None and type(sorter) is not NewsTriageSorter:raise ValueError("Use trusted sorter")
@@ -336,9 +380,12 @@ def run_pairs(cases, *, model_factory, sorter_factory, cost_guard, budget=None, 
                 budget.stop_reason=budget.stop_reason or "frozen_execution_failed"
             # Keep the existing answer retry/repair policy inside this arm; unknown
             # costs stop the following arm, never silently change product execution.
-            if any(token_usage(call) is None for call in responses):
+            if any(token_usage(call) is None and call.get("status")!="timeout_estimated" for call in responses):
                 budget.stop_reason=budget.stop_reason or "answer_usage_unknown"
-            arm["costs"]=cost_guard.reconcile(arm,budget)
+            with settlement["lock"]:
+                arm["triage"]=triage[-1] if triage else None
+                arm["costs"]=cost_guard.reconcile(arm,budget,ledger_key=ledger_key)
+                settlement["ready"]=True
             if after_turn is not None:after_turn(arm,budget)
             if result.product_bundle is None or result.product_answer is None or not contexts:
                 budget.stop_reason=budget.stop_reason or "frozen_execution_failed"

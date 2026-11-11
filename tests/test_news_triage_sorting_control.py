@@ -41,6 +41,31 @@ class SortingControlTests(unittest.TestCase):
             c.observe_optional_response(TokenUsage(1000,0,1000))
         self.assertEqual(caught.exception.code,"token_budget_exhausted")
 
+    def test_five_second_optional_window_leaves_fifteen_seconds_for_answer(self):
+        from trading_companion.turn_control import TurnControl
+        now=[0.];c=TurnControl(company_turn_control().limits,clock=lambda:now[0]);c.start()
+        now[0]=70
+        self.assertTrue(c.optional_model_available(100,500))
+        self.assertEqual(SortingRound(c,clock=lambda:now[0]).deadline,75)
+        now[0]=70.01
+        self.assertFalse(c.optional_model_available(100,500))
+        now[0]=74
+        self.assertEqual(SortingRound(c,clock=lambda:now[0]).deadline,75)
+        self.assertIsNone(c.to_dict()["stop_code"])
+
+    def test_pending_worker_timeout_keeps_its_reservation_and_late_usage(self):
+        c=self.control();round=SortingRound(c)
+        call=round.begin("jev","jev-latest",reserved_tokens=4000)
+        round.finish("triage_timeout")
+        snapshot=round.snapshot()
+        self.assertEqual(snapshot["calls"][0]["status"],"timeout_estimated")
+        self.assertEqual(snapshot["calls"][0]["reserved_tokens"],4000)
+        with self.assertRaises(ClassifierError):
+            round.settle(call,dict(model="jev-latest",usage=dict(prompt_tokens=3100,completion_tokens=0,total_tokens=3100)),
+                         "ok",round.started)
+        self.assertEqual(round.snapshot()["calls"][0]["usage"]["total_tokens"],3100)
+        self.assertIsNone(snapshot["calls"][0]["usage"])
+
     def test_bounded_pool_refuses_instead_of_queuing_across_turns(self):
         release=Event();started=[Event() for _ in range(3)]
         futures=[]

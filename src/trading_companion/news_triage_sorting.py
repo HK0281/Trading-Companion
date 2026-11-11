@@ -141,7 +141,7 @@ class NewsTriageSorter:
             baseline = prepare_answer_context(question, bundle)
             messages = _messages(question, baseline)
             answer_reserve = 2*(sum(estimated_tokens(m.content) for m in messages)+ANSWER_OUTPUT_TOKENS) + 700
-            ds_config = replace(ds_config, timeout_seconds=1.5, max_output_tokens=2048)
+            ds_config = replace(ds_config, timeout_seconds=3, max_output_tokens=2048)
             jev_config = replace(jev_config, timeout_seconds=2)
             chosen, estimate = [], 0
             jev_estimate = 0
@@ -186,7 +186,7 @@ class NewsTriageSorter:
             round.check(deadline)
             items = [{"id": row["id"], **input_state(row)} for row in chosen]
             second = invoke(round, "deepseek", lambda post: ProductDeepSeek(ds_config, post=post).classify_questions_batch(items),
-                deadline=min(round.deadline, self.clock()+1.5), estimate=estimate,
+                deadline=min(round.deadline, self.clock()+3), estimate=estimate,
                 answer_reserve=answer_reserve, post=self.post)
             if (second["extra_returned_items"] or second["unknown_returned_items"]
                     or any(item["status"] != "ok" for item in second["items"])):

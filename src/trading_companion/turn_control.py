@@ -140,7 +140,7 @@ class TurnControl:
             self._check()
             allowed = (self._model_calls + 3 <= self.limits.model_calls
                        and self._observed_tokens + estimated_tokens + answer_reserve < self.limits.observed_tokens
-                       and self.limits.timeout_seconds - self._elapsed >= 19)
+                       and self.limits.timeout_seconds - self._elapsed >= 20)
             if allowed and reserve:
                 self._model_calls += 1
             return allowed

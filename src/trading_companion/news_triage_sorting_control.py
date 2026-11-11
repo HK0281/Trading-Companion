@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from contextvars import copy_context
 from dataclasses import asdict
+import json
 from threading import BoundedSemaphore, Event, Lock
 from time import monotonic
 
@@ -53,14 +54,14 @@ class SortingRound:
         self.finished_at = None
         self.calls, self.reason, self.covered, self.candidates = [], "not_run", 0, 0
         self.promoted, self.capacity_fallbacks = 0, 0
-        self.deadline = self.started + min(4, control.timeout_for(4))
+        self.deadline = self.started + min(5, max(0, control.timeout_for(90)-15))
 
     def check(self, deadline):
         self.control.checkpoint()
         if self.stop.is_set() or self.clock() >= min(deadline, self.deadline):
             raise ClassifierError("triage_timeout")
 
-    def begin(self, provider, requested_model):
+    def begin(self, provider, requested_model, *, reserved_tokens=0):
         with self.lock:
             if self.stop.is_set():
                 raise ClassifierError("triage_timeout")
@@ -69,7 +70,8 @@ class SortingRound:
             if self.attempt_guard is not None:
                 self.attempt_guard(provider)
             call = dict(id=len(self.calls)+1, provider=provider, requested_model=requested_model,
-                        model=None, usage=None, status="pending", elapsed_ms=None, late=False)
+                        model=None, usage=None, status="pending", elapsed_ms=None, late=False,
+                        reserved_tokens=reserved_tokens, response_received=False)
             self.calls.append(call)
             return call
 
@@ -77,7 +79,8 @@ class SortingRound:
         usage = token_usage(metadata)
         with self.lock:
             call.update(model=metadata.get("model"), usage=asdict(usage) if usage else None,
-                        status=status if usage else "usage_unknown", late=self.stop.is_set(),
+                        status=status if usage or status == "timeout_estimated" else "usage_unknown",
+                        late=self.stop.is_set(),
                         elapsed_ms=round((self.clock()-started)*1000))
             if usage is None:
                 self.stop.set()
@@ -92,7 +95,7 @@ class SortingRound:
         finally:
             self.publish()
         if usage is None:
-            raise ClassifierError("usage_unknown")
+            raise ClassifierError("triage_timeout" if status == "timeout_estimated" else "usage_unknown")
         if self.stop.is_set():
             raise ClassifierError("triage_budget_or_timeout")
 
@@ -101,6 +104,9 @@ class SortingRound:
             self.reason = reason
             self.finished_at = self.clock()
             self.stop.set()
+            for call in self.calls:
+                if call["status"] == "pending" and not call["response_received"]:
+                    call["status"] = "timeout_estimated"
         self.publish()
 
     def snapshot(self):
@@ -137,16 +143,23 @@ class ControlledPost:
         if self.provider == "deepseek" and not r.control.optional_model_available(
                 self.estimate, self.answer_reserve, reserve=True):
             raise ClassifierError("triage_budget")
-        self.started = r.clock()
-        self.call = r.begin(self.provider, kwargs["json"]["model"])
-        timeout = min(r.control.timeout_for(2), self.deadline-r.clock(), r.deadline-r.clock())
+        timeout = min(r.control.timeout_for(3 if self.provider == "deepseek" else 2),
+                      self.deadline-r.clock(), r.deadline-r.clock())
         if timeout <= 0:
             raise ClassifierError("triage_timeout")
+        body = kwargs["json"]
+        planned = (len(json.dumps(body, ensure_ascii=False).encode("utf-8"))+2)//3 + body.get("max_tokens", 256)
+        self.started = r.clock()
+        self.call = r.begin(self.provider, body["model"], reserved_tokens=max(self.estimate, planned))
+        r.publish()  # Persist the request's estimate before the network attempt.
         kwargs["timeout"] = (timeout, timeout)
         if self.provider == "deepseek":
             from trading_companion.turn_trace import trace_provider_request
             trace_provider_request("deepseek", kwargs["json"]["model"])
         response = (requests.post if self.post is None else self.post)(endpoint, **kwargs)
+        if response.status_code != 200:
+            with r.lock:
+                self.call["response_received"] = True
         owner = self
         class CheckedResponse:
             status_code = response.status_code
@@ -157,6 +170,8 @@ class ControlledPost:
                     try:
                         chunk = next(iterator)
                     except StopIteration:
+                        with r.lock:
+                            owner.call["response_received"] = True
                         return
                     r.check(owner.deadline)
                     yield chunk
@@ -194,7 +209,11 @@ def _invoke(round, provider, function, *, deadline, estimate=0, answer_reserve=0
                     usage=token_usage(metadata), is_mock=False))
             # Never swallow a real turn stop under a classification/settlement failure.
             try:
-                round.settle(transport.call, metadata, "ok" if error is None else "failed", transport.started)
+                status = "ok" if error is None else "failed"
+                if (isinstance(error, ClassifierError) and error.code in ("timeout", "triage_timeout", "connection_error")
+                        and not transport.call["response_received"] and token_usage(metadata) is None):
+                    status = "timeout_estimated"
+                round.settle(transport.call, metadata, status, transport.started)
             except (ClassifierError, TurnStopped):
                 if isinstance(error, TurnStopped):
                     raise error

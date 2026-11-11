@@ -153,6 +153,40 @@ class SortingTests(unittest.TestCase):
                 self.assertIsNone(control.to_dict()["stop_code"])
         self.assertNotIn("deepseek",[p for p,_ in Transport(fail="jev").calls])
 
+    def test_deepseek_two_second_response_fits_three_second_request_and_five_second_window(self):
+        now=[0.]
+        transport=Transport();timeouts=[]
+        def post(url,**kwargs):
+            if url != JEV_URL:
+                timeouts.append(kwargs["timeout"])
+                now[0]+=2.063
+            return transport(url,**kwargs)
+        from trading_companion.turn_control import TurnControl
+        control=TurnControl(company_turn_control().limits,clock=lambda:now[0]);control.start()
+        sorter=NewsTriageSorter(configure=settings,post=post,clock=lambda:now[0])
+        with bind_turn(control):
+            order=sorter.sort(self.bundle(count=2),directory=directory(),now=NOW,question="分析公司新闻")
+        self.assertIsNotNone(order)
+        self.assertEqual(timeouts,[(3,3)])
+        self.assertEqual(order.round.deadline,5)
+
+    def test_deepseek_over_three_seconds_falls_back_and_retains_sent_reserve(self):
+        now=[0.];transport=Transport();summaries=[]
+        def post(url,**kwargs):
+            if url != JEV_URL:now[0]+=3.1
+            return transport(url,**kwargs)
+        sorter=NewsTriageSorter(configure=settings,post=post,clock=lambda:now[0],sink=summaries.append)
+        control=company_turn_control();control.start()
+        with bind_turn(control):
+            order=sorter.sort(self.bundle(count=2),directory=directory(),now=NOW,question="分析公司新闻")
+        self.assertIsNone(order)
+        self.assertEqual(summaries[-1]["reason"],"triage_timeout")
+        call=summaries[-1]["calls"][-1]
+        self.assertEqual(call["status"],"timeout_estimated")
+        self.assertGreater(call["reserved_tokens"],0)
+        self.assertFalse(call["response_received"])
+        self.assertIsNone(control.to_dict()["stop_code"])
+
     def test_valid_tone_disagreement_does_not_block_high_or_create_labels(self):
         order, _, _ = self.sort(self.bundle(count=4), Transport(ds_tone="positive"))
         self.assertIsNotNone(order)

@@ -17,13 +17,13 @@ def main(argv=None):
     modes.add_argument("--make-blind",action="store_true")
     modes.add_argument("--summarize-blind",action="store_true")
     for name in ("manifest","manifest-sha256","prices","annotations-codex","annotations-claude",
-                 "output","report","mapping","table","reviews"):
+                 "output","report","mapping","table","reviews","rerun-interrupted"):
         parser.add_argument("--"+name)
     parser.add_argument("--max-requests",type=int)
     args=parser.parse_args(argv)
     try:
         live_options=(args.manifest_sha256,args.prices,args.annotations_codex,args.annotations_claude,
-                      args.max_requests is not None)
+                      args.max_requests is not None,args.rerun_interrupted)
         blind_options=(args.report,args.mapping,args.table,args.reviews)
         if args.live:
             if (not all((args.manifest,args.manifest_sha256,args.prices,args.annotations_codex,
@@ -31,7 +31,8 @@ def main(argv=None):
                 raise ValueError("Supply every explicit live allowance and artifact")
             from trading_companion.news_triage_sorting_live import run_live
             report=run_live(args.manifest,args.manifest_sha256,args.prices,args.annotations_codex,
-                            args.annotations_claude,args.max_requests,args.output)
+                            args.annotations_claude,args.max_requests,args.output,
+                            rerun_interrupted=args.rerun_interrupted)
             print(json.dumps(dict(status=report["status"],attempts=report["attempts"],
                                   stop_reason=report["stop_reason"],enablement=False),ensure_ascii=False,indent=2))
             return 0 if report["status"]=="awaiting_blind_review" else 1

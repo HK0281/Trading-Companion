@@ -426,7 +426,10 @@ class TurnTrace:
                 provider=call.get("provider") if call.get("provider") in ("jev", "deepseek") else None,
                 requested_model=_model_name(call.get("requested_model")), model=_model_name(call.get("model")),
                 usage={key: _count((call.get("usage") or {}).get(key)) for key in _USAGE_KEYS},
-                status=call.get("status") if call.get("status") in ("ok", "failed", "pending", "usage_unknown") else "other",
+                status=call.get("status") if call.get("status") in (
+                    "ok", "failed", "pending", "usage_unknown", "timeout_estimated") else "other",
+                reserved_tokens=_count(call.get("reserved_tokens")),
+                response_received=call.get("response_received") is True,
                 elapsed_ms=_count(call.get("elapsed_ms")), late=call.get("late") is True))
         record["totals"] = {}
         record["omitted_calls"] = 0

@@ -13,16 +13,55 @@ from trading_companion.evaluation_pricing import load_prices, price_for, rate
 from trading_companion.model_registry import configured_news_sorting
 from trading_companion.news_triage_sorting import NewsTriageSorter
 from trading_companion.news_triage_sorting_annotations import load_seal, write_blind
-from trading_companion.news_triage_sorting_artifacts import canonical, write_json
+from trading_companion.news_triage_sorting_artifacts import canonical, read_json, write_json
 from trading_companion.news_triage_sorting_freeze import rebuild_case
 from trading_companion.news_triage_sorting_replay import (
     VERSION, PairBudget, VerifiedCostGuard, VerifiedPrice, load_manifest, run_pairs,
 )
 
 CLAIM = "sorting-live.claim.json"
+RERUN_CLAIM = "sorting-live-interrupted-rerun.claim.json"
+# Message #585 authorizes precisely this first-arm interruption, never result-based reruns.
+APPROVED_INTERRUPTED_REPORT_SHA256 = "52859bd0977c9c5d1dfc27834eabe4f4a764ff9791bae190f6f2dd9e91cfa067"
 
 
-def preflight(manifest, manifest_sha256, prices, codex, claude, max_requests, output):
+def interrupted_rerun(previous, manifest, cases, metadata, budget, guard, output):
+    previous=Path(previous).resolve()
+    report, report_hash=read_json(previous/"report.json")
+    claim, claim_hash=read_json(Path(manifest).parent/CLAIM)
+    run,_=read_json(previous/"run.json")
+    bindings=("manifest_sha256","annotation_seal_sha256","prices_sha256","thresholds","provider_limits","max_requests")
+    if (report_hash!=APPROVED_INTERRUPTED_REPORT_SHA256 or report.get("status")!="partial"
+            or report.get("stop_reason")!="price_or_usage_unknown" or report.get("run")!=run
+            or any(run.get(k)!=metadata[k] or claim.get(k)!=run.get(k) for k in bindings)
+            or Path(claim.get("output","")).resolve()!=previous or (previous/"blind").exists()
+            or Path(output).resolve().is_relative_to(previous)
+            or len(report.get("rows",[]))!=1 or set(report["rows"][0]["arms"])!={"on"}
+            or report["rows"][0]["id"]!=cases[0][0].id or cases[0][1]!="on"
+            or {p.name for p in previous.glob("turn-*.json")}!={"turn-01.json"}):
+        raise ValueError("Only the hash-bound first-arm interruption approved in #585 may rerun once")
+    arm=deepcopy(report["rows"][0]["arms"]["on"])
+    calls=(arm.get("triage") or {}).get("calls",[])
+    missing=[c for c in calls if c.get("usage") is None]
+    if (len(missing)!=1 or missing[0].get("provider")!="deepseek" or missing[0].get("model") is not None
+            or missing[0].get("status")!="usage_unknown" or arm["triage"].get("reason")!="usage_unknown"):
+        raise ValueError("Interrupted triage does not match the approved legacy timeout")
+    # Legacy records omitted the per-request estimate. Its pre-send triage ceiling
+    # was 8,000 tokens; retain that larger reservation without editing old artifacts.
+    missing[0].update(status="timeout_estimated",response_received=False,reserved_tokens=8000)
+    counts={p:sum(c["provider"]==p for c in [*calls,*arm["answer_calls"]]) for p in budget.counts}
+    if counts!=report.get("attempts") or sum(counts.values())>=budget.max_requests:
+        raise ValueError("Interrupted attempt accounting mismatch")
+    budget.counts.update(counts)
+    prior_costs=guard.reconcile(arm,budget,ledger_key=("interrupted",report_hash))
+    if not prior_costs["known"] or budget.stop_reason:
+        raise ValueError("Interrupted costs must remain within the original allowances")
+    return dict(approval_message=585,report=str(previous/"report.json"),report_sha256=report_hash,
+                original_claim_sha256=claim_hash,stop_reason=report["stop_reason"],attempts=counts,
+                costs=prior_costs,legacy_timeout_reserved_tokens=8000)
+
+
+def preflight(manifest, manifest_sha256, prices, codex, claude, max_requests, output, *, rerun_interrupted=None):
     budget = PairBudget(max_requests)
     cases, plan = load_manifest(manifest)
     if (plan["version"] != VERSION or plan["manifest_sha256"] != manifest_sha256
@@ -53,7 +92,9 @@ def preflight(manifest, manifest_sha256, prices, codex, claude, max_requests, ou
                 for p, tokens in (("jev", 30*40000), ("deepseek", 60*24000))}
     if any(reserves[p] >= guard.limits[p] for p in reserves):
         raise ValueError("Approved whole-run token scenario exceeds its local money threshold")
-    if Path(output).exists() or (Path(manifest).parent/CLAIM).exists():
+    claimed=(Path(manifest).parent/CLAIM).exists()
+    if (Path(output).exists() or (Path(manifest).parent/RERUN_CLAIM).exists()
+            or claimed and rerun_interrupted is None or rerun_interrupted is not None and not claimed):
         raise ValueError("Never replace results or rerun a claimed manifest")
     metadata = dict(version="sorting-live-run-v1", manifest_sha256=manifest_sha256,
         annotation_seal_sha256=seal_hash, prices_sha256=price_hash,
@@ -63,13 +104,19 @@ def preflight(manifest, manifest_sha256, prices, codex, claude, max_requests, ou
         answer_model="deepseek-flash", answer_output_tokens=ANSWER_OUTPUT_TOKENS,
         answer_timeout_seconds=45, answer_temperature=None,
         enablement=False, no_automatic_resume=True)
+    if rerun_interrupted is not None:
+        metadata["interrupted_rerun"]=interrupted_rerun(
+            rerun_interrupted,manifest,cases,metadata,budget,guard,output)
+        if any(guard.spent[p]+reserves[p]>=guard.limits[p] for p in reserves):
+            raise ValueError("Interrupted costs plus the new run reserve exceed an original money limit")
     return cases, budget, guard, metadata
 
 
 def run_live(manifest, manifest_sha256, prices, codex, claude, max_requests, output,
-             *, configure=configured_news_sorting, answer_factory=DeepSeekToolModel, sorter_post=None):
+             *, configure=configured_news_sorting, answer_factory=DeepSeekToolModel, sorter_post=None,
+             rerun_interrupted=None):
     cases, budget, guard, metadata = preflight(
-        manifest, manifest_sha256, prices, codex, claude, max_requests, output)
+        manifest, manifest_sha256, prices, codex, claude, max_requests, output,rerun_interrupted=rerun_interrupted)
     # Only now may local credentials be read. Constructors do not send requests.
     jev, deepseek = configure()
     if jev.model != "jev-latest" or deepseek.model != "deepseek-flash":
@@ -78,7 +125,8 @@ def run_live(manifest, manifest_sha256, prices, codex, claude, max_requests, out
     answer_factory(answer_config)
     metadata["started_at"] = datetime.now(timezone.utc).isoformat()
     root = Path(output)
-    write_json(Path(manifest).parent/CLAIM, dict(**metadata, output=str(root.resolve())))
+    claim_name=RERUN_CLAIM if rerun_interrupted is not None else CLAIM
+    write_json(Path(manifest).parent/claim_name, dict(**metadata, output=str(root.resolve())))
     root.mkdir(parents=True, exist_ok=False)
     write_json(root/"run.json", metadata)
     journal = root/"journal"

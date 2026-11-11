@@ -1,6 +1,6 @@
 # 新闻标题分诊接入：记录现状与排序准备
 
-2026-11-10更新。三批共657题已定稿，调试323题、封存334题。双模型三题组合已完成一次性封存检验，重要性high召回44/45（97.8%）、精确率44/64（68.8%），通过排序分类门槛；倾向门槛未通过，无关过滤已放弃。用户已批准开始接入排序，代码已实现、待审核，开关默认关闭；完成30组配对回答验收、用户再次同意后才开启。完整成绩、费用和报告位置见[新三题准备和评估](news-triage-product-v2.md#组合组一次性封存结果与排序授权)。旧的[v1合成题评估](news-triage-design.md)保持原义。
+2026-11-10更新。三批共657题已定稿，调试323题、封存334题。双模型三题组合已完成一次性封存检验，重要性high召回44/45（97.8%）、精确率44/64（68.8%），通过排序分类门槛；倾向门槛未通过，无关过滤已放弃。用户已批准接入排序，排序代码已审核提交，开关默认关闭；本次补齐一次性采集、人工冻结、付费入口及盲审工具，尚未真实执行。完成30组配对回答验收、用户再次同意后才开启。完整成绩、费用和报告位置见[新三题准备和评估](news-triage-product-v2.md#组合组一次性封存结果与排序授权)。旧的[v1合成题评估](news-triage-design.md)保持原义。
 
 ## 当前行为
 
@@ -97,14 +97,47 @@ Jev全批目标窗口2秒、DeepSeek批次1.5秒，可选阶段总窗口4秒，�
 
 [重放工具](../src/trading_companion/news_triage_sorting_replay.py)提供固定资料包及散列清单、平衡开关顺序、真实已核验理解执行器接入点和逐次用量记录。资料包保存核验后请求、目录、日期、公司数据响应及每日价格请求/响应，由同一产品流程重新生成证据和交易计划；不调用意图模型或新资料源。JSON只接受封闭类型清单，不执行包中代码。
 
-验收前另交付费运行计划，冻结30组来源资料及人工“重要且相关事项/E编号”清单：12组单公司综合（8新闻加公告、2仅新闻、2仅公告）、6组含财务/技术的单公司决策、8组多公司（两家、三家各4）、4组容量边界（单、多公司各2）。这些构成与人工清单须由双方审核，工具不会代替人工挑包。固定15组先开、15组先关，每包开关各一轮，共60轮，不补跑或换包；保留原有受控重试和一次内容修复，所有尝试均计数。
+消息#579方案及#580补充已获批准。固定30组全部来自原三批150家，名单与理由写在[采集脚本](../scripts/freeze_news_triage_sorting.py)：12组单公司（8综合、2仅新闻、2仅公告）、6组含财务/技术的单公司决策、8组多公司（两家、三家各4）、4组容量边界（单、多公司各2）。综合与多公司都带财务和技术；决策明确未来20个交易日的参考计划；容量组要求日线、周线及五类指标，用真实资料逼近边界，未触边必须如实报告。固定15组先开、15组先关，各运行一次，共60轮，不补跑或换包；保留原有受控重试和一次内容修复，所有尝试均计数。
 
 ```powershell
-# 只验证既有30包的清单并输出计划，无密钥、模型或资料调用。
+# 默认只预览固定清单及预算，不读密钥或取数。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/freeze_news_triage_sorting.py
+# 以下真实采集只由Claude执行，目录必须是可用的本地证券快照。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/freeze_news_triage_sorting.py --live --max-source-requests 256 --directory <证券目录.json> --output .agentbus/tmp/sorting-freeze
+# 只验证既有30包并输出计划，无模型或资料调用。
 .\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage_sorting.py --manifest <冻结清单.json>
 ```
 
-命令没有`--live`入口。真实执行需Claude另写经审核的驱动，调用`run_pairs`并提供`VerifiedCostGuard`，即核对真实返回模型身份和价格的费用检查器。运行预算DeepSeek15元、Jev1美元，最坏实际请求DeepSeek270次、Jev300次、合570次；失败和既有重试也扣除。每轮前按Jev40,000、DeepSeek24,000与较高单价检查余额，每轮后按实际用量结算；任何未知用量、未结算调用或模型身份不匹配立即停止后续轮次，未知不当零。Jev当前别名价格无法证明返回版本的价格，仍为unknown，解决前保持计划预览。该检查是本地规划与观测阈值，最终响应可能超限；账单硬上限需供应商限制。
+公开HTTP请求最坏上限为256次：公司领域172次、日线按年份切片84次；精确请求缓存会减少实际次数，失败也扣额度。只用既有五个GET端点，起始间隔至少1秒，不跟随重定向、不自动重试或补取。采集前独占创建工作区级`.agentbus/tmp/news-triage-sorting-collection.claim.json`，换日期或输出路径不重置；不要删除标记来重跑。异常或中断保留资料包、逐包检查点和partial报告，任一领域缺失或决策计划不可用都不生成完整manifest（绑定30包散列的清单），先报告Claude。
+
+新资料格式为`news-triage-sorting-pairs-v2`，保存完整计划/证据摘要、原始E编号、日线计算请求编号及实际取数时间，并要求离线重建相同结果。v1包仍可预览和供受信离线驱动读取，但不具备付费入口所需的完整核对信息；不回写旧包或历史报告。模板与资料保存在已忽略目录，工具不会填写人工答案。
+
+采集成功后，Codex和Claude分别只读`evidence-guide.json`中的问题及原始证据，独立填写`annotations-codex.template.json`和`annotations-claude.template.json`的副本。每包须设`completed=true`；确无重要事项必须填非空`none_reason`，未审核、占位文字、未知或跨公司E引用均拒绝。每条事项至少引用一条该公司新闻/公告标题，可附同公司财务等依据，不脑补标题未提供的事实。两份清单不一致时，由Claude按既有授权裁定，记录说明；不自动取并集或交集。
+
+```powershell
+# 纯离线：核对两份已完成清单并冻结。分歧时另加 --adjudication <Claude裁定.json>。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/freeze_news_triage_sorting.py --seal-annotations --manifest <冻结清单.json> --annotations-codex <Codex清单.json> --annotations-claude <Claude清单.json>
+```
+
+裁定文件格式为`sorting-adjudication-v1`，含`annotator=claude`、`manifest_sha256`、两份输入的`codex_sha256`/`claude_sha256`和恰好覆盖分歧包的`cases`；包字段沿用人工模板，增加非空`reason`。冻结步骤在清单旁生成不可覆盖的`annotation-seal.json`及原裁定副本，保留输入和裁定散列。付费前重验全部内容，资料或人工文件改变就失效。
+
+```powershell
+# 真实付费只由Claude执行；所有检查通过后才读取模型凭据。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage_sorting.py --live --manifest <冻结清单.json> --manifest-sha256 <清单SHA256> --max-requests 570 --prices data/evaluation/model-prices.json --annotations-codex <Codex清单.json> --annotations-claude <Claude清单.json> --output .agentbus/tmp/sorting-live
+```
+
+[付费驱动](../src/trading_companion/news_triage_sorting_live.py)复用原产品接入点、三题分类协议和相同回答参数：`deepseek-flash`、关闭thinking、回答最多4096输出token、请求超时45秒；分类仍用Jev2秒/DeepSeek1.5秒目标窗口。总实际请求上限N须为1–570，同时DeepSeek至多270次、Jev至多300次，失败和重试也扣除，额度在请求前原子计数。验收阶段公开来源与意图请求均为0。清单旁独占创建`sorting-live.claim.json`，换输出目录仍拒绝；每次尝试、分类结算及每轮结果分文件保存，迟到响应留在独立流水。中断或未知用量留下partial报告，不自动续跑。
+
+本地预算DeepSeek15元、Jev1美元分别核算。按登记较高单价计算整套token情景，DeepSeek预留11.52元、Jev约0.0504美元；每轮前再按Jev40,000、DeepSeek24,000检查余额，轮后按供应商返回用量累计。依#578，仅本次验收允许Jev返回版本不同于`jev-latest`：输出`estimated_unverified`及`jev_estimated_USD`，实际身份照录，`observed_USD=null`，不宣称核价。300次×约3,100输入token的情景为0.03906美元，均非账单保证。DeepSeek身份不符、缺价格、未知用量或未结算调用停止后续轮次；未知不当零。历史`actual_cost`和封存报告仍严格核验身份并保留unknown，不回写。最终响应可能超限，账单硬上限需供应商限制。
+
+完整60轮后自动生成`blind/`，只把`blind-table.json`/HTML和`blind-review.template.json`交给人工盲审者，保留`private-mapping.json`及原报告供随后解盲。A/B每包独立随机，与执行顺序无关；表中只有问题、人工事项、共同原始E顺序证据及白名单回答内容/选中E清单，不含开关身份、流水或耗时。每侧填完成状态、从0开始的重要事项遗漏索引、串公司和引用错误数；遗漏或错误须有理由。原有遗漏也保留，不能只填“没有新增”。
+
+```powershell
+# 纯离线：如需另建盲表，输出目录必须全新。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage_sorting.py --make-blind --report <运行目录>/report.json --output <新盲审目录>
+# 纯离线：盲审完整后核对表、映射与原报告，再解盲；输出文件不能已存在。
+.\.venv\Scripts\python.exe -X utf8 -B scripts/evaluate_news_triage_sorting.py --summarize-blind --report <运行目录>/report.json --mapping <盲审目录>/private-mapping.json --table <盲审目录>/blind-table.json --reviews <填写后盲审.json> --output <新汇总.json>
+```
 
 报告分列Jev、DeepSeek分类、初稿、修复的token及耗时（并发请求耗时之和与分类墙钟耗时分别保留），整轮配对差值报告中位数、p95和最大值。人工盲审须列出原有遗漏，新增重要事项遗漏为0、两侧合计跨公司/引用错误为0；程序不能从缺少审核推断通过。完整资料包两侧相同，至少15对实际上下文变化、至少10对提升人工清单重要项、额外耗时p95不超过4秒，否则证据不足或失败并保持关闭。通过结果也永不自动开启。本轮只用合成资料、假传输、假模型验证60轮执行，不是实际质量验收；尚未冻结或运行真实30包。
 
@@ -122,4 +155,4 @@ Jev全批目标窗口2秒、DeepSeek批次1.5秒，可选阶段总窗口4秒，�
 
 两批最初共931条原始标题，经分组抽样保留341题；第三批追加后657题已定稿。分组的已接受局限、批量组实测及一次性封存结果见A2文档。新增排序测试覆盖独立预算、严格失败回退、最后裁剪保护、同上下文修复、新旧入口隔离、有界并发和迟到结算；配对测试用假模型跑60轮。在线同步延迟、实际排序覆盖及真实30组配对回答仍待验证；本轮没有真实模型调用。
 
-公司研究入口源码登记为`intent-news-triage-sorting-v1`，父版本`intent-news-title-capture-v1`完整移入历史，排序、控制、上下文和配对模块纳入源码指纹核验。原始题库、三题v5、组合v1、历史报告和封存评估锁不改写；版本登记不是模型效果评估或后续启用资格。
+公司研究入口源码登记为`intent-news-triage-paired-live-v1`，父版本`intent-news-triage-sorting-v1`完整移入历史，采集、人工冻结、付费、盲审及受控技术重建模块纳入源码指纹核验。原始题库、三题v5、组合v1、历史报告和封存评估锁不改写；版本登记不是模型效果评估或后续启用资格。

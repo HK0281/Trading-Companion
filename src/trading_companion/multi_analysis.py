@@ -1,7 +1,10 @@
 """One bounded data read, aligned calculations, and deterministic evidence."""
 
 from dataclasses import replace
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
+from datetime import datetime as _DatetimeType
 from itertools import combinations
 from math import isfinite
 
@@ -15,6 +18,26 @@ from trading_companion.multi_contracts import (
     IndicatorResult, IndicatorRow, IndicatorSpec, MultiIndicatorRequest,
     MultiIndicatorResult, RelationResult,
 )
+
+_RETRIEVAL_CLOCK = ContextVar("fixed_daily_retrieval_clock", default=None)
+
+
+@contextmanager
+def bind_retrieval_clock(clock):
+    """Trusted frozen-source replay only; normal analysis keeps its actual UTC clock."""
+    token = _RETRIEVAL_CLOCK.set(clock)
+    try:
+        yield
+    finally:
+        _RETRIEVAL_CLOCK.reset(token)
+
+
+def _retrieval_time():
+    clock = _RETRIEVAL_CLOCK.get()
+    value = clock() if clock is not None else datetime.now(timezone.utc)
+    if not isinstance(value, _DatetimeType) or value.tzinfo is None or value.utcoffset() is None:
+        raise InvalidRequestError("Daily retrieval time must be timezone aware")
+    return value
 
 
 def _fact_id(request, trade_date, indicator_id, field):
@@ -421,7 +444,7 @@ def analyze_indicators(
         return failure("source_error", "source_unavailable", "行情源读取失败；未使用替代来源。")
     except DataValidationError:
         return failure("invalid_data", "invalid_source_data", "行情源返回的数据无效。")
-    retrieved_at = datetime.now(timezone.utc)
+    retrieved_at = _retrieval_time()
     try:
         trace_call("check", "daily_records", _validate_records, bars, request)
     except DataValidationError:

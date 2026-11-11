@@ -1,6 +1,8 @@
 """Bounded domain collection for company research and candidate comparisons."""
 
 from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, time, timedelta, timezone
 import json
 import re
@@ -27,6 +29,18 @@ LABELS = {
     "revenue_yoy": "营收同比", "parent_net_profit_yoy": "归母净利润同比",
     "weighted_roe": "加权净资产收益率", "announcement_title": "公告标题", "news_excerpt": "新闻摘要",
 }
+
+_FIXED_DAILY_IDS = ContextVar("frozen_company_daily_ids", default=None)
+
+
+@contextmanager
+def bind_research_request_ids(identifiers):
+    """Frozen research replay preserves original calculation/evidence identities."""
+    token = _FIXED_DAILY_IDS.set(iter(identifiers))
+    try:
+        yield
+    finally:
+        _FIXED_DAILY_IDS.reset(token)
 
 
 def _number(value):
@@ -231,7 +245,8 @@ def collect_product_research(plan, *, data_service, now, development_source=None
                 or plan.descriptive_risk and plan.indicators and "technical" not in plan.scope.excluded):
             checkpoint()
             request = MultiIndicatorRequest(security.instrument_id, plan.start_date, plan.end_date,
-                source="csv" if development_source is not None else plan.source, indicators=plan.indicators)
+                source="csv" if development_source is not None else plan.source, indicators=plan.indicators,
+                **({"request_id":next(_FIXED_DAILY_IDS.get())} if _FIXED_DAILY_IDS.get() is not None else {}))
             reserve_analysis()
             result = analyze_indicators(development_source or factory(request), request,
                                         allow_development_csv=development_source is not None)

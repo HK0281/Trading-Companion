@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from math import isfinite
@@ -82,8 +82,11 @@ class TencentDailyBarSource:
     start_date: date
     end_date: date
     timeout_seconds: float = 15.0
+    http_get: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if self.http_get is not None and not callable(self.http_get):
+            raise InvalidRequestError("Use a trusted HTTP transport")
         to_tencent_symbol(self.instrument_id)
         if type(self.start_date) is not date or type(self.end_date) is not date:
             raise InvalidRequestError("start_date and end_date must be dates")
@@ -112,7 +115,7 @@ class TencentDailyBarSource:
             chunk_start = max(self.start_date, date(year, 1, 1))
             chunk_end = min(self.end_date, date(year, 12, 31))
             try:
-                response = requests.get(
+                response = (self.http_get or requests.get)(
                     TENCENT_DAILY_URL,
                     params={"param": f"{symbol},day,{chunk_start.isoformat()},{chunk_end.isoformat()},{MAX_RECORDS},"},
                     timeout=request_timeout(self.timeout_seconds),

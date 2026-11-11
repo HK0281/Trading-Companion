@@ -5,6 +5,7 @@ from math import sqrt
 
 from trading_companion.evaluation_pricing import actual_cost
 from trading_companion.news_triage_product import OPTIONS
+from trading_companion.news_triage_product_ensemble import ENSEMBLE_ARM
 
 
 def ratio(numerator, denominator):
@@ -92,5 +93,20 @@ def metrics(rows, arms, ledger, models, prices):
         scored["scope"] = "separate_actual_calls_no_counterfactual_savings" if arm.startswith("cascade") else "independent_classifier"
         if arm == "split_jev_deepseek_batch":
             scored["scope"] = "separate_actual_question_split_and_importance_batches"
+        if arm == ENSEMBLE_ARM:
+            scored["scope"] = "actual_three_question_ensemble_shared_call_diagnostics"
+            scored["components"] = {}
+            for provider in ("jev", "deepseek"):
+                component_rows = [{**r, "results": {provider: r["results"][arm]["component_results"][provider]}}
+                                  for r in rows]
+                scored["components"][provider] = {
+                    **scores(component_rows, provider), "scope": "same_actual_calls_no_additional_calls_or_costs"}
+            scored["combination"] = {q: {
+                "valid_disagreements": sum(
+                    all(c["question_status"][q]["status"] == "ok" for c in r["results"][arm]["component_results"].values())
+                    and len({c["answers"][q]["choice"] for c in r["results"][arm]["component_results"].values()}) > 1
+                    for r in rows),
+                "reasons": dict(Counter(r["results"][arm]["question_status"][q]["reason"] for r in rows))}
+                for q in OPTIONS}
         output[arm] = scored
     return output

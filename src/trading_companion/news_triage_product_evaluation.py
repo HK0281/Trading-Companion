@@ -19,13 +19,17 @@ from trading_companion.news_triage_product import OPTIONS, UNRESOLVED, filter_al
 from trading_companion.news_triage_product_annotations import load_annotations
 from trading_companion.news_triage_product_batch import SPLIT_ARM, make_batches, run_split_batches
 from trading_companion.news_triage_product_data import load_dataset, write_json
+from trading_companion.news_triage_product_ensemble import ENSEMBLE_ARM, ENSEMBLE_POLICY, run_ensemble_batches
 from trading_companion.news_triage_product_metrics import metrics
-from trading_companion.news_triage_product_models import BATCH_TEMPLATE, DEEPSEEK_TEMPLATE, ProductDeepSeek, ProductJev
+from trading_companion.news_triage_product_models import (
+    BATCH_TEMPLATE, DEEPSEEK_TEMPLATE, QUESTION_BATCH_TEMPLATE, ProductDeepSeek, ProductJev,
+)
 from trading_companion.typesafe_jev import ClassifierError, JevConfig, count
 from trading_companion.workflow_evaluation_runtime import check_output_root
 
 DEFAULT_ARMS = ("jev", "deepseek", "cascade_0.65", "cascade_0.90")
-ARMS = (*DEFAULT_ARMS, SPLIT_ARM)
+BATCH_ARMS = (SPLIT_ARM, ENSEMBLE_ARM)
+ARMS = (*DEFAULT_ARMS, *BATCH_ARMS)
 
 
 def make_plan(*, dataset_path, annotations_path=None, split="debug", arms=None, live=False,
@@ -45,9 +49,10 @@ def make_plan(*, dataset_path, annotations_path=None, split="debug", arms=None, 
         raise ValueError("Selected split is empty")
     by_id = {} if annotations is None else {r["id"]: r for r in annotations["rows"]}
     reviewed = all(by_id.get(r["id"], {}).get("status") == "reviewed" for r in rows)
-    providers = [p for p in ("jev", "deepseek") if any(a == p or a.startswith("cascade") or a == SPLIT_ARM for a in selected_arms)]
-    batches = make_batches(rows) if SPLIT_ARM in selected_arms else []
-    max_calls = len(rows) * sum(2 if a.startswith("cascade") else 1 for a in selected_arms) + len(batches)
+    providers = [p for p in ("jev", "deepseek") if any(a == p or a.startswith("cascade") or a in BATCH_ARMS for a in selected_arms)]
+    batch_arms = [a for a in BATCH_ARMS if a in selected_arms]
+    batches = make_batches(rows) if batch_arms else []
+    max_calls = len(rows) * sum(2 if a.startswith("cascade") else 1 for a in selected_arms) + len(batches)*len(batch_arms)
     if call_limit is not None and (type(call_limit) is not int or not 1 <= call_limit <= max_calls):
         raise ValueError("Call limit must be explicit and within the planned maximum")
     if deepseek_model is not None and (type(deepseek_model) is not str or not MODEL_ID.fullmatch(deepseek_model)):
@@ -64,8 +69,14 @@ def make_plan(*, dataset_path, annotations_path=None, split="debug", arms=None, 
             "split": split, "titles": len(rows), "arms": selected_arms, "providers": providers, "models": models,
             "thresholds": [.65, .90], "call_limit": call_limit, "worst_case_calls": max_calls,
             "timeout_seconds": timeout_seconds, "deepseek_template": DEEPSEEK_TEMPLATE,
-            "importance_batch_template": BATCH_TEMPLATE, "planned_importance_batches": len(batches),
-            "importance_batch_sizes": [len(b["rows"]) for b in batches], "title_policy": "retain_all",
+            "importance_batch_template": BATCH_TEMPLATE,
+            "planned_importance_batches": len(batches) if SPLIT_ARM in batch_arms else 0,
+            "importance_batch_sizes": [len(b["rows"]) for b in batches] if SPLIT_ARM in batch_arms else [],
+            "question_batch_template": QUESTION_BATCH_TEMPLATE,
+            "planned_question_batches": len(batches) if ENSEMBLE_ARM in batch_arms else 0,
+            "question_batch_sizes": [len(b["rows"]) for b in batches] if ENSEMBLE_ARM in batch_arms else [],
+            "ensemble_policy": deepcopy(ENSEMBLE_POLICY) if ENSEMBLE_ARM in batch_arms else None,
+            "title_policy": "retain_all",
             "price_config_sha256": price_digest,
             "cost_preview": {p: estimate_cost(prices, "typesafe" if p == "jev" else p, models[p],
                                               call_limit or max_calls) for p in providers},
@@ -73,7 +84,7 @@ def make_plan(*, dataset_path, annotations_path=None, split="debug", arms=None, 
             "execution": "separate_actual_arms_global_call_cap_failures_count_no_retries_stop_on_unknown_usage",
             "per_title_limits": {"calls": 6, "seconds": 90, "observed_tokens": 24000},
             "batch_limits": {"calls": "titles_in_batch_plus_one", "seconds": 90, "observed_tokens": 24000},
-            "schedule": "seed_20261110_old_arms_then_company_capture_split_batches_sequential",
+            "schedule": "seed_20261110_old_arms_then_split_then_ensemble_company_capture_batches_sequential",
             "time_scope": "Per-request cooperative timeout; not a hard wall-clock or remote billing cap.",
             "enablement": "Evaluation only; paired answer checks and user approval still required.",
             "report_dir": None if report_dir is None else str(report_dir)}
@@ -99,6 +110,8 @@ def empty_result(reason="call_limit"):
 
 def run_experiment(plan, dataset, annotations, prices, models, *, clock=monotonic):
     """Injectable runner; the CLI alone loads credentials after all review gates."""
+    if ENSEMBLE_ARM in plan["arms"] and plan.get("ensemble_policy") != ENSEMBLE_POLICY:
+        raise ValueError("Ensemble policy must be frozen in the execution plan")
     annotated = {r["id"]: r for r in annotations["rows"]}
     rows = [{**r, "gold": annotated[r["id"]]["gold"],
              "results": {arm: empty_result() for arm in plan["arms"]}}
@@ -120,12 +133,14 @@ def run_experiment(plan, dataset, annotations, prices, models, *, clock=monotoni
         ledger.append(record)  # Reserve before every actual attempt, including failures.
         if batch_id is not None:
             record["batch_id"] = batch_id
+        record["requested_questions"] = list(selected_questions or (("importance",) if items is not None else OPTIONS))
         if items is not None:
             record.update(item_id=None, item_ids=[item["id"] for item in items])
         started = clock()
         try:
             if items is not None:
-                response = models[provider].classify_importance_batch(items)
+                response = (models[provider].classify_questions_batch(items) if selected_questions is not None
+                            else models[provider].classify_importance_batch(items))
             elif selected_questions is not None:
                 response = models[provider].classify(input_state(row), selected_questions=selected_questions)
             else:
@@ -163,7 +178,7 @@ def run_experiment(plan, dataset, annotations, prices, models, *, clock=monotoni
     for index in order:
         row = rows[index]
         for arm in plan["arms"]:
-            if arm == SPLIT_ARM:
+            if arm in BATCH_ARMS:
                 continue
             if arm in ("jev", "deepseek"):
                 result = call(arm, row, arm)
@@ -185,19 +200,25 @@ def run_experiment(plan, dataset, annotations, prices, models, *, clock=monotoni
             result["issuer_conflict"] = bool(row["identity"]["issuer_verified"] and result["answers"]
                                                and result["answers"]["relevance"]["choice"] == "unrelated")
             row["results"][arm] = result
-    batch_reports = run_split_batches(rows, call) if SPLIT_ARM in plan["arms"] else []
+    batched = {}
+    for arm, runner in ((SPLIT_ARM, run_split_batches), (ENSEMBLE_ARM, run_ensemble_batches)):
+        if arm in plan["arms"]:
+            batched[arm] = runner(rows, call)
+    batch_reports = [b for batches in batched.values() for b in batches]
     scored = metrics(rows, plan["arms"], ledger, plan["models"], prices)
-    if SPLIT_ARM in scored:
-        scored[SPLIT_ARM]["importance_batches"] = {"planned": len(batch_reports),
-            "attempted": sum(bool(b["call_ids"]) for b in batch_reports), "batches": batch_reports,
-            "failed_items": sum(b["failed_items"] for b in batch_reports),
-            "extra_returned_items": sum(b["extra_returned_items"] for b in batch_reports)}
+    for arm, batches in batched.items():
+        key = "importance_batches" if arm == SPLIT_ARM else "question_batches"
+        scored[arm][key] = {"planned": len(batches),
+            "attempted": sum(bool(b["call_ids"]) for b in batches), "batches": batches,
+            "failed_items": sum(b["failed_items"] for b in batches),
+            "extra_returned_items": sum(b["extra_returned_items"] for b in batches),
+            "unknown_returned_items": sum(b["unknown_returned_items"] for b in batches)}
     return {"version": "news-triage-product-evaluation-v2",
             "status": "partial" if stop_reason or any(r["results"][a]["status"] not in ("ok", "unresolved")
                                                        or r["results"][a].get("review_status") in ("failed", "not_run")
                                                        for r in rows for a in plan["arms"])
                       or any(b["failed_items"] or b["extra_returned_items"] or b["unknown_returned_items"] for b in batch_reports)
-                      or any(e["arm"] == SPLIT_ARM and e["status"] == "failed" for e in ledger)
+                      or any(e["arm"] in BATCH_ARMS and e["status"] == "failed" for e in ledger)
                       else "completed",
             "evaluated_at": datetime.now(timezone.utc).isoformat(), "plan": plan,
             "scope": "real_title_classification_only_no_product_enablement", "rows": rows, "ledger": ledger,

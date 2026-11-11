@@ -42,7 +42,7 @@ class ProductTaskTests(unittest.TestCase):
         self.assertEqual(set(questions()), {"relevance", "tone", "importance"})
         self.assertIn("event_type", v1_questions())
         self.assertEqual(descriptor()["task_version"], "news-triage-product-v2")
-        self.assertEqual(descriptor()["rule_version"], "news-triage-product-rules-v4")
+        self.assertEqual(descriptor()["rule_version"], "news-triage-product-rules-v5")
         self.assertEqual(descriptor(), json.loads((Path(__file__).resolve().parents[1] /
                          "data/evaluation/news-triage-product-v2.rules.json").read_text("utf-8")))
 

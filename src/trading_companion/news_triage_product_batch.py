@@ -26,7 +26,7 @@ def run_split_batches(rows, call):
     reports = []
     for batch in make_batches(rows):
         items, bid = batch["rows"], batch["id"]
-        common = {"budget_id": "batch:"+bid, "budget_calls": len(items)+1, "batch_id": bid}
+        common = {"budget_id": SPLIT_ARM+":"+bid, "budget_calls": len(items)+1, "batch_id": bid}
         first = {r["id"]: call("jev", r, SPLIT_ARM, selected_questions=("relevance", "tone"), **common)
                  for r in items}
         payload = [{"id": r["id"], **input_state(r)} for r in items]

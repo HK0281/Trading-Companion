@@ -1,4 +1,4 @@
-"""Strictly registered v3 parents with identical question semantics; no general bypass."""
+"""Strictly registered v3/v4 parents with identical semantics; no general bypass."""
 
 from copy import deepcopy
 
@@ -7,6 +7,8 @@ from trading_companion.news_triage_product_data import _validate_dataset, read_j
 
 PARENT_PATH = ROOT / "data/evaluation/news-triage-product-rules-v3.legacy.json"
 PARENT_DESCRIPTOR_SHA256 = "72ee3a408692e84b4f69b603ccfba9a94718615a75c32480eab43c43a088f3d7"
+V4_PATH = ROOT / "data/evaluation/news-triage-product-rules-v4.legacy.json"
+V4_DESCRIPTOR_SHA256 = "2dcc88632a083773c668d47f6fb16e8f972df2f6b8639eff176cc0b6339a4663"
 
 
 def parent_descriptor():
@@ -16,13 +18,32 @@ def parent_descriptor():
     return value
 
 
+def v4_descriptor():
+    value = read_json(V4_PATH, 64*1024)
+    if digest(value) != V4_DESCRIPTOR_SHA256:
+        raise ValueError("Frozen v4 registration was changed")
+    return value
+
+
+def registered_descriptor(task):
+    current = descriptor()
+    if task == current:
+        return current
+    loaders = {"news-triage-product-rules-v3": parent_descriptor,
+               "news-triage-product-rules-v4": v4_descriptor}
+    loader = loaders.get(task.get("rule_version"))
+    if loader is None:
+        raise ValueError("Parent task is not registered")
+    expected = loader()
+    if task != expected or expected["definition_sha256"] != current["definition_sha256"]:
+        raise ValueError("Parent task or label semantics differ; manual re-review is required")
+    return expected
+
+
 def load_parent_pair(dataset_path, annotations_path):
     from trading_companion.news_triage_product_annotations import load_annotations
     raw = read_json(dataset_path)
-    current = descriptor()
-    expected = current if raw["task"] == current else parent_descriptor()
-    if expected["definition_sha256"] != current["definition_sha256"]:
-        raise ValueError("Parent label semantics differ; manual re-review is required")
+    expected = registered_descriptor(raw["task"])
     dataset = _validate_dataset(raw, expected)
     annotations = load_annotations(annotations_path, dataset)
     if annotations["status"] != "reviewed" or any(r["status"] != "reviewed" for r in annotations["rows"]):

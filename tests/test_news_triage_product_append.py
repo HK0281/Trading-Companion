@@ -16,7 +16,7 @@ from trading_companion.news_triage_product_annotations import (
 from trading_companion.news_triage_product_append import append_split, build_append_dataset
 from trading_companion.news_triage_product_data import load_dataset, prepare, write_json
 from trading_companion.news_triage_product_migration import migrate_finalized
-from trading_companion.news_triage_product_parent import load_parent_pair, parent_descriptor
+from trading_companion.news_triage_product_parent import load_parent_pair, parent_descriptor, v4_descriptor
 from tests.test_news_triage_product import DIRECTORY, sample
 from tests.test_news_triage_product_data import dataset_for, fill
 
@@ -200,6 +200,61 @@ class AppendTests(unittest.TestCase):
         for key in self.parent.keys()-{"task", "dataset_sha256"}:
             self.assertEqual(new[key], self.parent[key])
         self.assertEqual(self.parent_snapshot, (self.parent_path.read_bytes(), self.annotation_path.read_bytes()))
+
+    def test_registered_v4_append_rebind_preserves_parent_chain_splits_and_all_finalized_answers(self):
+        dataset = self.appended()
+        sheets = self.root/"v4-sheets"
+        sheets.mkdir()
+        write_blind_sheets(dataset, sheets)
+        for name in ("codex", "claude"):
+            fill(sheets/(name+".csv"))
+        annotations = merge(dataset, sheets/"codex.csv", sheets/"claude.csv",
+                            base_dataset=self.parent_path, base_annotations=self.annotation_path)
+        dataset["task"] = v4_descriptor()
+        self.assertEqual(dataset["task"]["definition_sha256"], descriptor()["definition_sha256"])
+        dataset["dataset_sha256"] = digest({k: v for k, v in dataset.items() if k != "dataset_sha256"})
+        annotations["dataset_sha256"] = dataset["dataset_sha256"]
+        annotations["annotations_sha256"] = digest({k: v for k, v in annotations.items() if k != "annotations_sha256"})
+        source, answers = self.root/"v4.json", self.root/"v4-annotations.json"
+        write_json(source, dataset)
+        write_json(answers, annotations)
+        snapshots = source.read_bytes(), answers.read_bytes()
+        with self.assertRaises(ValueError):
+            load_dataset(source)
+        target = self.root/"rebound-v4"
+        preview = migrate_finalized(source, answers, target)
+        self.assertEqual(preview["model_calls"], 0)
+        self.assertFalse(target.exists())
+        result = migrate_finalized(source, answers, target, write=True)
+        new = load_dataset(Path(result["directory"])/"dataset.json")
+        final = load_annotations(Path(result["directory"])/"annotations.json", new)
+        for key in dataset.keys()-{"task", "dataset_sha256"}:
+            self.assertEqual(new[key], dataset[key])
+        for key in annotations.keys()-{"dataset_sha256", "annotations_sha256"}:
+            self.assertEqual(final[key], annotations[key])
+        self.assertEqual(snapshots, (source.read_bytes(), answers.read_bytes()))
+
+    def test_v4_task_and_registration_must_match_exactly_before_migration_writes(self):
+        from trading_companion.news_triage_product_parent import V4_PATH
+        dataset, annotations = deepcopy(self.parent), deepcopy(self.annotations)
+        dataset["task"] = v4_descriptor()
+        source, answers = self.root/"v4.json", self.root/"v4-annotations.json"
+        target = self.root/"must-not-exist"
+        for field in ("rule_version", "definition_sha256", "source_digest"):
+            bad = deepcopy(dataset)
+            bad["task"][field] = "changed"
+            bad["dataset_sha256"] = digest({k: v for k, v in bad.items() if k != "dataset_sha256"})
+            annotations["dataset_sha256"] = bad["dataset_sha256"]
+            annotations["annotations_sha256"] = digest({k: v for k, v in annotations.items() if k != "annotations_sha256"})
+            source.write_text(json.dumps(bad), encoding="utf-8")
+            answers.write_text(json.dumps(annotations), encoding="utf-8")
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                migrate_finalized(source, answers, target, write=True)
+            self.assertFalse(target.exists())
+        fake = self.root/"fake-registration.json"
+        fake.write_text(V4_PATH.read_text("utf-8").replace("rules-v4", "rules-v999"), encoding="utf-8")
+        with patch("trading_companion.news_triage_product_parent.V4_PATH", fake), self.assertRaises(ValueError):
+            v4_descriptor()
 
     def test_parent_version_definition_incomplete_review_and_wrong_hash_are_rejected(self):
         for case in ("version", "definition", "source", "checksum", "incomplete"):

@@ -1,4 +1,4 @@
-"""迁移精确登记的个人表，或重绑定定义不变的v3定稿；默认预览，不改答案。"""
+"""迁移精确登记的个人表，或重绑定定义不变的v3/v4定稿；默认预览，不改答案。"""
 
 import argparse
 import json
@@ -16,7 +16,7 @@ def main(argv=None):
     parser.add_argument("--dataset", required=True, help="Registered original dataset.json")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--sheet", help="Only your own rules-v2 codex.csv or claude.csv")
-    source.add_argument("--annotations", help="Matching finalized rules-v3 annotations; definitions must be identical")
+    source.add_argument("--annotations", help="Matching finalized rules-v3/v4/current annotations; definitions must be identical")
     parser.add_argument("--output-root", default=str(ROOT / ".agentbus/tmp/news-triage-product-migrated"))
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)

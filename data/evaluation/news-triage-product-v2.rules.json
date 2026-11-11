@@ -1,19 +1,20 @@
 {
   "task_version": "news-triage-product-v2",
-  "rule_version": "news-triage-product-rules-v4",
+  "rule_version": "news-triage-product-rules-v5",
   "definition_sha256": "cfdd80a5e64e1918e9cb4c079f3e46eb10fde20a10e82479fdbedf8fc72b135b",
   "sources_sha256_lf": {
-    "news_triage_product.py": "5799aa1ee9a15ab44acf4f792d929402bc8ddf68027faf808e2ab7b934b94d6b",
+    "news_triage_product.py": "c43b03a7d1fbbdb7d0e12fe9360d917e1d210ec4a8f3c5e41ed0bec661e0d34d",
     "news_triage_product_data.py": "10b09540655159b7e7feb14a275c308cde8ac0da0522b175a1935834e82347a5",
     "news_triage_product_split.py": "f500bb75cbe4c2d5e4c4abf47b7ee5fe2146904e1cb125677fb07832b52f0bac",
     "news_triage_product_annotations.py": "ab9e1be59b70ce2ec2d346b1405e71697b774d66742974bd5fa7e0ff9bbc6ea1",
-    "news_triage_product_models.py": "356c4cfee8454be5419467e961ba330034a7b1912b794d2c0ea4e9367e5055f9",
-    "news_triage_product_evaluation.py": "8bcaf131de1c5b587e73e198cd8fc1e17509d0bbefb90205df5c64185ba00dbb",
-    "news_triage_product_metrics.py": "d6431ead034a9d7403a45ff0efe6b71483843696a592f3368814612e7c58e581",
-    "news_triage_product_batch.py": "64bce9a951e4608b166a162f61683174a9a1676632d750fd73d128e921384653",
+    "news_triage_product_models.py": "bd96adf9e3ec1da4263b07bb31fb54c2b3ac673c3e4b596ce6b71b77a504a97f",
+    "news_triage_product_evaluation.py": "1b0aee944477ba99c478a83c097d18c407709df5df0acd02eaa148ece6b6d96c",
+    "news_triage_product_metrics.py": "488c3ad86c5b0ba1be7b7fd1adcfd1ab28804e5c9dae63e9fbfc6aadcb229de5",
+    "news_triage_product_batch.py": "359605c9baceef2796da4d93ac13e0e223725ef24b310ef51884e8b45657e754",
     "news_triage_product_append.py": "7ab02ec334cbf8b17642329297f194beea8b90a4f3b7539fa18686e671d2d488",
-    "news_triage_product_parent.py": "74f4b162ee185feaa7de9dd401b09deb77bc0b226bf9a631b7511f67ffa3e713",
-    "news_triage_product_migration.py": "092f1fefbbba926f950b46ca942cc29bb9295c7c19d116b7670fcd681dc32753"
+    "news_triage_product_parent.py": "4a3e10b52dadfeae9f9747c69297b73e463b57f5563bdd1a06725d301fc3c2a9",
+    "news_triage_product_migration.py": "b971eabf0db7189992d04d05a9fe65f307ff2b0ce7f0f4a030e4dc6644e6a630",
+    "news_triage_product_ensemble.py": "e13274d1be133d09adb3e5e12c61022a9f30330cc0c7a4685a6cf01e520d46d3"
   },
-  "source_digest": "ecf8cd4774f9c624ad357373c12a711bccb98f5a9c11ce9824f096abcd703314"
+  "source_digest": "011051ded15ae61740a4f532496ff548c9068ea840d48ddf98ab7ee9e171c33b"
 }

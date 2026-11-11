@@ -49,8 +49,8 @@ def migrate(dataset_path, sheet_path, output_root, *, write=False):
     """Validate first; preview by default, or write a fresh, answer-preserving copy."""
     old = _validate_dataset(read_json(dataset_path), legacy_descriptor())
     current = descriptor()
-    if current["rule_version"] != "news-triage-product-rules-v4":
-        raise ValueError("This migration only targets rules-v4")
+    if current["rule_version"] != "news-triage-product-rules-v5":
+        raise ValueError("This migration only targets rules-v5")
     new = deepcopy(old)
     new["task"] = current
     new["dataset_sha256"] = digest({k: v for k, v in new.items() if k != "dataset_sha256"})
@@ -100,7 +100,7 @@ def migrate(dataset_path, sheet_path, output_root, *, write=False):
 
 
 def migrate_finalized(dataset_path, annotations_path, output_root, *, write=False):
-    """Rebind only a verified, semantically identical v3/current finalized pair."""
+    """Rebind only a verified, semantically identical v3/v4/current finalized pair."""
     from trading_companion.news_triage_product_parent import load_parent_pair, rebound
     old, annotations = load_parent_pair(dataset_path, annotations_path)
     new, new_annotations = rebound(old, annotations)
@@ -116,5 +116,5 @@ def migrate_finalized(dataset_path, annotations_path, output_root, *, write=Fals
     write_json(target / "dataset.json", new)
     write_json(target / "annotations.json", new_annotations)
     write_json(target / "task.json", {"task": new["task"], "instructions": INSTRUCTIONS, "questions": questions()})
-    write_json(target / "migration.json", {**result, "policy": "identical_v3_label_definition_only_rebind_no_relabel"})
+    write_json(target / "migration.json", {**result, "policy": "registered_identical_label_definition_only_rebind_no_relabel"})
     return {**result, "status": "migrated", "output_written": True, "directory": str(target)}

@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 import hashlib
@@ -16,6 +17,7 @@ from trading_companion.multi_analysis import analyze_indicators
 from trading_companion.multi_contracts import IndicatorSpec, MultiIndicatorRequest
 from trading_companion.product_plan import ProductPlan
 from trading_companion.product_research import ProductCompany, ProductEvidence, ProductResearchBundle
+from trading_companion.research_documents import DocumentCandidate, ResearchDocument
 from trading_companion.risk_research import build_risk_scenario
 from trading_companion.security_directory import Security
 from trading_companion.snapshot_store import (
@@ -29,6 +31,8 @@ OBSERVED = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 RETRIEVED = datetime(2026, 9, 26, 3, 0, tzinfo=UTC)
 PRIVATE = "private-question-model-answer-never-save"
 START, END = date(2026, 9, 21), date(2026, 9, 25)
+DOCUMENT_EXCERPT = "平安银行披露业务进展，相关业务保持稳定。"
+DOCUMENT_REMAINDER = "未供模型阅读的原文部分不得整篇归档。" * 100
 
 
 class _MemorySource:
@@ -61,6 +65,61 @@ def make_bundle(*, technical=False, retrieved_at=RETRIEVED.isoformat(), marker="
         risk = build_risk_scenario(result, expected_request=request)
         plan = replace(plan, indicators=request.indicators, indicators_explicit=True)
     return ProductResearchBundle(plan, (ProductCompany("000001.SZ", "平安银行", items, coverage, result, risk),))
+
+
+def make_document_bundle(*, available=True, selected=True, retrieved_at=RETRIEVED.isoformat(), document_published_at=None,
+                         complete=True, legacy=False, kind='news', paragraphs=None, excerpt_index=1):
+    bundle = make_bundle()
+    company = bundle.companies[0]
+    parent = ProductEvidence("sina-title-1", company.instrument_id, "news", "news_title", "平安银行披露业务进展",
+        "sina_company_news", date=END.isoformat(),
+        url="https://finance.sina.com.cn/stock/doc-abcdef123.shtml", content_kind="title",
+        publication_precision="date", retrieved_at=RETRIEVED.isoformat(), raw_value="平安银行披露业务进展", unit="text")
+    if kind == 'announcements':
+        parent = replace(parent, kind=kind, source='eastmoney_announcements',
+                         url='https://data.eastmoney.com/notices/detail/000001/AN202609250001234567.html')
+    reason = 'document_tables_omitted' if kind == 'news' else 'document_first_page_only'
+    candidate = DocumentCandidate(parent.id, parent.instrument_id, company.name, parent.kind, parent.source,
+                                  parent.raw_value, parent.url, parent.date)
+    document = ResearchDocument(candidate, (DOCUMENT_EXCERPT + " 同段后续文字。", DOCUMENT_REMAINDER) if paragraphs is None else paragraphs,
+                                retrieved_at, 'sina-artibody-v3' if kind == 'news' else 'eastmoney-announcement-body-v2',
+                                published_at=document_published_at, complete=complete,
+                                incomplete_reasons=() if complete else (reason,),
+                                omitted_tables=1 if not complete and kind == 'news' else 0,
+                                page_count=2 if not complete and kind == 'announcements' else 1)
+    item = dict(instrument_id=parent.instrument_id, kind=parent.kind, parent_title_id=parent.id,
+                title=parent.raw_value, url=parent.url, source=parent.source,
+                status="available" if available else "unavailable",
+                code=("document_read" if complete else reason) if available else "document_attachment_only")
+    supplemental = ()
+    if available:
+        digest = hashlib.sha256(DOCUMENT_EXCERPT.encode("utf-8")).hexdigest()
+        item.update(document_id=document.id, sha256=document.content_sha256,
+                    extractor_version=document.extractor_version, extracted_characters=len(document.text),
+                    paragraph_count=len(document.paragraphs),
+                    excerpts=[dict(paragraph_index=excerpt_index, text=DOCUMENT_EXCERPT, sha256=digest)] if selected else [],
+                    retrieved_at=document.retrieved_at, published_date=parent.date, publication_precision="date")
+        metadata = dict(document_id=document.id, parent_title_id=parent.id, sha256=document.content_sha256,
+                        paragraph_index=excerpt_index, excerpt_sha256=digest, extractor_version=document.extractor_version)
+        if legacy:
+            assert complete
+            old_version = 'sina-artibody-v2' if kind == 'news' else 'eastmoney-announcement-body-v1'
+            old_values = [candidate.instrument_id, candidate.parent_id, candidate.source, candidate.url,
+                          candidate.title, candidate.published_date, document.published_at,
+                          document.content_sha256, old_version]
+            old_id = 'document:' + hashlib.sha256(json.dumps(old_values, separators=(',', ':')).encode('utf-8')).hexdigest()
+            item.update(document_id=old_id, extractor_version=old_version)
+            metadata.update(document_id=old_id, extractor_version=old_version)
+        else:
+            item.update(**document.coverage_metadata())
+            metadata['document_complete'] = document.complete
+        supplemental = (replace(parent, id=metadata['document_id'] + ":excerpt:" + str(excerpt_index), label="新闻正文片段", display=DOCUMENT_EXCERPT,
+            content_kind="body_excerpt", dependencies=(parent.id,), raw_value=None,
+            retrieved_at=document.retrieved_at, document=metadata),)
+    return replace(bundle, plan=replace(bundle.plan, kinds=("financial", kind)),
+        companies=(replace(company, evidence=(*company.evidence, parent)),), supplemental_evidence=supplemental,
+        documents=dict(version="research-documents-v1", status=("available" if complete else "partial") if available else "unavailable",
+                       code=("documents_read" if complete else "documents_partial") if available else "documents_unavailable", items=[item]))
 
 
 class SnapshotStoreTests(unittest.TestCase):
@@ -135,6 +194,299 @@ class SnapshotStoreTests(unittest.TestCase):
         duplicate_id = replace(bundle, companies=(original, replace(other,
             evidence=(replace(other.evidence[0], id=original.evidence[0].id),))))
         self.assert_error("invalid_snapshot_bundle", self.store.save, duplicate_id)
+
+    def test_documents_off_keeps_legacy_payload_and_content_identifier(self):
+        identifier = self.store.save(self.bundle)
+        self.assertEqual(identifier, "f8b554abcd10bd1176dfada74e216df14ed4e9aa74b277262f05583d3a91a9f5")
+        payload = self.store.load(identifier)
+        self.assertNotIn("documents", payload)
+        self.assertNotIn("supplemental_evidence", payload)
+
+    def test_legacy_document_fields_and_identifier_round_trip_without_being_rewritten(self):
+        bundle = make_document_bundle(legacy=True)
+        identifier = self.store.save(bundle)
+        payload = self.store.load(identifier)
+        self.assertEqual(payload['documents'], bundle.documents)
+        self.assertEqual(payload['supplemental_evidence'], [e.to_dict() for e in bundle.supplemental_evidence])
+        self.assertNotIn('complete', payload['documents']['items'][0])
+        self.assertNotIn('document_complete', payload['supplemental_evidence'][0]['document'])
+        self.assertEqual(self.store.save(bundle), identifier)
+
+    def test_partial_coverage_round_trips_even_when_no_excerpt_was_supplied(self):
+        bundle = make_document_bundle(complete=False, selected=False)
+        payload = self.store.load(self.store.save(bundle))
+        self.assertEqual(payload['documents'], bundle.documents)
+        self.assertEqual(payload['documents']['status'], 'partial')
+        self.assertEqual(payload['documents']['items'][0]['excerpts'], [])
+        self.assertIs(payload['supplemental_evidence'][0]['document']['document_complete'], False)
+
+    def test_first_page_and_legacy_announcement_coverage_round_trip(self):
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                bundle = make_document_bundle(kind='announcements', complete=legacy, legacy=legacy)
+                payload = self.store.load(self.store.save(bundle))
+                self.assertEqual(payload['documents'], bundle.documents)
+                self.assertEqual(payload['supplemental_evidence'], [e.to_dict() for e in bundle.supplemental_evidence])
+                if not legacy:
+                    item = payload['documents']['items'][0]
+                    self.assertEqual((item['code'], item['page_count']), ('document_first_page_only', 2))
+                    self.assertIs(item['complete'], False)
+
+    def test_announcement_paragraph_400_round_trips_with_matching_summary_and_candidates(self):
+        for selected in (False, True):
+            with self.subTest(selected=selected):
+                bundle = make_document_bundle(kind='announcements', selected=selected,
+                    paragraphs=('人工背景。',) * 399 + (DOCUMENT_EXCERPT,), excerpt_index=400)
+                payload = self.store.load(self.store.save(bundle))
+                self.assertEqual(payload['documents'], bundle.documents)
+                self.assertEqual(payload['documents']['items'][0]['paragraph_count'], 400)
+                self.assertEqual(payload['supplemental_evidence'][0]['document']['paragraph_index'], 400)
+                evidence = bundle.supplemental_evidence[0]
+                for count, index in ((401, 400), (400, 401), (128, 129)):
+                    summary = deepcopy(bundle.documents)
+                    summary['items'][0]['paragraph_count'] = count
+                    summary['items'][0]['excerpts'] = [dict(paragraph_index=index, text=DOCUMENT_EXCERPT,
+                        sha256=evidence.document['excerpt_sha256'])]
+                    candidate = replace(evidence, document={**evidence.document, 'paragraph_index': index})
+                    self.assert_error('invalid_snapshot_bundle', self.store.save,
+                        replace(bundle, documents=summary, supplemental_evidence=(candidate,)))
+
+    def test_partial_fields_must_be_complete_consistent_and_paired_with_all_candidates(self):
+        bundle = make_document_bundle(complete=False)
+        fields = ('complete', 'omitted_tables', 'page_count', 'private_use_characters_replaced', 'omitted_trailing_characters')
+        for missing in fields:
+            summary = deepcopy(bundle.documents)
+            del summary['items'][0][missing]
+            with self.subTest(missing=missing):
+                self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle, documents=summary))
+        for changes in (dict(complete=0), dict(complete=True), dict(omitted_tables=True), dict(page_count=2),
+                        dict(private_use_characters_replaced=1), dict(omitted_trailing_characters=16001),
+                        dict(code='document_read'), dict(code='document_first_page_only'), dict(extra=0)):
+            summary = deepcopy(bundle.documents)
+            summary['items'][0].update(changes)
+            with self.subTest(changes=changes):
+                self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle, documents=summary))
+        evidence = bundle.supplemental_evidence[0]
+        for value in (True, 0, None):
+            metadata = {**evidence.document, 'document_complete': value}
+            with self.subTest(value=value):
+                self.assert_error('invalid_snapshot_bundle', self.store.save,
+                    replace(bundle, supplemental_evidence=(replace(evidence, document=metadata),)))
+        metadata = dict(evidence.document)
+        del metadata['document_complete']
+        self.assert_error('invalid_snapshot_bundle', self.store.save,
+                          replace(bundle, supplemental_evidence=(replace(evidence, document=metadata),)))
+        legacy = make_document_bundle(legacy=True)
+        old = legacy.supplemental_evidence[0]
+        self.assert_error('invalid_snapshot_bundle', self.store.save, replace(legacy,
+            supplemental_evidence=(replace(old, document={**old.document, 'document_complete': True}),)))
+        summary = deepcopy(bundle.documents)
+        summary['status'] = 'available'
+        self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle, documents=summary))
+
+    def test_new_extractor_cannot_downgrade_by_dropping_coverage_or_cross_sources_and_limits(self):
+        bundle = make_document_bundle(complete=False)
+        summary = deepcopy(bundle.documents)
+        for key in ('complete', 'omitted_tables', 'page_count', 'private_use_characters_replaced', 'omitted_trailing_characters'):
+            del summary['items'][0][key]
+        summary['items'][0]['code'] = 'document_read'
+        summary.update(status='available', code='documents_read')
+        evidence = bundle.supplemental_evidence[0]
+        metadata = dict(evidence.document)
+        del metadata['document_complete']
+        self.assert_error('invalid_snapshot_bundle', self.store.save,
+            replace(bundle, documents=summary, supplemental_evidence=(replace(evidence, document=metadata),)))
+        for value in ('eastmoney-announcement-body-v2', 'sina-artibody-v2', 'unknown'):
+            summary = deepcopy(bundle.documents)
+            summary['items'][0]['extractor_version'] = value
+            changed = replace(evidence, document={**evidence.document, 'extractor_version': value})
+            self.assert_error('invalid_snapshot_bundle', self.store.save,
+                              replace(bundle, documents=summary, supplemental_evidence=(changed,)))
+        for changes in (dict(extracted_characters=16001), dict(extracted_characters=16000, omitted_trailing_characters=1)):
+            summary = deepcopy(bundle.documents)
+            summary['items'][0].update(changes)
+            self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle, documents=summary))
+
+    def test_document_excerpts_round_trip_without_archiving_full_text_or_moving_original_evidence(self):
+        bundle = make_document_bundle(retrieved_at=(OBSERVED - timedelta(minutes=1)).isoformat())
+        identifier = self.store.save(bundle)
+        payload = self.store.load(identifier)
+        self.assertEqual(payload["companies"][0]["evidence"],
+                         [item.to_dict() for item in bundle.companies[0].evidence])
+        self.assertEqual(payload["supplemental_evidence"], [item.to_dict() for item in bundle.supplemental_evidence])
+        self.assertEqual(payload["documents"], bundle.documents)
+        self.assertEqual(self.store.list()[0]["evidence_count"], len(bundle.evidence))
+        self.assertEqual(payload["source_retrieval"]["latest_at"],
+                         (OBSERVED - timedelta(minutes=1)).isoformat(timespec="microseconds"))
+        self.assertNotIn(DOCUMENT_REMAINDER, json.dumps(payload, ensure_ascii=False))
+        self.assertNotIn(DOCUMENT_REMAINDER.encode("utf-8"), self.path.read_bytes())
+        self.assertNotIn(DOCUMENT_EXCERPT, json.dumps(self.store.list(), ensure_ascii=False))
+        self.store.close()
+        with ResearchSnapshotStore(self.path) as reopened:
+            self.assertEqual(reopened.load(identifier)["supplemental_evidence"], payload["supplemental_evidence"])
+
+    def test_failed_documents_and_skipped_stage_do_not_reject_valid_base_snapshot(self):
+        failed = make_document_bundle(available=False)
+        payload = self.store.load(self.store.save(failed))
+        self.assertNotIn("supplemental_evidence", payload)
+        self.assertEqual(payload["documents"], failed.documents)
+        skipped = replace(self.bundle, documents=dict(version="research-documents-v1", status="skipped",
+            code="document_not_requested", items=[]))
+        payload = self.store.load(self.store.save(skipped))
+        self.assertEqual(payload["documents"]["status"], "skipped")
+
+    def test_unselected_bounded_excerpts_are_preserved_without_claiming_model_saw_them(self):
+        bundle = make_document_bundle(selected=False)
+        payload = self.store.load(self.store.save(bundle))
+        self.assertEqual(payload["documents"]["items"][0]["excerpts"], [])
+        self.assertEqual(payload["supplemental_evidence"][0]["display"], DOCUMENT_EXCERPT)
+        self.assertEqual(self.store.list()[0]["evidence_count"], len(bundle.evidence))
+
+    def test_opaque_document_id_survives_a_precise_article_time_not_in_date_only_public_metadata(self):
+        bundle = make_document_bundle(document_published_at="2026-09-25T09:30:00+08:00")
+        without_time = make_document_bundle()
+        self.assertNotEqual(bundle.documents["items"][0]["document_id"],
+                            without_time.documents["items"][0]["document_id"])
+        payload = self.store.load(self.store.save(bundle))
+        item = payload["documents"]["items"][0]
+        excerpt = payload["supplemental_evidence"][0]
+        self.assertEqual(item["publication_precision"], "date")
+        self.assertNotIn("published_at", item)
+        self.assertIsNone(excerpt["published_at"])
+        self.assertEqual(excerpt["document"]["document_id"], item["document_id"])
+        self.assertEqual(excerpt["document"]["sha256"], item["sha256"])
+
+    def test_opaque_document_id_shape_uniqueness_and_per_excerpt_association_are_checked(self):
+        bundle = make_document_bundle()
+        for value in ("not-an-id", "document:" + "A" * 64, "document:" + "0" * 63, True, []):
+            with self.subTest(value=value):
+                summary = deepcopy(bundle.documents)
+                summary["items"][0]["document_id"] = value
+                self.assert_error("invalid_snapshot_bundle", self.store.save, replace(bundle, documents=summary))
+        parent = bundle.companies[0].evidence[-1]
+        other_parent = replace(parent, id=parent.id + ":second", url=parent.url.replace("abcdef123", "other123"))
+        summary = deepcopy(bundle.documents)
+        other_item = {**deepcopy(summary["items"][0]), "parent_title_id": other_parent.id, "url": other_parent.url}
+        summary["items"].append(other_item)
+        duplicate_id = replace(bundle, documents=summary,
+            companies=(replace(bundle.companies[0], evidence=(*bundle.companies[0].evidence, other_parent)),))
+        self.assert_error("invalid_snapshot_bundle", self.store.save, duplicate_id)
+        evidence = bundle.supplemental_evidence[0]
+        mismatched = replace(evidence, document={**evidence.document, "document_id": "document:" + "0" * 64})
+        self.assert_error("invalid_snapshot_bundle", self.store.save,
+                          replace(bundle, supplemental_evidence=(mismatched,)))
+        self.assertEqual(self.store.list(), ())
+
+    def test_three_documents_keep_six_bounded_candidates_when_only_a_subset_was_offered(self):
+        from tests.test_document_answer import document_bundle
+        bundle = document_bundle(count=3, excerpts_per_document=2)
+        summary = deepcopy(bundle.documents)
+        summary["items"][0]["excerpts"] = []
+        summary["items"][1]["excerpts"] = summary["items"][1]["excerpts"][:1]
+        bundle = replace(bundle, documents=summary)
+        payload = self.store.load(self.store.save(bundle))
+        self.assertEqual(len(payload["supplemental_evidence"]), 6)
+        self.assertEqual([len(item["excerpts"]) for item in payload["documents"]["items"]], [0, 1, 2])
+        self.assertTrue(all(len(item["display"]) <= 480 and item["raw_value"] is None
+                            for item in payload["supplemental_evidence"]))
+        self.assertEqual(self.store.list()[0]["evidence_count"], len(bundle.evidence))
+
+    def test_two_distinct_excerpts_from_same_paragraph_keep_individual_hashes(self):
+        bundle = make_document_bundle()
+        first = bundle.supplemental_evidence[0]
+        text = "同段后续文字。"
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        second = replace(first, id=first.id + ":second", display=text,
+                         document={**first.document, "excerpt_sha256": digest})
+        summary = deepcopy(bundle.documents)
+        summary["items"][0]["excerpts"].append(dict(paragraph_index=1, text=text, sha256=digest))
+        bundle = replace(bundle, supplemental_evidence=(first, second), documents=summary)
+        payload = self.store.load(self.store.save(bundle))
+        self.assertEqual([item["document"]["paragraph_index"] for item in payload["supplemental_evidence"]], [1, 1])
+        self.assertEqual([item["display"] for item in payload["supplemental_evidence"]], [DOCUMENT_EXCERPT, text])
+
+    def test_document_ids_and_parent_scope_prevent_cross_company_or_source_association(self):
+        bundle = make_document_bundle()
+        evidence = bundle.supplemental_evidence[0]
+        other = ProductCompany("600000.SH", "浦发银行", (replace(bundle.companies[0].evidence[0],
+            id="second-company-financial", instrument_id="600000.SH"),), bundle.companies[0].coverage)
+        plan = replace(bundle.plan, securities=(*bundle.plan.securities, Security(other.instrument_id, other.name)))
+        bundle = replace(bundle, plan=plan, companies=(*bundle.companies, other))
+        payload = self.store.load(self.store.save(bundle))
+        self.assertEqual([e["id"] for c in payload["companies"] for e in c["evidence"]],
+                         [e.id for c in bundle.companies for e in c.evidence])
+        variants = (
+            replace(evidence, instrument_id=other.instrument_id),
+            replace(evidence, source="eastmoney_announcements"),
+            replace(evidence, id=bundle.companies[0].evidence[0].id),
+            replace(evidence, dependencies=("missing-title",)),
+            replace(evidence, document={**evidence.document, "parent_title_id": "second-company-financial"}),
+            replace(evidence, document={**evidence.document, "sha256": "0" * 64}),
+            replace(evidence, document={**evidence.document, "excerpt_sha256": "0" * 64}),
+            replace(evidence, document={**evidence.document, "paragraph_index": True}),
+        )
+        for item in variants:
+            with self.subTest(item=item):
+                self.assert_error("invalid_snapshot_bundle", self.store.save,
+                                  replace(bundle, supplemental_evidence=(item,)))
+
+    def test_document_full_text_unknown_fields_and_excessive_excerpts_are_rejected_before_writes(self):
+        bundle = make_document_bundle()
+        evidence = bundle.supplemental_evidence[0]
+        invalid_summary = []
+        for changes in ({"full_text": DOCUMENT_REMAINDER}, {"extracted_characters": 32001},
+                        {"paragraph_count": 129}, {"document_id": "document:" + "0" * 64}):
+            summary = deepcopy(bundle.documents)
+            summary["items"][0].update(changes)
+            invalid_summary.append(replace(bundle, documents=summary))
+        summary = deepcopy(bundle.documents)
+        summary["items"] *= 4
+        invalid_summary.append(replace(bundle, documents=summary))
+        summary = deepcopy(bundle.documents)
+        summary["items"][0]["excerpts"] *= 3
+        invalid_summary.append(replace(bundle, documents=summary))
+        for invalid in (*invalid_summary,
+                        replace(bundle, supplemental_evidence=(replace(evidence, raw_value=DOCUMENT_REMAINDER),)),
+                        replace(bundle, supplemental_evidence=(replace(evidence, display="x" * 481),)),
+                        replace(bundle, supplemental_evidence=(replace(evidence,
+                            document={**evidence.document, "full_text": DOCUMENT_REMAINDER}),)),
+                        replace(bundle, supplemental_evidence=bundle.supplemental_evidence * 7),
+                        replace(bundle, documents=None)):
+            with self.subTest(invalid=invalid):
+                self.assert_error("invalid_snapshot_bundle", self.store.save, invalid)
+                self.assertEqual(self.store.list(), ())
+
+    def test_document_time_mismatch_future_observation_and_missing_time_are_not_silently_archived(self):
+        future = make_document_bundle(retrieved_at=(OBSERVED + timedelta(seconds=1)).isoformat())
+        self.assert_error("snapshot_source_time_in_future", self.store.save, future)
+        bundle = make_document_bundle()
+        summary = deepcopy(bundle.documents)
+        summary["items"][0]["published_date"] = (END + timedelta(days=1)).isoformat()
+        self.assert_error("invalid_snapshot_bundle", self.store.save, replace(bundle, documents=summary))
+        summary = deepcopy(bundle.documents)
+        summary["items"][0]["retrieved_at"] = "2026-09-26T03:00:00"
+        self.assert_error("invalid_snapshot_timestamp", self.store.save, replace(bundle, documents=summary))
+        self.assertEqual(self.store.list(), ())
+
+    def test_document_summary_without_excerpts_still_contributes_its_retrieval_boundary(self):
+        bundle = make_document_bundle(selected=False, retrieved_at=(OBSERVED + timedelta(seconds=1)).isoformat())
+        self.assert_error("snapshot_source_time_in_future", self.store.save,
+                          replace(bundle, supplemental_evidence=()))
+
+    def test_tampered_document_excerpt_is_detected_even_after_digest_and_content_id_are_recomputed(self):
+        identifier = self.store.save(make_document_bundle())
+        payload = self.store.load(identifier)
+        payload["supplemental_evidence"][0]["display"] = "被篡改的片段"
+        data = {key: value for key, value in payload.items()
+                if key not in ("snapshot_id", "observed_at", "source_retrieval")}
+        altered_id = hashlib.sha256(json.dumps(data, ensure_ascii=False, allow_nan=False,
+            sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        payload["snapshot_id"] = altered_id
+        raw = json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        with closing(sqlite3.connect(self.path)) as connection, connection:
+            connection.execute("UPDATE research_snapshots SET snapshot_id=?, digest=?, payload=? WHERE snapshot_id=?",
+                               (altered_id, hashlib.sha256(raw).hexdigest(), raw, identifier))
+        self.assert_error("snapshot_corrupt", self.store.load, altered_id)
 
     def test_question_and_model_response_are_not_written_to_payload_or_sqlite(self):
         payload = self.store.load(self.store.save(self.bundle))

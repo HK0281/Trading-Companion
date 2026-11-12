@@ -125,6 +125,13 @@ def check_claim(item, *, instrument, context, section, index, path='', stats=Non
             expanded.extend(used)
         ids = list(dict.fromkeys(expanded))
         spans = bindings_for(text, numbers, context=context, instrument=instrument, stats=stats)
+        if (context.get('_documents_enabled') or any(r.get('content_kind') == 'body_excerpt' for r in supplied.values())) and ('「' in text or '」' in text):
+            quotes = re.findall(r'「([^「」]+)」', text)
+            excerpts = [supplied[ref]['display'] for ref in ids
+                        if supplied[ref].get('content_kind') == 'body_excerpt']
+            if (len(quotes) != text.count('「') or len(quotes) != text.count('」')
+                    or not all(any(quote in excerpt for excerpt in excerpts) for quote in quotes)):
+                raise InvalidBinding('document_quote_mismatch', STRUCTURE)
     except InvalidBinding as error:
         code = HARD if unsafe(text) else error.code
         rejected(code, text)

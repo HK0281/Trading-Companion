@@ -147,6 +147,7 @@ class ProductAnswer:
     decision_mode: bool = False
     narratives: tuple = ()
     quality: dict = field(default_factory=dict)
+    documents: dict | None = None
 
     @property
     def text(self) -> str:
@@ -166,6 +167,8 @@ class ProductAnswer:
             result.update(version="product-research-answer-v3", narratives=deepcopy(list(self.narratives)),
                           quality=deepcopy(self.quality),
                           validation_scope="typed_numeric_provenance_and_local_safety_not_full_prose_semantics")
+        if self.documents is not None:
+            result['documents'] = deepcopy(self.documents)
         return result
 
 

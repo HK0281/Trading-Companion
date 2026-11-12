@@ -1,7 +1,7 @@
 """Opt-in SQLite evidence snapshots, observed locally rather than reconstructed as historical PIT."""
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -13,6 +13,7 @@ from trading_companion.multi_contracts import MultiIndicatorResult
 from trading_companion.product_plan import ProductPlan
 from trading_companion.product_research import ProductCompany, ProductEvidence, ProductResearchBundle
 from trading_companion.research_report import build_research_report
+from trading_companion.research_documents import DocumentError, coverage_code, document_paragraph_limit
 from trading_companion.risk_research import RiskScenario
 from trading_companion.security_directory import Security
 
@@ -91,6 +92,157 @@ def _identifier(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise SnapshotStoreError("invalid_snapshot_id")
     return value
+
+
+def _document_text(value, limit):
+    return type(value) is str and 0 < len(value) <= limit and all(
+        char.isprintable() or char in "\n\t" for char in value)
+
+
+def _document_hash(value):
+    return type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _document_code(value):
+    return type(value) is str and re.fullmatch(r"documents?_[a-z_]{1,80}", value) is not None
+
+
+def _validate_document_data(data):
+    """Archive only bounded public excerpts, tied to their original same-stock titles."""
+    supplemental = data.get("supplemental_evidence", [])
+    documents = data.get("documents")
+    if type(supplemental) is not list or len(supplemental) > 6:
+        raise SnapshotStoreError("invalid_snapshot_bundle")
+    originals = [item for company in data["companies"] for item in company["evidence"]]
+    if any(item.get("content_kind") == "body_excerpt" or item.get("document") is not None for item in originals):
+        raise SnapshotStoreError("invalid_snapshot_bundle")
+    if documents is None:
+        if supplemental or "documents" in data:
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        return
+    if (type(documents) is not dict or documents.keys() != {"version", "status", "code", "items"}
+            or documents["version"] != "research-documents-v1"
+            or documents["status"] not in ("available", "partial", "unavailable", "skipped")
+            or not _document_code(documents["code"])
+            or type(documents["items"]) is not list or len(documents["items"]) > 3):
+        raise SnapshotStoreError("invalid_snapshot_bundle")
+    by_id = {item["id"]: item for item in originals}
+    instruments = {company["instrument_id"] for company in data["companies"]}
+    base_keys = {"instrument_id", "kind", "parent_title_id", "title", "url", "source", "status", "code"}
+    available_keys = {"document_id", "sha256", "extractor_version", "extracted_characters", "paragraph_count",
+                      "excerpts", "retrieved_at", "published_date", "publication_precision"}
+    coverage_keys = {"complete", "omitted_tables", "page_count", "private_use_characters_replaced",
+                     "omitted_trailing_characters"}
+    summaries, expected_excerpts, parents = {}, {}, set()
+    for item in documents["items"]:
+        if type(item) is not dict or item.get("status") not in ("available", "unavailable"):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        available = item["status"] == "available"
+        allowed_keys = (base_keys | available_keys, base_keys | available_keys | coverage_keys) if available else (base_keys,)
+        if (item.keys() not in allowed_keys
+                or item["instrument_id"] not in instruments or item["kind"] not in ("news", "announcements")
+                or not _document_text(item["parent_title_id"], 512) or item["parent_title_id"] in parents
+                or not _document_text(item["title"], 1000) or not _document_text(item["url"], 2048)
+                or not _document_text(item["source"], 80) or not _document_code(item["code"])):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        parent = by_id.get(item["parent_title_id"])
+        if (parent is None or parent.get("content_kind") != "title"
+                or any(item[key] != parent.get(key) for key in ("instrument_id", "kind", "source", "url"))
+                or item["title"] != (parent.get("raw_value") if type(parent.get("raw_value")) is str else parent["display"])):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        parents.add(item["parent_title_id"])
+        if not available:
+            continue
+        if "complete" in item:
+            try:
+                expected_code = coverage_code(item["kind"], **{key: item[key] for key in coverage_keys})
+            except DocumentError:
+                raise SnapshotStoreError("invalid_snapshot_bundle") from None
+            if item["code"] != expected_code:
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+        elif item["code"] != "document_read":
+            # Legacy documents cannot claim a newly introduced limitation without its fields.
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        expected_extractor = ("sina-artibody-v3" if "complete" in item else "sina-artibody-v2") if item["kind"] == "news" else (
+            "eastmoney-announcement-body-v2" if "complete" in item else "eastmoney-announcement-body-v1")
+        maximum_characters = 16000 if item["kind"] == "news" else 32000
+        if (type(item["document_id"]) is not str
+                or re.fullmatch(r"document:[0-9a-f]{64}", item["document_id"]) is None
+                or item["document_id"] in summaries
+                or not _document_hash(item["sha256"]) or item["extractor_version"] != expected_extractor
+                or type(item["extracted_characters"]) is not int or not 1 <= item["extracted_characters"] <= maximum_characters
+                or item["extracted_characters"] + item.get("omitted_trailing_characters", 0) > maximum_characters
+                or type(item["paragraph_count"]) is not int
+                or not 1 <= item["paragraph_count"] <= document_paragraph_limit(item["kind"])
+                or type(item["excerpts"]) is not list or len(item["excerpts"]) > 2
+                or item["publication_precision"] not in ("date", "datetime")
+                or item["publication_precision"] != parent["publication_precision"]
+                or item["published_date"] != parent["date"]):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        publication = date.fromisoformat(item["published_date"])
+        if publication.isoformat() != item["published_date"]:
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        # The extractor's ID also binds a precise article time that a date-only
+        # title/public projection may omit. Treat it as an opaque, unique ID;
+        # validate archived associations and each excerpt's own hash below.
+        retrieved = _timestamp(item["retrieved_at"])
+        if publication > datetime.fromisoformat(retrieved).astimezone(timezone(timedelta(hours=8))).date():
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        if parent.get("retrieved_at") is not None and retrieved < _timestamp(parent["retrieved_at"]):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        summaries[item["document_id"]] = item
+        for excerpt in item["excerpts"]:
+            if (type(excerpt) is not dict or excerpt.keys() != {"paragraph_index", "text", "sha256"}
+                    or type(excerpt["paragraph_index"]) is not int
+                    or not 1 <= excerpt["paragraph_index"] <= item["paragraph_count"]
+                    or not _document_text(excerpt["text"], 480)
+                    or len(excerpt["text"]) > item["extracted_characters"]
+                    or not _document_hash(excerpt["sha256"])
+                    or _hash(excerpt["text"].encode("utf-8")) != excerpt["sha256"]):
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+            key = (item["document_id"], excerpt["paragraph_index"], excerpt["sha256"])
+            if key in expected_excerpts:
+                raise SnapshotStoreError("invalid_snapshot_bundle")
+            expected_excerpts[key] = excerpt
+    if any(item.get("complete") is False for item in summaries.values()) and documents["status"] != "partial":
+        raise SnapshotStoreError("invalid_snapshot_bundle")
+    seen_ids, seen_excerpts = set(by_id), set()
+    document_keys = {"document_id", "parent_title_id", "sha256", "paragraph_index", "excerpt_sha256", "extractor_version"}
+    evidence_keys = {"id", "instrument_id", "kind", "label", "display", "source", "date", "url", "content_kind",
+                     "published_at", "publication_precision", "report_period", "data_authenticity", "temporal_scope",
+                     "dependencies", "retrieved_at", "raw_value", "unit", "document"}
+    for item in supplemental:
+        metadata = item.get("document") if type(item) is dict else None
+        if (type(item) is not dict or item.keys() != evidence_keys or type(metadata) is not dict
+                or metadata.keys() not in (document_keys, document_keys | {"document_complete"})
+                or not _document_text(item["id"], 512)
+                or item["id"] in seen_ids or item["content_kind"] != "body_excerpt"
+                or item["raw_value"] is not None or item["unit"] != "text"
+                or not _document_text(item["label"], 200) or not _document_text(item["display"], 480)
+                or type(metadata["paragraph_index"]) is not int):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        document = summaries.get(metadata["document_id"])
+        key = (metadata["document_id"], metadata["paragraph_index"], metadata["excerpt_sha256"])
+        excerpt = expected_excerpts.get(key)
+        if (document is None or key in seen_excerpts
+                or ("complete" in document) != ("document_complete" in metadata)
+                or "document_complete" in metadata and (type(metadata["document_complete"]) is not bool
+                    or metadata["document_complete"] != document["complete"])
+                or not 1 <= metadata["paragraph_index"] <= document["paragraph_count"]
+                or any(metadata[key] != document[key] for key in ("parent_title_id", "sha256", "extractor_version"))
+                or not _document_hash(metadata["excerpt_sha256"])
+                or _hash(item["display"].encode("utf-8")) != metadata["excerpt_sha256"]
+                or excerpt is not None and item["display"] != excerpt["text"]
+                or any(item[key] != document[key] for key in ("instrument_id", "kind", "source", "url", "retrieved_at", "publication_precision"))
+                or item["date"] != document["published_date"] or item["dependencies"] != [metadata["parent_title_id"]]):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        parent = by_id[metadata["parent_title_id"]]
+        if any(item[key] != parent.get(key) for key in ("published_at", "data_authenticity", "temporal_scope")):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        seen_ids.add(item["id"])
+        seen_excerpts.add(key)
+    if not expected_excerpts.keys() <= seen_excerpts:
+        raise SnapshotStoreError("invalid_snapshot_bundle")
 
 
 def _public_data(bundle):
@@ -173,8 +325,17 @@ def _public_data(bundle):
             payload["historical_replay"] = replay.to_dict()
         companies.append(payload)
     # ProductPlan.to_dict intentionally omits user_question, model_response and internal pending context.
-    return {"version": VERSION, "plan": bundle.plan.to_dict(), "companies": companies,
+    data = {"version": VERSION, "plan": bundle.plan.to_dict(), "companies": companies,
             "trading_enabled": False, "snapshot_policy": SNAPSHOT_POLICY}
+    if bundle.supplemental_evidence:
+        if (type(bundle.supplemental_evidence) is not tuple
+                or any(type(item) is not ProductEvidence for item in bundle.supplemental_evidence)):
+            raise SnapshotStoreError("invalid_snapshot_bundle")
+        data["supplemental_evidence"] = [item.to_dict() for item in bundle.supplemental_evidence]
+    if bundle.documents is not None:
+        data["documents"] = bundle.documents
+    _validate_document_data(data)
+    return data
 
 
 def _source_boundary(data, observed_at):
@@ -197,6 +358,11 @@ def _source_boundary(data, observed_at):
         technical = company["technical"]
         if technical is not None:
             groups[instrument, technical["source"]].append(technical["retrieved_at"])
+    for item in data.get("supplemental_evidence", ()):
+        groups[item["instrument_id"], item["source"]].append(item.get("retrieved_at"))
+    for item in (data.get("documents") or {}).get("items", ()):
+        if item["status"] == "available":
+            groups[item["instrument_id"], item["source"]].append(item["retrieved_at"])
     sources, all_times, unknown_count = [], [], 0
     for (instrument, source), values in sorted(groups.items()):
         times = [_timestamp(value) for value in values if value is not None]
@@ -224,7 +390,8 @@ def _metadata(payload):
     return {"version": VERSION, "snapshot_id": payload["snapshot_id"], "observed_at": payload["observed_at"],
             "source_retrieval": payload["source_retrieval"], "securities": plan["securities"],
             "kinds": plan["kinds"], "as_of": plan["as_of"], "snapshot_policy": SNAPSHOT_POLICY,
-            "evidence_count": sum(len(company["evidence"]) for company in payload["companies"]),
+            "evidence_count": (sum(len(company["evidence"]) for company in payload["companies"])
+                               + len(payload.get("supplemental_evidence", ()))),
             "technical_snapshots": sum(company["technical"] is not None for company in payload["companies"])}
 
 
@@ -308,6 +475,8 @@ class ResearchSnapshotStore:
                     "snapshot_id", "observed_at", "source_retrieval"})
             if index_payload and payload['version'] == 'index-evidence-snapshot-v2':
                 expected_keys |= {'selected_direction', 'scenario_plan'}
+            if not index_payload and type(payload) is dict:
+                expected_keys |= payload.keys() & {"supplemental_evidence", "documents"}
             if (type(payload) is not dict or payload.keys() != expected_keys
                     or not index_payload and payload["version"] != VERSION or payload["snapshot_id"] != snapshot_id
                     or payload["snapshot_policy"] != SNAPSHOT_POLICY or payload["trading_enabled"] is not False
@@ -315,6 +484,8 @@ class ResearchSnapshotStore:
                 raise SnapshotStoreError("snapshot_corrupt")
             data = {key: value for key, value in payload.items()
                     if key not in ("snapshot_id", "observed_at", "source_retrieval")}
+            if not index_payload:
+                _validate_document_data(data)
             if (_hash(_encode(data)) != snapshot_id
                     or _source_boundary(data, row[2]) != payload["source_retrieval"]
                     or row[3] != payload["source_retrieval"]["latest_at"]

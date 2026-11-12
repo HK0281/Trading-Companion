@@ -3,6 +3,8 @@ import { parseDecision, ResearchDecision } from "./ResearchDecision";
 import type { DecisionData } from "./ResearchDecision";
 import { parseNarratives, ResearchNarrative } from "./ResearchNarrative";
 import type { Narrative, NarrativeQuality } from "./ResearchNarrative";
+import { parseResearchDocuments, ResearchDocuments } from "./ResearchDocuments";
+import type { ResearchDocumentData } from "./ResearchDocuments";
 
 type Evidence = { id: string; instrument_id: string; kind: string; label: string; display: string;
   source: string; date: string | null; url: string | null; content_kind: string; report_period: string | null;
@@ -13,11 +15,12 @@ type CompanyAnswer = { paragraphs: string[]; evidence: Evidence[]; origin: strin
   paragraph_evidence?: string[][];
   coverage?: unknown;
   excluded_domains?: unknown;
+  documents?: ResearchDocumentData;
   securities: { name: string; instrument_id: string }[]; daily_cutoff: string };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, max = 1600): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
 const optionalText = (value: unknown) => value === null || value === undefined || typeof value === "string" && value.length <= 2000;
-const hosts = ["finance.sina.com.cn", "news.sina.com.cn", "money.finance.sina.com.cn", "vip.stock.finance.sina.com.cn",
+const hosts = ["finance.sina.com.cn", "cj.sina.cn", "news.sina.com.cn", "money.finance.sina.com.cn", "vip.stock.finance.sina.com.cn",
   "finance.eastmoney.com", "data.eastmoney.com", "data.eastmoney.com.cn", "data.eastmoney.com", "www.cninfo.com.cn", "static.cninfo.com.cn",
   "emweb.securities.eastmoney.com", "data.eastmoney.com", "notice.eastmoney.com", "pdf.dfcfw.com",
   "www.sse.com.cn", "edu.sse.com.cn", "www.szse.cn", "investor.szse.cn", "www.sec.gov", "www.investor.gov",
@@ -50,6 +53,8 @@ export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
       && text(item.content_kind, 40) && text(item.temporal_scope, 80))) return null;
   const evidenceIds = new Set(value.evidence.map(item => item.id));
   if (evidenceIds.size !== value.evidence.length) return null;
+  // Invalid optional attachments never hide an otherwise checked research answer.
+  const documents = parseResearchDocuments(value.documents, allowed, value.evidence as Evidence[], sourceUrl);
   // Older and application fallback answers may omit paragraph mappings entirely.
   if (Object.prototype.hasOwnProperty.call(value, "paragraph_evidence")) {
     const mappings = value.paragraph_evidence;
@@ -63,14 +68,14 @@ export function parseCompanyAnswer(value: unknown): CompanyAnswer | null {
     const decision = Array.isArray(value.decisions) && value.decisions.length > 0
       ? parseDecision(value, allowed, new Map(value.evidence.map(item => [item.id, item.instrument_id]))) : undefined;
     if (decision === null) return null;
-    return { ...value, ...narrative, decision } as unknown as CompanyAnswer;
+    return { ...value, ...narrative, decision, documents } as unknown as CompanyAnswer;
   }
   if (value.version === "product-research-answer-v2") {
     const decision = parseDecision(value, allowed, new Map(value.evidence.map(item => [item.id, item.instrument_id])));
     if (!decision) return null;
-    return { ...value, decision } as unknown as CompanyAnswer;
+    return { ...value, decision, documents } as unknown as CompanyAnswer;
   }
-  return value as unknown as CompanyAnswer;
+  return { ...value, documents } as unknown as CompanyAnswer;
 }
 
 const kinds: Record<string, string> = { profile: "公司资料", financial: "财务报告", news: "新闻", announcements: "公司公告", technical: "技术分析", risk: "风险情景" };
@@ -103,5 +108,6 @@ export function CompanyParagraphs({ data }: { data: CompanyAnswer }) {
     {data.decision && <ResearchDecision data={data.decision} securities={data.securities} />}
     {(!data.narratives || data.narratives.length === 0) && data.paragraphs.map((paragraph, index) =>
       <div className="company-paragraph" key={index}><p>{paragraph}</p></div>)}
+    {data.documents && <ResearchDocuments data={data.documents} securities={data.securities} />}
   </div>;
 }

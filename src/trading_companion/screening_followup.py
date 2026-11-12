@@ -11,7 +11,8 @@ from trading_companion.turn_control import checkpoint
 
 
 def _execute(question, *, model, session, directory, quote_source, source, development_source,
-             now, reference_date, data_service, market_background_source, clock, workflow, headline_capture=None):
+             now, reference_date, data_service, market_background_source, clock, workflow, headline_capture=None,
+             document_collector=None):
     selection = select_screening(question, saved=session.screening_saved, directory=directory,
         quote_source=quote_source, source="csv" if development_source is not None else source,
         development=development_source is not None, now=clock())
@@ -50,14 +51,14 @@ def _execute(question, *, model, session, directory, quote_source, source, devel
         reference_date=reference_date, source=source, development_source=development_source,
         data_service=data_service, source_factory=None, market_background_source=market_background_source,
         background_clock=clock, selected_securities=selection.securities, original_question=question,
-        headline_capture=headline_capture)
+        headline_capture=headline_capture, document_collector=document_collector)
     return replace(outcome, user_question=question)
 
 
 def run_screening_followup_turn(question, *, model, session, directory, quote_source, source, now,
                                 reference_date=None, development_source=None, data_service=None,
                                 market_background_source=None, clock=None, control=None, workflow=True,
-                                headline_capture=None):
+                                headline_capture=None, document_collector=None):
     from datetime import datetime, timedelta, timezone
     from trading_companion.turn_control import company_turn_control, workflow_turn_control
 
@@ -67,7 +68,7 @@ def run_screening_followup_turn(question, *, model, session, directory, quote_so
         directory=directory, quote_source=quote_source, source=source, development_source=development_source,
         now=now, reference_date=reference, data_service=data_service,
         market_background_source=market_background_source, clock=clock, workflow=workflow,
-        headline_capture=headline_capture),
+        headline_capture=headline_capture, document_collector=document_collector),
         model=model, session=session, control=control or (company_turn_control() if data_service is not None
                                                          else workflow_turn_control()),
         default_calls=6, input_mode="natural")

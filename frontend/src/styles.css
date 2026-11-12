@@ -180,6 +180,16 @@ textarea::placeholder { color: #a1aaa0; }
 .company-paragraph { margin-bottom: 16px; }
 .company-paragraph:last-child { margin-bottom: 0; }
 .company-paragraph > p { margin: 0; }
+.research-documents { margin-top: 18px; border-top: 1px solid var(--line); font-size: 12px; }
+.research-documents > summary { padding: 11px 0; color: #627a53; cursor: pointer; }
+.research-document-list { display: grid; gap: 8px; padding-bottom: 12px; }
+.research-document { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.research-document > summary { cursor: pointer; color: #506348; line-height: 1.7; }
+.research-document-content { padding-top: 9px; }
+.research-document .research-document-note { color: #88967d; font-size: 11px; margin: 8px 0; }
+.research-document blockquote { margin: 10px 0; border-left: 2px solid #d2e1c7; padding-left: 12px; }
+.research-document blockquote p { margin: 0; white-space: pre-wrap; line-height: 1.8; }
+.research-document a { color: #557543; text-decoration: underline; }
 .response-origin { display: block; font-size: 10px; color: #88967d; margin-top: 18px; }
 .answer-attachments { margin-top: 23px; border-top: 1px solid var(--line); }
 .disclosure { border-bottom: 1px solid var(--line); }

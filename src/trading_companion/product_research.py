@@ -1,6 +1,6 @@
 """Bounded domain collection for company research and candidate comparisons."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, time, timedelta, timezone
@@ -108,11 +108,14 @@ class ProductEvidence:
     raw_value: float | int | str | None = None
     unit: str | None = None
     calculation_basis: tuple[tuple[str, str], ...] = ()
+    document: dict | None = None
 
     def to_dict(self):
         from dataclasses import asdict
         value = {**asdict(self), "dependencies": list(self.dependencies)}
         value.pop("calculation_basis")
+        if self.document is None:
+            value.pop("document")
         if self.calculation_basis:
             value["calculation_basis"] = dict(self.calculation_basis)
         return value
@@ -145,19 +148,26 @@ class ProductCompany:
 class ProductResearchBundle:
     plan: object
     companies: tuple[ProductCompany, ...]
+    supplemental_evidence: tuple[ProductEvidence, ...] = ()
+    documents: dict | None = None
 
     @property
     def evidence(self):
-        return tuple(item for company in self.companies for item in company.evidence)
+        return (*tuple(item for company in self.companies for item in company.evidence), *self.supplemental_evidence)
 
     @property
     def partial(self):
         return any(item["status"] != "available" for company in self.companies for item in company.coverage)
 
     def to_dict(self):
-        return {"version": "product-research-bundle-v1", "plan": self.plan.to_dict(),
+        result = {"version": "product-research-bundle-v1", "plan": self.plan.to_dict(),
                 "companies": [company.to_dict() for company in self.companies],
                 "trading_enabled": False, "snapshot_policy": "publication_filtered_vendor_snapshots_not_versioned_pit"}
+        if self.documents is not None:
+            from copy import deepcopy
+            result.update(supplemental_evidence=[item.to_dict() for item in self.supplemental_evidence],
+                          documents=deepcopy(self.documents))
+        return result
 
 
 def collect_product_research(plan, *, data_service, now, development_source=None, source_factory=None,
@@ -524,6 +534,8 @@ def _insight_evidence(insights, result):
 
 def model_research_context(bundle, *, limit=14500):
     """Keep domain notes, not complete time series, in a bounded synthesis context."""
+    if bundle.supplemental_evidence:
+        return _document_context(bundle, limit=limit)
     records = []
     requested = (set(getattr(bundle.plan, 'answer_priority_indicators', ())) & {
         spec.indicator_id for spec in bundle.plan.indicators}) if 'technical' in bundle.plan.kinds else set()
@@ -615,4 +627,36 @@ def model_research_context(bundle, *, limit=14500):
     from trading_companion.news_triage_sorting import apply_context_order
     payload["evidence"] = apply_context_order(selected, records)
     payload["omitted_from_model"] = len(records) - len(selected)
+    return payload
+
+
+def _document_context(bundle, *, limit):
+    """Supplement the baseline only inside the same issuer/domain's title slots."""
+    base = replace(bundle, supplemental_evidence=(), documents=None)
+    payload = model_research_context(base, limit=limit)
+    selected = payload['evidence']
+    positions = {item.id: f'E{i}' for i, item in enumerate(base.evidence, 1)}
+    added = []
+    for index, item in enumerate(bundle.supplemental_evidence, len(base.evidence) + 1):
+        parent = positions.get((item.document or {}).get('parent_title_id'))
+        if parent not in {record['id'] for record in selected}:
+            continue
+        record = {key: value for key, value in item.to_dict().items() if key not in (
+            'dependencies', 'url', 'published_at', 'retrieved_at', 'raw_value') and value is not None}
+        record.update(id=f'E{index}', display=item.display[:480])
+        if len(json.dumps([*added, record], ensure_ascii=False)) > 3000:
+            continue
+        trial = list(selected)
+        while len(json.dumps({**payload, 'evidence': [*trial, record]}, ensure_ascii=False)) > limit:
+            removable = next((r for r in reversed(trial) if r['id'] != parent
+                and r['instrument_id'] == item.instrument_id and r['kind'] == item.kind
+                and r['content_kind'] == 'title'), None)
+            if removable is None:
+                break
+            trial.remove(removable)
+        else:
+            selected = [*trial, record]
+            added.append(record)
+    payload['evidence'] = selected
+    payload['omitted_from_model'] = len(bundle.evidence) - len(selected)
     return payload

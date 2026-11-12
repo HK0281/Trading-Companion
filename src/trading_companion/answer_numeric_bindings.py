@@ -54,6 +54,7 @@ class Atom:
     field: str | None = None
     plan_id: str | None = None
     source: str = 'record'
+    literal: str | None = None
 
 
 class InvalidBinding(ValueError):
@@ -85,8 +86,9 @@ def atoms(record):
         return [Atom(value, UNITS[unit], identity, field,
                      record.get('plan_id') if record.get('content_kind') == 'index_scenario' else None)]
     # For title records only the supplied (possibly truncated) title is available.
-    title = record.get('kind') in ('news', 'announcements')
-    display = unicodedata.normalize('NFKC', record.get('display', ''))
+    body = record.get('content_kind') == 'body_excerpt'
+    title = record.get('kind') in ('news', 'announcements') and not body
+    display = record.get('display', '') if body else unicodedata.normalize('NFKC', record.get('display', ''))
     result = []
     for match in MONEY.finditer(display):
         suffix = match[2]
@@ -96,7 +98,8 @@ def atoms(record):
         value = Decimal(match[1]) * FACTOR.get(suffix, 1)
         value, error = _direction(display[:match.start()], match[1], value, kind)
         if not error:
-            result.append(Atom(value, kind, identity, field, source='title' if title else 'display'))
+            result.append(Atom(value, kind, identity, field, source='body_excerpt' if body else 'title' if title else 'display',
+                               literal=match[0] if body else None))
     return result
 
 
@@ -312,6 +315,8 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
             local_spans.append((left, right, binding, bad or start < offset or end > offset+len(sentence)))
     index_context = context.get('instrument_kind') == 'index'
     def matches(value, atom, shown, diagnostic=None):
+        if atom.source == 'body_excerpt':
+            return value == atom.value and token == atom.literal
         if index_context and atom.plan_id is not None:
             return value == atom.value
         if index_context and atom.kind in ('index', 'index_price'):
@@ -470,7 +475,9 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                 elif direction_error:
                     d['reason'] = direction_error
                 else:
-                    if atom.kind == 'amount':
+                    if atom.source == 'body_excerpt':
+                        ok = matches(value, atom, shown, diagnostic=d)
+                    elif atom.kind == 'amount':
                         tolerance = Decimal(1).scaleb(shown.as_tuple().exponent) * FACTOR.get(suffix, 1) / 2
                         ok = abs(value-atom.value) <= tolerance and (value == 0 or atom.value == 0 or (value > 0) == (atom.value > 0))
                     else:

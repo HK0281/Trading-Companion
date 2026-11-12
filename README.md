@@ -137,10 +137,30 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
 | `--capture-news-titles` | Opt in to bounded public-title capture for live DeepSeek company research; no classifier calls |
+| `--research-documents events` | Default off: read bounded, verified web text for explicit news, announcement or event questions ([design](docs/news-body-design.md)) |
 | `--news-triage-sorting` | Default off: prioritize important related headlines in the new DeepSeek research path; paired live acceptance and user approval are still pending ([design](docs/news-triage-integration-design.md)) |
 | `--screening-coverage expanded` | Larger, slower screening sample |
 
 When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/local-environment.md) and [Dev Mode design](docs/dev-mode-design.md).
+
+To enable the optional document stage for normal company research:
+
+```powershell
+.\start.cmd --research-documents events
+```
+
+This stage reads supported Sina Finance article pages and Eastmoney announcement detail JSON
+only after an explicit news, announcement, event or source-text request. General analysis,
+historical research, saved-result recall, explanations and Dev Mode add no document HTTP
+requests. Sina's `cj.sina.cn` links remain title-only, and PDF attachments are not read.
+At most three documents can contribute two short excerpts each; the answer's folded source
+panel shows only excerpts actually supplied to the model. Full text is neither published nor
+archived. The optional SQLite archive can retain up to six selected candidate excerpts,
+including candidates omitted from the model context; its document summaries record the
+subset actually supplied. API responses and the page expose only that supplied subset.
+The stage adds no model calls, but extra input tokens can increase API cost.
+The implementation has offline checks; live source availability and real-answer acceptance
+remain pending independent review. Enabling it does not enable headline triage sorting.
 
 ## Development
 
@@ -151,7 +171,7 @@ Run the same gates as CI (Windows, no API key or live data needed):
 .\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py all
 ```
 
-Individual gates are `python`, `web` and `bundle` (run `web` before `bundle`). They fail on skipped or empty tests. The Python gate runs about 3,100 unit tests, 244 pytest cases, fixed agent scenarios, repeated MVP scenarios, company workflows and an API walkthrough. GitHub Actions runs one Windows job on pushes and pull requests. See the [CI design](docs/ci-design.md).
+Individual gates are `python`, `web` and `bundle` (run `web` before `bundle`). They fail on skipped or empty tests. The Python gate runs offline unit tests and pytest cases, fixed agent scenarios, repeated MVP scenarios, company workflows and an API walkthrough. Use the actual gate output for current counts. GitHub Actions runs one Windows job on pushes and pull requests. See the [CI design](docs/ci-design.md).
 
 Inspect trace metadata without starting the server:
 
@@ -161,10 +181,11 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
+- **Bounded event documents (A).** Optional verified web text and answer excerpts are implemented, with the switch off by default. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. Live source and answer acceptance remain pending; announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
 - **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
 - **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-triage-integration-design.md) and [product-v2 results](docs/news-triage-product-v2.md).
 
-Not in scope yet: full article and filing understanding, whole-market completeness, calibrated forecasts, strategy backtesting and public deployment.
+Not in scope yet: arbitrary-source document collection, PDF filing analysis, complete document understanding, whole-market completeness, calibrated forecasts, strategy backtesting and public deployment.
 
 ## Project layout
 
@@ -185,6 +206,7 @@ Most design documents are written in Chinese.
 - [Project handoff](docs/agent-handoff.md): requirements, working preferences, current capabilities and coordination rules
 - [Architecture and roadmap](docs/architecture.md)
 - [Company research workflow](docs/company-research-design.md)
+- [Bounded news and announcement text](docs/news-body-design.md)
 - [Index research](docs/index-research-design.md)
 - [Holding-horizon rules](docs/holding-horizon-design.md)
 - [Technical analysis and timeframes](docs/technical-analysis-design.md)

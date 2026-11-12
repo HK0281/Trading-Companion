@@ -121,11 +121,14 @@ class HistoricalBaselineTests(unittest.TestCase):
 
     def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
         current = baselines.current_baseline()
-        self.assertEqual(current['rule_baseline_version'], 'intent-news-triage-paired-live-v2')
-        self.assertEqual(current['parent_version'], 'intent-news-triage-paired-live-v1')
+        self.assertEqual(current['rule_baseline_version'], 'intent-research-documents-v1')
+        self.assertEqual(current['parent_version'], 'intent-news-triage-paired-live-v2')
         previous = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == current['parent_version'])
-        self.assertEqual(previous['source_digest'], 'f3578c6ae38a4db0474c07f8170330b083133d647ab0fd1de222bef4affa9a57')
+        self.assertEqual(previous['source_digest'], 'a4dbdf341bf7c6449cbb8743a52234e971d2d6f150ba16a96350e70454f017ba')
+        older = next(r for r in self.registry['previous_rules']
+                     if r['rule_baseline_version'] == 'intent-news-triage-paired-live-v1')
+        self.assertEqual(older['source_digest'], 'f3578c6ae38a4db0474c07f8170330b083133d647ab0fd1de222bef4affa9a57')
         original = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == 'intent-integration-default-on-v1')
         self.assertEqual(original['source_digest'], '3a7455512339f92fda14c35ca79e6d87855e629e071188aff7ebb58b5531f1b1')

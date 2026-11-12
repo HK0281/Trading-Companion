@@ -61,12 +61,14 @@ def _context(bundle):
     else:
         context = model_research_context(bundle)
     context["start_date"] = bundle.plan.start_date.isoformat()
+    if bundle.documents is not None:
+        context['_documents_enabled'] = True
     originals = {f"E{i}": e for i, e in enumerate(bundle.evidence, 1)}
     levels = []
     for r in context["evidence"]:
         original = originals[r["id"]]
         for key in tuple(r):
-            if key not in ("id", "instrument_id", "label", "display", "unit", "date", "report_period", "content_kind", "temporal_scope", "publication_precision", "plan_id", "kind"):
+            if key not in ("id", "instrument_id", "label", "display", "unit", "date", "report_period", "content_kind", "temporal_scope", "publication_precision", "plan_id", "kind", "document"):
                 del r[key]
         if original.raw_value is not None:
             r["raw_value"] = original.raw_value
@@ -121,6 +123,14 @@ def _context(bundle):
 
 
 def _messages(question, context, issues=()):
+    instruction = INSTRUCTION
+    if any(r.get('content_kind') == 'body_excerpt' for r in context.get('evidence', ())):
+        instruction += ('\nbody_excerpt records are selected exact source passages, not complete articles. '
+            'Use only the supplied passages, never infer unread text. Attribute news statements to the source. '
+            'Copy numbers from body_excerpt verbatim, including units, signs and precision; no rounding or conversion '
+            'for these records. Optional verbatim source quotes must use 「quote」 and evidence_ids naming the '
+            'specific supplied same-stock body_excerpt; the quote must be an exact substring. '
+            'Quotes establish text provenance only, not the truth or entailment of an interpretation.\n')
     feedback = "请按上述JSON结构回答。"
     if issues:
         if any(i.code == TRUNCATED for i in issues):
@@ -149,7 +159,7 @@ def _messages(question, context, issues=()):
             if len(entries)==4:
                 break
         feedback += introduction + json.dumps(entries, ensure_ascii=False)
-    return (ToolMessage("system", INSTRUCTION), ToolMessage("user", question),
+    return (ToolMessage("system", instruction), ToolMessage("user", question),
             ToolMessage("assistant", "UNTRUSTED_RESEARCH_CONTEXT\n" + json.dumps(
                 {k: v for k, v in context.items() if not k.startswith('_')}, ensure_ascii=False, separators=(',', ':'))),
             ToolMessage("user", feedback))
@@ -720,7 +730,9 @@ def _trim_answer_context(question, context):
         except ModelRequestError:
             eligible = [i for i in range(len(context['evidence'])-1,-1,-1)
                         if context['evidence'][i].get('content_kind')!='trade_plan']
-            removable = next((i for i in eligible if context['evidence'][i].get('temporal_scope')!='daily_price_context'),
+            removable = next((i for i in eligible if context['evidence'][i].get('content_kind') == 'body_excerpt'), None)
+            if removable is None:
+                removable = next((i for i in eligible if context['evidence'][i].get('temporal_scope')!='daily_price_context'),
                               eligible[0] if eligible else None)
             if removable is None:
                 raise ValueError("context_too_large")
@@ -857,6 +869,13 @@ def synthesize_narrative_answer(question, bundle, *, model, repair_invalid=False
             trace_answer_validation(answer.quality)
             return ProductAnswerRun(answer, calls)
     answer = _answer(bundle, context, narratives, decisions, issues, generated, deleted, repairs, structure_failures)
+    if bundle.documents is not None:
+        from trading_companion.document_collection import documents_for_context
+        supplied_context = context if calls else {}
+        offered = {r['id'] for r in supplied_context.get('evidence', ())}
+        answer = replace(answer, documents=documents_for_context(bundle, supplied_context),
+            evidence=tuple(item for index, item in enumerate(bundle.evidence, 1)
+                if item.content_kind != 'body_excerpt' or f'E{index}' in offered))
     answer.quality.update(numeric_validation_version='source-bindings-v2', sentence_count_version='sentence-counts-v2', **numeric_stats)
     output_quality = dict(output_truncation_version='answer-output-v1', output_truncations=truncations,
         initial_output_truncations=initial_truncations, repair_output_truncations=repair_truncations)

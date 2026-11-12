@@ -332,9 +332,13 @@ class ResearchApiService:
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
                  research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None,
-                 news_triage_sorting=False, news_sorter=None):
+                 news_triage_sorting=False, news_sorter=None, research_documents="off", document_collector=None):
         from trading_companion.news_triage_shadow import NewsTitleCapture
         from trading_companion.news_triage_sorting import NewsTriageSorter
+        from trading_companion.document_collection import DocumentCollector
+        if (type(research_documents) is not str or research_documents not in ("off", "events")
+                or document_collector is not None and type(document_collector) is not DocumentCollector):
+            raise ModelConfigurationError("Use an explicit document-read policy and trusted collector")
         if type(news_triage_sorting) is not bool or news_sorter is not None and type(news_sorter) is not NewsTriageSorter:
             raise ModelConfigurationError("Use an explicit sorting switch and trusted sorter")
         if headline_capture is not None and type(headline_capture) is not NewsTitleCapture:
@@ -385,6 +389,8 @@ class ResearchApiService:
         self._headline_capture = headline_capture if data_mode != "synthetic" and trace_mode == "normal" else None
         self._news_sorter = ((news_sorter or NewsTriageSorter()) if news_triage_sorting
             and research_intent_v2_enabled and data_mode != "synthetic" and trace_mode == "normal" else None)
+        self._document_collector = ((document_collector or DocumentCollector()) if research_documents == "events"
+            and data_mode != "synthetic" and trace_mode == "normal" else None)
         # Development CSV overrides the online choice inside the Agent; never select CSV through chat input.
         self._research_source = "tencent" if data_mode == "synthetic" else data_mode
         self._model_factory, self._directory_loader = model_factory, directory_loader
@@ -716,7 +722,8 @@ class ResearchApiService:
                     now=timestamp, reference_date=self._reference_date, development_source=self._development_source,
                     data_service=self._product_data_service, market_background_source=self._market_background_source,
                     clock=self._wall_clock, control=control, workflow=self._workflow_enabled,
-                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
+                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None,
+                    document_collector=self._document_collector)
             elif decision.kind == RouteKind.COMPANY_RESEARCH:
                 from trading_companion.product_agent import run_product_research_turn
                 result = run_product_research_turn(question, model=entry.model, directory=directory,
@@ -724,7 +731,8 @@ class ResearchApiService:
                     reference_date=self._reference_date, session=entry.session, now=timestamp, control=control,
                     data_service=self._product_data_service, market_background_source=self._market_background_source,
                     background_clock=self._wall_clock,
-                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None)
+                    headline_capture=self._headline_capture if entry.provider == "deepseek" else None,
+                    document_collector=self._document_collector)
             else:
                 result = run_natural_research_turn(question, model=entry.model, directory=directory,
                     source=self._research_source,
@@ -814,7 +822,8 @@ class ResearchApiService:
                 data_service=self._product_data_service, market_background_source=self._market_background_source,
                 clock=self._wall_clock, digests=entry.digests,
                 headline_capture=self._headline_capture if entry.provider == "deepseek" else None,
-                headline_sorter=self._news_sorter if entry.provider == "deepseek" else None)
+                headline_sorter=self._news_sorter if entry.provider == "deepseek" else None,
+                document_collector=self._document_collector)
             attached['timestamp'] = now
             # This application notice is deliberately absent from every model request.
             delivered = session._delivered_prices

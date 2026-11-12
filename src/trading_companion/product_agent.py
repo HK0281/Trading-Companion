@@ -107,7 +107,8 @@ def saved_product(session, *, directory, now, source, development, reference_dat
 
 def _execute(question, *, session, model, directory, now, reference_date, source,
              development_source, data_service, source_factory, market_background_source, background_clock,
-             selected_securities=(), original_question=None, prepared=None, headline_capture=None, headline_sorter=None):
+             selected_securities=(), original_question=None, prepared=None, headline_capture=None, headline_sorter=None,
+             document_collector=None):
     if prepared is not None:
         if type(prepared) is not ProductPlan:
             raise ModelConfigurationError("Use a trusted prepared product plan")
@@ -116,7 +117,7 @@ def _execute(question, *, session, model, directory, now, reference_date, source
             now=now, reference=reference, development_source=development_source, data_service=data_service,
             source_factory=source_factory, market_background_source=market_background_source,
             background_clock=background_clock, inherit_horizon=False, headline_capture=headline_capture,
-            headline_sorter=headline_sorter,
+            headline_sorter=headline_sorter, document_collector=document_collector,
             continuation=prepared if any(v in prepared.applied_defaults for v in
                 ('scope:previous_research', 'scope:screening_list')) else None)
     from trading_companion.product_answer import synthesize_product_answer
@@ -214,13 +215,13 @@ def _execute(question, *, session, model, directory, now, reference_date, source
         source_factory=source_factory, market_background_source=market_background_source,
         background_clock=background_clock, saved=saved, continuation=continuation,
         selected_securities=selected_securities, original_question=original_question, headline_capture=headline_capture,
-        headline_sorter=headline_sorter)
+        headline_sorter=headline_sorter, document_collector=document_collector)
 
 
 def _execute_plan(plan, *, question, session, model, directory, now, reference, development_source,
                   data_service, source_factory, market_background_source, background_clock,
                   saved=None, continuation=None, selected_securities=(), original_question=None,
-                  inherit_horizon=True, headline_capture=None, headline_sorter=None):
+                  inherit_horizon=True, headline_capture=None, headline_sorter=None, document_collector=None):
     from trading_companion.product_answer import synthesize_product_answer
     from trading_companion.decision_horizon import gate
     if selected_securities and plan.status == 'ready' and plan.securities == selected_securities:
@@ -262,6 +263,10 @@ def _execute_plan(plan, *, question, session, model, directory, now, reference, 
     if headline_capture is not None and development_source is None and not plan.explicit_historical:
         headline_capture.capture(bundle, captured_at=now)
         checkpoint()
+    if document_collector is not None and development_source is None:
+        bundle = document_collector.enrich(bundle, question=plan.user_question or question, now=now,
+                                           sorting=headline_sorter is not None)
+        checkpoint()
     headline_order = None
     if headline_sorter is not None and development_source is None and not plan.explicit_historical:
         headline_order = headline_sorter.sort(bundle, directory=directory, now=now,
@@ -271,6 +276,13 @@ def _execute_plan(plan, *, question, session, model, directory, now, reference, 
     checkpoint()
     responses += run.responses
     answer = run.answer
+    if bundle.documents is not None:
+        # Keep candidate evidence and its E aliases; record only the supplied summary.
+        documents = answer.documents
+        if documents is None:
+            from trading_companion.document_collection import documents_for_context
+            documents = documents_for_context(bundle, {})
+        bundle = replace(bundle, documents=documents)
     has_data = bool(bundle.evidence)
     if has_data:
         session.product_saved = SavedProductResearch(now, plan, bundle, answer)
@@ -288,7 +300,7 @@ def _execute_plan(plan, *, question, session, model, directory, now, reference, 
 def run_product_research_turn(question, *, session, model, directory, now, source, data_service,
                               reference_date=None, development_source=None, control=None, source_factory=None,
                               market_background_source=None, background_clock=None, prepared=None, replace_existing=None,
-                              headline_capture=None, headline_sorter=None):
+                              headline_capture=None, headline_sorter=None, document_collector=None):
     from trading_companion.index_agent import owns_index_request, run_index_research_turn
     if prepared is None and owns_index_request(question, session, directory):
         return run_index_research_turn(question, model=model, directory=directory, session=session, now=now,
@@ -299,6 +311,6 @@ def run_product_research_turn(question, *, session, model, directory, now, sourc
         directory=directory, now=now, reference_date=reference_date, source=source,
         development_source=development_source, data_service=data_service, source_factory=source_factory,
         market_background_source=market_background_source, background_clock=background_clock, prepared=prepared,
-        headline_capture=headline_capture, headline_sorter=headline_sorter),
+        headline_capture=headline_capture, headline_sorter=headline_sorter, document_collector=document_collector),
         model=model, session=session, control=control or company_turn_control(), default_calls=6, input_mode="natural",
         replace_pending=replaces_pending(question, directory) if replace_existing is None else replace_existing)

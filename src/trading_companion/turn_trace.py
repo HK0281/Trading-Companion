@@ -180,6 +180,14 @@ news_source_unavailable news_source_invalid news_identity_unverified
 news_list_not_unique invalid_news_list_markup sina_news_exchange_unverified news_layout_invalid
 news_page_instrument_mismatch news_list_missing_or_incomplete invalid_source_encoding news_title_association_unverified
 """.split())
+from trading_companion.research_documents import _ERROR_CODES as _DOCUMENT_CODES
+_EVENT_CODES |= _DOCUMENT_CODES | frozenset('''
+documents_off documents_not_requested documents_historical documents_development documents_insufficient_time
+documents_no_candidates documents_timeout documents_context_capacity documents_unavailable
+documents_read documents_partial document_read document_not_read document_timeout
+document_redirect_blocked document_http_error document_content_type_invalid document_connection_failed
+document_quote_mismatch
+'''.split())
 _SAFE_EVENT_CODES = _CODES | _EVENT_CODES
 
 
@@ -410,6 +418,22 @@ class TurnTrace:
         self._totals = dict.fromkeys(_USAGE_KEYS)
         self._intent_stages = []
         self._news_triage = None
+        self._documents = None
+
+    def documents(self, summary):
+        from trading_companion.document_collection import SKIP_REASONS
+        with self._lock:
+            if self._done:
+                return
+            record = dict(self._documents or {})
+            record['version'] = 'research-documents-v1'
+            reason = summary.get('documents_skipped_reason')
+            record['documents_skipped_reason'] = reason if reason in SKIP_REASONS else None
+            for key in ('requests', 'response_bytes', 'elapsed_ms', 'available', 'attempted', 'complete', 'partial',
+                        'omitted_tables', 'private_use_characters_replaced', 'omitted_trailing_characters'):
+                if key in summary:
+                    record[key] = _count(summary[key])
+            self._documents = record
 
     def news_triage(self, summary):
         """Bounded classifier ledger; late settlement is a separate metadata record."""
@@ -683,6 +707,8 @@ class TurnTrace:
                     'intent_v2' if 'execution' in stages else 'local' if 'local' in stages else 'stopped')
             if self._news_triage is not None:
                 record["news_triage"] = deepcopy(self._news_triage)
+            if self._documents is not None:
+                record['research_documents'] = deepcopy(self._documents)
             while len(_line(record)) > self.sink.limits.record_bytes and (
                     record["models"]["events"] or record["events"] or record.get("intent_stages")):
                 models, details = record["models"]["events"], record["events"]
@@ -749,6 +775,11 @@ def news_triage_sink():
     """Capture this turn only, including settlement after its normal trace is closed."""
     trace = _CURRENT.get()
     return None if trace is None else trace.news_triage
+
+
+def trace_documents(summary):
+    """Counts and fixed skip reasons only; never document text, URLs or hashes."""
+    _update('documents', summary)
 
 
 def safe_answer_validation(value):

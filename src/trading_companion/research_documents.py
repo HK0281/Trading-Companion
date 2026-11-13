@@ -140,7 +140,9 @@ def _boilerplate_paragraph(paragraph, candidate):
     identity = (r"(?:(?:证券|股票)代码[:：]?" + code + r"(?:\.(?:SH|SZ|BJ))?[，,；;]?|"
                 r"(?:证券|股票)简称[:：]?" + name + r"[，,；;]?|"
                 r"公告编号[:：]?(?:临)?[A-Za-z0-9—－-]+[，,；;]?){2,3}")
-    if re.fullmatch(identity, compact.rstrip("。")) and "代码" in compact and "简称" in compact:
+    page = re.match(r"^[0-9]{1,4}\s+(?=(?:证券|股票)代码)", paragraph)
+    identity_text = re.sub(r"\s+", "", paragraph[page.end():]) if page else compact
+    if re.fullmatch(identity, identity_text.rstrip("。")) and "代码" in identity_text and "简称" in identity_text:
         return True
     guarantees = (
         "本公司董事会及全体董事保证本公告内容不存在任何虚假记载、误导性陈述或者重大遗漏，"
@@ -156,10 +158,18 @@ def _boilerplate_paragraph(paragraph, candidate):
         return len(guarantee) >= 24 and any(plain(template).startswith(guarantee) for template in guarantees)
     if guarantee_only(compact):
         return True  # Also covers source paragraphs ending midway through a standard guarantee.
-    header = re.match(identity, compact)
-    if (header is not None and "代码" in header[0] and "简称" in header[0]
-            and guarantee_only(compact[header.end():])):
-        return True
+    header = re.match(identity, identity_text)
+    if header is not None and "代码" in header[0] and "简称" in header[0]:
+        remainder = identity_text[header.end():]
+        def title_only(value):
+            value = value.rstrip("。：:")
+            return value in titles
+        if guarantee_only(remainder) or title_only(remainder):
+            return True
+        for prefix in {template.partition("保证")[0] + "保证" for template in guarantees}:
+            start = remainder.find(prefix)
+            if start > 0 and title_only(remainder[:start]) and guarantee_only(remainder[start:]):
+                return True
     date_text = r"(?:[0-9]{4}|[〇零一二三四五六七八九]{4})年[0-9〇零一二三四五六七八九十]{1,3}月[0-9〇零一二三四五六七八九十]{1,3}日"
     pure = (
         r"特此公告[。！!]?",

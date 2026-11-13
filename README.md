@@ -160,15 +160,18 @@ including candidates omitted from the model context; its document summaries reco
 subset actually supplied. API responses and the page expose only that supplied subset.
 The stage adds no model calls, but extra input tokens can increase API cost.
 Three batches of 76 live pages verified readable text in 32/42 news articles and 34/34
-announcements. The first eight-question answer check exposed weak excerpt selection,
-unrelated document choices and two missed triggers. The A-2 recheck triggered all eight
-questions and selected related documents, but only four to five of fifteen supplied excerpts
-were substantive. The follow-up rebuilds sentences from announcement text lines and filters
-short headings, bylines and boilerplate. Announcement extractor v3 may change paragraph
-positions and hashes; saved v1/v2 records retain their original identities. At most one
-same-company, same-kind alternative is allowed after a failed read within the original
-four-request, twelve-second budget. The switch remains off pending another same-question
-answer recheck. Enabling it does not enable headline triage sorting.
+announcements. Earlier eight-question checks exposed missed triggers, unrelated document
+choices and weak excerpt selection. After sentence reflow and substantive-excerpt fixes,
+the final A-2 check triggered all eight questions, selected related documents in all eight,
+and supplied 14 substantive excerpts out of 15. Runs took 6.3–14.5 seconds, with 20 model
+attempts in total. Claude reviewed, committed and pushed A-2 as `1d6f2c7`; the full gate
+passed 3,849 unittest tests, 244 pytest cases, 884 frontend tests, the build and bundle checks.
+Announcement extractor v3 may change paragraph positions and hashes; saved v1/v2 records
+retain their original identities. At most one same-company, same-kind alternative is allowed
+after a failed read within the original four-request, twelve-second budget. A-3 addresses
+headers mixed with body text in HTML and still awaits review before commit. The switch
+remains off by default; enabling it by default requires the user's decision. Enabling it does
+not enable headline triage sorting.
 
 ## Development
 
@@ -189,7 +192,7 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
-- **Bounded event documents (A).** Optional verified web text and answer excerpts are implemented, with the switch off by default. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. Live sources yielded readable news in 32/42 cases and announcements in 34/34. The A-2 eight-question recheck passed triggering and document choice, but excerpt quality remained below 75%; sentence reflow and substantive-excerpt fixes await review and another same-question recheck. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
+- **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The switch remains off by default pending the user's decision. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's remaining HTML header-filtering change awaits review before commit. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
 - **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
 - **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-triage-integration-design.md) and [product-v2 results](docs/news-triage-product-v2.md).
 

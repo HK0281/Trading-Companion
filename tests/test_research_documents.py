@@ -214,6 +214,67 @@ class ResearchDocumentTests(unittest.TestCase):
         excerpt, = replace(document, paragraphs=(combined_business,)).excerpts("投资新建生产线")
         self.assertEqual((excerpt.start, excerpt.end, excerpt.text), (0, len(combined_business), combined_business))
 
+    def test_html_identity_title_and_guarantee_sentence_is_skipped_without_changing_body_offsets(self):
+        heading = "平安银行股份有限公司第八届董事会第五十九次会议决议公告"
+        candidate = announcement_candidate(title="平安银行:" + heading)
+        header = "证券代码：000001 证券简称：平安银行 公告编号：临2026-087 "
+        rendered_heading = "平安银行股份有限公司 第八届董事会第五十九次会议决议公告 "
+        guarantee = ("本公司董事会及全体董事保证本公告内容不存在任何虚假记载、误导性陈述或者重大遗漏，"
+                     "并对其内容的真实性、准确性和完整性承担法律责任。")
+        core = "公司间接子公司拟发行中期票据用于补充经营资金，全资子公司提供担保，相关安排仍需完成必要手续。"
+        for padding in ("", "公司将根据实际发行进度及时披露相关担保安排，具体实施情况仍需结合后续正式文件核对。" * 12):
+            with self.subTest(long_paragraph=bool(padding)):
+                administrative = header + rendered_heading + guarantee
+                paragraph = administrative + core + padding
+                document = ResearchDocument(candidate, (paragraph,), NOW, "eastmoney-announcement-body-v3")
+                identity = (document.id, document.content_sha256, document.paragraphs)
+                excerpts = document.excerpts("中期票据担保具体内容")
+                self.assertTrue(excerpts)
+                self.assertEqual(excerpts[0].start, len(administrative))
+                self.assertTrue(excerpts[0].text.startswith(core))
+                self.assertTrue(all(e.start >= len(administrative) and e.text == paragraph[e.start:e.end] for e in excerpts))
+                self.assertTrue(all(len(e.text) <= 480 for e in excerpts))
+                self.assertLessEqual(len(excerpts), 2)
+                self.assertEqual(identity, (document.id, document.content_sha256, document.paragraphs))
+                self.assertEqual(replace(document, paragraphs=(administrative,)).excerpts("票据担保"), ())
+                title_sentence = header + rendered_heading.rstrip() + "。"
+                excerpt, = replace(document, paragraphs=(title_sentence + guarantee + core,)).excerpts("票据担保")
+                self.assertEqual((excerpt.start, excerpt.text), (len(title_sentence + guarantee), core))
+        for prefix in ("1 ", "23 ", "1234 "):
+            with self.subTest(page_token=prefix):
+                administrative = prefix + header + rendered_heading + guarantee
+                paragraph = administrative + core
+                document = ResearchDocument(candidate, (paragraph,), NOW, "eastmoney-announcement-body-v3")
+                excerpt, = document.excerpts("票据担保")
+                self.assertEqual((excerpt.start, excerpt.end, excerpt.text), (len(administrative), len(paragraph), core))
+                self.assertEqual(excerpt.text, paragraph[excerpt.start:excerpt.end])
+        # A continuous number or an overlong token is not guessed to be a page number.
+        for prefix in ("1", "12345 "):
+            with self.subTest(nonpage_prefix=prefix):
+                paragraph = prefix + header + rendered_heading + guarantee
+                document = ResearchDocument(candidate, (paragraph,), NOW, "eastmoney-announcement-body-v3")
+                excerpt, = document.excerpts("董事会会议")
+                self.assertEqual((excerpt.start, excerpt.text), (0, paragraph))
+
+    def test_html_title_and_guarantee_filters_do_not_swallow_interleaved_business(self):
+        heading = "平安银行股份有限公司关于间接子公司发行中期票据并由全资子公司提供担保的公告"
+        candidate = announcement_candidate(title="平安银行:" + heading)
+        header = "证券代码：000001 证券简称：平安银行 公告编号：临2026-088 "
+        guarantee = ("本公司董事会及全体董事保证本公告内容不存在任何虚假记载、误导性陈述或者重大遗漏，"
+                     "并对其内容的真实性、准确性和完整性承担法律责任。")
+        business = "公司已确定本次担保上限为314万元，具体担保条件仍需履行必要审批程序"
+        paragraphs = (header + heading + business + "，" + guarantee,
+                      header + heading + guarantee.removesuffix("。") + "，" + business + "。",
+                      header + "本次担保人为人工科技股份有限公司" + heading + guarantee,
+                      header + "本次交易对方为人工产业发展股份有限公司" + heading + guarantee,
+                      header + "本次担保人为平安银行股份有限公司" + heading + guarantee,
+                      header + "人工科技股份有限公司" + heading + guarantee)
+        for paragraph in paragraphs:
+            with self.subTest(paragraph=paragraph):
+                document = ResearchDocument(candidate, (paragraph,), NOW, "eastmoney-announcement-body-v3")
+                excerpt, = document.excerpts("担保上限314万元")
+                self.assertEqual((excerpt.start, excerpt.end, excerpt.text), (0, len(paragraph), paragraph))
+
     def test_legal_issuer_prefixes_do_not_turn_repeated_document_titles_into_evidence(self):
         candidate = announcement_candidate(security_name="人工银行", title="人工银行:人工银行2026年第三次临时股东会会议资料")
         combined_title = "中国人工银行股份有限公司2026 年第三次临时股东会会议资料"

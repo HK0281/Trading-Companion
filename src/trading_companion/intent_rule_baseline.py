@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "intent-research-documents-v3"
+VERSION = "personal-memory-watchlist-v1"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (
@@ -39,6 +39,7 @@ SOURCES = (
     "company_news_sina.py",
     "collection_execution.py",
     "snapshot_store.py",
+    "personal_memory.py", "personal_memory_store.py", "personal_memory_commands.py", "security_directory.py",
 )
 
 

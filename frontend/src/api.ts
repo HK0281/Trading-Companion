@@ -11,6 +11,7 @@ export interface Health {
   development_mode_available?: boolean;
   available_providers?: ModelProvider[];
   memory_enabled?: boolean;
+  personal_memory_enabled?: boolean;
 }
 
 export const availableLiveProviders = (health: Health | null): LiveProvider[] =>
@@ -57,6 +58,7 @@ export interface PublicTurn {
   index_research?: unknown;
   knowledge?: unknown;
   screening?: unknown;
+  personal_memory?: unknown;
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;
@@ -91,6 +93,28 @@ export interface StoredConversation extends Omit<ConversationSummary, "turns"> {
   turns: { sequence: number; request_id: string; asked_at: string; question: string; result: PublicTurn }[];
 }
 
+export interface SecuritySummary { instrument_id: string; name: string }
+export interface WatchlistItem extends SecuritySummary { created_at: string; updated_at: string }
+export interface Watchlist {
+  version: "personal-memory-watchlist-v1";
+  enabled: boolean;
+  limit: 50;
+  items: WatchlistItem[];
+}
+export interface WatchlistSearch {
+  version: Watchlist["version"];
+  enabled: boolean;
+  candidates: SecuritySummary[];
+  truncated: boolean;
+}
+export interface PersonalMemoryResult {
+  version: Watchlist["version"];
+  action: "add" | "remove" | "list" | "notice";
+  status: "completed" | "needs_confirmation" | "disabled" | "unavailable" | "unsupported";
+  items: WatchlistItem[];
+  candidates: (SecuritySummary & { reply: string })[];
+}
+
 export interface ResearchApi {
   readonly mode?: ApiMode;
   health(): Promise<Health>;
@@ -105,6 +129,11 @@ export interface ResearchApi {
   conversations?(): Promise<ConversationSummary[] | null>;
   conversation?(id: string): Promise<StoredConversation>;
   deleteConversation?(id: string): Promise<void>;
+  watchlist?(): Promise<Watchlist>;
+  searchWatchlist?(query: string): Promise<WatchlistSearch>;
+  addWatchlist?(instrumentId: string): Promise<Watchlist>;
+  removeWatchlist?(instrumentId: string): Promise<Watchlist>;
+  clearWatchlist?(): Promise<Watchlist>;
 }
 
 const errors: Record<string, string> = {
@@ -125,6 +154,10 @@ const errors: Record<string, string> = {
   invalid_request: "请求格式不符合接口要求，没有自动重试。",
   conversation_not_found: "这段历史对话不存在或已删除。",
   conversation_mode_mismatch: "这段历史对话属于其他数据模式，不能在当前模式继续。",
+  personal_memory_disabled: "自选股未开启。请用 --personal-memory-db 显式开启；--no-memory 会关闭全部记忆。",
+  personal_memory_store_unavailable: "本机自选股暂时无法读取或保存，请检查服务状态后手动刷新。",
+  watchlist_full: "自选股已达到 50 只上限，请先移除一项再加入。",
+  watchlist_instrument_unknown: "证券代码未在当前目录中唯一核验，请重新搜索并选择完整代码。",
   memory_store_unavailable: "本机对话记录暂不可用；当前研究不受影响。",
   memory_disabled: "本服务未开启对话记录。",
 };
@@ -155,12 +188,49 @@ const sessionView = (value: unknown): value is SessionView => record(value) && t
   && count(value.messages_used) && count(value.model_calls_forwarded);
 const summary = (value: unknown): value is ConversationSummary => record(value) && identifier(value.conversation_id)
   && text(value.title) && text(value.provider) && text(value.created_at) && text(value.updated_at) && count(value.turns);
+const watchlistVersion = "personal-memory-watchlist-v1";
+const keys = (value: Record<string, unknown>, expected: string[]) => Object.keys(value).sort().join() === [...expected].sort().join();
+const instrumentId = (value: unknown): value is string => typeof value === "string" && /^[0-9]{6}\.(SH|SZ|BJ)$/.test(value);
+const securityName = (value: unknown): value is string => typeof value === "string" && value.trim() === value
+  && value.length > 0 && value.length <= 80 && !/[\u0000-\u001f\u007f]/.test(value);
+const security = (value: unknown): value is SecuritySummary => record(value) && instrumentId(value.instrument_id) && securityName(value.name);
+const timestamp = (value: unknown): value is string => typeof value === "string"
+  && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+const watchlistItem = (value: unknown): value is WatchlistItem => security(value) && record(value)
+  && keys(value, ["instrument_id", "name", "created_at", "updated_at"])
+  && timestamp(value.created_at) && timestamp(value.updated_at) && Date.parse(value.created_at) <= Date.parse(value.updated_at);
+const distinctSecurities = (value: SecuritySummary[]) => new Set(value.map(item => item.instrument_id)).size === value.length;
+const watchlistItems = (value: unknown): value is WatchlistItem[] => Array.isArray(value) && value.length <= 50
+  && value.every(watchlistItem) && distinctSecurities(value);
+const watchlist = (value: unknown): value is Watchlist => record(value) && keys(value, ["version", "enabled", "limit", "items"])
+  && value.version === watchlistVersion && typeof value.enabled === "boolean" && value.limit === 50
+  && watchlistItems(value.items) && (value.enabled || value.items.length === 0);
+const watchlistSearch = (value: unknown): value is WatchlistSearch => record(value)
+  && keys(value, ["version", "enabled", "candidates", "truncated"]) && value.version === watchlistVersion
+  && typeof value.enabled === "boolean" && typeof value.truncated === "boolean"
+  && Array.isArray(value.candidates) && value.candidates.length <= 20
+  && value.candidates.every(item => security(item) && record(item) && keys(item, ["instrument_id", "name"]))
+  && distinctSecurities(value.candidates) && (value.enabled || value.candidates.length === 0 && !value.truncated);
+export function parsePersonalMemory(value: unknown): PersonalMemoryResult | null {
+  if (!record(value) || !keys(value, ["version", "action", "status", "items", "candidates"])
+      || value.version !== watchlistVersion || typeof value.action !== "string" || !["add", "remove", "list", "notice"].includes(value.action)
+      || typeof value.status !== "string" || !["completed", "needs_confirmation", "disabled", "unavailable", "unsupported"].includes(value.status)
+      || !watchlistItems(value.items) || !Array.isArray(value.candidates) || value.candidates.length > 20
+      || !value.candidates.every(item => security(item) && record(item) && keys(item, ["instrument_id", "name", "reply"])
+        && (value.action === "add" ? item.reply === `把${item.instrument_id}加入自选`
+          : value.action === "remove" && item.reply === `从自选移除${item.instrument_id}`))
+      || !distinctSecurities(value.candidates)
+      || value.candidates.length > 0 && value.status !== "needs_confirmation") return null;
+  return value as unknown as PersonalMemoryResult;
+}
 const message = (value: unknown): value is MessageResponse => {
   if (!record(value) || !identifier(value.request_id) || typeof value.replayed !== "boolean" || !record(value.result)) return false;
   const result = value.result;
   return [result.status, result.code, result.message, result.stage].every(text)
     && (result.answer === null || text(result.answer)) && count(result.model_calls_attempted) && count(result.analyses_used)
     && strings(result.applied_defaults)
+    && (result.personal_memory == null || parsePersonalMemory(result.personal_memory) !== null
+      && Array.isArray(result.candidates) && result.candidates.length === 0)
     && (result.clarification_options == null || result.status === "needs_clarification"
       && ["decision_horizon_required", "index_horizon_required"].includes(String(result.code))
       && Array.isArray(result.clarification_options) && result.clarification_options.length === 3
@@ -254,6 +324,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
         && value.available_providers.every((item) => typeof item === "string" && ["fake", "deepseek", "openai"].includes(item))
         && new Set(value.available_providers).size === value.available_providers.length
         && value.available_providers.includes(value.provider))
+      && (!Object.prototype.hasOwnProperty.call(value, "personal_memory_enabled") || typeof value.personal_memory_enabled === "boolean")
       && (serviceMode !== "development" || value.provider === "fake" && value.data_mode === "synthetic"
         && (value.available_providers === undefined || Array.isArray(value.available_providers)
           && value.available_providers.every((item) => item === "fake")))),
@@ -312,6 +383,29 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     deleteConversation: async (id) => {
       if (serviceMode === "development" || !identifier(id)) throw new ConnectionError();
       await request(`/v1/conversations/${id}`, (value): value is null => value === null, { method: "DELETE" });
+    },
+    watchlist: () => serviceMode === "development"
+      ? Promise.resolve({ version: watchlistVersion, enabled: false, limit: 50, items: [] })
+      : request("/v1/personal/watchlist", watchlist, { bounded: true }),
+    searchWatchlist: (query) => {
+      if (serviceMode === "development") throw new ApiError(409, "personal_memory_disabled");
+      if (!query.trim() || query !== query.trim() || Array.from(query).length > 80 || /[\u0000-\u001f\u007f]/.test(query))
+        throw new ConnectionError();
+      return request(`/v1/personal/watchlist/search?q=${encodeURIComponent(query)}`, watchlistSearch, { bounded: true });
+    },
+    addWatchlist: (id) => {
+      if (serviceMode === "development") throw new ApiError(409, "personal_memory_disabled");
+      if (!instrumentId(id)) throw new ConnectionError();
+      return request("/v1/personal/watchlist", watchlist, { method: "POST", body: { instrument_id: id }, bounded: true });
+    },
+    removeWatchlist: (id) => {
+      if (serviceMode === "development") throw new ApiError(409, "personal_memory_disabled");
+      if (!instrumentId(id)) throw new ConnectionError();
+      return request(`/v1/personal/watchlist/${encodeURIComponent(id)}`, watchlist, { method: "DELETE", bounded: true });
+    },
+    clearWatchlist: () => {
+      if (serviceMode === "development") throw new ApiError(409, "personal_memory_disabled");
+      return request("/v1/personal/watchlist", watchlist, { method: "DELETE", bounded: true });
     },
   };
 }

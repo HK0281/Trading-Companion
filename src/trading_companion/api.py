@@ -19,6 +19,7 @@ from trading_companion.web_ui import add_web_routes
 MAX_BODY_BYTES = 16384
 Identifier = Annotated[str, StringConstraints(strict=True, pattern=r"^[0-9a-f]{32}$")]
 SessionPath = Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]
+InstrumentId = Annotated[str, StringConstraints(strict=True, pattern=r"^[0-9]{6}\.(SH|SZ|BJ)$")]
 
 
 class EmptyRequest(BaseModel):
@@ -44,6 +45,10 @@ class MessageRequest(EmptyRequest):
 
 class CancelRequest(EmptyRequest):
     request_id: Identifier
+
+
+class WatchlistRequest(EmptyRequest):
+    instrument_id: InstrumentId
 
 
 class ChartQuery(EmptyRequest):
@@ -72,6 +77,7 @@ class PublicTurn(BaseModel):
     index_research: dict | None = None
     knowledge: dict | None = None
     screening: dict | None = None
+    personal_memory: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None
@@ -228,7 +234,8 @@ def create_app(*, service: ResearchApiService | None = None,
                 "available_providers": list(service.available_providers),
                 "scope": "local_single_process_not_production", "trading_enabled": False,
                 "development_mode_available": development_service is not None,
-                "memory_enabled": service.memory_enabled}
+                "memory_enabled": service.memory_enabled,
+                "personal_memory_enabled": service.personal_memory_enabled}
 
     @app.post("/v1/sessions", status_code=201)
     def create_session(body: SessionRequest):
@@ -251,6 +258,27 @@ def create_app(*, service: ResearchApiService | None = None,
     @app.delete("/v1/conversations")
     def clear_conversations():
         return service.clear_conversations()
+
+    # Same-origin single local user, independent of research sessions and their quotas.
+    @app.get("/v1/personal/watchlist")
+    def list_watchlist():
+        return service.watchlist()
+
+    @app.get("/v1/personal/watchlist/search")
+    def search_watchlist(q: Annotated[str, Query(min_length=1, max_length=80)]):
+        return service.search_watchlist(q)
+
+    @app.post("/v1/personal/watchlist")
+    def add_watchlist(body: WatchlistRequest):
+        return service.add_watchlist(body.instrument_id)
+
+    @app.delete("/v1/personal/watchlist/{instrument_id}")
+    def remove_watchlist(instrument_id: InstrumentId):
+        return service.remove_watchlist(instrument_id)
+
+    @app.delete("/v1/personal/watchlist")
+    def clear_watchlist():
+        return service.clear_watchlist()
 
     @app.get("/v1/sessions/{session_id}")
     def inspect_session(session_id: SessionPath, token: token_type):

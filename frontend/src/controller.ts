@@ -1,6 +1,6 @@
 /** In-memory browser state machine: credentials and unresolved work never enter persistent storage. */
 import { ApiError, ConnectionError, availableLiveProviders, type ConversationSummary, type Health, type LiveProvider,
-  type MessageResponse, type ResearchApi, type SessionCredentials, type SessionView } from "./api";
+  type MessageResponse, type ResearchApi, type SessionCredentials, type SessionView, type Watchlist, type WatchlistSearch } from "./api";
 
 export interface Entry {
   id: string;
@@ -27,6 +27,14 @@ export interface WorkspaceState {
   /** Local history list; null when the service keeps no conversation record. */
   conversations: ConversationSummary[] | null;
   conversationId: string | null;
+  watchlist: Watchlist | null;
+  watchlistLoading: boolean;
+  watchlistSaving: boolean;
+  watchlistError: string | null;
+  watchlistNotice: string | null;
+  watchlistSearch: WatchlistSearch | null;
+  watchlistSearchLoading: boolean;
+  watchlistSearchError: string | null;
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
@@ -44,11 +52,15 @@ export class ResearchController {
   private credentials: SessionCredentials | null = null;
   private pending: { id: string; question: string } | null = null;
   private running = false;
+  private personalEpoch = 0;
+  private watchlistRead = 0;
+  private watchlistSearchRead = 0;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
     health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
     cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info",
-    conversations: null, conversationId: null };
+    conversations: null, conversationId: null, watchlist: null, watchlistLoading: false, watchlistSaving: false,
+    watchlistError: null, watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null };
 
   constructor(api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
@@ -126,6 +138,7 @@ export class ResearchController {
       this.acceptHealth(health);
       this.update({ notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
       await this.refreshConversations();
+      await this.refreshWatchlist();
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -138,6 +151,7 @@ export class ResearchController {
     const targetApi = target === "development" ? this.developmentApi : this.normalApi;
     if (!targetApi) return false;
     this.running = true;
+    this.clearPersonalState();
     this.update({ loading: true, switching: true });
     try {
       if (this.credentials) {
@@ -164,7 +178,10 @@ export class ResearchController {
       // Unconfirmed cleanup preserves the old endpoint, credentials, messages and draft.
       this.update({ notice: `未能清理原会话，尚未切换模式。${explanation(error)}`, noticeLevel: "error" });
       return false;
-    } finally { this.running = false; this.update({ loading: false, switching: false }); }
+    } finally {
+      this.running = false; this.update({ loading: false, switching: false });
+      void this.refreshWatchlist();
+    }
   }
 
   async start() {
@@ -254,6 +271,8 @@ export class ResearchController {
       const response = await this.api.send(credentials, pending.id, pending.question);
       this.amend(pending.id, { response });
       this.pending = null;
+      // A replay is an earlier receipt, never the current personal list.
+      if (response.result.personal_memory != null) void this.refreshWatchlist();
       if (response.conversation_id && this.credentials === credentials) {
         const created = response.conversation_id !== this.state.conversationId;
         this.update({ conversationId: response.conversation_id });
@@ -349,6 +368,97 @@ export class ResearchController {
       return true;
     } catch (error) { this.failure(error); return false; }
     finally { this.running = false; this.update({ loading: false }); }
+  }
+
+  private clearPersonalState() {
+    this.personalEpoch++; this.watchlistRead++; this.watchlistSearchRead++;
+    this.update({ watchlist: null, watchlistLoading: false, watchlistSaving: false, watchlistError: null,
+      watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null });
+  }
+
+  private personalAvailable() {
+    return this.state.mode === "normal" && this.api === this.normalApi && this.state.health?.personal_memory_enabled === true
+      && this.state.health.data_mode !== "synthetic" && !!this.api.watchlist;
+  }
+
+  async refreshWatchlist(): Promise<void> {
+    if (this.state.switching) return;
+    const api = this.api, epoch = this.personalEpoch, request = ++this.watchlistRead;
+    if (!this.personalAvailable()) {
+      this.watchlistSearchRead++;
+      this.update({ watchlist: { version: "personal-memory-watchlist-v1", enabled: false, limit: 50, items: [] },
+        watchlistLoading: false, watchlistError: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null });
+      return;
+    }
+    this.update({ watchlistLoading: true, watchlistError: null });
+    try {
+      const watchlist = await api.watchlist!();
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistRead) {
+        if (!watchlist.enabled) this.watchlistSearchRead++;
+        this.update({ watchlist, ...(!watchlist.enabled ? { watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null } : {}) });
+      }
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistRead)
+        this.update({ watchlistError: `自选读取失败。${explanation(error)}` });
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistRead) this.update({ watchlistLoading: false });
+    }
+  }
+
+  clearWatchlistSearch() {
+    this.watchlistSearchRead++;
+    this.update({ watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null });
+  }
+
+  async searchWatchlist(query: string): Promise<boolean> {
+    query = query.trim();
+    if (!this.personalAvailable() || this.state.switching || !this.api.searchWatchlist || !query || Array.from(query).length > 80) return false;
+    const api = this.api, epoch = this.personalEpoch, request = ++this.watchlistSearchRead;
+    this.update({ watchlistSearch: null, watchlistSearchLoading: true, watchlistSearchError: null });
+    try {
+      const result = await api.searchWatchlist!(query);
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistSearchRead)
+        this.update(result.enabled ? { watchlistSearch: result }
+          : { watchlist: { version: "personal-memory-watchlist-v1", enabled: false, limit: 50, items: [] }, watchlistSearch: null });
+      return true;
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistSearchRead)
+        this.update({ watchlistSearchError: `目录搜索失败。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch && request === this.watchlistSearchRead)
+        this.update({ watchlistSearchLoading: false });
+    }
+  }
+
+  addWatchlist = (id: string) => this.changeWatchlist("add", id);
+  removeWatchlist = (id: string) => this.changeWatchlist("remove", id);
+  clearWatchlist = () => this.changeWatchlist("clear");
+
+  private async changeWatchlist(action: "add" | "remove" | "clear", id?: string): Promise<boolean> {
+    if (!this.personalAvailable() || this.state.switching || this.state.watchlistSaving) return false;
+    const api = this.api, epoch = this.personalEpoch;
+    const operation = action === "add" ? api.addWatchlist : action === "remove" ? api.removeWatchlist : api.clearWatchlist;
+    if (!operation) return false;
+    this.watchlistRead++; this.watchlistSearchRead++;
+    this.update({ watchlistSaving: true, watchlistLoading: false, watchlistError: null, watchlistNotice: null,
+      watchlistSearchLoading: false });
+    try {
+      const result = action === "clear" ? await api.clearWatchlist!()
+        : action === "add" ? await api.addWatchlist!(id!) : await api.removeWatchlist!(id!);
+      if (!result.enabled) throw new ApiError(409, "personal_memory_disabled");
+      if (this.api === api && this.personalEpoch === epoch) {
+        this.update({ watchlist: result, watchlistNotice: action === "add" ? "已保存自选。" : action === "remove" ? "已移除自选。" : "已清空自选；聊天历史未删除。" });
+        await this.refreshWatchlist();
+      }
+      return true;
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch)
+        this.update({ watchlistError: `自选变更未确认，请刷新后核对。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch) this.update({ watchlistSaving: false });
+    }
   }
 
   async refreshConversations() {

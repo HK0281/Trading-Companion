@@ -50,6 +50,35 @@ code, .number { font-family: "Cascadia Code", Consolas, monospace; font-variant-
   padding: 6px 9px; min-height: 32px; }
 .saved-delete:hover { color: #f0b4a8; }
 .saved-conversations .confirm-panel { flex-basis: 100%; margin: 4px 6px 8px; }
+.watchlist-panel { flex-shrink: 0; border-top: 1px solid #ffffff12; padding: 12px 4px 0; overflow-wrap: anywhere; }
+.watchlist-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.watchlist-heading .sidebar-caption { padding: 0 0 8px; letter-spacing: .5px; }
+.watchlist-count { font-size: 10px; color: #8ba697; white-space: nowrap; }
+.watchlist-note { margin: 7px 0; font-size: 11px; color: #83978d; }
+.watchlist-panel .empty-index { padding: 4px 0; }
+.watchlist-panel button { padding: 5px 7px; font-size: 11px; background: #ffffff08; border-color: #495b50; color: #c7d4cb; }
+.watchlist-search { display: flex; gap: 5px; margin: 10px 0 6px; }
+.watchlist-search input { min-width: 0; width: 100%; padding: 6px 7px; border: 1px solid #495b50; border-radius: 6px; color: #e1e8e2; background: #00000015; font-size: 11px; }
+.watchlist-search input::placeholder { color: #819588; }
+.watchlist-search button { flex-shrink: 0; }
+.watchlist-panel ul { margin: 6px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.watchlist-panel li { display: flex; gap: 7px; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 12px; }
+.watchlist-panel li > span { min-width: 0; }
+.watchlist-panel li small { display: block; color: #80988a; font-size: 10px; }
+.watchlist-panel li > button { flex-shrink: 0; }
+.watchlist-items, .watchlist-search-results { max-height: 220px; overflow-y: auto; scrollbar-width: thin; }
+.watchlist-search-results { padding: 0 7px; background: #ffffff05; border-radius: 6px; }
+.watchlist-tools { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0; }
+.watchlist-panel .error-text { font-size: 11px; color: #e0a493; margin: 7px 0; }
+.watchlist-panel .confirm-panel { margin-top: 9px; }
+.watchlist-panel .confirm-panel button { background: #f3ecdf; color: #4b473c; }
+.watchlist-result-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
+.watchlist-result-actions > button { padding: 5px 10px; font-size: 12px; color: var(--accent); }
+.watchlist-result-actions .confirm-panel { flex-basis: 100%; }
+.personal-memory-response > p:first-child { line-height: 1.8; }
+.personal-memory-items { margin-top: 12px; font-size: 13px; }
+.personal-memory-items ul { margin: 5px 0; padding-left: 20px; }
+.personal-memory-items li span { margin-left: 7px; color: #7b8e7c; font-size: 11px; }
 .sidebar-bottom { display: grid; gap: 13px; margin-top: auto; }
 .history-button { display: flex; align-items: center; gap: 10px; background: transparent; color: #c4d0c9; border-color: transparent; font-size: 12px; padding: 9px 10px; }
 .history-button .icon { width: 17px; color: #8ba697; }

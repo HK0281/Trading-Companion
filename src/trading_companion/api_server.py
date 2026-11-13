@@ -119,8 +119,9 @@ def main(argv=None) -> int:
                         help="Open the local UI after successful startup (enabled by start.cmd)")
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--memory-db", help="Local SQLite conversation history and earlier-turn digests (enabled by start.cmd)")
+    parser.add_argument("--personal-memory-db", help="Opt-in local SQLite watchlist; normal public-source mode only")
     parser.add_argument("--no-memory", action="store_true",
-                        help="Disable conversation history, including the default enabled by start.cmd")
+                        help="Disable conversation history, earlier-turn digests and personal memory")
     parser.add_argument("--research-intent-v2", action=argparse.BooleanOptionalAction, default=True,
                         help="Use intent v2 for DeepSeek sessions (default: enabled); "
                              "restore the legacy entry with start.cmd --no-research-intent-v2; "
@@ -145,20 +146,34 @@ def main(argv=None) -> int:
         args.trace_dir = None
     if not 1 <= args.port <= 65535:
         parser.error("Choose a port between 1 and 65535")
-    if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db or args.memory_db):
-        parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
     if args.no_memory:
         args.memory_db = None
+        args.personal_memory_db = None
+    if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db or args.memory_db):
+        parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
     if not args.demo:
         args.provider = args.provider or "deepseek"
         args.data = args.data or "tencent"
     if args.data == "synthetic" and args.directory:
         parser.error("Synthetic data does not accept a directory path")
+    if args.personal_memory_db is not None and not args.personal_memory_db.strip():
+        parser.error("Personal memory requires a nonempty database configuration")
+    if args.personal_memory_db and (args.demo or args.data == "synthetic"):
+        parser.error("Personal memory requires normal public-source mode; use --no-memory to disable it")
+    if args.personal_memory_db:
+        try:
+            personal_path = Path(args.personal_memory_db).resolve()
+            for other in (args.memory_db, args.snapshot_db):
+                if other and (personal_path == Path(other).resolve()
+                        or personal_path.exists() and Path(other).exists() and personal_path.samefile(Path(other))):
+                    parser.error("Personal memory must use a separate database file")
+        except (OSError, ValueError):
+            parser.error("Cannot inspect personal memory database configuration")
     if (args.demo or args.data == "synthetic") and args.screening_coverage != "standard":
         parser.error("Synthetic mode uses fixed fixtures, not expanded live sampling")
     if args.research_documents != "off" and (args.demo or args.data == "synthetic"):
         parser.error("Document reads require normal public-source mode, not demo or synthetic data")
-    service = development_service = snapshot_store = memory_store = None
+    service = development_service = snapshot_store = memory_store = personal_store = None
     headline_capture = None
     try:
         ensure_data_mode_dependencies("synthetic" if args.demo else args.data)
@@ -220,6 +235,14 @@ def main(argv=None) -> int:
                 except MemoryStoreError:
                     raise _StartupError("memory_store_unavailable",
                         "本地对话记录库不可用，请检查 --memory-db 指定的文件及访问权限，或使用 --no-memory。") from None
+            if args.personal_memory_db:
+                from trading_companion.personal_memory import PersonalMemoryError
+                from trading_companion.personal_memory_store import SqlitePersonalMemoryStore
+                try:
+                    personal_store = SqlitePersonalMemoryStore(Path(args.personal_memory_db))
+                except PersonalMemoryError:
+                    raise _StartupError("personal_memory_store_unavailable",
+                        "本机自选股库不可用，请检查 --personal-memory-db 配置，或使用 --no-memory。") from None
             service = ResearchApiService(model_factory=models[args.provider], model_factories=models, directory_loader=loader,
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
@@ -228,6 +251,7 @@ def main(argv=None) -> int:
                 snapshot_store=snapshot_store,
                 screening_source=screening_source, market_background_source=background_source, trace_sink=trace_sink,
                 conversation_store=memory_store, conversation_context=memory_store is not None,
+                personal_memory_store=personal_store,
                 research_intent_v2_enabled=args.research_intent_v2, headline_capture=headline_capture,
                 news_triage_sorting=args.news_triage_sorting, research_documents=args.research_documents)
             # A separate fixture-only service can never alter the normal service's source or budget.
@@ -247,6 +271,8 @@ def main(argv=None) -> int:
             snapshot_store.close()
         if memory_store is not None:
             memory_store.close()
+        if personal_store is not None:
+            personal_store.close()
         if isinstance(error, _StartupError):
             code, message = error.code, error.message
         elif isinstance(error, ModelConfigurationError):
@@ -262,6 +288,10 @@ def main(argv=None) -> int:
         print("对话记录保存在本机 SQLite 文件中，可在网页历史列表中删除；使用 --no-memory 可关闭。")
     elif not args.demo:
         print("对话记录未开启：不保存聊天内容，也不向模型提供前几轮摘要；start.cmd 默认开启。")
+    if personal_store is not None:
+        print("自选股保存在本机独立 SQLite 文件中，未加密、不发送模型；使用 --no-memory 可关闭。")
+    elif not args.demo:
+        print("自选股未开启；使用 --personal-memory-db 显式开启，--no-memory 可统一关闭记忆。")
     if trace_sink is not None:
         print("本地运行记录已开启：仅运行元数据，有容量上限；不保存问题、答案、密钥或令牌。")
     if headline_capture is not None:
@@ -290,6 +320,8 @@ def main(argv=None) -> int:
             snapshot_store.close()
         if memory_store is not None:
             memory_store.close()
+        if personal_store is not None:
+            personal_store.close()
     return 0
 
 

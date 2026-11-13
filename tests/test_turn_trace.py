@@ -23,6 +23,10 @@ PRIVATE = "private-trace-unit-sentinel"
 
 # Exact non-turn codes, reviewed individually. Never exclude a whole module/prefix dynamically.
 NON_TURN_CODES = {
+    **{code: "独立本机自选库或接口的内部校验码；聊天统一映射为固定公开结果，不记录个人字段。" for code in (
+        "invalid_personal_memory_path", "invalid_personal_memory_time", "invalid_personal_memory_user",
+        "invalid_watchlist_instrument", "invalid_watchlist_name", "personal_memory_corrupt",
+        "personal_memory_schema_mismatch", "personal_memory_store_closed", "watchlist_instrument_unknown")},
     "triage_workers_busy": "标题分类全局在途槽已满，记录于独立news_triage字段并回原序，不是研究轮次失败。",
     "triage_budget": "可选标题分类预留不足，独立流水记录跳过原因，回答继续。",
     "triage_budget_or_timeout": "分类子窗口或独立用量到限，写分类流水，不替代整轮停止码。",

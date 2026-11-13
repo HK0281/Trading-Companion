@@ -1,5 +1,7 @@
 # Trading Companion：总体技术架构设计
 
+2026-11-12：记忆第3层首模块新增[本机自选股](personal-memory-design.md)，当前改动待审核。独立个人 SQLite 库通过 `--personal-memory-db PATH` 显式开启，默认关闭、`start.cmd` 不默认启用；`--no-memory` 优先禁用聊天历史/摘要和个人库。确定性管理命令在意图模型前处理并跳过聊天记忆；`/v1/personal/watchlist` 面板接口与研究会话独立。清单不发给模型，管理不改变研究主体、待澄清或旧结果；Dev Mode、demo、synthetic 不接真实个人库。持仓与偏好、研判回顾、消息收件箱、重要提醒和后台推送均未实现。
+
 2026-10-30 第2a批新增独立指数执行器：五指数真实日线、完整周证据、共享价格计算内核、独立点单位、受控模型回答、最近主体隔离及日/周图；公共结果为可选 `index_research`。股票入口继续使用原严格身份与单位。指数可选归档复用存储框架但使用独立版本负载。指数点位计划和小时图分后续批次，详见[指数研究设计](index-research-design.md)。下图为之前的股票处理链路。
 
 2026-10-29更新：自然技术与公司研究共用取数、证据及v3正文执行链，路由仍分别记录意图和执行器。技术语义主体可以保存共用计划；范围约束、统一指标编辑及待澄清都使用现有载体，旧技术任务和结构化入口保留。见[技术共用设计](technical-shared-narrative-design.md)。下图中的公司执行器也承接自然技术，技术执行器继续承担旧任务、结构化研究及兼容能力。
@@ -192,7 +194,7 @@ API服务通过`request_routing.py`集中选择原一般知识、筛选修改、
 | 本机HTTP接口 | [api_service.py](../src/trading_companion/api_service.py)、[api.py](../src/trading_companion/api.py)、[api_server.py](../src/trading_companion/api_server.py) | 单进程FastAPI/Pydantic边界、每会话Bearer令牌、有限内存/工作、消息幂等、协作取消和安全投影；默认离线，非生产鉴权/部署 |
 | 本机Web工作台 | [frontend/](../frontend/)、[web_ui.py](../src/trading_companion/web_ui.py) | React/TypeScript同源构建、内存会话、有限页面记录、证据字段、澄清与原编号恢复；无客户端密钥、用户账户或公网部署 |
 | 历史K线与指标 | [chart_projection.py](../src/trading_companion/chart_projection.py)、[ResearchChart.tsx](../frontend/src/ResearchChart.tsx)、[charts.ts](../frontend/src/charts.ts) | 同一次研究结果的有界投影与SVG，缺失断线、分单位轴、保存快照与失败隔离；不取新行情、不新增模型调用，不等于全历史证据认证 |
-| 证券状态／交易日历背景 | [market_context.py](../src/trading_companion/market_context.py)、[MarketContext.tsx](../frontend/src/MarketContext.tsx)、[背景设计](market-context-design.md) | 独立本地快照、有效期／发布时间、未知、自然日年龄、日历对照与来源冲突；原研究ID冻结，失败降级；不发送模型、不猜测、不执行规则，不证明PIT |
+| 证券状态／交易日历背景 | [market_context.py](../src/trading_companion/market_context.py)、[marketContextData.ts](../frontend/src/marketContextData.ts)、[背景设计](market-context-design.md) | 独立本地快照、有效期／发布时间、未知、自然日年龄、日历对照与来源冲突；原研究ID冻结，失败降级；不发送模型、不猜测、不执行规则，不证明PIT |
 | 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | Windows本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；单一Windows任务，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |

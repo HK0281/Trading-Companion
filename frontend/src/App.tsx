@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from "react";
-import { availableLiveProviders, createApi, type LiveProvider } from "./api";
-import { ResearchController, type Entry } from "./controller";
+import { availableLiveProviders, createApi, parsePersonalMemory, type LiveProvider } from "./api";
+import { ResearchController, type Entry, type WorkspaceState } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { ResponseContent } from "./ResponseContent";
 import { parsePresentation, sourceLabel } from "./presentation";
+import { parseCompanyAnswer } from "./ProductResearch";
+import { WatchlistActions, WatchlistPanel } from "./Watchlist";
 
 const samples = (development: boolean) => [
   { label: "个股研究", question: development ? "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2"
@@ -45,10 +47,12 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.chart} /></svg>;
 }
 
-function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart }: { entry: Entry; choose: (text: string) => void;
+function Answer({ entry, choose, chooseHorizon, canChoose, canManage, elementRef, loadChart, state, controller }: { entry: Entry; choose: (text: string) => void;
   chooseHorizon: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement>;
-  loadChart: ResearchController["loadChart"] }) {
+  canManage: boolean; loadChart: ResearchController["loadChart"]; state: WorkspaceState; controller: ResearchController }) {
   const response = entry.response, turn = response?.result;
+  const personal = parsePersonalMemory(turn?.personal_memory);
+  const company = parseCompanyAnswer(turn?.company_research);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!turn?.clarification_options || entry.history) return;
@@ -62,7 +66,7 @@ function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
     <div className="answer">
       <div className="answer-heading"><span className="assistant-mark" aria-hidden="true"><Icon name="chart" /></span>
-        <h3>{entry.history ? "已保存的研究 · 非新分析" : "Trading Companion"}</h3>
+        <h3>{personal ? "本机自选管理" : entry.history ? "已保存的研究 · 非新分析" : "Trading Companion"}</h3>
         {turn && <span className={`status-tag ${turn.status === "completed" ? "positive" : ""}`}>{statuses[turn.status] ?? "处理结果"}</span>}
         {response?.replayed && <span className="status-tag">原请求重放</span>}
       </div>
@@ -71,7 +75,21 @@ function Answer({ entry, choose, chooseHorizon, canChoose, elementRef, loadChart
           <span>历史数据：{turn.parameters.start_date} — {turn.parameters.as_of_date}</span>
           {turn.parameters.source !== undefined && <span className={turn.parameters.source === "csv" ? "synthetic-label" : ""}>来源：{sourceLabel(turn.parameters.source)}</span>}</div>}
         {turn.status !== "completed" && structured && turn.conversation == null && <p className="data-note" role="note">{turn.message}</p>}
-        <ResponseContent turn={turn} />
+        {turn.personal_memory != null ? personal ? <div className="personal-memory-response">
+          <p>{turn.answer ?? turn.message}</p>
+          <p className="watchlist-note">本机管理 · 未调用模型或行情。聊天命令计一条会话消息；侧栏管理不占研究额度。</p>
+          {response?.replayed && <p className="watchlist-note">这是原请求的处理结果；当前自选请看侧栏或刷新。</p>}
+          {personal.items.length > 0 ? <div className="personal-memory-items" aria-label="自选管理记录">
+            <p>{personal.action === "list" ? "请求时的自选清单：" : "本次处理的证券："}</p>
+            <ul>{personal.items.map(item => <li key={item.instrument_id}>{item.name} <span>{item.instrument_id}</span></li>)}</ul>
+          </div> : personal.action === "list" && personal.status === "completed" && <p>请求时的自选清单为空。</p>}
+          {personal.candidates.length > 0 && <div className="candidates" aria-label="自选管理候选股票">
+            <p>选择完整代码，继续本次自选操作。</p>
+            {personal.candidates.map(item => <button type="button" className="candidate" key={item.instrument_id}
+              disabled={!canManage || entry.history} onClick={() => chooseHorizon(item.reply)}>{item.name} <span>{item.instrument_id}</span></button>)}
+          </div>}
+        </div> : <p className="error-text">本机管理结果未能正常显示，请刷新侧栏核对自选。</p> : <ResponseContent turn={turn} />}
+        {company && <WatchlistActions securities={company.securities} state={state} controller={controller} />}
         {turn.status === "needs_clarification" && !entry.history && !!turn.candidates.length && <div className="candidates" aria-label="候选股票">
           <p>选择股票填入输入框，再发送确认。</p>
           {turn.candidates.map((candidate) => <button className="candidate" type="button" disabled={!canChoose}
@@ -196,6 +214,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           }}>
             <span>{String(index + 1).padStart(2, "0")}</span>{entry.question}</a>)}</nav>}
       </section>
+      <WatchlistPanel state={state} controller={controller} />
       {state.conversations !== null && <section className="conversation-index saved-conversations" aria-label="历史对话">
         <span className="sidebar-caption">历史对话 · 保存在本机</span>
         {!state.conversations.length ? <p className="empty-index">提问后会自动保存在这里</p> : <ul>{state.conversations.map((item) =>
@@ -278,6 +297,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
           </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} chooseHorizon={chooseHorizon} loadChart={controller.loadChart}
+            state={state} controller={controller} canManage={canSend && !!session && !state.cancelPending && index === state.entries.length - 1}
             elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && !state.cancelPending
               && session.view.model_calls_forwarded < session.modelLimit && index === state.entries.length - 1} />)}
         </section>

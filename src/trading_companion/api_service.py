@@ -27,13 +27,17 @@ from trading_companion.market_context import build_market_context
 from trading_companion.conversation_memory import (MAX_DIGESTS, TurnDigest, digest_turn, encode_digest,
     is_recall_question, recall_answer, render_history)
 from trading_companion.memory_store import LOCAL_USER, ConversationStore, MemoryStoreError
+from trading_companion.personal_memory import (VERSION as PERSONAL_VERSION, MAX_WATCHLIST, DISABLED_MESSAGE,
+    PersonalMemoryError, checked_instrument_id)
+from trading_companion.personal_memory_store import PersonalMemoryStore
+from trading_companion.personal_memory_commands import parse_personal_memory_command
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
 from trading_companion.research_session import ResearchSession
 from trading_companion.research_memory import SavedResearch
 from trading_companion.research_report import build_research_report
-from trading_companion.turn_control import TurnControl, TurnLimits, workflow_turn_control, company_turn_control
+from trading_companion.turn_control import TurnControl, TurnLimits, TurnStopped, workflow_turn_control, company_turn_control
 from trading_companion.turn_trace import (
     trace_call,
     JsonlTraceSink, trace_control, trace_message, trace_model_identity, trace_outcome,
@@ -331,6 +335,7 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
+                 personal_memory_store=None,
                  research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None,
                  news_triage_sorting=False, news_sorter=None, research_documents="off", document_collector=None):
         from trading_companion.news_triage_shadow import NewsTitleCapture
@@ -351,6 +356,11 @@ class ResearchApiService:
                 or type(conversation_context) is not bool):
             raise ModelConfigurationError("Use trusted conversation memory configuration")
         self._conversation_store, self._conversation_context = conversation_store, conversation_context
+        if personal_memory_store is not None and not isinstance(personal_memory_store, PersonalMemoryStore):
+            raise ModelConfigurationError("Use a trusted personal memory store")
+        # An injected add-on cannot make a development service read personal data.
+        self._personal_memory_store = (personal_memory_store
+            if data_mode != "synthetic" and trace_mode == "normal" and provider != "fake" else None)
         if (type(self.limits) is not ApiLimits or provider not in ("fake", "deepseek", "openai")
                 or data_mode not in DATA_MODES or not callable(model_factory)
                 or not callable(directory_loader) or not callable(clock) or not callable(control_factory)
@@ -464,6 +474,150 @@ class ResearchApiService:
     @property
     def memory_enabled(self):
         return self._conversation_store is not None
+
+    @property
+    def personal_memory_enabled(self):
+        return self._personal_memory_store is not None
+
+    def _personal_store(self):
+        if self._closed:
+            raise ApiProblem(503, "service_closed", "服务已关闭。")
+        if self._personal_memory_store is None:
+            raise ApiProblem(404, "personal_memory_disabled", DISABLED_MESSAGE)
+        return self._personal_memory_store
+
+    def _personal_problem(self, error):
+        if error.code == "watchlist_full":
+            return ApiProblem(409, "watchlist_full", "自选股最多50只，请先移除一项。")
+        if error.code == "invalid_watchlist_instrument":
+            return ApiProblem(422, "invalid_request", "请使用完整证券代码。")
+        return ApiProblem(503, "personal_memory_store_unavailable", "本机自选股暂不可用，未确认保存；请刷新后查看。")
+
+    def watchlist(self):
+        if not self.personal_memory_enabled:
+            return dict(version=PERSONAL_VERSION, enabled=False, limit=MAX_WATCHLIST, items=[])
+        try:
+            items = self._personal_store().list(LOCAL_USER)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return dict(version=PERSONAL_VERSION, enabled=True, limit=MAX_WATCHLIST, items=items)
+
+    def _personal_directory(self):
+        from trading_companion.security_directory import SecurityDirectory
+        self._personal_store()
+        try:
+            stamp = self._wall_clock()
+            directory = self._directory_loader(stamp)
+            if type(directory) is not SecurityDirectory:
+                raise DataValidationError("Invalid directory")
+            directory.assert_usable(stamp.astimezone(timezone(timedelta(hours=8))).date(), development=False)
+            return directory
+        except (DataSourceError, DataValidationError, InvalidRequestError, OSError, ValueError, TypeError):
+            raise ApiProblem(503, "directory_unusable", "本地证券目录不可用，不能新增自选；仍可查看和移除。") from None
+
+    def search_watchlist(self, query):
+        directory = self._personal_directory()
+        if type(query) is not str or not 1 <= len(query) <= 80 or not query.strip() or not query.isprintable():
+            raise ApiProblem(422, "invalid_request", "请输入1–80字符证券名称或代码。")
+        match = directory.lookup(query)
+        return dict(version=PERSONAL_VERSION, enabled=True,
+                    candidates=[item.to_dict() for item in match.candidates[:20]], truncated=len(match.candidates) > 20)
+
+    def add_watchlist(self, instrument_id):
+        try:
+            checked_instrument_id(instrument_id)
+            match = self._personal_directory().lookup(instrument_id)
+            if match.status != "resolved" or match.candidates[0].instrument_id != instrument_id:
+                raise ApiProblem(422, "watchlist_instrument_unknown", "证券代码未在当前目录中得到唯一核验。")
+            self._personal_store().add(LOCAL_USER, instrument_id=instrument_id, name=match.candidates[0].name)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.watchlist()
+
+    def remove_watchlist(self, instrument_id):
+        try:
+            checked_instrument_id(instrument_id)
+            self._personal_store().remove(LOCAL_USER, instrument_id=instrument_id)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.watchlist()
+
+    def clear_watchlist(self):
+        try:
+            self._personal_store().clear(LOCAL_USER)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.watchlist()
+
+    def _personal_turn(self, command, control):
+        """Local management never reads or mutates a research session or its digests."""
+        control.start()
+
+        def write(operation):
+            output = []
+            stop = control.finish(lambda stopped: None if stopped else output.append(operation()))
+            if stop is not None:
+                raise TurnStopped(stop)
+            return output[0]
+
+        action, state, items, candidates = command.action, "completed", [], []
+        code, message = "personal_memory_updated", "自选股已更新。"
+        try:
+            if action == "notice":
+                state, code, message = "unsupported", command.code, command.message
+            else:
+                store = self._personal_store()
+                if action == "list":
+                    items = store.list(LOCAL_USER)
+                    code = "personal_memory_listed"
+                    message = "自选股保存在本机。" if items else "自选股清单为空。"
+                else:
+                    from trading_companion.security_directory import Security, SecurityDirectory
+                    if action == "add":
+                        match = self._personal_directory().lookup(command.mention)
+                    else:
+                        records = store.list(LOCAL_USER)
+                        directory = SecurityDirectory(tuple(Security(item["instrument_id"], item["name"]) for item in records),
+                            "saved_watchlist", self._wall_clock()) if records else None
+                        match = directory.lookup(command.mention) if directory else None
+                    if match is None or not match.candidates:
+                        code, message = "personal_memory_notice", "未找到可核验的证券，请使用完整代码；没有更改自选。"
+                        state = "unsupported"
+                    elif match.status != "resolved":
+                        code, state = "personal_memory_confirmation", "needs_confirmation"
+                        message = "请选择完整证券代码确认自选操作；研究中的待补充问题保持不变。"
+                        candidates = [{**item.to_dict(), "reply": (f"把{item.instrument_id}加入自选" if action == "add"
+                            else f"从自选移除{item.instrument_id}")} for item in match.candidates[:20]]
+                        if len(match.candidates) > 20:
+                            message += "仅显示前20项，请输入更具体名称或完整代码。"
+                    elif action == "add":
+                        security = match.candidates[0]
+                        saved = write(lambda: store.add(LOCAL_USER, instrument_id=security.instrument_id, name=security.name))
+                        items = [saved["item"]]
+                        message = "已加入本机自选。" if saved["added"] else "该证券已在自选中。"
+                    else:
+                        removed = write(lambda: store.remove(LOCAL_USER, instrument_id=match.candidates[0].instrument_id))
+                        message = "已从本机自选移除。" if removed else "该证券不在自选中。"
+        except PersonalMemoryError as error:
+            problem = self._personal_problem(error)
+            state, code, message = "unavailable", problem.code, problem.message
+        except ApiProblem as error:
+            state = "disabled" if error.code == "personal_memory_disabled" else "unavailable"
+            code, message = error.code, error.message
+        except TurnStopped:
+            pass
+        runtime = control.to_dict()
+        stop = runtime["stop_code"] if runtime["state"] == "finished" else control.finish()
+        if stop is not None:
+            state, code, message = "unsupported", stop, "自选操作已停止；本次未修改自选。"
+            items, candidates = [], []
+        result = AgentTurnResult(status="cancelled" if stop else "needs_clarification" if candidates else "limited" if state in
+            ("disabled", "unavailable", "unsupported") else "completed", code=code, message=message, stage="personal_memory")
+        trace_outcome(result)
+        return dict(status=result.status, code=code, message=message, stage=result.stage, answer=message,
+            personal_memory=dict(version=PERSONAL_VERSION, action=action, status=state, items=items, candidates=candidates),
+            report=None, parameters=None, chart=None, market_context=None, candidates=[], applied_defaults=[],
+            model_calls_attempted=0, analyses_used=0, runtime=control.to_dict(), validation_scope="local_watchlist_management_no_research")
 
     # Local history is one user's own record; the store interface keeps a user id for every row.
     def _store(self):
@@ -845,40 +999,17 @@ class ResearchApiService:
         reset_contexts, remembered = False, None
         entry.model.history = tuple(entry.digests) if self._conversation_context and not history else ()
         try:
-            if self._research_intent_v2_enabled and entry.provider == 'deepseek':
+            command = None if history else parse_personal_memory_command(question)
+            if command is not None:
+                projected = self._personal_turn(command, control)
+                response = {"request_id": request_id, "replayed": False, "result": projected}
+            elif self._research_intent_v2_enabled and entry.provider == 'deepseek':
                 result, directory, timestamp = self._intent_turn(entry, control, question, history=history)
             else:
                 result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
-            trace_outcome(result)
-            trace_phase("projection")
-            saved = self._saved_for_view(entry, result, directory, timestamp)
-            projected = public_turn(result, saved=saved)
-            if (self._snapshot_store is not None and result.index_result is not None
-                    and result.session_event == 'index_research' and projected.get('index_research') is not None
-                    and result.runtime is not None and result.runtime.get('stop_code') is None):
-                try:
-                    projected['index_research']['snapshot_id'] = self._snapshot_store.save_index(result.index_result,
-                        direction=result.index_answer.direction if result.index_answer.origin == 'model' else None)
-                    projected['index_research']['snapshot_status'] = 'saved'
-                except Exception:
-                    projected['index_research']['snapshot_status'] = 'unavailable'
-            if (self._snapshot_store is not None and result.product_bundle is not None
-                    and result.product_bundle.evidence and result.session_event == "company_research"
-                    and result.runtime is not None and result.runtime.get("stop_code") is None
-                    and projected.get("company_research") is not None):
-                try:
-                    projected["company_research"]["snapshot_id"] = self._snapshot_store.save(result.product_bundle)
-                    projected["company_research"]["snapshot_status"] = "saved"
-                except Exception:
-                    # Optional archival failure never discards a completed research answer.
-                    projected["company_research"]["snapshot_status"] = "unavailable"
-            projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
-            reset_contexts = result.code == "session_reset"
-            response = {"request_id": request_id, "replayed": False, "result": projected}
-            if not history and not reset_contexts:
-                remembered = self._remember(entry, request_id, question, projected, timestamp)
-            if remembered is not None and remembered[1] is not None:
-                response["conversation_id"] = remembered[1]
+            if command is None:
+                response, staged_context, reset_contexts, remembered = self._project_message(
+                    entry, result, directory, timestamp, request_id, question, history=history)
         except ApiProblem as error:
             problem = error
         except Exception:
@@ -909,6 +1040,40 @@ class ResearchApiService:
         if problem is not None:
             raise problem
         return response
+
+    def _project_message(self, entry, result, directory, timestamp, request_id, question, *, history):
+        staged_context, reset_contexts, remembered = None, False, None
+        trace_outcome(result)
+        trace_phase("projection")
+        saved = self._saved_for_view(entry, result, directory, timestamp)
+        projected = public_turn(result, saved=saved)
+        if (self._snapshot_store is not None and result.index_result is not None
+                and result.session_event == 'index_research' and projected.get('index_research') is not None
+                and result.runtime is not None and result.runtime.get('stop_code') is None):
+            try:
+                projected['index_research']['snapshot_id'] = self._snapshot_store.save_index(result.index_result,
+                    direction=result.index_answer.direction if result.index_answer.origin == 'model' else None)
+                projected['index_research']['snapshot_status'] = 'saved'
+            except Exception:
+                projected['index_research']['snapshot_status'] = 'unavailable'
+        if (self._snapshot_store is not None and result.product_bundle is not None
+                and result.product_bundle.evidence and result.session_event == "company_research"
+                and result.runtime is not None and result.runtime.get("stop_code") is None
+                and projected.get("company_research") is not None):
+            try:
+                projected["company_research"]["snapshot_id"] = self._snapshot_store.save(result.product_bundle)
+                projected["company_research"]["snapshot_status"] = "saved"
+            except Exception:
+                # Optional archival failure never discards a completed research answer.
+                projected["company_research"]["snapshot_status"] = "unavailable"
+        projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
+        reset_contexts = result.code == "session_reset"
+        response = {"request_id": request_id, "replayed": False, "result": projected}
+        if not history and not reset_contexts:
+            remembered = self._remember(entry, request_id, question, projected, timestamp)
+        if remembered is not None and remembered[1] is not None:
+            response["conversation_id"] = remembered[1]
+        return response, staged_context, reset_contexts, remembered
 
     def history(self, session_id, token):
         # History lookup never calls the model or consumes a message allowance.
@@ -1049,3 +1214,5 @@ class ResearchApiService:
                     entry.session.clear()
                     entry.market_contexts.clear()
             self._entries = {key: entry for key, entry in self._entries.items() if entry.control is not None}
+        if self._personal_memory_store is not None:
+            self._personal_memory_store.close()

@@ -2,6 +2,8 @@
 
 初版：2026-10-22。Web 启动与模式更新：2026-10-25。已实现本机单进程接口及离线验证，不是公网或多用户生产部署。
 
+2026-11-12：新增独立[本机自选股](personal-memory-design.md)接口 `/v1/personal/watchlist`，当前实现待审核；代码默认关闭，以 `--personal-memory-db PATH` 显式开启，`start.cmd` 不默认启用。`--no-memory` 优先禁用聊天历史/摘要和个人库，关闭不删除文件。demo、synthetic 及网页 Dev Mode 不接真实个人库。
+
 后续增加[最小Web工作台](web-workspace-design.md)、[历史图表](chart-workspace-design.md)及[本地证券状态／交易日历背景](market-context-design.md)：构建后访问根路径 `/`，同源调用下列API，不需要Swagger手动复制令牌。正常API路径不变，公共结果增加可选chart和market_context；Dev Mode 在 `/dev-api` 前缀下提供隔离的固定离线服务。下文906项及旧版本1054项Python／256项前端为历史记录，不是新模式验收数字。
 
 ## 1. 这个模块做什么
@@ -25,7 +27,7 @@ HTTP请求 → FastAPI / Pydantic校验
 - [api_server.py](../src/trading_companion/api_server.py)：正常默认及显式离线启动、服务端模型/数据配置，固定127.0.0.1及一个worker。
 - [api_demo.py](../src/trading_companion/api_demo.py)：TestClient进程内HTTP演示，不开监听端口、不请求真实模型或行情。
 
-FastAPI/Pydantic只在HTTP边界使用，内部仍复用dataclass。没有引入数据库、任务队列、SSE、WebSocket或新Agent框架。
+FastAPI/Pydantic只在HTTP边界使用，内部仍复用dataclass。初版未引入数据库；后续聊天历史、自选和证据归档各有独立可选本机 SQLite 存储，不能共用文件。仍未引入任务队列、SSE、WebSocket或新Agent框架。
 
 ## 2. 启动与尝试
 
@@ -84,6 +86,10 @@ $apiReply.result.answer
 该命令可能计费，并不等于离线 Dev Mode。真实腾讯模式现为默认，也可显式 `--data tencent`；需当前有效本地目录，可用 `--directory` 指定服务端路径。除上述显式开启的启动刷新外，不会自动刷新目录、静默换源或让HTTP客户端提交模型密钥/路径。用户明确提交的研究问题、确认参数与紧凑证据会发给配置好的 DeepSeek，可能计费；启动及 health 检查不发送这些内容。终端 `agent_cli` 仍保留原显式模式规则，没有改变其默认行为。
 
 ## 3. 接口契约
+
+自选接口与历史浏览一样采用本机单用户语义，无需研究会话令牌；沿用同源/Host、请求体上限及固定错误保护，不是公网账户鉴权。`GET /v1/personal/watchlist` 返回版本、启用状态、50只上限和有界清单；关闭与读取失败分开。`POST` 同路径仅接收完整 `instrument_id`，`DELETE /v1/personal/watchlist/{instrument_id}` 移除一项，`DELETE /v1/personal/watchlist` 清空（网页先确认）。`GET /v1/personal/watchlist/search?q=...` 只查询现有本地目录，1–80字符、最多20候选并标明截断；没有联网刷新。具体数据约束见[自选设计](personal-memory-design.md)。未开启提示给出启动参数名 `--personal-memory-db`，不显示路径。
+
+明确聊天自选命令仍通过下列 messages 接口，占一条会话消息，沿用忙碌和编号重放；面板不消耗研究额度。管理命令在意图模型前本地处理，结果通过可选 `personal_memory` 字段返回，不调用模型/行情、不写聊天历史或摘要、不改变研究待澄清状态。“平安银行值得加入自选吗”“分析自选股里的平安银行”继续研究明确对象，不自动读取清单；“清空自选”只引导面板确认。
 
 | 接口 | 功能 | 正常HTTP状态 |
 | --- | --- | --- |

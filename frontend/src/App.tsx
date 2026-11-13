@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from "react";
-import { availableLiveProviders, createApi, parsePersonalMemory, type LiveProvider } from "./api";
+import { availableLiveProviders, createApi, parsePersonalMemory, type LiveProvider, type SecuritySummary } from "./api";
 import { ResearchController, type Entry, type WorkspaceState } from "./controller";
 import { ResearchChart } from "./ResearchChart";
 import { ResponseContent } from "./ResponseContent";
 import { parsePresentation, sourceLabel } from "./presentation";
 import { parseCompanyAnswer } from "./ProductResearch";
 import { WatchlistActions, WatchlistPanel } from "./Watchlist";
+import { PersonalPreferenceHint, PersonalPreferencesPanel, preferenceDescription, type PreferenceDraftRequest } from "./PersonalPreferences";
 
 const samples = (development: boolean) => [
   { label: "个股研究", question: development ? "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2"
@@ -47,9 +48,10 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.chart} /></svg>;
 }
 
-function Answer({ entry, choose, chooseHorizon, canChoose, canManage, elementRef, loadChart, state, controller }: { entry: Entry; choose: (text: string) => void;
+function Answer({ entry, choose, chooseHorizon, canChoose, canManage, elementRef, loadChart, state, controller, openPreferences, prepareDraft }: { entry: Entry; choose: (text: string) => void;
   chooseHorizon: (text: string) => void; canChoose: boolean; elementRef?: Ref<HTMLElement>;
-  canManage: boolean; loadChart: ResearchController["loadChart"]; state: WorkspaceState; controller: ResearchController }) {
+  canManage: boolean; loadChart: ResearchController["loadChart"]; state: WorkspaceState; controller: ResearchController;
+  openPreferences: (security: SecuritySummary) => void; prepareDraft: (request: PreferenceDraftRequest) => void }) {
   const response = entry.response, turn = response?.result;
   const personal = parsePersonalMemory(turn?.personal_memory);
   const company = parseCompanyAnswer(turn?.company_research);
@@ -66,7 +68,8 @@ function Answer({ entry, choose, chooseHorizon, canChoose, canManage, elementRef
     <div className="question"><span className="sr-only">{entry.history ? "历史记录" : "你的问题"}</span><p>{entry.question}</p></div>
     <div className="answer">
       <div className="answer-heading"><span className="assistant-mark" aria-hidden="true"><Icon name="chart" /></span>
-        <h3>{personal ? "本机自选管理" : entry.history ? "已保存的研究 · 非新分析" : "Trading Companion"}</h3>
+        <h3>{personal ? personal.version === "personal-memory-preferences-v1" ? "本机持仓与偏好管理" : "本机自选管理"
+          : entry.history ? "已保存的研究 · 非新分析" : "Trading Companion"}</h3>
         {turn && <span className={`status-tag ${turn.status === "completed" ? "positive" : ""}`}>{statuses[turn.status] ?? "处理结果"}</span>}
         {response?.replayed && <span className="status-tag">原请求重放</span>}
       </div>
@@ -79,17 +82,19 @@ function Answer({ entry, choose, chooseHorizon, canChoose, canManage, elementRef
           <p>{turn.answer ?? turn.message}</p>
           <p className="watchlist-note">本机管理 · 未调用模型或行情。聊天命令计一条会话消息；侧栏管理不占研究额度。</p>
           {response?.replayed && <p className="watchlist-note">这是原请求的处理结果；当前自选请看侧栏或刷新。</p>}
-          {personal.items.length > 0 ? <div className="personal-memory-items" aria-label="自选管理记录">
-            <p>{personal.action === "list" ? "请求时的自选清单：" : "本次处理的证券："}</p>
-            <ul>{personal.items.map(item => <li key={item.instrument_id}>{item.name} <span>{item.instrument_id}</span></li>)}</ul>
-          </div> : personal.action === "list" && personal.status === "completed" && <p>请求时的自选清单为空。</p>}
-          {personal.candidates.length > 0 && <div className="candidates" aria-label="自选管理候选股票">
-            <p>选择完整代码，继续本次自选操作。</p>
+          {personal.items.length > 0 ? <div className="personal-memory-items" aria-label={personal.version === "personal-memory-preferences-v1" ? "持仓与偏好管理记录" : "自选管理记录"}>
+            <p>{personal.action === "list" ? personal.version === "personal-memory-preferences-v1" ? "请求时的本机资料：" : "请求时的自选清单：" : "本次处理的证券："}</p>
+            <ul>{personal.items.map(item => <li key={item.instrument_id}>{item.name} <span>{item.instrument_id}</span>
+              {"holding_status" in item && <p>{preferenceDescription(item)}；本机自报，可能已变化。</p>}</li>)}</ul>
+          </div> : personal.action === "list" && personal.status === "completed" && <p>{personal.version === "personal-memory-preferences-v1" ? "请求时的本机资料为空。" : "请求时的自选清单为空。"}</p>}
+          {personal.candidates.length > 0 && <div className="candidates" aria-label={personal.version === "personal-memory-preferences-v1" ? "持仓与偏好管理候选股票" : "自选管理候选股票"}>
+            <p>选择完整代码，继续本次本机管理操作。</p>
             {personal.candidates.map(item => <button type="button" className="candidate" key={item.instrument_id}
               disabled={!canManage || entry.history} onClick={() => chooseHorizon(item.reply)}>{item.name} <span>{item.instrument_id}</span></button>)}
           </div>}
         </div> : <p className="error-text">本机管理结果未能正常显示，请刷新侧栏核对自选。</p> : <ResponseContent turn={turn} />}
         {company && <WatchlistActions securities={company.securities} state={state} controller={controller} />}
+        {company && !entry.history && <PersonalPreferenceHint securities={company.securities} state={state} openEditor={openPreferences} onDraft={prepareDraft} />}
         {turn.status === "needs_clarification" && !entry.history && !!turn.candidates.length && <div className="candidates" aria-label="候选股票">
           <p>选择股票填入输入框，再发送确认。</p>
           {turn.candidates.map((candidate) => <button className="candidate" type="button" disabled={!canChoose}
@@ -120,6 +125,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<"reset" | "end" | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingResearchDraft, setPendingResearchDraft] = useState<string | null>(null);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const draftRevision = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null), latest = useRef<HTMLElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
@@ -151,7 +158,20 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     }
   }, [question]);
 
-  const editQuestion = (value: string) => { draftRevision.current++; setQuestion(value); };
+  const editQuestion = (value: string) => { draftRevision.current++; setQuestion(value); setDraftNotice(null); };
+  useEffect(() => { setPendingResearchDraft(null); }, [state.mode, state.switching]);
+  const openPreferences = (security: SecuritySummary) => {
+    if (controller.openPreferenceEditor(security)) setNavigationOpen(true);
+  };
+  const putResearchDraft = (value: string) => {
+    editQuestion(value); setPendingResearchDraft(null); setNavigationOpen(false); textarea.current?.focus();
+    setDraftNotice("研究草稿尚未发送；只含股票代码和问题，按发送后才交给当前模型，并按普通聊天规则保存。");
+  };
+  const prepareDraft = ({ instrumentId, kind }: PreferenceDraftRequest) => {
+    if (!/^[0-9]{6}\.(SH|SZ|BJ)$/.test(instrumentId) || state.mode !== "normal" || locked || state.switching) return;
+    const value = `请分析 ${instrumentId} 的${kind === "exit" ? "退出" : "买入"}观察条件`;
+    if (question.trim()) setPendingResearchDraft(value); else putResearchDraft(value);
+  };
   const switchMode = async () => {
     if (await controller.switchMode(development ? "normal" : "development")) {
       editQuestion(""); setConfirmation(null); setNavigationOpen(false); followBottom.current = true;
@@ -166,6 +186,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const chooseHorizon = (value: string) => {
     if (!canSend || !session) return;
     const revision = ++draftRevision.current;
+    setDraftNotice(null); setPendingResearchDraft(null);
     setQuestion(""); setNavigationOpen(false); followBottom.current = true;
     void controller.send(value).then(accepted => {
       if (!accepted && draftRevision.current === revision) setQuestion(value);
@@ -174,6 +195,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const sendQuestion = () => {
     const original = question;
     const revision = ++draftRevision.current;
+    setDraftNotice(null); setPendingResearchDraft(null);
     followBottom.current = true;
     setQuestion("");
     void controller.send(original).then((accepted) => {
@@ -189,7 +211,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
   const newChat = async () => {
     setNavigationOpen(false);
     setConfirmation(null);
-    if (await controller.end()) { editQuestion(""); followBottom.current = true; textarea.current?.focus(); }
+    if (await controller.end()) { editQuestion(""); setPendingResearchDraft(null); followBottom.current = true; textarea.current?.focus(); }
   };
   const confirmAction = () => {
     const action = confirmation;
@@ -214,7 +236,8 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           }}>
             <span>{String(index + 1).padStart(2, "0")}</span>{entry.question}</a>)}</nav>}
       </section>
-      <WatchlistPanel state={state} controller={controller} />
+      <WatchlistPanel state={state} controller={controller} openPreferences={openPreferences} />
+      <PersonalPreferencesPanel state={state} controller={controller} />
       {state.conversations !== null && <section className="conversation-index saved-conversations" aria-label="历史对话">
         <span className="sidebar-caption">历史对话 · 保存在本机</span>
         {!state.conversations.length ? <p className="empty-index">提问后会自动保存在这里</p> : <ul>{state.conversations.map((item) =>
@@ -297,6 +320,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
               <p>{health.data_mode === "synthetic" ? "示例使用 2026-09-21 至 09-25 的人工行情。建议先发送个股研究，再追问 RSI，最后调整条件。"
                 : "模型采用固定脚本；行情仍来自顶部标注的数据源。自由提问可能超出脚本范围。"}</p></details>}
           </div> : state.entries.map((entry, index) => <Answer key={entry.id} entry={entry} choose={choose} chooseHorizon={chooseHorizon} loadChart={controller.loadChart}
+            openPreferences={openPreferences} prepareDraft={prepareDraft}
             state={state} controller={controller} canManage={canSend && !!session && !state.cancelPending && index === state.entries.length - 1}
             elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && !state.cancelPending
               && session.view.model_calls_forwarded < session.modelLimit && index === state.entries.length - 1} />)}
@@ -320,6 +344,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
           : loading ? "正在连接本机服务，你可以先输入问题。" : "本机服务未连接，你的草稿仍保留在输入框。"}</span>
           {!loading && <button type="button" onClick={() => void controller.load()}>重新连接</button>}</div>}
         {loading && !state.switching && !session && health && <p className="composer-progress" role="status">正在建立对话并发送问题…</p>}
+        {pendingResearchDraft && <div className="draft-confirm-panel" role="group" aria-label="确认替换研究草稿">
+          <p>已有未发送的问题。替换为以下研究草稿？</p><p>{pendingResearchDraft}</p>
+          <button type="button" disabled={locked} onClick={() => putResearchDraft(pendingResearchDraft)}>替换为研究草稿</button>
+          <button type="button" onClick={() => setPendingResearchDraft(null)}>保留当前草稿</button></div>}
+        {draftNotice && <p className="composer-progress" role="status">{draftNotice}</p>}
         <form className="composer" onSubmit={submit} aria-label="输入研究问题">
           <label className="sr-only" htmlFor="question">研究问题</label>
           <textarea ref={textarea} id="question" rows={2} maxLength={4000} value={question} disabled={state.switching || (loading && !!health) || phase !== "idle"}

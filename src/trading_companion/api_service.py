@@ -28,9 +28,10 @@ from trading_companion.conversation_memory import (MAX_DIGESTS, TurnDigest, dige
     is_recall_question, recall_answer, render_history)
 from trading_companion.memory_store import LOCAL_USER, ConversationStore, MemoryStoreError
 from trading_companion.personal_memory import (VERSION as PERSONAL_VERSION, MAX_WATCHLIST, DISABLED_MESSAGE,
-    PersonalMemoryError, checked_instrument_id)
+    PREFERENCES_VERSION, MAX_PREFERENCES, PersonalMemoryError, checked_instrument_id,
+    checked_preferences_changes, checked_revision)
 from trading_companion.personal_memory_store import PersonalMemoryStore
-from trading_companion.personal_memory_commands import parse_personal_memory_command
+from trading_companion.personal_memory_commands import parse_personal_memory_command, preference_reply
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
@@ -487,11 +488,17 @@ class ResearchApiService:
         return self._personal_memory_store
 
     def _personal_problem(self, error):
+        if error.code == "preferences_conflict":
+            return ApiProblem(409, "preference_revision_conflict", "资料已被其他页面修改，请刷新核对；本次未覆盖。")
+        if error.code == "preferences_full":
+            return ApiProblem(409, "preferences_full", "持仓与偏好最多50份，请先删除一份。")
+        if error.code in ("invalid_preferences", "empty_preferences", "invalid_preferences_revision"):
+            return ApiProblem(422, "invalid_preferences", "请使用有效类别和修改标识，至少填写一项；全部清除请用删除。")
         if error.code == "watchlist_full":
             return ApiProblem(409, "watchlist_full", "自选股最多50只，请先移除一项。")
         if error.code == "invalid_watchlist_instrument":
             return ApiProblem(422, "invalid_request", "请使用完整证券代码。")
-        return ApiProblem(503, "personal_memory_store_unavailable", "本机自选股暂不可用，未确认保存；请刷新后查看。")
+        return ApiProblem(503, "personal_memory_store_unavailable", "本机个人资料暂不可用，变更未确认；请刷新后查看。")
 
     def watchlist(self):
         if not self.personal_memory_enabled:
@@ -513,7 +520,7 @@ class ResearchApiService:
             directory.assert_usable(stamp.astimezone(timezone(timedelta(hours=8))).date(), development=False)
             return directory
         except (DataSourceError, DataValidationError, InvalidRequestError, OSError, ValueError, TypeError):
-            raise ApiProblem(503, "directory_unusable", "本地证券目录不可用，不能新增自选；仍可查看和移除。") from None
+            raise ApiProblem(503, "directory_unusable", "本地证券目录不可用，不能新增自选或资料；仍可维护已保存记录。") from None
 
     def search_watchlist(self, query):
         directory = self._personal_directory()
@@ -549,6 +556,85 @@ class ResearchApiService:
             raise self._personal_problem(error) from None
         return self.watchlist()
 
+    def preferences(self):
+        if not self.personal_memory_enabled:
+            return dict(version=PREFERENCES_VERSION, enabled=False, limit=MAX_PREFERENCES,
+                        items=[], collection_revision=None)
+        try:
+            result = self._personal_store().list_preferences(LOCAL_USER)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return dict(version=PREFERENCES_VERSION, enabled=True, limit=MAX_PREFERENCES, **result)
+
+    def patch_preferences(self, instrument_id, changes, expected_revision):
+        try:
+            checked_instrument_id(instrument_id)
+            checked_preferences_changes(changes)
+            if expected_revision is not None:
+                checked_revision(expected_revision)
+            store = self._personal_store()
+            existing = next((item for item in store.list_preferences(LOCAL_USER)["items"]
+                             if item["instrument_id"] == instrument_id), None)
+            if existing is not None and expected_revision is None:
+                raise PersonalMemoryError("preferences_conflict")
+            name = None
+            if existing is None and expected_revision is None:
+                match = self._personal_directory().lookup(instrument_id)
+                if match.status != "resolved" or match.candidates[0].instrument_id != instrument_id:
+                    raise ApiProblem(422, "watchlist_instrument_unknown", "证券代码未在当前目录中得到唯一核验。")
+                name = match.candidates[0].name
+            store.patch_preferences(LOCAL_USER, instrument_id=instrument_id, name=name,
+                                    changes=changes, expected_revision=expected_revision)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.preferences()
+
+    def remove_preferences(self, instrument_id, expected_revision):
+        try:
+            checked_instrument_id(instrument_id)
+            self._personal_store().remove_preferences(LOCAL_USER, instrument_id=instrument_id,
+                                                     expected_revision=expected_revision)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.preferences()
+
+    def clear_preferences(self, expected_revision):
+        try:
+            self._personal_store().clear_preferences(LOCAL_USER, expected_revision=expected_revision)
+        except PersonalMemoryError as error:
+            raise self._personal_problem(error) from None
+        return self.preferences()
+
+    def _preference_command_result(self, command, write):
+        """Resolve only explicit identities; saved identities remain manageable offline."""
+        from trading_companion.security_directory import Security, SecurityDirectory
+        store = self._personal_store()
+        records = store.list_preferences(LOCAL_USER)["items"]
+        if command.action == "list" and command.mention is None:
+            return "personal_memory_listed", "本机持仓与偏好。" if records else "尚无本机持仓与偏好。", "completed", records, []
+        directory = (SecurityDirectory(tuple(Security(item["instrument_id"], item["name"]) for item in records),
+                     "saved_preferences", self._wall_clock()) if records else None)
+        match = directory.lookup(command.mention) if directory else None
+        if (match is None or not match.candidates) and command.action == "update":
+            match = self._personal_directory().lookup(command.mention)
+        if match is None or not match.candidates:
+            return "personal_memory_notice", "未找到可核验的资料对象，请使用完整代码；本次未修改资料。", "unsupported", [], []
+        if match.status != "resolved":
+            candidates = [{**item.to_dict(), "reply": preference_reply(command, item.instrument_id)}
+                          for item in match.candidates[:20]]
+            message = "请选择完整代码确认资料操作；研究中的待补充问题保持不变。"
+            if len(match.candidates) > 20:
+                message += "仅显示前20项，请输入更具体名称或完整代码。"
+            return "personal_memory_confirmation", message, "needs_confirmation", [], candidates
+        security = match.candidates[0]
+        existing = next((item for item in records if item["instrument_id"] == security.instrument_id), None)
+        if command.action == "list":
+            return "personal_memory_listed", "本机自报，可能已变化。", "completed", [existing], []
+        saved = write(lambda: store.patch_preferences(LOCAL_USER, instrument_id=security.instrument_id,
+            name=security.name, changes={command.field: command.value},
+            expected_revision=existing["revision"] if existing else None))
+        return "personal_memory_updated", "持仓与偏好已保存在本机；本机自报，可能已变化。", "completed", [saved["item"]], []
+
     def _personal_turn(self, command, control):
         """Local management never reads or mutates a research session or its digests."""
         control.start()
@@ -565,6 +651,8 @@ class ResearchApiService:
         try:
             if action == "notice":
                 state, code, message = "unsupported", command.code, command.message
+            elif command.scope == "preferences":
+                code, message, state, items, candidates = self._preference_command_result(command, write)
             else:
                 store = self._personal_store()
                 if action == "list":
@@ -609,15 +697,17 @@ class ResearchApiService:
         runtime = control.to_dict()
         stop = runtime["stop_code"] if runtime["state"] == "finished" else control.finish()
         if stop is not None:
-            state, code, message = "unsupported", stop, "自选操作已停止；本次未修改自选。"
+            state, code, message = "unsupported", stop, "本机管理操作已停止；本次未修改资料。"
             items, candidates = [], []
         result = AgentTurnResult(status="cancelled" if stop else "needs_clarification" if candidates else "limited" if state in
             ("disabled", "unavailable", "unsupported") else "completed", code=code, message=message, stage="personal_memory")
         trace_outcome(result)
         return dict(status=result.status, code=code, message=message, stage=result.stage, answer=message,
-            personal_memory=dict(version=PERSONAL_VERSION, action=action, status=state, items=items, candidates=candidates),
+            personal_memory=dict(version=PREFERENCES_VERSION if command.scope == "preferences" else PERSONAL_VERSION,
+                action=action, status=state, items=items, candidates=candidates),
             report=None, parameters=None, chart=None, market_context=None, candidates=[], applied_defaults=[],
-            model_calls_attempted=0, analyses_used=0, runtime=control.to_dict(), validation_scope="local_watchlist_management_no_research")
+            model_calls_attempted=0, analyses_used=0, runtime=control.to_dict(),
+            validation_scope="local_preferences_management_no_research" if command.scope == "preferences" else "local_watchlist_management_no_research")
 
     # Local history is one user's own record; the store interface keeps a user id for every row.
     def _store(self):

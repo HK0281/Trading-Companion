@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Path, Query, Response
+from fastapi import Depends, FastAPI, Header, Path, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -49,6 +49,17 @@ class CancelRequest(EmptyRequest):
 
 class WatchlistRequest(EmptyRequest):
     instrument_id: InstrumentId
+
+
+class PreferenceChanges(EmptyRequest):
+    holding_status: Literal["unknown", "held", "not_held"] | None = None
+    horizon: Literal["short", "medium", "long"] | None = None
+    risk: Literal["low", "medium", "high"] | None = None
+
+
+class PreferenceRequest(EmptyRequest):
+    expected_revision: Identifier | None
+    changes: PreferenceChanges
 
 
 class ChartQuery(EmptyRequest):
@@ -263,6 +274,24 @@ def create_app(*, service: ResearchApiService | None = None,
     @app.get("/v1/personal/watchlist")
     def list_watchlist():
         return service.watchlist()
+
+    @app.get("/v1/personal/preferences")
+    def list_preferences():
+        return service.preferences()
+
+    @app.patch("/v1/personal/preferences/{instrument_id}")
+    def patch_preferences(instrument_id: InstrumentId, body: PreferenceRequest):
+        return service.patch_preferences(instrument_id, body.changes.model_dump(exclude_unset=True),
+                                         body.expected_revision)
+
+    @app.delete("/v1/personal/preferences/{instrument_id}")
+    def delete_preferences(instrument_id: InstrumentId,
+            if_match: Annotated[str, Header(pattern=r"^[0-9a-f]{32}$")]):
+        return service.remove_preferences(instrument_id, if_match)
+
+    @app.delete("/v1/personal/preferences")
+    def clear_preferences(if_match: Annotated[str, Header(pattern=r"^[0-9a-f]{64}$")]):
+        return service.clear_preferences(if_match)
 
     @app.get("/v1/personal/watchlist/search")
     def search_watchlist(q: Annotated[str, Query(min_length=1, max_length=80)]):

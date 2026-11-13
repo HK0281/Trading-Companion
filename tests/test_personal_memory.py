@@ -5,6 +5,7 @@ import unittest
 
 from trading_companion.personal_memory import (
     PersonalMemoryError, checked_instrument_id, checked_name, checked_record, checked_user, timestamp,
+    checked_preferences_changes, checked_preference_record, checked_revision, preferences_collection_revision,
 )
 
 
@@ -45,6 +46,34 @@ class PersonalMemoryTests(unittest.TestCase):
 
     def test_error_does_not_echo_unknown_values(self):
         self.assertEqual(str(PersonalMemoryError("secret local database path")), "personal_memory_store_unavailable")
+
+    def test_preference_categories_only_accept_explicit_enumerations_or_null(self):
+        self.assertEqual(checked_preferences_changes({"holding_status": "unknown", "risk": None}),
+                         {"holding_status": "unknown", "risk": None})
+        for changes in ({}, None, [], {"horizon": "三年"}, {"risk": 1}, {"holding_status": False},
+                        {"cost": "10.4"}, {"position": "20%"}, {"risk": "high", "note": "free text"}):
+            with self.subTest(changes=changes), self.assertRaisesRegex(PersonalMemoryError, "invalid_preferences"):
+                checked_preferences_changes(changes)
+
+    def test_preference_revisions_and_records_are_strict_and_nonempty(self):
+        stamp = "2026-11-12T04:30:10+00:00"
+        profile = {"instrument_id": "000001.SZ", "name": "平安银行", "holding_status": "unknown", "horizon": None,
+                   "risk": None, "created_at": stamp, "updated_at": stamp, "revision": "a" * 32}
+        self.assertEqual(checked_preference_record(profile), profile)
+        for update in ({"revision": "A" * 32}, {"revision": "a" * 64}, {"revision": None},
+                       {"holding_status": None}, {"holding_status": "未持有"}, {"cost": "secret"}):
+            with self.subTest(update=update), self.assertRaisesRegex(PersonalMemoryError, "personal_memory_corrupt"):
+                checked_preference_record({**profile, **update})
+        for value in (None, "", "G" * 32, "a" * 64, ["a" * 32]):
+            with self.subTest(value=value), self.assertRaisesRegex(PersonalMemoryError, "invalid_preferences_revision"):
+                checked_revision(value)
+        self.assertEqual(checked_revision("a" * 64, collection=True), "a" * 64)
+        second = {**profile, "instrument_id": "000002.SZ", "revision": "b" * 32}
+        original = preferences_collection_revision([profile, second])
+        self.assertRegex(original, r"^[0-9a-f]{64}$")
+        self.assertEqual(original, preferences_collection_revision([second, profile]))
+        self.assertNotEqual(original, preferences_collection_revision([profile, {**second, "risk": "low"}]))
+        self.assertNotEqual(preferences_collection_revision([]), preferences_collection_revision([], "other"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,15 @@
+{
+  "source_commit": "9aa98af9228d736cd417e2b27f7906aefe7542d9",
+  "hash_normalization": "LF",
+  "description": "Unmodified git show sources for actual v1 database migration fixtures.",
+  "files": {
+    "personal_memory.py.txt": {
+      "source_path": "src/trading_companion/personal_memory.py",
+      "sha256": "2349a1730b808caf19a8d991b1dcaf423f6bf0de213d6d30614aa6c0d043f8e9"
+    },
+    "personal_memory_store.py.txt": {
+      "source_path": "src/trading_companion/personal_memory_store.py",
+      "sha256": "077436f906391de9ca0e58e378b18070299a1d673a5b5db0c8551a399e821985"
+    }
+  }
+}

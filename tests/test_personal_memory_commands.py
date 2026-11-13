@@ -63,21 +63,62 @@ class PersonalMemoryCommandTests(unittest.TestCase):
 
     def test_cost_preferences_and_clear_are_local_fixed_notices(self):
         for question in ("记住我的成本价10.4元", "请保存我的仓位比例20%", "删除我的成本", "不要记录我的仓位",
-                         "请帮我设置我的成本价10元", "分析一下平安银行，再记住我的仓位20%"):
+                         "请帮我设置我的成本价10元", "分析一下平安银行，再记住我的仓位20%",
+                         "把平安银行的成本价设为10元", "把平安银行的仓位设为20%", "设置平安银行的仓位为20%",
+                         "请分析平安银行，然后把平安银行的成本价设为10元"):
             with self.subTest(question=question):
                 result = parse_personal_memory_command(question)
                 self.assertEqual(result.action, "notice")
                 self.assertEqual(result.code, "personal_memory_cost_not_supported")
                 self.assertNotIn("10.4", result.message)
-                self.assertIn("不记录成本价和仓位比例", result.message)
-        self.assertEqual(parse_personal_memory_command("记住我持有平安银行").code,
-                         "personal_memory_preferences_unavailable")
+                self.assertEqual(result.message, "目前只记录是否持有、期限和风险偏好，不记录成本和仓位。")
         for question in ("清空自选", "请删除全部我的自选股", "清除全部自选"):
             with self.subTest(question=question):
                 result = parse_personal_memory_command(question)
                 self.assertEqual(result.action, "notice")
                 self.assertEqual(result.code, "personal_memory_clear_confirmation_required")
                 self.assertIn("确认", result.message)
+
+    def test_preferences_explicit_one_stock_one_field(self):
+        for question, field, value in (
+            ("记住我持有平安银行", "holding_status", "held"),
+            ("请记住我未持有000001.SZ。", "holding_status", "not_held"),
+            ("把平安银行的持有状态设为不确定", "holding_status", "unknown"),
+            ("把平安银行的期限偏好设为中线", "horizon", "medium"),
+            ("把平安银行的风险偏好设为谨慎", "risk", "low"),
+            ("把平安银行的风险偏好设为未填写", "risk", None),
+        ):
+            with self.subTest(question=question):
+                command = parse_personal_memory_command(question)
+                self.assertEqual((command.scope, command.action, command.field, command.value),
+                                 ("preferences", "update", field, value))
+                self.assertIn(command.mention, ("平安银行", "000001.SZ"))
+        for question, mention in (("查看持仓与偏好", None), ("查看平安银行的持仓与偏好", "平安银行")):
+            command = parse_personal_memory_command(question)
+            self.assertEqual((command.scope, command.action, command.mention), ("preferences", "list", mention))
+
+    def test_preferences_unsupported_mixed_negated_and_multi_subject_stay_local(self):
+        for question in (
+            "不要记住我持有平安银行", "记住我持有平安银行并分析走势",
+            "记住我持有平安银行和宁德时代", "记住我持有平安银行，风险偏好谨慎",
+            "把平安银行的风险偏好设为谨慎并分析走势", "把平安银行的期限偏好设为随便",
+            "记住我持有", "记住我的风险偏好", "查看持仓与偏好并分析股票",
+            "把平安银行的持有状态设为持有并记住仓位20%", "记住我持有平安银行成本10元",
+            "分析平安银行，然后把平安银行的期限偏好设为中线", "不要查看持仓与偏好",
+        ):
+            with self.subTest(question=question):
+                command = parse_personal_memory_command(question)
+                self.assertEqual((command.scope, command.action), ("preferences", "notice"))
+        for question in ("删除平安银行的持仓与偏好", "清空持仓与偏好"):
+            self.assertIn("确认", parse_personal_memory_command(question).message)
+
+    def test_preferences_confirmation_preserves_action_category_and_code(self):
+        from trading_companion.personal_memory_commands import preference_reply
+        for question in ("记住我未持有平安", "把平安的期限偏好设为中线", "查看平安的持仓与偏好"):
+            command = parse_personal_memory_command(question)
+            reply = parse_personal_memory_command(preference_reply(command, "000001.SZ"))
+            self.assertEqual((reply.action, reply.field, reply.value, reply.mention),
+                             (command.action, command.field, command.value, "000001.SZ"))
 
 
 if __name__ == "__main__":

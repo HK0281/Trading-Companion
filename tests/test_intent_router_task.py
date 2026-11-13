@@ -121,13 +121,16 @@ class HistoricalBaselineTests(unittest.TestCase):
 
     def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
         current = baselines.current_baseline()
-        self.assertEqual(current['rule_baseline_version'], 'personal-memory-watchlist-v1')
-        self.assertEqual(current['parent_version'], 'intent-research-documents-v3')
+        self.assertEqual(current['rule_baseline_version'], 'personal-memory-preferences-v1')
+        self.assertEqual(current['parent_version'], 'personal-memory-watchlist-v1')
         previous = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == current['parent_version'])
-        self.assertEqual(previous['source_digest'], 'a40062305685adfb04ab627e4cdb79c132d3e6df2fc1bf4822114d982059e965')
+        self.assertEqual(previous['source_digest'], 'fe108e492a59bfee15cac6e7fc80e8b83e342c3ce6368ae9f96e569acdc37a03')
         self.assertEqual(sum(r['rule_baseline_version'] == current['parent_version']
                              for r in self.registry['previous_rules']), 1)
+        document_v3 = next(r for r in self.registry['previous_rules']
+                           if r['rule_baseline_version'] == 'intent-research-documents-v3')
+        self.assertEqual(document_v3['source_digest'], 'a40062305685adfb04ab627e4cdb79c132d3e6df2fc1bf4822114d982059e965')
         document_v2 = next(r for r in self.registry['previous_rules']
                            if r['rule_baseline_version'] == 'intent-research-documents-v2')
         self.assertEqual(document_v2['source_digest'], '02a4294b8be3b13a3a21ddf42d6a136246cdaf543c0491ff5a8718a78d572151')

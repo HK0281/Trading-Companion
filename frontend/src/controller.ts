@@ -1,6 +1,7 @@
 /** In-memory browser state machine: credentials and unresolved work never enter persistent storage. */
 import { ApiError, ConnectionError, availableLiveProviders, type ConversationSummary, type Health, type LiveProvider,
   type MessageResponse, type ResearchApi, type SessionCredentials, type SessionView, type Watchlist, type WatchlistSearch } from "./api";
+import type { PreferenceChanges, Preferences, SecuritySummary } from "./api";
 
 export interface Entry {
   id: string;
@@ -35,6 +36,15 @@ export interface WorkspaceState {
   watchlistSearch: WatchlistSearch | null;
   watchlistSearchLoading: boolean;
   watchlistSearchError: string | null;
+  preferences: Preferences | null;
+  preferencesLoading: boolean;
+  preferencesSaving: boolean;
+  preferencesError: string | null;
+  preferencesNotice: string | null;
+  preferencesSearch: WatchlistSearch | null;
+  preferencesSearchLoading: boolean;
+  preferencesSearchError: string | null;
+  preferencesEditor: { security: SecuritySummary; generation: number } | null;
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
@@ -55,12 +65,17 @@ export class ResearchController {
   private personalEpoch = 0;
   private watchlistRead = 0;
   private watchlistSearchRead = 0;
+  private preferencesRead = 0;
+  private preferencesSearchRead = 0;
+  private preferencesEditorGeneration = 0;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
     health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
     cancelPending: false, pendingId: null, entries: [], notice: "正在检查本机服务…", noticeLevel: "info",
     conversations: null, conversationId: null, watchlist: null, watchlistLoading: false, watchlistSaving: false,
-    watchlistError: null, watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null };
+    watchlistError: null, watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null,
+    preferences: null, preferencesLoading: false, preferencesSaving: false, preferencesError: null, preferencesNotice: null,
+    preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null, preferencesEditor: null };
 
   constructor(api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
@@ -139,6 +154,7 @@ export class ResearchController {
       this.update({ notice: "服务已连接。直接输入问题，首次发送时自动建立对话。" });
       await this.refreshConversations();
       await this.refreshWatchlist();
+      await this.refreshPreferences();
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -181,6 +197,7 @@ export class ResearchController {
     } finally {
       this.running = false; this.update({ loading: false, switching: false });
       void this.refreshWatchlist();
+      void this.refreshPreferences();
     }
   }
 
@@ -272,7 +289,9 @@ export class ResearchController {
       this.amend(pending.id, { response });
       this.pending = null;
       // A replay is an earlier receipt, never the current personal list.
-      if (response.result.personal_memory != null) void this.refreshWatchlist();
+      if (response.result.personal_memory != null) {
+        void this.refreshWatchlist(); void this.refreshPreferences();
+      }
       if (response.conversation_id && this.credentials === credentials) {
         const created = response.conversation_id !== this.state.conversationId;
         this.update({ conversationId: response.conversation_id });
@@ -372,19 +391,22 @@ export class ResearchController {
 
   private clearPersonalState() {
     this.personalEpoch++; this.watchlistRead++; this.watchlistSearchRead++;
+    this.preferencesRead++; this.preferencesSearchRead++; this.preferencesEditorGeneration++;
     this.update({ watchlist: null, watchlistLoading: false, watchlistSaving: false, watchlistError: null,
-      watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null });
+      watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null,
+      preferences: null, preferencesLoading: false, preferencesSaving: false, preferencesError: null, preferencesNotice: null,
+      preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null, preferencesEditor: null });
   }
 
   private personalAvailable() {
     return this.state.mode === "normal" && this.api === this.normalApi && this.state.health?.personal_memory_enabled === true
-      && this.state.health.data_mode !== "synthetic" && !!this.api.watchlist;
+      && this.state.health.data_mode !== "synthetic";
   }
 
   async refreshWatchlist(): Promise<void> {
     if (this.state.switching) return;
     const api = this.api, epoch = this.personalEpoch, request = ++this.watchlistRead;
-    if (!this.personalAvailable()) {
+    if (!this.personalAvailable() || !api.watchlist) {
       this.watchlistSearchRead++;
       this.update({ watchlist: { version: "personal-memory-watchlist-v1", enabled: false, limit: 50, items: [] },
         watchlistLoading: false, watchlistError: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null });
@@ -458,6 +480,104 @@ export class ResearchController {
       return false;
     } finally {
       if (this.api === api && this.personalEpoch === epoch) this.update({ watchlistSaving: false });
+    }
+  }
+
+  async refreshPreferences(): Promise<void> {
+    if (this.state.switching) return;
+    const api = this.api, epoch = this.personalEpoch, request = ++this.preferencesRead;
+    if (!this.personalAvailable() || !api.preferences) {
+      this.preferencesSearchRead++;
+      this.update({ preferences: { version: "personal-memory-preferences-v1", enabled: false, limit: 50, items: [], collection_revision: null },
+        preferencesLoading: false, preferencesError: null, preferencesSearch: null, preferencesSearchLoading: false,
+        preferencesSearchError: null, preferencesEditor: null });
+      return;
+    }
+    this.update({ preferencesLoading: true, preferencesError: null });
+    try {
+      const preferences = await api.preferences();
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesRead) {
+        if (!preferences.enabled) this.preferencesSearchRead++;
+        this.update({ preferences, ...(!preferences.enabled ? { preferencesSearch: null, preferencesSearchLoading: false,
+          preferencesSearchError: null, preferencesEditor: null } : {}) });
+      }
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesRead)
+        this.update({ preferencesError: `持仓与偏好读取失败。${explanation(error)}` });
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesRead) this.update({ preferencesLoading: false });
+    }
+  }
+
+  clearPreferencesSearch() {
+    this.preferencesSearchRead++;
+    this.update({ preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null });
+  }
+
+  async searchPreferences(query: string): Promise<boolean> {
+    query = query.trim();
+    if (!this.personalAvailable() || this.state.switching || !this.api.searchWatchlist || !query || Array.from(query).length > 80) return false;
+    const api = this.api, epoch = this.personalEpoch, request = ++this.preferencesSearchRead;
+    this.update({ preferencesSearch: null, preferencesSearchLoading: true, preferencesSearchError: null });
+    try {
+      const result = await api.searchWatchlist!(query);
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesSearchRead) {
+        if (!result.enabled) throw new ApiError(404, "personal_memory_disabled");
+        this.update({ preferencesSearch: result });
+      }
+      return true;
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesSearchRead)
+        this.update({ preferencesSearchError: `目录搜索失败。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch && request === this.preferencesSearchRead)
+        this.update({ preferencesSearchLoading: false });
+    }
+  }
+
+  openPreferenceEditor(security: SecuritySummary): boolean {
+    if (!this.personalAvailable() || this.state.switching || this.state.preferencesSaving || this.state.preferencesLoading
+        || this.state.preferencesError || !this.state.preferences?.enabled) return false;
+    const stored = this.state.preferences.items.find(item => item.instrument_id === security.instrument_id);
+    this.update({ preferencesEditor: { security: { instrument_id: security.instrument_id, name: stored?.name ?? security.name },
+      generation: ++this.preferencesEditorGeneration }, preferencesNotice: null });
+    return true;
+  }
+
+  closePreferenceEditor(generation?: number) {
+    if (generation !== undefined && this.state.preferencesEditor?.generation !== generation) return;
+    this.update({ preferencesEditor: null });
+  }
+
+  savePreferences = (id: string, expectedRevision: string | null, changes: PreferenceChanges) =>
+    this.changePreferences("save", id, expectedRevision, changes);
+  deletePreference = (id: string, revision: string) => this.changePreferences("delete", id, revision);
+  clearPreferences = (revision: string) => this.changePreferences("clear", undefined, revision);
+
+  private async changePreferences(action: "save" | "delete" | "clear", id?: string, revision?: string | null, changes?: PreferenceChanges): Promise<boolean> {
+    if (!this.personalAvailable() || this.state.switching || this.state.preferencesSaving) return false;
+    const api = this.api, epoch = this.personalEpoch;
+    if (action === "save" ? !api.patchPreferences : action === "delete" ? !api.deletePreference : !api.clearPreferences) return false;
+    this.preferencesRead++; this.preferencesSearchRead++;
+    this.update({ preferencesSaving: true, preferencesLoading: false, preferencesError: null, preferencesNotice: null, preferencesSearchLoading: false });
+    try {
+      const result = action === "save" ? await api.patchPreferences!(id!, revision ?? null, changes!)
+        : action === "delete" ? await api.deletePreference!(id!, revision!) : await api.clearPreferences!(revision!);
+      if (!result.enabled) throw new ApiError(404, "personal_memory_disabled");
+      if (this.api === api && this.personalEpoch === epoch) {
+        const close = action === "clear" || action === "delete" && this.state.preferencesEditor?.security.instrument_id === id;
+        this.update({ preferences: result, ...(close ? { preferencesEditor: null } : {}),
+          preferencesNotice: action === "save" ? "已保存本机资料。" : "已删除本机资料；自选和聊天历史未删除。" });
+        await this.refreshPreferences();
+      }
+      return true;
+    } catch (error) {
+      if (this.api === api && this.personalEpoch === epoch)
+        this.update({ preferencesError: `资料变更未确认，请刷新后核对。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.personalEpoch === epoch) this.update({ preferencesSaving: false });
     }
   }
 

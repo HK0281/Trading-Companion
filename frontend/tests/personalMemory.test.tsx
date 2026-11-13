@@ -212,6 +212,32 @@ describe("watchlist state and research isolation", () => {
 });
 
 describe("watchlist controls", () => {
+  it.each(["slow", "failed"])("does not label an unconfirmed %s list as absent when searching and updates the accessible label after refresh", async condition => {
+    const { api, controller, setList } = personalController();
+    const first = deferred<Watchlist>();
+    if (condition === "slow") api.watchlist.mockReturnValueOnce(first.promise);
+    else api.watchlist.mockRejectedValueOnce(new ApiError(503, "personal_memory_store_unavailable"));
+    render(<App controller={controller} />);
+    const panel = screen.getByRole("region", { name: "自选股" });
+    const query = await within(panel).findByRole("textbox", { name: "股票名称或完整代码" });
+    fireEvent.change(query, { target: { value: stock.name } });
+    fireEvent.click(within(panel).getByRole("button", { name: "搜索" }));
+    expect(await within(panel).findByRole("button", { name: "自选状态待确认：平安银行（000001.SZ）" })).toBeDisabled();
+    expect(api.addWatchlist).not.toHaveBeenCalled();
+    if (condition === "slow") await act(async () => { first.resolve(list([stock])); });
+    else { setList(list([stock])); await act(async () => { await controller.refreshWatchlist(); }); }
+    expect(await within(panel).findByRole("button", { name: "已在自选：平安银行（000001.SZ）" })).toBeDisabled();
+    expect(within(panel).getByRole("button", { name: "已在自选：平安银行（000001.SZ）" })).toHaveTextContent("已在自选");
+  });
+
+  it("disables result-card list actions when the current list refresh failed", async () => {
+    const { api, controller, setList } = personalController(); setList(list([stock])); await controller.load();
+    api.watchlist.mockRejectedValueOnce(new ApiError(503, "personal_memory_store_unavailable")); await controller.refreshWatchlist();
+    render(<WatchlistActions securities={[stock]} state={controller.snapshot()} controller={controller} />);
+    const button = screen.getByRole("button", { name: "自选状态待确认：平安银行（000001.SZ）" });
+    expect(button).toBeDisabled(); fireEvent.click(button); expect(api.removeWatchlist).not.toHaveBeenCalled();
+  });
+
   it("shows the saved receipt list in chat while leaving the independently refreshed sidebar current", async () => {
     const { api, controller } = personalController();
     api.send.mockImplementationOnce(async (_session, id) => {

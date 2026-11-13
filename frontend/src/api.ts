@@ -114,6 +114,26 @@ export interface PersonalMemoryResult {
   items: WatchlistItem[];
   candidates: (SecuritySummary & { reply: string })[];
 }
+export type HoldingStatus = "unknown" | "held" | "not_held" | null;
+export type PreferenceHorizon = "short" | "medium" | "long" | null;
+export type PreferenceRisk = "low" | "medium" | "high" | null;
+export interface PreferenceFields { holding_status: HoldingStatus; horizon: PreferenceHorizon; risk: PreferenceRisk }
+export type PreferenceChanges = Partial<PreferenceFields>;
+export interface PreferenceRecord extends WatchlistItem, PreferenceFields { revision: string }
+export interface Preferences {
+  version: "personal-memory-preferences-v1";
+  enabled: boolean;
+  limit: 50;
+  items: PreferenceRecord[];
+  collection_revision: string | null;
+}
+export interface PreferencesMemoryResult {
+  version: Preferences["version"];
+  action: "update" | "list" | "notice";
+  status: PersonalMemoryResult["status"];
+  items: PreferenceRecord[];
+  candidates: (SecuritySummary & { reply: string })[];
+}
 
 export interface ResearchApi {
   readonly mode?: ApiMode;
@@ -134,6 +154,10 @@ export interface ResearchApi {
   addWatchlist?(instrumentId: string): Promise<Watchlist>;
   removeWatchlist?(instrumentId: string): Promise<Watchlist>;
   clearWatchlist?(): Promise<Watchlist>;
+  preferences?(): Promise<Preferences>;
+  patchPreferences?(instrumentId: string, expectedRevision: string | null, changes: PreferenceChanges): Promise<Preferences>;
+  deletePreference?(instrumentId: string, revision: string): Promise<Preferences>;
+  clearPreferences?(collectionRevision: string): Promise<Preferences>;
 }
 
 const errors: Record<string, string> = {
@@ -154,10 +178,13 @@ const errors: Record<string, string> = {
   invalid_request: "请求格式不符合接口要求，没有自动重试。",
   conversation_not_found: "这段历史对话不存在或已删除。",
   conversation_mode_mismatch: "这段历史对话属于其他数据模式，不能在当前模式继续。",
-  personal_memory_disabled: "自选股未开启。请用 --personal-memory-db 显式开启；--no-memory 会关闭全部记忆。",
-  personal_memory_store_unavailable: "本机自选股暂时无法读取或保存，请检查服务状态后手动刷新。",
+  personal_memory_disabled: "个人记忆未开启。请用 --personal-memory-db 显式开启；--no-memory 会关闭全部记忆。",
+  personal_memory_store_unavailable: "本机个人记忆暂时无法读取或保存，请检查服务状态后手动刷新。",
   watchlist_full: "自选股已达到 50 只上限，请先移除一项再加入。",
   watchlist_instrument_unknown: "证券代码未在当前目录中唯一核验，请重新搜索并选择完整代码。",
+  preference_revision_conflict: "这份资料已被另一个操作修改。你的编辑内容仍保留，请刷新资料后重新核对；本次没有自动覆盖。",
+  preferences_full: "持仓与偏好记录已达到 50 份上限，请先删除一份再新增。",
+  invalid_preferences: "持仓与偏好只支持固定类别，至少填写一项；不记录成本价、仓位比例或其他内容。",
   memory_store_unavailable: "本机对话记录暂不可用；当前研究不受影响。",
   memory_disabled: "本服务未开启对话记录。",
 };
@@ -211,17 +238,50 @@ const watchlistSearch = (value: unknown): value is WatchlistSearch => record(val
   && Array.isArray(value.candidates) && value.candidates.length <= 20
   && value.candidates.every(item => security(item) && record(item) && keys(item, ["instrument_id", "name"]))
   && distinctSecurities(value.candidates) && (value.enabled || value.candidates.length === 0 && !value.truncated);
-export function parsePersonalMemory(value: unknown): PersonalMemoryResult | null {
+const preferencesVersion = "personal-memory-preferences-v1";
+const collectionRevision = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+const category = (value: unknown, allowed: string[]) => value === null || typeof value === "string" && allowed.includes(value);
+const preferenceFields = (value: Record<string, unknown>) => category(value.holding_status, ["unknown", "held", "not_held"])
+  && category(value.horizon, ["short", "medium", "long"]) && category(value.risk, ["low", "medium", "high"]);
+const preferenceRecord = (value: unknown): value is PreferenceRecord => security(value) && record(value)
+  && keys(value, ["instrument_id", "name", "created_at", "updated_at", "holding_status", "horizon", "risk", "revision"])
+  && timestamp(value.created_at) && timestamp(value.updated_at) && Date.parse(value.created_at) <= Date.parse(value.updated_at)
+  && identifier(value.revision) && preferenceFields(value) && [value.holding_status, value.horizon, value.risk].some(item => item !== null);
+const preferenceItems = (value: unknown): value is PreferenceRecord[] => Array.isArray(value) && value.length <= 50
+  && value.every(preferenceRecord) && distinctSecurities(value);
+const preferences = (value: unknown): value is Preferences => record(value)
+  && keys(value, ["version", "enabled", "limit", "items", "collection_revision"]) && value.version === preferencesVersion
+  && typeof value.enabled === "boolean" && value.limit === 50 && preferenceItems(value.items)
+  && (value.enabled ? collectionRevision(value.collection_revision) : value.items.length === 0 && value.collection_revision === null);
+const preferenceChanges = (value: unknown): value is PreferenceChanges => record(value) && Object.keys(value).length >= 1
+  && Object.keys(value).length <= 3 && Object.entries(value).every(([key, item]) =>
+    key === "holding_status" ? category(item, ["unknown", "held", "not_held"])
+      : key === "horizon" ? category(item, ["short", "medium", "long"])
+        : key === "risk" && category(item, ["low", "medium", "high"]));
+const preferenceReply = (action: string, id: string, reply: unknown) => {
+  if (action === "list") return reply === `查看${id}的持仓与偏好`;
+  if (action !== "update") return false;
+  return [`记住我持有${id}`, `记住我未持有${id}`,
+    ...["持有", "未持有", "不确定", "未填写"].map(label => `把${id}的持有状态设为${label}`),
+    ...["短线", "中线", "长线", "未填写"].map(label => `把${id}的期限偏好设为${label}`),
+    ...["谨慎", "均衡", "积极", "未填写"].map(label => `把${id}的风险偏好设为${label}`)].includes(String(reply)) && typeof reply === "string";
+};
+export function parsePersonalMemory(value: unknown): PersonalMemoryResult | PreferencesMemoryResult | null {
   if (!record(value) || !keys(value, ["version", "action", "status", "items", "candidates"])
-      || value.version !== watchlistVersion || typeof value.action !== "string" || !["add", "remove", "list", "notice"].includes(value.action)
+      || typeof value.action !== "string"
       || typeof value.status !== "string" || !["completed", "needs_confirmation", "disabled", "unavailable", "unsupported"].includes(value.status)
-      || !watchlistItems(value.items) || !Array.isArray(value.candidates) || value.candidates.length > 20
-      || !value.candidates.every(item => security(item) && record(item) && keys(item, ["instrument_id", "name", "reply"])
-        && (value.action === "add" ? item.reply === `把${item.instrument_id}加入自选`
-          : value.action === "remove" && item.reply === `从自选移除${item.instrument_id}`))
-      || !distinctSecurities(value.candidates)
+      || !Array.isArray(value.candidates) || value.candidates.length > 20
+      || !value.candidates.every(item => security(item) && record(item) && keys(item, ["instrument_id", "name", "reply"]))
+      || !distinctSecurities(value.candidates as SecuritySummary[])
       || value.candidates.length > 0 && value.status !== "needs_confirmation") return null;
-  return value as unknown as PersonalMemoryResult;
+  if (value.version === watchlistVersion && ["add", "remove", "list", "notice"].includes(value.action)
+      && watchlistItems(value.items) && value.candidates.every(item =>
+        value.action === "add" ? item.reply === `把${item.instrument_id}加入自选`
+          : value.action === "remove" && item.reply === `从自选移除${item.instrument_id}`)) return value as unknown as PersonalMemoryResult;
+  if (value.version === preferencesVersion && ["update", "list", "notice"].includes(value.action)
+      && preferenceItems(value.items) && value.candidates.every(item => preferenceReply(value.action as string, item.instrument_id, item.reply)))
+    return value as unknown as PreferencesMemoryResult;
+  return null;
 }
 const message = (value: unknown): value is MessageResponse => {
   if (!record(value) || !identifier(value.request_id) || typeof value.replayed !== "boolean" || !record(value.result)) return false;
@@ -259,7 +319,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
   if (serviceMode !== "normal" && serviceMode !== "development") throw new ConnectionError();
   const prefix = serviceMode === "development" ? "/dev-api" : "";
   async function request<T>(path: string, check: (value: unknown) => value is T,
-    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean } = {}): Promise<T> {
+    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
     if (options.session) {
       const boundMode = credentialModes.get(options.session);
       // Unmarked legacy callers remain root-only; development credentials must be minted here.
@@ -276,7 +336,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
       const response = await fetcher(prefix + path, {
         method: options.method ?? "GET", cache: "no-store", credentials: "omit", redirect: "error",
         referrerPolicy: "no-referrer", signal: abort.signal,
-        headers: { ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+        headers: { ...options.headers, ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
           ...(options.session ? { Authorization: `Bearer ${options.session.access_token}` } : {}) },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
       });
@@ -406,6 +466,26 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     clearWatchlist: () => {
       if (serviceMode === "development") throw new ApiError(409, "personal_memory_disabled");
       return request("/v1/personal/watchlist", watchlist, { method: "DELETE", bounded: true });
+    },
+    preferences: () => serviceMode === "development"
+      ? Promise.resolve({ version: preferencesVersion, enabled: false, limit: 50, items: [], collection_revision: null })
+      : request("/v1/personal/preferences", preferences, { bounded: true }),
+    patchPreferences: (id, expectedRevision, changes) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!instrumentId(id) || expectedRevision !== null && !identifier(expectedRevision) || !preferenceChanges(changes)) throw new ConnectionError();
+      return request(`/v1/personal/preferences/${encodeURIComponent(id)}`, preferences,
+        { method: "PATCH", body: { expected_revision: expectedRevision, changes }, bounded: true });
+    },
+    deletePreference: (id, revision) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!instrumentId(id) || !identifier(revision)) throw new ConnectionError();
+      return request(`/v1/personal/preferences/${encodeURIComponent(id)}`, preferences,
+        { method: "DELETE", headers: { "If-Match": revision }, bounded: true });
+    },
+    clearPreferences: (revision) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!collectionRevision(revision)) throw new ConnectionError();
+      return request("/v1/personal/preferences", preferences, { method: "DELETE", headers: { "If-Match": revision }, bounded: true });
     },
   };
 }

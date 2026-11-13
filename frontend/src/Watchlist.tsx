@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import type { SecuritySummary } from "./api";
 import type { ResearchController, WorkspaceState } from "./controller";
 
-type Props = { state: WorkspaceState; controller: ResearchController };
+type Props = { state: WorkspaceState; controller: ResearchController; openPreferences?: (security: SecuritySummary) => void };
 const disabledMessage = "自选股未开启。请用 --personal-memory-db 显式开启；--no-memory 会关闭全部记忆。";
 
-export function WatchlistPanel({ state, controller }: Props) {
+export function WatchlistPanel({ state, controller, openPreferences }: Props) {
   const [query, setQuery] = useState("");
   const [confirmation, setConfirmation] = useState<SecuritySummary | "all" | null>(null);
   useEffect(() => { setQuery(""); setConfirmation(null); }, [state.mode, state.switching]);
@@ -13,6 +13,7 @@ export function WatchlistPanel({ state, controller }: Props) {
     && state.watchlist?.enabled !== false;
   const busy = state.watchlistSaving || state.switching;
   const items = state.watchlist?.items ?? [];
+  const listConfirmed = !!state.watchlist?.enabled && !state.watchlistLoading && !state.watchlistError;
   const confirm = () => {
     if (!confirmation) return;
     const operation = confirmation === "all" ? controller.clearWatchlist() : controller.removeWatchlist(confirmation.instrument_id);
@@ -38,11 +39,13 @@ export function WatchlistPanel({ state, controller }: Props) {
               {state.watchlistSearch && <div className="watchlist-search-results" aria-label="自选搜索结果">
                 {!state.watchlistSearch.candidates.length ? <p className="empty-index">没有匹配的证券，请换个名称或输入完整代码。</p>
                   : <ul>{state.watchlistSearch.candidates.map(item => {
-                    const saved = items.some(value => value.instrument_id === item.instrument_id);
+                    const saved = listConfirmed && items.some(value => value.instrument_id === item.instrument_id);
                     return <li key={item.instrument_id}><span>{item.name}<small>{item.instrument_id}</small></span>
-                      <button type="button" disabled={busy || saved} aria-label={`加入自选：${item.name}（${item.instrument_id}）`}
-                        onClick={() => void controller.addWatchlist(item.instrument_id)}>{saved ? "已在自选" : "加入"}</button></li>;
+                      <button type="button" disabled={busy || saved || !listConfirmed}
+                        aria-label={`${!listConfirmed ? "自选状态待确认" : saved ? "已在自选" : "加入自选"}：${item.name}（${item.instrument_id}）`}
+                        onClick={() => void controller.addWatchlist(item.instrument_id)}>{!listConfirmed ? "待确认清单" : saved ? "已在自选" : "加入"}</button></li>;
                   })}</ul>}
+                {!listConfirmed && <p className="watchlist-note">自选清单尚未确认，请先刷新后再加入。</p>}
                 {state.watchlistSearch.truncated && <p className="watchlist-note">仅显示前 20 项，请缩小搜索范围。</p>}
               </div>}
               <div className="watchlist-tools"><button type="button" disabled={busy || state.watchlistLoading}
@@ -54,8 +57,11 @@ export function WatchlistPanel({ state, controller }: Props) {
               {state.watchlist && (!items.length ? <p className="empty-index">还没有自选股。搜索并选择股票后加入。</p>
                 : <ul className="watchlist-items">{items.map(item => <li key={item.instrument_id}>
                   <span>{item.name}<small>{item.instrument_id}</small></span>
-                  <button type="button" disabled={busy} aria-label={`移除自选：${item.name}`}
+                  <div className="watchlist-item-actions"><button type="button" disabled={busy} aria-label={`移除自选：${item.name}`}
                     onClick={() => setConfirmation(item)}>移除</button>
+                    {openPreferences && state.preferences?.enabled && <button type="button" aria-label={`管理自选资料：${item.name}`}
+                      disabled={state.preferencesLoading || state.preferencesSaving || !!state.preferencesError}
+                      onClick={() => openPreferences(item)}>资料</button>}</div>
                 </li>)}</ul>)}
               {confirmation && <div className="confirm-panel" role="group" aria-label="确认自选操作">
                 <p>{confirmation === "all" ? "清空全部自选股？聊天历史不会删除。" : `从自选移除${confirmation.name}（${confirmation.instrument_id}）？聊天历史不会删除。`}</p>
@@ -70,11 +76,12 @@ export function WatchlistActions({ securities, state, controller }: Props & { se
   const [removing, setRemoving] = useState<SecuritySummary | null>(null);
   useEffect(() => { setRemoving(null); }, [state.mode, state.switching]);
   if (state.mode !== "normal" || state.switching || state.health?.personal_memory_enabled !== true || !state.watchlist?.enabled) return null;
+  const listConfirmed = !state.watchlistLoading && !state.watchlistError;
   return <div className="watchlist-result-actions" aria-label="研究对象自选操作">
     {securities.map(item => {
       const saved = state.watchlist!.items.some(value => value.instrument_id === item.instrument_id);
-      return <button key={item.instrument_id} type="button" disabled={state.watchlistSaving || state.watchlistLoading}
-        aria-label={`${saved ? "移除" : "加入"}自选：${item.name}（${item.instrument_id}）`}
+      return <button key={item.instrument_id} type="button" disabled={state.watchlistSaving || !listConfirmed}
+        aria-label={`${!listConfirmed ? "自选状态待确认" : `${saved ? "移除" : "加入"}自选`}：${item.name}（${item.instrument_id}）`}
         onClick={() => saved ? setRemoving(item) : void controller.addWatchlist(item.instrument_id)}>
         {item.name} · {saved ? "移除自选" : "加入自选"}</button>;
     })}

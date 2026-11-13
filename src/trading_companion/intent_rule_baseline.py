@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-VERSION = "intent-research-documents-v1"
+VERSION = "intent-research-documents-v2"
 ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTION = ROOT / "data/evaluation/intent-rule-baselines-v1.json"
 SOURCES = (

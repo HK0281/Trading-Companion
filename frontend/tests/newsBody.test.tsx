@@ -24,11 +24,11 @@ function payload(version = "product-research-answer-v1") {
       securities: [{ instrument_id: "000001.SZ", name: "平安银行" }], evidence: [] as ReturnType<typeof parent>[] };
   return { ...base, evidence: [...base.evidence, parent()], documents: documents() };
 }
-function useAnnouncement(value: ReturnType<typeof payload>) {
+function useAnnouncement(value: ReturnType<typeof payload>, version = "eastmoney-announcement-body-v3") {
   const fields = { kind: "announcements", source: "eastmoney_announcements",
     url: "https://data.eastmoney.com/notices/detail/000001/AN123456789012.html" };
   Object.assign(value.evidence[value.evidence.length - 1], fields);
-  Object.assign(value.documents.items[0], fields, { extractor_version: "eastmoney-announcement-body-v2" });
+  Object.assign(value.documents.items[0], fields, { extractor_version: version });
 }
 function openDocuments() {
   fireEvent.click(screen.getByText("正文片段"));
@@ -114,24 +114,45 @@ describe("新闻与公告的正文片段", () => {
 
   it.each(["news", "announcements"])("%s的提取器版本与新旧字段组严格配对", kind => {
     const legacyVersion = kind === "news" ? "sina-artibody-v2" : "eastmoney-announcement-body-v1";
-    const currentVersion = kind === "news" ? "sina-artibody-v3" : "eastmoney-announcement-body-v2";
+    const currentVersions = kind === "news" ? ["sina-artibody-v3"] : ["eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3"];
     for (const supplied of [false, true]) {
-      for (const version of ["sina-artibody-v2", "sina-artibody-v3", "eastmoney-announcement-body-v1", "eastmoney-announcement-body-v2", "unknown-extractor"]) {
+      for (const version of ["sina-artibody-v2", "sina-artibody-v3", "eastmoney-announcement-body-v1", "eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3", "unknown-extractor"]) {
         const value = payload();
         if (supplied) Object.assign(value.documents.items[0], completeDocument());
         if (kind === "announcements") useAnnouncement(value);
         value.documents.items[0].extractor_version = version;
-        const accepted = version === (supplied ? currentVersion : legacyVersion);
+        const accepted = supplied ? currentVersions.includes(version) : version === legacyVersion;
         expect(parseCompanyAnswer(value)!.documents!.items, `${kind}, coverage=${supplied}, ${version}`).toHaveLength(accepted ? 1 : 0);
       }
     }
   });
 
-  it.each(["news", "announcements"])("%s新版局部标志全删后不能降级成旧完整记录", kind => {
+  it.each([
+    ["eastmoney-announcement-body-v2", true], ["eastmoney-announcement-body-v2", false],
+    ["eastmoney-announcement-body-v3", true], ["eastmoney-announcement-body-v3", false],
+  ] as const)("保留%s公告的原版本并在完整=%s时显示对应读取边界", (version, complete) => {
+    const value = payload();
+    Object.assign(value.documents.items[0], completeDocument());
+    useAnnouncement(value, version);
+    if (!complete) Object.assign(value.documents.items[0], { complete: false, page_count: 2, code: "document_first_page_only" });
+    const parsed = parseCompanyAnswer(value)!;
+    expect(parsed.documents!.items[0].extractor_version).toBe(version);
+    expect(parsed.documents!.items[0].complete).toBe(complete);
+    render(<CompanyParagraphs data={parsed} />);
+    openDocuments();
+    expect(screen.getByText(document().excerpts[0].text)).toBeVisible();
+    if (complete) expect(screen.queryByText("只读取了第 1 页")).not.toBeInTheDocument();
+    else expect(screen.getByText("只读取了第 1 页")).toBeVisible();
+  });
+
+  it.each([
+    ["news", "sina-artibody-v3"], ["announcements", "eastmoney-announcement-body-v2"],
+    ["announcements", "eastmoney-announcement-body-v3"],
+  ])("%s的%s局部标志全删后不能降级成旧完整记录", (kind, version) => {
     const value = payload();
     const item: Record<string, unknown> = Object.assign(value.documents.items[0], completeDocument(), { complete: false });
     if (kind === "announcements") {
-      useAnnouncement(value);
+      useAnnouncement(value, version);
       Object.assign(item, { code: "document_first_page_only", page_count: 2 });
     } else Object.assign(item, { code: "document_tables_omitted", omitted_tables: 1 });
     for (const key of ["complete", "omitted_tables", "page_count", "private_use_characters_replaced", "omitted_trailing_characters"]) delete item[key];
@@ -183,12 +204,13 @@ describe("新闻与公告的正文片段", () => {
   });
 
   it.each([
-    [false, 129], [false, 256], [false, 400], [true, 129], [true, 256], [true, 400],
-  ] as const)("公告在新版字段组=%s时保留第%s段的有效片段", (coverage, paragraph) => {
+    ["eastmoney-announcement-body-v1", 129], ["eastmoney-announcement-body-v1", 256], ["eastmoney-announcement-body-v1", 400],
+    ["eastmoney-announcement-body-v2", 129], ["eastmoney-announcement-body-v2", 256], ["eastmoney-announcement-body-v2", 400],
+    ["eastmoney-announcement-body-v3", 129], ["eastmoney-announcement-body-v3", 256], ["eastmoney-announcement-body-v3", 400],
+  ] as const)("%s公告保留第%s段的有效片段", (version, paragraph) => {
     const value = payload();
-    if (coverage) Object.assign(value.documents.items[0], completeDocument());
-    useAnnouncement(value);
-    if (!coverage) value.documents.items[0].extractor_version = "eastmoney-announcement-body-v1";
+    if (version !== "eastmoney-announcement-body-v1") Object.assign(value.documents.items[0], completeDocument());
+    useAnnouncement(value, version);
     const item = value.documents.items[0];
     item.paragraph_count = 400;
     item.excerpts[0].paragraph_index = paragraph;
@@ -200,11 +222,10 @@ describe("新闻与公告的正文片段", () => {
     expect(screen.getByText(item.excerpts[0].text)).toBeVisible();
   });
 
-  it.each([false, true])("公告在新版字段组=%s时拒绝401段及超过实际段数的片段", coverage => {
+  it.each(["eastmoney-announcement-body-v1", "eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3"])("%s公告拒绝401段及超过实际段数的片段", version => {
     const value = payload();
-    if (coverage) Object.assign(value.documents.items[0], completeDocument());
-    useAnnouncement(value);
-    if (!coverage) value.documents.items[0].extractor_version = "eastmoney-announcement-body-v1";
+    if (version !== "eastmoney-announcement-body-v1") Object.assign(value.documents.items[0], completeDocument());
+    useAnnouncement(value, version);
     const item = value.documents.items[0];
     item.paragraph_count = 401;
     item.excerpts[0].paragraph_index = 400;

@@ -163,13 +163,16 @@ def _validate_document_data(data):
         elif item["code"] != "document_read":
             # Legacy documents cannot claim a newly introduced limitation without its fields.
             raise SnapshotStoreError("invalid_snapshot_bundle")
-        expected_extractor = ("sina-artibody-v3" if "complete" in item else "sina-artibody-v2") if item["kind"] == "news" else (
-            "eastmoney-announcement-body-v2" if "complete" in item else "eastmoney-announcement-body-v1")
+        if item["kind"] == "news":
+            expected_extractors = ("sina-artibody-v3",) if "complete" in item else ("sina-artibody-v2",)
+        else:
+            expected_extractors = ("eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3") if "complete" in item else (
+                "eastmoney-announcement-body-v1",)
         maximum_characters = 16000 if item["kind"] == "news" else 32000
         if (type(item["document_id"]) is not str
                 or re.fullmatch(r"document:[0-9a-f]{64}", item["document_id"]) is None
                 or item["document_id"] in summaries
-                or not _document_hash(item["sha256"]) or item["extractor_version"] != expected_extractor
+                or not _document_hash(item["sha256"]) or item["extractor_version"] not in expected_extractors
                 or type(item["extracted_characters"]) is not int or not 1 <= item["extracted_characters"] <= maximum_characters
                 or item["extracted_characters"] + item.get("omitted_trailing_characters", 0) > maximum_characters
                 or type(item["paragraph_count"]) is not int

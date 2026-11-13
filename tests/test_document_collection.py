@@ -13,6 +13,7 @@ import requests
 from trading_companion.collection_execution import CollectionExecutor, CollectionScope, CollectionUnavailable
 from trading_companion.document_collection import (
     DocumentCollector, DETAIL_ENDPOINT, decode_document_payload, document_trigger, documents_for_context,
+    _candidates,
 )
 from trading_companion.product_research import ProductCompany, ProductEvidence, ProductResearchBundle
 from trading_companion.research_documents import SHANGHAI
@@ -89,7 +90,9 @@ class DocumentCollectionTests(unittest.TestCase):
         return self.collector.enrich(bundle() if selected is None else selected, question=question, now=NOW, sorting=sorting)
 
     def test_charsetless_response_uses_utf8_meta_without_corrupting_the_candidate_title(self):
-        page = article_html().replace('<head>', '<head><meta charset="utf-8"/>')
+        page = article_html(paragraphs=(
+            '平安银行人工新闻正文已说明本次经营安排和适用条件，公司将根据相关要求持续披露后续进展。',)).replace(
+                '<head>', '<head><meta charset="utf-8"/>')
         self.session.request.return_value = response(page, media='text/html')
         result = self.enrich()
         self.assertEqual(result.documents['items'][0]['status'], 'available')
@@ -162,6 +165,18 @@ class DocumentCollectionTests(unittest.TestCase):
                 self.assertEqual(self.traces[-1]["documents_skipped_reason"], reason)
         self.session.request.assert_not_called()
 
+    def test_document_type_questions_trigger_but_generic_or_negated_content_does_not(self):
+        selected = bundle(kinds=('announcements',))
+        for question in ('临时股东会通知讲了哪些议案', '投资者关系活动记录里说了什么', '董事会决议具体内容', '会议纪要内容'):
+            with self.subTest(question=question):
+                self.assertIsNone(document_trigger(selected.plan, question))
+        for question in ('这只股票怎么样', '报告怎么写', '记录一下买卖', '不用看公告内容', '公告内容不用看', '别看全文'):
+            with self.subTest(question=question):
+                self.assertEqual(document_trigger(selected.plan, question), 'documents_not_requested')
+        selected = bundle(kinds=('news', 'announcements'))
+        chosen = _candidates(selected, '不用看公告内容，读新闻原文')
+        self.assertEqual([candidate.kind for candidate, _ in chosen], ['news'])
+
     def test_unsupported_or_unverified_candidates_never_create_network_targets(self):
         selected = bundle()
         parent = selected.companies[0].evidence[0]
@@ -175,7 +190,7 @@ class DocumentCollectionTests(unittest.TestCase):
     def test_one_article_per_company_and_original_evidence_ids_stay_in_the_same_global_order(self):
         selected = bundle(securities=SECURITIES, kinds=("news", "announcements"), duplicates=True)
         parents = [company.evidence[0] for company in selected.companies]
-        replies = [response(article_html(title=parent.raw_value, paragraphs=(name + "人工新闻正文。",)))
+        replies = [response(article_html(title=parent.raw_value, paragraphs=(name + "人工新闻正文已说明本次经营安排和适用条件，公司将根据相关要求持续披露后续进展。",)))
                    for parent, (_, name) in zip(parents, SECURITIES)]
         self.session.request.side_effect = replies
         result = self.enrich(selected, question="读三家公司的新闻原文")
@@ -185,6 +200,227 @@ class DocumentCollectionTests(unittest.TestCase):
         self.assertEqual([e.id for e in result.evidence[:len(selected.evidence)]], [e.id for e in selected.evidence])
         self.assertEqual([e.instrument_id for e in result.supplemental_evidence], [s[0] for s in SECURITIES])
         self.assertEqual(self.traces[-1]["requests"], 3)
+        for reply in replies:
+            reply.close.assert_called_once()
+
+    def test_title_overlap_beats_recency_and_ties_or_no_overlap_use_latest(self):
+        selected = bundle(kinds=('announcements',))
+        latest = replace(title(kind='announcements'), display='平安银行高级管理人员离任公告',
+                         raw_value='平安银行高级管理人员离任公告')
+        matching = replace(title(kind='announcements', serial=1,
+            url='https://data.eastmoney.com/notices/detail/000001/AN202611100001234567.html'),
+            display='平安银行董事会决议公告', raw_value='平安银行董事会决议公告', date='2026-11-10')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(latest, matching)),))
+        self.assertEqual(_candidates(selected, '平安银行董事会决议公告讲了什么')[0][1].id, matching.id)
+        self.assertEqual(_candidates(selected, '平安银行公告具体内容')[0][1].id, latest.id)
+        self.assertEqual(_candidates(selected, '000001.SZ平安银行最近公告')[0][1].id, latest.id)
+        newer_match = replace(latest, display=matching.display, raw_value=matching.raw_value)
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(matching, newer_match)),))
+        self.assertEqual(_candidates(selected, '董事会决议')[0][1].id, newer_match.id)
+
+    def test_recency_compares_actual_offsets_and_preserves_date_only_source_order(self):
+        selected = bundle(kinds=('announcements',))
+        older = replace(title(kind='announcements'), published_at='2026-11-11T16:00:00+08:00', publication_precision='datetime')
+        newer = replace(title(kind='announcements', serial=1,
+            url='https://data.eastmoney.com/notices/detail/000001/AN202611110001234568.html'),
+            published_at='2026-11-11T10:00:00+01:00', publication_precision='datetime')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(older, newer)),))
+        self.assertEqual(_candidates(selected, '最近公告')[0][1].id, newer.id)
+        date_only = replace(older, published_at=None, publication_precision='date')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(date_only, newer)),))
+        self.assertEqual(_candidates(selected, '最近公告')[0][1].id, date_only.id)
+
+    def test_fallback_waits_for_all_three_primaries_and_binds_the_actual_parent(self):
+        selected = bundle(securities=SECURITIES, duplicates=True)
+        parents = [company.evidence[0] for company in selected.companies]
+        fallback = selected.companies[0].evidence[1]
+        replies = [response(status=503)] + [response(article_html(title=p.raw_value,
+            paragraphs=(name + '人工经营风险正文已说明项目推进存在的不确定性，公司将按相关要求持续披露后续进展。',))) for p, (_, name) in zip(parents[1:], SECURITIES[1:])]
+        replies.append(response(article_html(title=fallback.raw_value, paragraphs=('平安银行备用正文已说明人工项目的具体执行条件，公司将根据相关要求持续披露后续进展。',))))
+        self.session.request.side_effect = replies
+        result = self.enrich(selected, question='读三家公司的新闻原文')
+        self.assertEqual([call.args[1] for call in self.session.request.call_args_list],
+                         [p.url for p in parents] + [fallback.url])
+        self.assertEqual(len(result.documents['items']), 3)
+        self.assertTrue(all(item['status'] == 'available' for item in result.documents['items']))
+        actual = result.documents['items'][0]
+        self.assertEqual((actual['parent_title_id'], actual['url']), (fallback.id, fallback.url))
+        fragments = [e for e in result.supplemental_evidence if e.instrument_id == fallback.instrument_id]
+        self.assertTrue(fragments)
+        self.assertTrue(all(e.dependencies == (fallback.id,) and e.document['parent_title_id'] == fallback.id for e in fragments))
+        self.assertEqual(result.evidence[:len(selected.evidence)], selected.evidence)
+        self.assertEqual((self.traces[-1]['requests'], self.traces[-1]['attempted'],
+                          self.traces[-1]['fallback_attempted'], self.traces[-1]['fallback_available']), (4, 4, 1, 1))
+        for reply in replies:
+            reply.close.assert_called_once()
+
+    def test_cross_company_duplicate_primary_promotes_an_independent_first_attempt(self):
+        for first_fails in (False, True):
+            with self.subTest(first_fails=first_fails):
+                selected = bundle(securities=SECURITIES, duplicates=True)
+                first, middle, last = selected.companies
+                middle = replace(middle, evidence=(replace(middle.evidence[0], url=first.evidence[0].url), middle.evidence[1]))
+                selected = replace(selected, companies=(first, middle, last))
+                primaries = (first.evidence[0], middle.evidence[1], last.evidence[0])
+                replies = [response(article_html(title=p.raw_value, paragraphs=(company.name + '人工经营正文已说明项目执行的具体条件，公司将根据相关要求持续披露后续进展。',)))
+                           for p, company in zip(primaries, selected.companies)]
+                if first_fails:
+                    replies[0] = response(status=503)
+                    replies.append(response(article_html(title=first.evidence[1].raw_value, paragraphs=('平安银行备用正文已说明人工项目的具体执行条件，公司将根据相关要求持续披露后续进展。',))))
+                self.session.request.reset_mock()
+                self.session.request.side_effect = replies
+                result = self.enrich(selected, question='读取三家公司新闻原文')
+                expected_urls = [p.url for p in primaries] + ([first.evidence[1].url] if first_fails else [])
+                self.assertEqual([call.args[1] for call in self.session.request.call_args_list], expected_urls)
+                self.assertEqual(len(expected_urls), len(set(expected_urls)))
+                self.assertEqual(result.documents['items'][1]['parent_title_id'], middle.evidence[1].id)
+                self.assertEqual((len(result.documents['items']), self.traces[-1]['available']), (3, 3))
+                self.assertEqual((self.traces[-1]['attempted'], self.traces[-1]['requests'],
+                                  self.traces[-1]['fallback_attempted'], self.traces[-1]['fallback_available']),
+                                 (3 + first_fails, 3 + first_fails, int(first_fails), int(first_fails)))
+                self.assertEqual(result.evidence[:len(selected.evidence)], selected.evidence)
+
+    def test_primary_promotion_checks_all_ranked_titles_before_limiting_alternates(self):
+        selected = bundle(securities=SECURITIES)
+        first, middle, last = selected.companies
+        independent = title(SECURITIES[2], serial=2)
+        last = replace(last, evidence=(replace(last.evidence[0], url=first.evidence[0].url),
+            replace(title(SECURITIES[2], serial=1), url=middle.evidence[0].url), independent))
+        selected = replace(selected, companies=(first, middle, last))
+        primaries = (first.evidence[0], middle.evidence[0], independent)
+        self.session.request.side_effect = [response(article_html(title=p.raw_value,
+            paragraphs=(company.name + '人工经营正文已说明项目执行的具体条件，公司将根据相关要求持续披露后续进展。',))) for p, company in zip(primaries, selected.companies)]
+        result = self.enrich(selected, question='读三家公司新闻原文')
+        self.assertEqual([call.args[1] for call in self.session.request.call_args_list], [p.url for p in primaries])
+        self.assertEqual((self.traces[-1]['attempted'], self.traces[-1]['fallback_attempted']), (3, 0))
+        self.assertEqual(result.documents['items'][2]['parent_title_id'], independent.id)
+
+    def test_four_attempts_never_expand_final_slots_or_try_a_third_candidate(self):
+        selected = bundle(securities=SECURITIES, duplicates=True)
+        company = selected.companies[0]
+        selected = replace(selected, companies=(replace(company,
+            evidence=(*company.evidence, title(SECURITIES[0], serial=2))), *selected.companies[1:]))
+        self.session.request.side_effect = [response(status=503) for _ in range(4)]
+        result = self.enrich(selected, question='读取三家公司新闻原文')
+        self.assertEqual(self.session.request.call_count, 4)
+        self.assertEqual(len(result.documents['items']), 3)
+        self.assertEqual(result.supplemental_evidence, ())
+        self.assertEqual(self.traces[-1]['fallback_attempted'], 1)
+        self.assertEqual(result.evidence, selected.evidence)
+
+    def test_two_companies_keep_two_slots_even_when_both_use_fallbacks(self):
+        selected = bundle(securities=SECURITIES[:2], duplicates=True)
+        self.session.request.side_effect = [response(status=503), response(status=503)] + [
+            response(article_html(title=company.evidence[1].raw_value, paragraphs=(company.name + '人工经营正文已说明项目执行的具体条件，公司将根据相关要求持续披露后续进展。',)))
+            for company in selected.companies]
+        result = self.enrich(selected, question='读两家公司的新闻原文')
+        self.assertEqual((self.session.request.call_count, len(result.documents['items'])), (4, 2))
+        self.assertEqual((self.traces[-1]['available'], self.traces[-1]['fallback_available']), (2, 2))
+
+    def test_single_company_domains_get_primaries_before_a_fallback(self):
+        selected = bundle(kinds=('news', 'announcements'), duplicates=True)
+        records = selected.companies[0].evidence
+        self.session.request.side_effect = [response(status=503),
+            response(json.dumps(detail_payload()), media='application/json'), response()]
+        result = self.enrich(selected, question='请读新闻与公告正文')
+        self.assertEqual([call.args[1] for call in self.session.request.call_args_list],
+                         [records[0].url, DETAIL_ENDPOINT, records[1].url])
+        self.assertEqual(len(result.documents['items']), 2)
+
+    def test_attachment_only_and_bad_layout_can_use_a_distinct_same_kind_fallback(self):
+        selected = bundle(kinds=('announcements',))
+        first = selected.companies[0].evidence[0]
+        second = title(kind='announcements', serial=1,
+            url='https://data.eastmoney.com/notices/detail/000001/AN202611110001234568.html')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(first, second)),))
+        self.session.request.side_effect = [response(json.dumps(detail_payload(notice_content='', attach_url='ignored')), media='application/json'),
+            response(json.dumps(detail_payload(art_code='AN202611110001234568')), media='application/json')]
+        result = self.enrich(selected, question='读公告原文')
+        self.assertEqual(self.session.request.call_count, 2)
+        self.assertEqual(result.documents['items'][0]['parent_title_id'], second.id)
+        self.assertEqual(self.traces[-1]['fallback_available'], 1)
+
+    def test_relevant_primary_never_falls_back_to_an_unrelated_title(self):
+        selected = bundle(duplicates=True)
+        first, second = selected.companies[0].evidence
+        first = replace(first, raw_value='平安银行董事会决议新闻', display='平安银行董事会决议新闻')
+        second = replace(second, raw_value='平安银行高管离任新闻', display='平安银行高管离任新闻')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(first, second)),))
+        self.session.request.return_value = response(status=503)
+        result = self.enrich(selected, question='请读平安银行董事会决议新闻')
+        self.assertEqual(self.session.request.call_count, 1)
+        self.assertEqual(result.documents['items'][0]['parent_title_id'], first.id)
+        self.assertEqual(self.traces[-1]['fallback_attempted'], 0)
+        second = replace(second, raw_value='平安银行董事会决议后续新闻', display='平安银行董事会决议后续新闻')
+        selected = replace(selected, companies=(replace(selected.companies[0], evidence=(first, second)),))
+        self.session.request.reset_mock()
+        self.enrich(selected, question='请读平安银行董事会决议新闻')
+        self.assertEqual(self.session.request.call_count, 2)
+
+    def test_duplicate_parent_or_url_is_never_a_fallback_request(self):
+        for duplicate in (replace(title(serial=1), url=title().url), replace(title(serial=1), id=title().id)):
+            with self.subTest(duplicate=duplicate.id):
+                selected = bundle()
+                selected = replace(selected, companies=(replace(selected.companies[0], evidence=(title(), duplicate)),))
+                self.session.request.reset_mock()
+                self.session.request.return_value = response(status=503)
+                self.enrich(selected)
+                self.assertEqual(self.session.request.call_count, 1)
+
+    def test_partial_and_all_noise_successes_do_not_download_an_alternate(self):
+        selected = bundle(duplicates=True)
+        table = article_html().replace('</div><!-- 正文 end -->', '<table><tr><td>省略数字123</td></tr></table></div><!-- 正文 end -->')
+        self.session.request.return_value = response(table)
+        result = self.enrich(selected)
+        self.assertEqual(self.session.request.call_count, 1)
+        self.assertFalse(result.documents['items'][0]['complete'])
+        self.session.request.reset_mock()
+        self.session.request.return_value = response()
+        with patch('trading_companion.research_documents.ResearchDocument.excerpts', return_value=()):
+            result = self.enrich(selected)
+        self.assertEqual(self.session.request.call_count, 1)
+        self.assertEqual(result.documents['items'][0]['status'], 'available')
+        self.assertEqual(result.supplemental_evidence, ())
+        self.assertEqual((self.traces[-1]['no_substantive_excerpts'], self.traces[-1]['fallback_attempted']), (1, 0))
+
+    def test_four_reads_charge_the_existing_two_megabyte_ledger(self):
+        selected = bundle(securities=SECURITIES, duplicates=True)
+        replies = [response(' ' * 512000) for _ in range(4)]
+        self.session.request.side_effect = replies
+        result = self.enrich(selected, question='读三家公司的新闻原文')
+        self.assertEqual(self.session.request.call_count, 4)
+        self.assertEqual(self.traces[-1]['response_bytes'], 2048000)
+        self.assertEqual(len(result.documents['items']), 3)
+        self.assertEqual(result.supplemental_evidence, ())
+
+    def test_stage_timeout_prevents_all_fallback_requests(self):
+        selected = bundle(securities=SECURITIES, duplicates=True)
+        reply = response()
+        def expired(*args, **kwargs):
+            self.clock.advance(12.01)
+            return reply
+        self.session.request.side_effect = expired
+        result = self.enrich(selected, question='读三家公司的新闻原文')
+        self.assertEqual(self.session.request.call_count, 1)
+        self.assertEqual(self.traces[-1]['fallback_attempted'], 0)
+        self.assertEqual(result.evidence, selected.evidence)
+
+    def test_local_request_timeout_can_use_one_fallback_inside_the_same_stage(self):
+        selected = bundle(duplicates=True)
+        replies = [response(), response()]
+        calls = []
+        def locally_delayed(*args, **kwargs):
+            calls.append(kwargs['timeout'])
+            if len(calls) == 1:
+                self.clock.advance(4.01)
+            return replies[len(calls) - 1]
+        self.session.request.side_effect = locally_delayed
+        result = self.enrich(selected)
+        self.assertEqual(calls, [(3.0, 4.0), (3.0, 4.0)])
+        self.assertEqual(result.documents['items'][0]['status'], 'available')
+        self.assertEqual((self.traces[-1]['requests'], self.traces[-1]['fallback_available']), (2, 1))
+        self.assertIsNone(self.traces[-1]['documents_skipped_reason'])
+        self.assertLessEqual(self.clock(), 12)
         for reply in replies:
             reply.close.assert_called_once()
 
@@ -204,9 +440,11 @@ class DocumentCollectionTests(unittest.TestCase):
 
     def test_partial_news_and_first_page_keep_evidence_flags_without_extra_requests(self):
         selected = bundle(kinds=('news', 'announcements'))
-        page = article_html().replace('</div><!-- 正文 end -->',
+        page = article_html(paragraphs=(
+            '平安银行人工新闻正文已说明本次经营安排和适用条件，公司将根据相关要求持续披露后续进展。',)).replace('</div><!-- 正文 end -->',
             '<table><tr><td><p>未读取表格中数字987654.32</p></td></tr></table></div><!-- 正文 end -->')
-        announcement = detail_payload(page_size=2, notice_content='平安银行完整公告句。金额为123.45万元，尚未满足')
+        announcement = detail_payload(page_size=2,
+            notice_content='平安银行已披露本次人工项目的完整安排，公司将在履行必要程序后按已披露的条件办理。金额为123.45万元，尚未满足')
         self.session.request.side_effect = [response(page), response(json.dumps(announcement), media='application/json')]
         result = self.enrich(selected, question='读新闻和公告正文')
         self.assertEqual(self.session.request.call_count, 2)
@@ -226,13 +464,14 @@ class DocumentCollectionTests(unittest.TestCase):
 
     def test_announcement_excerpt_after_paragraph_128_keeps_its_actual_location(self):
         selected = bundle(kinds=('announcements',))
-        text = '\n'.join(['平安银行人工背景。'] * 399 + ['平安银行最后期限为2026年11月30日。'])
+        final = '平安银行最后期限为2026年11月30日，公司将在履行全部必要程序后按已经披露的条件办理。'
+        text = '\n'.join(['平安银行人工背景。'] * 399 + [final])
         self.session.request.return_value = response(json.dumps(detail_payload(notice_content=text)), media='application/json')
         result = self.enrich(selected, question='请读平安银行公告最后期限原文')
         self.assertEqual(result.documents['items'][0]['paragraph_count'], 400)
         self.assertEqual(result.documents['items'][0]['code'], 'document_read')
         fragment = next(e for e in result.supplemental_evidence if e.document['paragraph_index'] == 400)
-        self.assertEqual(fragment.display, '平安银行最后期限为2026年11月30日。')
+        self.assertEqual(fragment.display, final)
         self.assertIs(fragment.document['document_complete'], True)
         self.assertEqual(self.session.request.call_count, 1)
 
@@ -423,7 +662,9 @@ class DocumentCollectionTests(unittest.TestCase):
 
     def test_full_document_is_never_stored_in_raw_value_trace_or_public_document_result(self):
         private = "这段未被选中的长句" + "甲" * 600 + "12345万元。"
-        self.session.request.return_value = response(article_html(paragraphs=("平安银行人工新闻正文。", private, "人工经营风险说明。")))
+        self.session.request.return_value = response(article_html(paragraphs=(
+            "平安银行人工新闻正文已说明本次经营安排和适用条件，公司将根据相关要求持续披露后续进展。", private,
+            "人工经营风险说明已提示项目尚需履行必要程序，公司将按已披露的条件执行并及时公告后续进展。")))
         result = self.enrich()
         self.assertTrue(result.supplemental_evidence)
         self.assertTrue(all(e.raw_value is None for e in result.supplemental_evidence))

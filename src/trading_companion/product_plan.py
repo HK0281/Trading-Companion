@@ -12,7 +12,7 @@ from trading_companion.technical_selection import select_complementary_indicator
 from trading_companion.research_intent import _dates, _normalize_null_strings
 from trading_companion.product_scope import (
     ProductScope, _WEEKLY_INDICATOR, _INDICATOR_CUE, _indicator, _EXPLICIT_TECHNICAL, indicator_text,
-    _positive_scope, _broadens_only, _ONLY, is_natural_technical_request,
+    _positive_scope, _broadens_only, _ONLY, is_natural_technical_request, document_request_scope,
 )
 from trading_companion.research_objective import (
     ResearchObjective, extract_outlook, mask_outlook_expressions,
@@ -194,7 +194,7 @@ def wants_product_research(question: str) -> bool:
     original = question
     question, _ = _positive_scope(question)
     return (len(question) <= MAX_USER_CHARACTERS
-            and (wants_decision(question) or _EXPLICIT_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
+            and (bool(document_request_scope(original)[2]) or wants_decision(question) or _EXPLICIT_TECHNICAL.search(question) is not None or _broadens_only(original, question) or any(pattern.search(question) for pattern in
                      (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _RISK, _COMPARE))
                  or _GENERAL.search(question) is not None and _EXPLICIT_TECHNICAL.search(question) is None))
 
@@ -214,13 +214,14 @@ def _execution_requested(question: str) -> bool:
 def _required_kinds(question: str) -> tuple[str, ...]:
     original = question
     question, excluded = _positive_scope(question)
+    document_kinds = document_request_scope(original)[2]
     if (wants_decision(question) and not _EXPLICIT_TECHNICAL.search(question) and not _ONLY.search(question)
             or _broadens_only(original, question)
-            or (_GENERAL.search(question) or _RISK.search(question)) and not _EXPLICIT_TECHNICAL.search(question)
+            or (_GENERAL.search(question) or _RISK.search(question)) and not _EXPLICIT_TECHNICAL.search(question) and not document_kinds
             and not any(pattern.search(question) for pattern in
                         (_FINANCIAL, _PROFILE, _MARKET_BACKGROUND, _NEWS, _ANNOUNCEMENTS, _PRICE_SCENARIO, _COMPARE))):
         return tuple(kind for kind in RESEARCH_KINDS if kind not in excluded)
-    kinds = set()
+    kinds = set(document_kinds)
     if (_PROFILE.search(question) or _MARKET_BACKGROUND.search(question)
             or _FINANCIAL.search(question) or _comparison_requested(question)):
         kinds.add("profile")

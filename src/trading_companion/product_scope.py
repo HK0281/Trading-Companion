@@ -20,24 +20,52 @@ def _indicator(phrase):
     return _daily_indicator(phrase)
 
 _EXPLICIT_TECHNICAL = re.compile(_WEEKLY_INDICATOR + r"|回测|历史回放|策略回放|只看技术|仅技术|纯技术|技术面|技术指标|技术分析|技术研究|日线|K线|均线|SMA|EMA|MACD|RSI|ATR|BOLL|VOLUME|ADX|OBV|VWMA|周线|日周|多周期|背离|支撑|压力位|阻力|量价|放量|缩量|动能|乏力|趋势强度|趋势强不强|震荡还是趋势|趋势还是震荡", re.I)
+_DOCUMENT_DOMAIN_TERMS = {
+    **{term: ("news",) for term in ("新闻", "资讯", "消息", "舆情", "事件", "发生了什么")},
+    **{term: ("announcements",) for term in (
+        "公告", "披露", "公司事件", "通知", "决议", "议案", "纪要", "说明会",
+        "临时股东会通知", "临时股东大会通知", "股东会通知", "股东大会通知", "董事会通知", "监事会通知", "会议通知",
+        "董事会决议", "监事会决议", "股东会决议", "股东大会决议", "董事会议案", "监事会议案", "股东会议案", "股东大会议案",
+        "会议纪要", "调研纪要", "投资者交流纪要", "董事会纪要", "监事会纪要", "股东会纪要", "股东大会纪要",
+        "业绩说明会", "投资者说明会",
+        "投资者关系活动记录表", "投资者关系活动记录", "投资者调研记录", "投资者交流记录",
+        "投资者接待记录", "调研记录", "会议记录", "董事会记录", "监事会记录", "股东会记录", "股东大会记录",
+        "董事会工作报告", "董事会年度工作报告", "监事会工作报告", "监事会年度工作报告",
+        "董事会报告", "监事会报告", "投资者关系活动报告",
+    )},
+}
+
+
+def _domain_expression(term):
+    # A request to notify a person is not a request to read a corporate notice.
+    return re.escape(term) + (r"(?!我|你|他|她|它|大家|我们|一下|设置)" if term == "通知" else "")
+
+
+_DOCUMENT_DOMAIN_WORD = "|".join(_domain_expression(term) for term in sorted(_DOCUMENT_DOMAIN_TERMS, key=len, reverse=True))
+_DOCUMENT_DOMAIN_PATTERN = re.compile(_DOCUMENT_DOMAIN_WORD)
 _DOMAIN_TERMS = {
     "基本面": ("profile", "financial"), "财务": ("financial",), "财报": ("financial",),
     "公司资料": ("profile",), "公司背景": ("profile",),
     "技术": ("technical",), "技术指标": ("technical",), "技术面": ("technical",), "技术分析": ("technical",),
-    "新闻": ("news",), "资讯": ("news",), "公告": ("announcements",),
+    **_DOCUMENT_DOMAIN_TERMS,
     "止盈止损": ("risk",), "止盈": ("risk",), "止损": ("risk",),
 }
-_DOMAIN_WORD = "|".join(re.escape(term) for term in sorted(_DOMAIN_TERMS, key=len, reverse=True))
+_DOMAIN_WORD = "|".join(_domain_expression(term) for term in sorted(_DOMAIN_TERMS, key=len, reverse=True))
 _DOMAIN_WORD_PATTERN = re.compile(_DOMAIN_WORD)
 _DOMAIN_LIST = r"(?:" + _DOMAIN_WORD + r")(?:\s*(?:以及|和|与|及|、|或|/)\s*(?:" + _DOMAIN_WORD + r"))*"
-_NEGATIVE_PREFIX = r"(?:不需要|无需|不用|不必|不要|不是|不)(?:再)?"
+_NEGATIVE_PREFIX = r"(?:不需要|无需|不用|不必|不要|不是|别|不)(?:再)?"
 _ONLY = re.compile(r"只(?:看|分析|研究|要)|仅(?:看|分析|研究|要)|(?:仅|纯)(?=技术)")
 _NEGATED_ONLY = re.compile(
     _NEGATIVE_PREFIX + r"\s*(?:只是|仅仅|只|仅)\s*(?:看|分析|研究|要)"
     r"(?:\s*(?:它的|该公司的)?" + _DOMAIN_LIST + r")?")
 _NEGATIVE_DOMAIN = re.compile(
-    _NEGATIVE_PREFIX + r"(?:看|分析|研究|考虑|查询|获取|计算)?"
+    _NEGATIVE_PREFIX + r"(?:阅读|读取|展开|读|看|分析|研究|考虑|查询|获取|计算)?"
     r"\s*(?:它的|该公司的)?(?P<domains>" + _DOMAIN_LIST + r")")
+_NEGATIVE_DOCUMENT_AFTER = re.compile(
+    r"(?P<domains>(?:" + _DOCUMENT_DOMAIN_WORD + r")(?:\s*(?:以及|和|与|及|、|或|/)\s*(?:"
+    + _DOCUMENT_DOMAIN_WORD + r"))*)\s*(?:的)?(?:具体)?(?:正文|全文|原文|内容)?"
+    r"\s*(?:(?:这次|暂时|先|都|也|就|完全)\s*){0,3}" + _NEGATIVE_PREFIX
+    + r"(?:阅读|读取|展开|读|看|分析|研究|考虑|查询|获取)")
 _NEGATIVE_INDICATOR = re.compile(
     _NEGATIVE_PREFIX + r"(?:看|分析|研究|考虑|查询|获取|计算)?"
     r"\s*(?P<indicator>" + _INDICATOR_CUE.pattern + ")", re.I)
@@ -53,6 +81,7 @@ def _positive_scope(question):
     # affirmative only-clause. Known lists stop before punctuation or new verbs.
     text = _NEGATED_ONLY.sub(lambda match: " " * len(match.group()), question)
     text = _NEGATIVE_DOMAIN.sub(mask, text)
+    text = _NEGATIVE_DOCUMENT_AFTER.sub(mask, text)
     def mask_indicator(match):
         try:
             excluded.update("indicator:" + spec.kind for spec in _indicator(match["indicator"]))
@@ -66,9 +95,21 @@ def _broadens_only(question, positive):
     return _NEGATED_ONLY.search(question) is not None and _ONLY.search(positive) is None
 
 
+def document_request_scope(question):
+    """Share positive document domains and vetoes; generic content words grant no domain."""
+    if type(question) is not str:
+        return "", frozenset(), frozenset()
+    positive, excluded = _positive_scope(question)
+    kinds = {kind for match in _DOCUMENT_DOMAIN_PATTERN.finditer(positive)
+             for kind in _DOCUMENT_DOMAIN_TERMS[match.group()]}
+    document_exclusions = frozenset(excluded.intersection(("news", "announcements")))
+    return positive, document_exclusions, frozenset(kinds - excluded)
+
+
 def has_company_domain(question):
     positive, _ = _positive_scope(question)
-    return bool(re.search(r"基本面|财报|财务|新闻|资讯|公告|主营|业务|行业|营收|利润|估值|市盈率|市净率|公司资料|公司背景|交易规则|上市时间", positive))
+    return bool(re.search(r"基本面|财报|财务|新闻|资讯|公告|主营|业务|行业|营收|利润|估值|市盈率|市净率|公司资料|公司背景|交易规则|上市时间", positive)
+                or document_request_scope(question)[2])
 
 
 def is_natural_technical_request(question):

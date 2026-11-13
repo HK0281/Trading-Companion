@@ -44,6 +44,14 @@ _LABEL = '|'.join(map(re.escape, sorted(PLAN_LABELS, key=len, reverse=True)))
 PLAN_PREFIX = re.compile(r'(' + _LABEL + r')\s*(?:价(?:格|位)?|为|是|约|在|[:：]|\*\*)*\s*$')
 PLAN_LANGUAGE = re.compile(r'止损|止盈|目标价|参考目标|买入价|入场价|入场位|入场参考|退出价|退出观察位|[上下]方观察位')
 PLAN_SUFFIX = re.compile(r'^\s*(?:附近|一带)?\s*(?:是|为|的|作为|作)?\s*(?:计划|参考)?(' + _LABEL + r')')
+BODY_MONEY = re.compile(r'(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*(亿元|万元|元/股|元|%|％|个百分点|倍|亿股|万股|股|类)')
+BODY_NUMBER = re.compile(NUMBER.pattern.replace('亿股|万股|股)?', '亿股|万股|股|类)?'))
+
+
+def _body_numeric_literal(text):
+    """Only inter-token whitespace is optional; value spelling and unit stay exact."""
+    match = BODY_MONEY.fullmatch(text) if type(text) is str else None
+    return (match[1], match[2]) if match else None
 
 
 @dataclass(frozen=True)
@@ -90,11 +98,12 @@ def atoms(record):
     title = record.get('kind') in ('news', 'announcements') and not body
     display = record.get('display', '') if body else unicodedata.normalize('NFKC', record.get('display', ''))
     result = []
-    for match in MONEY.finditer(display):
+    for match in (BODY_MONEY if body else MONEY).finditer(display):
         suffix = match[2]
         kind = ('points' if suffix == '个百分点' else 'percent' if suffix == '%' else
                 'amount' if suffix in ('亿元', '万元') or unit == 'cny' else
-                'ratio' if suffix == '倍' else 'shares' if suffix in ('股', '万股', '亿股') else 'price')
+                'ratio' if suffix == '倍' else 'shares' if suffix in ('股', '万股', '亿股') else
+                'count' if body and suffix == '类' else 'price')
         value = Decimal(match[1]) * FACTOR.get(suffix, 1)
         value, error = _direction(display[:match.start()], match[1], value, kind)
         if not error:
@@ -293,7 +302,12 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         if diagnostic is not None:
             diagnostic.append(dict(stage='sentence', reason=reason))
         return code, []
-    if re.search(r'(?<![\d.])[零〇一二两三四五六七八九十百千万亿]+(?:亿元|万元|元|个百分点|倍|成)|百分之|美元|港元|欧元|USD|HKD', sentence, re.I):
+    body_literals = {(m[1], m[2]) for record in records if record.get('content_kind') == 'body_excerpt'
+                     for m in BODY_MONEY.finditer(record.get('display', ''))}
+    # Without this bounded comparison, the Chinese-number guard mistakes the
+    # unit in an exact supplied "314 万元" for the Chinese number "万元".
+    representation = BODY_MONEY.sub(lambda m: m[1] + m[2] if (m[1], m[2]) in body_literals else m[0], sentence)
+    if re.search(r'(?<![\d.])[零〇一二两三四五六七八九十百千万亿]+(?:亿元|万元|元|个百分点|倍|成)|百分之|美元|港元|欧元|USD|HKD', representation, re.I):
         return reject('unsupported_number_representation_or_currency')
     from trading_companion.answer_technical_validation import mask_technical, reading_candidates, InvalidTechnical
     try:
@@ -316,14 +330,15 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
     index_context = context.get('instrument_kind') == 'index'
     def matches(value, atom, shown, diagnostic=None):
         if atom.source == 'body_excerpt':
-            return value == atom.value and token == atom.literal
+            return value == atom.value and _body_numeric_literal(token) == _body_numeric_literal(atom.literal)
         if index_context and atom.plan_id is not None:
             return value == atom.value
         if index_context and atom.kind in ('index', 'index_price'):
             from trading_companion.evidence_numbers import same_display_number
             return same_display_number(value, atom.value)
         return _rounded(value, atom.value, shown, price=atom.kind == 'price', diagnostic=diagnostic)
-    token_pattern = re.compile(NUMBER.pattern.replace('亿股|万股|股)?', '亿股|万股|股|点)?')) if index_context else NUMBER
+    token_pattern = (re.compile(NUMBER.pattern.replace('亿股|万股|股)?', '亿股|万股|股|点)?')) if index_context else
+                     BODY_NUMBER if any(r.get('content_kind') == 'body_excerpt' for r in records) else NUMBER)
     tokens = list(token_pattern.finditer(masked))
     for start, end, binding, bad in local_spans:
         if bad:
@@ -353,7 +368,8 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
         kind = ('percent' if suffix == '%' else 'points' if suffix == '个百分点' else
                 'amount' if suffix in ('亿元', '万元') else 'ratio' if suffix == '倍' else
                 'shares' if suffix in ('股', '万股', '亿股') else 'price' if suffix == '元/股' else
-                'yuan' if suffix == '元' else 'index_price' if suffix == '点' and index_context else None)
+                'yuan' if suffix == '元' else 'index_price' if suffix == '点' and index_context else
+                'count' if suffix == '类' else None)
         value, direction_error = _direction(normalized[:match.start()], split[1], shown * FACTOR.get(suffix, 1), kind)
         detail = dict(token=token, shown=str(shown), value=str(value), kind=kind, unit=suffix,
                       start=match.start(), end=match.end(), binding=bool(bindings), candidates=[])
@@ -464,7 +480,9 @@ def check_numbers(sentence, records, context, instrument, spans=(), *, offset=0,
                 detail['candidates'].append(d)
                 field_ok = (atom.field in ('target_1', 'target_2', 'reference_target') if plan_field == 'target'
                             else atom.field == plan_field)
-                if kind == 'yuan' and atom.kind not in ('price', 'amount') or kind not in (None, 'yuan', atom.kind):
+                if suffix == '类' and atom.source != 'body_excerpt':
+                    d['reason'] = 'document_unit_requires_body_excerpt'
+                elif kind == 'yuan' and atom.kind not in ('price', 'amount') or kind not in (None, 'yuan', atom.kind):
                     d['reason'] = 'unit_kind_mismatch'
                 elif plan_field and (not field_ok or atom.plan_id is None):
                     d['reason'] = 'plan_field_mismatch'

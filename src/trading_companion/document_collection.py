@@ -11,7 +11,8 @@ from time import monotonic
 
 from trading_companion.collection_execution import CollectionScope, CollectionUnavailable, shared_collection_executor
 from trading_companion.research_documents import (
-    DocumentCandidate, DocumentError, POLICY_VERSION, announcement_code, supported_news_url, timestamp,
+    DocumentCandidate, DocumentError, POLICY_VERSION, announcement_code, document_question_terms,
+    supported_news_url, timestamp,
 )
 from trading_companion.company_news_body import parse_sina_article
 from trading_companion.company_announcement_body import parse_eastmoney_announcement
@@ -104,20 +105,29 @@ def document_trigger(plan, question):
         return 'documents_historical'
     if not set(plan.kinds).intersection(('news', 'announcements')):
         return 'documents_not_requested'
-    if re.search(r'(?:不要|不必|无需|不)(?:读取?|展开|看)(?:新闻|公告)?(?:正文|全文|原文)', question):
+    if re.search(r'(?:不要|不用|不必|无需|别|不)(?:读取?|阅读|展开|看)(?:正文|全文|原文|内容)', question):
         return 'documents_not_requested'
-    from trading_companion.product_scope import _positive_scope
-    positive, _ = _positive_scope(question)
-    return None if re.search(r'新闻|公告|事件|消息|披露|发生了什么|原文|正文|全文', positive) else 'documents_not_requested'
+    from trading_companion.product_scope import document_request_scope
+    positive, excluded, explicit = document_request_scope(question)
+    allowed = set(plan.kinds).intersection(('news', 'announcements')).difference(excluded)
+    return None if explicit.intersection(allowed) or allowed and re.search(r'原文|正文|全文', positive) else 'documents_not_requested'
 
 
-def _candidates(bundle):
+def _candidate_slots(bundle, question):
+    from trading_companion.product_scope import document_request_scope
+    _, excluded, _ = document_request_scope(question)
+    names = tuple(company.name for company in bundle.companies)
+    codes = tuple(company.instrument_id for company in bundle.companies)
+    terms = document_question_terms(question, security_names=names, security_codes=codes)
     groups = []
     for company in bundle.companies:
-        candidates = []
+        slots = []
         for kind in ('news', 'announcements'):
+            if kind not in bundle.plan.kinds or kind in excluded:
+                continue
+            ranked = []
             for parent in company.evidence:
-                if (parent.kind != kind or parent.content_kind != 'title'
+                if (parent.kind != kind or parent.instrument_id != company.instrument_id or parent.content_kind != 'title'
                         or parent.data_authenticity != 'provider_reported'):
                     continue
                 try:
@@ -126,16 +136,58 @@ def _candidates(bundle):
                         parent.url, parent.date, parent.published_at)
                 except DocumentError:
                     continue
-                candidates.append((candidate, parent))
-                break
-        groups.append(candidates)
+                score = len(terms.intersection(document_question_terms(candidate.title,
+                    security_names=names, security_codes=codes)))
+                ranked.append((score, candidate, parent))
+            date_only_groups = {(score, candidate.published_date) for score, candidate, _ in ranked
+                                if candidate.published_at is None}
+            # An unknown time cannot be ordered against another same-day time.
+            # Preserve source order for that whole tied group instead of making
+            # a date-only publication look as though it occurred at midnight.
+            ranked.sort(key=lambda row: (row[0], row[1].published_date,
+                datetime.min.replace(tzinfo=timezone.utc) if (row[0], row[1].published_date) in date_only_groups
+                else timestamp(row[1].published_at)), reverse=True)
+            selected, seen_ids, seen_urls = [], set(), set()
+            for score, candidate, parent in ranked:
+                if selected and ranked[0][0] > 0 and score == 0:
+                    break
+                if candidate.parent_id in seen_ids or candidate.url in seen_urls:
+                    continue
+                selected.append((candidate, parent))
+                seen_ids.add(candidate.parent_id)
+                seen_urls.add(candidate.url)
+            if selected:
+                slots.append(tuple(selected))
+        groups.append(slots)
     # Every company gets a first opportunity before a single company gets another domain.
-    return tuple(group[round_] for round_ in range(2 if len(groups) == 1 else 1)
-                 for group in groups if len(group) > round_)[:3]
+    chosen = tuple(group[round_] for round_ in range(2 if len(groups) == 1 else 1)
+                   for group in groups if len(group) > round_)[:3]
+    slots, primary_ids, primary_urls = [], set(), set()
+    for slot in chosen:
+        independent = tuple(pair for pair in slot
+                            if pair[0].parent_id not in primary_ids and pair[0].url not in primary_urls)
+        # A duplicate primary must not consume the company's opportunity. Promote
+        # its next authorized candidate before any requests or fallback counts.
+        promoted = (independent or slot)[:2]
+        slots.append(promoted)
+        primary_ids.add(promoted[0][0].parent_id)
+        primary_urls.add(promoted[0][0].url)
+    return tuple(slots)
+
+
+def _candidates(bundle, question=''):
+    """Keep the original primary-candidate interface; alternates remain internal."""
+    return tuple(slot[0] for slot in _candidate_slots(bundle, question))
+
+
+def _document_item(candidate):
+    return dict(instrument_id=candidate.instrument_id, kind=candidate.kind,
+        parent_title_id=candidate.parent_id, title=candidate.title, url=candidate.url,
+        source=candidate.source, status='unavailable', code='document_not_read')
 
 
 class DocumentCollector:
-    """No retries, arbitrary URLs, PDF downloads, persistent full text, or model calls."""
+    """One bounded alternate per slot; no repeated URLs, attachments, or model calls."""
 
     def __init__(self, *, session=None, clock=monotonic, executor=None, wall_clock=None):
         self.session, self.clock = session, clock
@@ -194,7 +246,7 @@ class DocumentCollector:
 
     def enrich(self, bundle, *, question, now, sorting=False):
         reason = document_trigger(bundle.plan, question)
-        chosen = _candidates(bundle) if reason is None else ()
+        chosen = _candidate_slots(bundle, question) if reason is None else ()
         if reason is None and not chosen:
             reason = 'documents_no_candidates'
         control = current_control()
@@ -209,24 +261,43 @@ class DocumentCollector:
             return bundle
         started = self.clock()
         stage = CollectionScope(deadline=started + allowance, requests=4, response_bytes=2048000, clock=self.clock)
-        items, fragments = [], []
+        items = [_document_item(slot[0][0]) for slot in chosen]
+        fragments, seen_ids, seen_urls, primary_attempted = [], set(), set(), set()
+        attempted = fallback_attempted = fallback_available = no_substantive_excerpts = 0
+        budget_stopped = False
         skipped = None
         try:
-            for candidate, parent in chosen:
+            # Complete every company's primary opportunity before any alternate.
+            schedule = tuple((index, alternative) for alternative in range(2) for index in range(len(chosen)))
+            for index, alternative in schedule:
                 checkpoint()
-                item = dict(instrument_id=candidate.instrument_id, kind=candidate.kind,
-                    parent_title_id=candidate.parent_id, title=candidate.title, url=candidate.url,
-                    source=candidate.source, status='unavailable', code='document_not_read')
-                items.append(item)
+                if (alternative and (items[index]['status'] == 'available' or len(chosen[index]) < 2
+                                     or index not in primary_attempted)
+                        or budget_stopped):
+                    continue
+                candidate, parent = chosen[index][alternative]
+                item, entered = items[index], False
                 try:
                     stage.check()
+                    if attempted >= 4 or stage.usage()['requests'] >= 4:
+                        continue
+                    if candidate.parent_id in seen_ids or candidate.url in seen_urls:
+                        continue
+                    seen_ids.add(candidate.parent_id)
+                    seen_urls.add(candidate.url)
+                    item = items[index] = _document_item(candidate)
+                    entered = True
+                    attempted += 1
+                    fallback_attempted += alternative
+                    if not alternative:
+                        primary_attempted.add(index)
                     deadline = min(stage.deadline, self.clock() + 4)
                     scope = CollectionScope(deadline=deadline, requests=1, response_bytes=512000, clock=self.clock)
                     def read(c=candidate, s=scope):
                         try:
                             return self._read(c, stage, s)
-                        except CollectionUnavailable:
-                            return None, 'document_timeout'
+                        except CollectionUnavailable as error:
+                            return None, error.code
                     result, = self.executor.run((read,), scope=scope, max_workers=1)
                     if result is None:
                         item['code'] = 'document_timeout'
@@ -234,8 +305,12 @@ class DocumentCollector:
                         continue
                     payload, error = result
                     if error:
-                        item['code'] = error
-                        if error == 'document_timeout':
+                        if error in ('research_request_budget_exhausted', 'research_byte_budget_exhausted'):
+                            budget_stopped, skipped = True, 'documents_unavailable'
+                            item['code'] = 'document_not_read'
+                        else:
+                            item['code'] = 'document_timeout' if error == 'research_data_deadline_exceeded' else error
+                        if item['code'] == 'document_timeout':
                             skipped = 'documents_timeout'
                         continue
                     parser = parse_sina_article if candidate.kind == 'news' else parse_eastmoney_announcement
@@ -261,6 +336,8 @@ class DocumentCollector:
                         retrieved_at=document.retrieved_at, published_date=candidate.published_date,
                         publication_precision=parent.publication_precision,
                         excerpts=[dict(paragraph_index=e.paragraph_index, text=e.text, sha256=e.sha256) for e in excerpts])
+                    no_substantive_excerpts += not excerpts
+                    fallback_available += alternative
                     for excerpt in excerpts:
                         metadata = dict(document_id=document.id, parent_title_id=parent.id,
                             sha256=document.content_sha256, paragraph_index=excerpt.paragraph_index,
@@ -275,7 +352,8 @@ class DocumentCollector:
                 except DocumentError as error:
                     item['code'] = error.code
                 except CollectionUnavailable:
-                    item['code'] = 'document_timeout'
+                    if entered or not alternative:
+                        item['code'] = 'document_timeout'
                     skipped = 'documents_timeout'
                 except TurnStopped:
                     raise
@@ -285,8 +363,12 @@ class DocumentCollector:
             checkpoint()
         finally:
             stage.close()
+            if all(item['status'] == 'available' for item in items):
+                skipped = None
             trace_documents(dict(documents_skipped_reason=skipped, **stage.usage(),
-                elapsed_ms=round((self.clock() - started) * 1000), attempted=len(items),
+                elapsed_ms=round((self.clock() - started) * 1000), attempted=attempted,
+                fallback_attempted=fallback_attempted, fallback_available=fallback_available,
+                no_substantive_excerpts=no_substantive_excerpts,
                 available=sum(i['status'] == 'available' for i in items),
                 complete=sum(i.get('complete') is True for i in items),
                 partial=sum(i.get('complete') is False for i in items),

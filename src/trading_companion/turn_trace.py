@@ -429,10 +429,30 @@ class TurnTrace:
             record['version'] = 'research-documents-v1'
             reason = summary.get('documents_skipped_reason')
             record['documents_skipped_reason'] = reason if reason in SKIP_REASONS else None
+            updates = {}
             for key in ('requests', 'response_bytes', 'elapsed_ms', 'available', 'attempted', 'complete', 'partial',
-                        'omitted_tables', 'private_use_characters_replaced', 'omitted_trailing_characters'):
+                        'omitted_tables', 'private_use_characters_replaced', 'omitted_trailing_characters',
+                        'fallback_attempted', 'fallback_available', 'no_substantive_excerpts'):
                 if key in summary:
-                    record[key] = _count(summary[key])
+                    updates[key] = _count(summary[key])
+            trial = {**record, **updates}
+            limits = dict(requests=4, attempted=4, available=3, complete=3, partial=3,
+                          fallback_attempted=3, fallback_available=3, no_substantive_excerpts=3,
+                          response_bytes=2048000)
+            pairs = (('requests', 'attempted'), ('available', 'attempted'),
+                     ('fallback_attempted', 'attempted'), ('fallback_available', 'fallback_attempted'),
+                     ('fallback_available', 'available'), ('no_substantive_excerpts', 'available'))
+            valid = (all(value is not None for value in updates.values())
+                     and all(key not in trial or trial[key] <= limit for key, limit in limits.items())
+                     and all(left not in trial or right not in trial or trial[left] <= trial[right]
+                             for left, right in pairs)
+                     and (not {'complete', 'partial', 'available'} <= trial.keys()
+                          or trial['complete'] + trial['partial'] == trial['available'])
+                     and (not {'attempted', 'fallback_attempted'} <= trial.keys()
+                          or (trial['fallback_attempted'] <= trial['attempted'] - trial['fallback_attempted'] <= 3
+                              and trial.get('available', 0) <= trial['attempted'] - trial['fallback_attempted'])))
+            if valid:
+                record.update(updates)
             self._documents = record
 
     def news_triage(self, summary):

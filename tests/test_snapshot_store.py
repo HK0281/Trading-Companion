@@ -68,7 +68,7 @@ def make_bundle(*, technical=False, retrieved_at=RETRIEVED.isoformat(), marker="
 
 
 def make_document_bundle(*, available=True, selected=True, retrieved_at=RETRIEVED.isoformat(), document_published_at=None,
-                         complete=True, legacy=False, kind='news', paragraphs=None, excerpt_index=1):
+                         complete=True, legacy=False, kind='news', paragraphs=None, excerpt_index=1, extractor_version=None):
     bundle = make_bundle()
     company = bundle.companies[0]
     parent = ProductEvidence("sina-title-1", company.instrument_id, "news", "news_title", "平安银行披露业务进展",
@@ -82,7 +82,7 @@ def make_document_bundle(*, available=True, selected=True, retrieved_at=RETRIEVE
     candidate = DocumentCandidate(parent.id, parent.instrument_id, company.name, parent.kind, parent.source,
                                   parent.raw_value, parent.url, parent.date)
     document = ResearchDocument(candidate, (DOCUMENT_EXCERPT + " 同段后续文字。", DOCUMENT_REMAINDER) if paragraphs is None else paragraphs,
-                                retrieved_at, 'sina-artibody-v3' if kind == 'news' else 'eastmoney-announcement-body-v2',
+                                retrieved_at, extractor_version or ('sina-artibody-v3' if kind == 'news' else 'eastmoney-announcement-body-v3'),
                                 published_at=document_published_at, complete=complete,
                                 incomplete_reasons=() if complete else (reason,),
                                 omitted_tables=1 if not complete and kind == 'news' else 0,
@@ -220,17 +220,58 @@ class SnapshotStoreTests(unittest.TestCase):
         self.assertEqual(payload['documents']['items'][0]['excerpts'], [])
         self.assertIs(payload['supplemental_evidence'][0]['document']['document_complete'], False)
 
-    def test_first_page_and_legacy_announcement_coverage_round_trip(self):
-        for legacy in (False, True):
-            with self.subTest(legacy=legacy):
-                bundle = make_document_bundle(kind='announcements', complete=legacy, legacy=legacy)
+    def test_announcement_versions_and_coverage_round_trip_without_rewriting(self):
+        versions = ('eastmoney-announcement-body-v2', 'eastmoney-announcement-body-v3')
+        cases = [(None, True, True)] + [(version, complete, False)
+            for version in versions for complete in (False, True)]
+        for version, complete, legacy in cases:
+            with self.subTest(version=version, complete=complete, legacy=legacy):
+                bundle = make_document_bundle(kind='announcements', complete=complete, legacy=legacy,
+                                              extractor_version=version)
                 payload = self.store.load(self.store.save(bundle))
                 self.assertEqual(payload['documents'], bundle.documents)
                 self.assertEqual(payload['supplemental_evidence'], [e.to_dict() for e in bundle.supplemental_evidence])
-                if not legacy:
-                    item = payload['documents']['items'][0]
+                item = payload['documents']['items'][0]
+                self.assertEqual(item['extractor_version'], 'eastmoney-announcement-body-v1' if legacy else version)
+                self.assertEqual(item['document_id'], bundle.documents['items'][0]['document_id'])
+                if not complete:
                     self.assertEqual((item['code'], item['page_count']), ('document_first_page_only', 2))
                     self.assertIs(item['complete'], False)
+
+    def test_announcement_version_requires_its_complete_field_group_and_matching_candidates(self):
+        for legacy in (False, True):
+            bundle = make_document_bundle(kind='announcements', legacy=legacy)
+            evidence = bundle.supplemental_evidence[0]
+            for version in ('sina-artibody-v2', 'sina-artibody-v3', 'eastmoney-announcement-body-v1',
+                            'eastmoney-announcement-body-v2', 'eastmoney-announcement-body-v3', 'unknown'):
+                accepted = version == 'eastmoney-announcement-body-v1' if legacy else version in (
+                    'eastmoney-announcement-body-v2', 'eastmoney-announcement-body-v3')
+                if accepted:
+                    continue
+                summary = deepcopy(bundle.documents)
+                summary['items'][0]['extractor_version'] = version
+                changed = replace(evidence, document={**evidence.document, 'extractor_version': version})
+                with self.subTest(legacy=legacy, version=version):
+                    self.assert_error('invalid_snapshot_bundle', self.store.save,
+                        replace(bundle, documents=summary, supplemental_evidence=(changed,)))
+        bundle = make_document_bundle(kind='announcements')
+        evidence = bundle.supplemental_evidence[0]
+        self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle,
+            supplemental_evidence=(replace(evidence,
+                document={**evidence.document, 'extractor_version': 'eastmoney-announcement-body-v2'}),)))
+        for version in ('eastmoney-announcement-body-v2', 'eastmoney-announcement-body-v3'):
+            for missing in ('complete', 'omitted_tables', 'page_count',
+                            'private_use_characters_replaced', 'omitted_trailing_characters', None):
+                summary = deepcopy(bundle.documents)
+                summary['items'][0]['extractor_version'] = version
+                if missing is None:
+                    summary['items'][0]['unexpected_coverage'] = 0
+                else:
+                    del summary['items'][0][missing]
+                changed = replace(evidence, document={**evidence.document, 'extractor_version': version})
+                with self.subTest(version=version, missing=missing):
+                    self.assert_error('invalid_snapshot_bundle', self.store.save,
+                        replace(bundle, documents=summary, supplemental_evidence=(changed,)))
 
     def test_announcement_paragraph_400_round_trips_with_matching_summary_and_candidates(self):
         for selected in (False, True):
@@ -285,18 +326,24 @@ class SnapshotStoreTests(unittest.TestCase):
         self.assert_error('invalid_snapshot_bundle', self.store.save, replace(bundle, documents=summary))
 
     def test_new_extractor_cannot_downgrade_by_dropping_coverage_or_cross_sources_and_limits(self):
+        for kind, version in (('news', 'sina-artibody-v3'),
+                              ('announcements', 'eastmoney-announcement-body-v2'),
+                              ('announcements', 'eastmoney-announcement-body-v3')):
+            bundle = make_document_bundle(kind=kind, complete=False, extractor_version=version)
+            summary = deepcopy(bundle.documents)
+            for key in ('complete', 'omitted_tables', 'page_count', 'private_use_characters_replaced', 'omitted_trailing_characters'):
+                del summary['items'][0][key]
+            summary['items'][0]['code'] = 'document_read'
+            summary.update(status='available', code='documents_read')
+            evidence = bundle.supplemental_evidence[0]
+            metadata = dict(evidence.document)
+            del metadata['document_complete']
+            with self.subTest(kind=kind, version=version):
+                self.assert_error('invalid_snapshot_bundle', self.store.save,
+                    replace(bundle, documents=summary, supplemental_evidence=(replace(evidence, document=metadata),)))
         bundle = make_document_bundle(complete=False)
-        summary = deepcopy(bundle.documents)
-        for key in ('complete', 'omitted_tables', 'page_count', 'private_use_characters_replaced', 'omitted_trailing_characters'):
-            del summary['items'][0][key]
-        summary['items'][0]['code'] = 'document_read'
-        summary.update(status='available', code='documents_read')
         evidence = bundle.supplemental_evidence[0]
-        metadata = dict(evidence.document)
-        del metadata['document_complete']
-        self.assert_error('invalid_snapshot_bundle', self.store.save,
-            replace(bundle, documents=summary, supplemental_evidence=(replace(evidence, document=metadata),)))
-        for value in ('eastmoney-announcement-body-v2', 'sina-artibody-v2', 'unknown'):
+        for value in ('eastmoney-announcement-body-v2', 'eastmoney-announcement-body-v3', 'sina-artibody-v2', 'unknown'):
             summary = deepcopy(bundle.documents)
             summary['items'][0]['extractor_version'] = value
             changed = replace(evidence, document={**evidence.document, 'extractor_version': value})

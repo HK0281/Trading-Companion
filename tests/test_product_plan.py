@@ -216,6 +216,47 @@ class ProductPlanTests(unittest.TestCase):
         self.assertEqual((plan.start_date, plan.end_date), (date(2026, 8, 27), date(2026, 9, 25)))
         self.assertFalse(plan.explicit_historical)
 
+    def test_explicit_document_types_enter_the_legacy_plan_with_announcement_scope(self):
+        for phrase in ("临时股东会通知讲了哪些议案", "投资者关系活动记录里说了什么", "会议记录的具体内容",
+                       "董事会决议", "股东会议案", "调研纪要", "说明会讲了什么", "董事会工作报告"):
+            question = "平安银行最近的" + phrase + "？"
+            with self.subTest(phrase=phrase):
+                self.assertIs(wants_product_research(question), True)
+                plan, model = self.prepare(question, _arguments(kinds=[]))
+                self.assertEqual((plan.status, plan.kinds), ("ready", ("announcements",)))
+                self.assertFalse(plan.wants_risk)
+                model.complete.assert_called_once()
+
+    def test_document_only_scope_rejects_extra_model_suggested_domains(self):
+        for phrase in ("投资者关系活动记录", "董事会决议", "董事会工作报告"):
+            with self.subTest(phrase=phrase):
+                plan, _ = self.prepare("只看平安银行的" + phrase + "具体内容", _arguments(kinds=["technical", "financial", "news"]))
+                self.assertEqual((plan.status, plan.kinds), ("ready", ("announcements",)))
+                self.assertEqual(plan.scope.domains, ("announcements",))
+
+    def test_generic_content_and_unrelated_reports_do_not_add_document_domains(self):
+        for question, kinds in (("只看平安银行的技术指标报告具体内容", ["technical"]),
+                                ("只看平安银行财务报告的具体内容", ["financial"]),
+                                ("平安银行财务报告讲了什么", ["financial"]),
+                                ("平安银行SMA20记录的具体内容", ["technical"])):
+            with self.subTest(question=question):
+                plan, _ = self.prepare(question, _arguments(kinds=kinds))
+                self.assertEqual(plan.status, "ready")
+                self.assertFalse(set(plan.kinds).intersection(("news", "announcements")))
+        for question in ("平安银行具体内容", "记录平安银行参数", "平安银行报告说了什么"):
+            with self.subTest(question=question):
+                self.assertIs(wants_product_research(question), False)
+                plan, model = self.prepare(question, responses=[])
+                self.assertEqual(plan.status, "not_applicable")
+                model.complete.assert_not_called()
+
+    def test_document_alias_does_not_remove_explicit_historical_cutoff(self):
+        question = "截至2025-12-31，平安银行的投资者关系活动记录说了什么"
+        plan, _ = self.prepare(question, _arguments(kinds=[], expression="截至2025-12-31"))
+        self.assertEqual((plan.status, plan.kinds), ("ready", ("announcements",)))
+        self.assertTrue(plan.explicit_historical)
+        self.assertEqual(plan.as_of, date(2025, 12, 31))
+
     def test_explicit_historical_date_is_derived_from_expression_not_a_model_flag(self):
         for expression in ("截至2025-12-31", "2025-12-31", "2025-01-01至2025-12-31"):
             with self.subTest(expression=expression):

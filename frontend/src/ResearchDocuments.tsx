@@ -30,9 +30,9 @@ function documentCoverage(item: Record<string, unknown>, kind: DocumentItem["kin
   const keys = ["complete", "omitted_tables", "page_count", "private_use_characters_replaced", "omitted_trailing_characters"];
   const supplied = keys.filter(key => Object.hasOwn(item, key)).length;
   const legacyVersion = kind === "news" ? "sina-artibody-v2" : "eastmoney-announcement-body-v1";
-  const currentVersion = kind === "news" ? "sina-artibody-v3" : "eastmoney-announcement-body-v2";
+  const currentVersions = kind === "news" ? ["sina-artibody-v3"] : ["eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3"];
   if (!supplied) return item.extractor_version === legacyVersion ? undefined : false;
-  if (supplied !== keys.length || item.extractor_version !== currentVersion || typeof item.complete !== "boolean"
+  if (supplied !== keys.length || !currentVersions.some(version => item.extractor_version === version) || typeof item.complete !== "boolean"
       || !coverageCount(item.omitted_tables) || !coverageCount(item.page_count, 1)
       || !coverageCount(item.private_use_characters_replaced)
       || !coverageCount(item.omitted_trailing_characters, 0, kind === "news" ? 16000 : 32000)

@@ -42,6 +42,160 @@ def normalized_text(value):
     return " ".join(value.split())
 
 
+def document_question_terms(question, security_names=(), security_codes=()):
+    """Keep topic terms without stock identities or generic requests for a summary."""
+    text = question
+    for name in sorted(set(security_names), key=len, reverse=True):
+        if name:
+            text = text.replace(name, " ")
+    for code in set(security_codes):
+        digits = str(code).split(".", 1)[0]
+        if re.fullmatch(r"[0-9]{6}", digits):
+            text = re.sub(r"(?<![A-Za-z0-9])" + digits + r"(?:\.(?:SH|SZ|BJ))?(?![A-Za-z0-9])",
+                          " ", text, flags=re.I)
+    text = re.sub(r"^\s*请", " ", text)
+    generic = ("说了什么", "讲了什么", "主要内容", "具体内容", "什么内容", "是什么", "有什么", "告诉我", "帮我", "有没有", "怎么样",
+               "最近", "最新", "近期", "今天", "现在", "当前", "请问", "哪些", "什么", "怎么", "是否", "能否",
+               "说说", "看看", "分析", "解读", "概括", "总结", "介绍", "主要", "具体", "内容", "情况", "新闻", "公告",
+               "这篇", "这份", "这个", "的", "了", "吗", "呢")
+    text = re.sub("|".join(map(re.escape, sorted(generic, key=len, reverse=True))), " ", text).casefold()
+    terms = set(re.findall(r"[a-z0-9]+|[\u3400-\u9fff]{2}", text))
+    terms.update(text[i:i + 2] for i in range(len(text) - 1)
+                 if re.fullmatch(r"[\u3400-\u9fff]{2}", text[i:i + 2]))
+    return frozenset(terms)
+
+
+def _without_issuer(value, candidate):
+    """Compare document labels independently of an explicitly named legal issuer."""
+    value = re.sub(r"\s+", "", value)
+    issuer = re.match(r"[\u3400-\u9fffA-Za-z·（）()]{2,100}(?:股份有限公司|有限责任公司|有限公司)", value)
+    if issuer and not re.search(r"拟|收购|审议|通过|转让|出售|设立|授权|签署|决定|批准|合作|计划", issuer[0]):
+        value = value[issuer.end():]
+    for _ in range(2):
+        if value.startswith(candidate.security_name):
+            value = value[len(candidate.security_name):].lstrip(":：")
+    return value
+
+
+def _reference_heading(paragraph):
+    return bool(re.fullmatch(r"(?:[一二三四五六七八九十百0-9]+[、.．]|[（(][一二三四五六七八九十百0-9]+[）)])?"
+                             r"\s*备查(?:文件|资料|文献)[：:。]?", paragraph))
+
+
+def _reference_entry(paragraph):
+    """Only artifact lists in an explicit reference section, never ordinary business prose."""
+    numbered = re.match(r"(?:[0-9一二三四五六七八九十百]+[.．、]|[（(][0-9一二三四五六七八九十百]+[）)])\s*(.+)", paragraph)
+    if not numbered:
+        return False
+    title = numbered[1]
+    return (not re.search(r"[，,：:]|已|将|拟|完成|办理|新增|获得|收到|本次|截至|占比|比例|于\s*[0-9]", title)
+            and bool(re.fullmatch(r"[^。；;！？!?]{1,160}(?:通知书?|明细表|登记表|申请表|证明|说明|报告|复印件|原件|文件|议案|决议)[。；;]?", title)))
+
+
+def _boilerplate_paragraph(paragraph, candidate):
+    """Recognize administrative lines or sentences, never rewrite source text."""
+    if len(paragraph) < 40 and re.match(r"[（(]?(?:来源|作者|记者|编辑|责任编辑)\s*[:：]", paragraph):
+        return True
+    compact = re.sub(r"\s+", "", paragraph)
+    title = re.sub(r"\s+", "", candidate.title)
+    titles = {title}
+    for separator in (":", "："):
+        prefix, found, rest = title.partition(separator)
+        if found and prefix == candidate.security_name:
+            titles.add(rest)
+    sentence_end = bool(re.search(r"[。！？!?][”’」』）)]*$", paragraph))
+    line = compact.rstrip("。！？!?:：")
+    if line in titles:
+        return True
+    if not sentence_end:
+        label = re.sub(r"(?:之[一二三四五六七八九十百0-9]+|[（(][一二三四五六七八九十百0-9]+[）)])$", "",
+                       _without_issuer(line, candidate))
+        title_labels = {_without_issuer(value, candidate) for value in titles}
+        if (line and any(line in title for title in titles)
+                or label and any(label in title for title in title_labels)):
+            return True
+    if len(re.findall(r"(?:\.{3,}|…{2,}|·{3,})\s*[0-9]{1,4}(?![0-9])", paragraph)) >= 2:
+        return True
+    decision = bool(re.search(r"议案|审议通过|表决|同意\s*[0-9〇零一二三四五六七八九十百]+\s*票", paragraph))
+    if (not decision and re.fullmatch(
+            r"[\u3400-\u9fffA-Za-z·（）()]{2,100}(?:股份有限公司|有限责任公司|有限公司)(?:董事会|监事会)?", compact)):
+        return True
+    if (len(paragraph) < 30 and not sentence_end and not decision
+            and re.match(r"^(?:[（(]?[一二三四五六七八九十百0-9]+[）)、.．、]|第[一二三四五六七八九十百0-9]+[章节部分])", paragraph)):
+        return True
+    pieces = paragraph.split()
+    numeric_cells = sum(bool(re.fullmatch(r"[-+]?\d[\d,.%/]*", piece)) for piece in pieces)
+    fragmented = (bool(re.search(r"[\u3400-\u9fff]", paragraph))
+                  and sum(len(piece) for piece in pieces if len(piece) <= 4) * 2 > sum(map(len, pieces))
+                  or len(pieces) >= 6 and numeric_cells >= 3
+                  and (sum(len(piece) <= 4 for piece in pieces) * 2 > len(pieces) or numeric_cells * 2 >= len(pieces)))
+    fragmented = fragmented and not re.search(
+        r"公司(?:已|拟|将)|股东(?:已|拟|将)|本次(?:解除|质押)|尚余|已(?:解除|质押|办理)|完成|截至", paragraph)
+    if (len(pieces) >= 4 and not sentence_end
+            and not re.search(r"同意\s*[0-9〇零一二三四五六七八九十百]+\s*票", paragraph)
+            and fragmented):
+        return True
+    code = re.escape(candidate.instrument_id[:6])
+    name = re.escape(candidate.security_name)
+    identity = (r"(?:(?:证券|股票)代码[:：]?" + code + r"(?:\.(?:SH|SZ|BJ))?[，,；;]?|"
+                r"(?:证券|股票)简称[:：]?" + name + r"[，,；;]?|"
+                r"公告编号[:：]?(?:临)?[A-Za-z0-9—－-]+[，,；;]?){2,3}")
+    if re.fullmatch(identity, compact.rstrip("。")) and "代码" in compact and "简称" in compact:
+        return True
+    guarantees = (
+        "本公司董事会及全体董事保证本公告内容不存在任何虚假记载、误导性陈述或者重大遗漏，"
+        "并对其内容的真实性、准确性和完整性承担法律责任。",
+        "本公司及董事会全体成员保证信息披露的内容真实、准确、完整，没有虚假记载、误导性陈述或重大遗漏。",
+        "本公司董事会及全体董事保证本公告内容的真实性、准确性和完整性，"
+        "不存在虚假记载、误导性陈述或重大遗漏，并承担个别及连带法律责任。",
+    )
+    def plain(value):
+        return re.sub(r"[，,、。；;：:]", "", value).replace("或者", "或")
+    def guarantee_only(value):
+        guarantee = plain(value)
+        return len(guarantee) >= 24 and any(plain(template).startswith(guarantee) for template in guarantees)
+    if guarantee_only(compact):
+        return True  # Also covers source paragraphs ending midway through a standard guarantee.
+    header = re.match(identity, compact)
+    if (header is not None and "代码" in header[0] and "简称" in header[0]
+            and guarantee_only(compact[header.end():])):
+        return True
+    date_text = r"(?:[0-9]{4}|[〇零一二三四五六七八九]{4})年[0-9〇零一二三四五六七八九十]{1,3}月[0-9〇零一二三四五六七八九十]{1,3}日"
+    pure = (
+        r"特此公告[。！!]?",
+        date_text + r"[。]?",
+        name + r"(?:股份有限公司|有限公司)?(?:董事会)?[。]?",
+        r"(?:本报告|本公告|本文)(?:可能)?(?:载有|包含|含有)(?:（除历史数据外）)?前瞻性陈述[。]?",
+        r"该等前瞻性陈述乃根据" + name + r"对未来事件或绩效的现行假设、期望、信念、计划、目标及预测而作出[。]?",
+        r"(?:上述|相关|该等|本报告中的?)前瞻性陈述(?:并不构成|不构成)(?:本公司|公司)?(?:对投资者的)?(?:实质性)?(?:承诺|业绩承诺|盈利预测)[。]?",
+    )
+    digits = r"[0-9〇零一二三四五六七八九十百]+"
+    day = digits + "年" + digits + "月" + digits + "日"
+    meeting = (r"(?:本次|此次|本公司|公司)?(?:第" + digits + r"届)?(?:董事会|监事会|股东会|股东大会)?(?:第"
+               + digits + r"次)?会议")
+    methods = r"(?:传真|电子邮件|邮件|专人|书面|电话|短信|通讯|网络|等|、|和|及|方式|形式|向|全体|董事|监事)+"
+    attendance = r"(?:应|实际|亲自|委托|收到|参加|出席|本次|会议|董事|监事|有效|表决票|的|名|人|全体|共|[0-9〇零一二三四五六七八九十百])+"
+    procedure = (
+        meeting + r"通知于" + day + r"(?:通过|以)" + methods + r"(?:送达|发出|发送)[。]?",
+        meeting + r"于" + day + r"(?:采用|以|通过)(?:通讯|现场|线上|线下|网络|视频|书面|结合|和|及|、|方式)+召开"
+        + r"(?:[，,]" + attendance + r")*[。]?",
+        r"(?:本次)?会议的?(?:召集[、,，及和]?召开|召集|召开)(?:程序)?符合(?:《[^》]{1,40}》(?:及|和|、)?)+的?(?:有关|相关)?规定[。]?",
+        r"(?:经(?:与会|全体)?(?:董事|监事|股东)(?:审议|讨论)[，,]?)?(?:会议|董事会|监事会)?(?:审议|表决)?"
+        r"(?:通过|形成|作出)了?(?:以下|如下)(?:[一二三四五六七八九十0-9]+项)?(?:决议|议案|事项)[：:。]?",
+        r"(?:决议|议案|事项)(?:如下|如下所示)[：:。]?",
+    )
+    sentences = re.findall(r"[^。！？!?]+[。！？!?]*", compact)
+    return bool(sentences) and all(any(re.fullmatch(pattern, sentence) for pattern in pure)
+        or any(re.fullmatch(pattern, _without_issuer(sentence, candidate)) for pattern in procedure)
+        for sentence in sentences)
+
+
+def _substantive_excerpt(text):
+    if re.search(r"议案|审议通过|表决|同意\s*[0-9〇零一二三四五六七八九十百]+\s*票", text):
+        return True
+    return len(text) >= 30 and bool(re.search(r"[0-9]|[。！？!?][”’」』）)]*$", text))
+
+
 def document_paragraph_limit(kind):
     return MAX_ANNOUNCEMENT_PARAGRAPHS if kind == "announcements" else MAX_DOCUMENT_PARAGRAPHS
 
@@ -229,7 +383,7 @@ class ResearchDocument:
                 or not self.paragraphs
                 or any(type(p) is not str or not p or not p.isprintable() or p != normalized_text(p) for p in self.paragraphs)
                 or type(self.extractor_version) is not str or self.extractor_version not in (
-                    "sina-artibody-v3", "eastmoney-announcement-body-v2")):
+                    "sina-artibody-v3", "eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3")):
             raise DocumentError("document_invalid_document")
         code = coverage_code(self.candidate.kind, self.complete, self.omitted_tables, self.page_count,
                              self.private_use_characters_replaced, self.omitted_trailing_characters)
@@ -238,8 +392,9 @@ class ResearchDocument:
             raise DocumentError("document_invalid_document")
         if len(self.paragraphs) > document_paragraph_limit(self.candidate.kind):
             raise DocumentError("document_too_large")
-        expected = "sina-artibody-v3" if self.candidate.kind == "news" else "eastmoney-announcement-body-v2"
-        if self.extractor_version != expected:
+        expected = (("sina-artibody-v3",) if self.candidate.kind == "news" else
+                    ("eastmoney-announcement-body-v2", "eastmoney-announcement-body-v3"))
+        if self.extractor_version not in expected:
             raise DocumentError("document_invalid_document")
         maximum = MAX_NEWS_CHARACTERS if self.candidate.kind == "news" else MAX_ANNOUNCEMENT_CHARACTERS
         if len(self.text) + self.omitted_trailing_characters > maximum:
@@ -291,13 +446,21 @@ class ResearchDocument:
                 or not 1 <= max_count <= MAX_EXCERPTS or type(max_chars) is not int
                 or not 1 <= max_chars <= MAX_EXCERPT_CHARACTERS):
             raise DocumentError("document_invalid_excerpt")
-        terms = set(re.findall(r"[A-Za-z0-9]+|[\u3400-\u9fff]{2}", question))
-        terms.update(question[i:i + 2] for i in range(len(question) - 1)
-                     if re.fullmatch(r"[\u3400-\u9fff]{2}", question[i:i + 2]))
+        terms = document_question_terms(question, (self.candidate.security_name,), (self.candidate.instrument_id,))
         candidates = []
+        references = False
         for index, paragraph in enumerate(self.paragraphs, 1):
-            for start, text in _sentence_excerpts(paragraph, max_chars):
-                candidates.append((sum(term in text for term in terms), index, start, text))
+            if _reference_heading(paragraph):
+                references = True
+                continue
+            if references and re.match(r"^[一二三四五六七八九十百]+[、.．]", paragraph):
+                references = False
+            if references and _reference_entry(paragraph):
+                continue
+            if _boilerplate_paragraph(paragraph, self.candidate):
+                continue
+            for start, text in _sentence_excerpts(paragraph, max_chars, self.candidate):
+                candidates.append((sum(term in text.casefold() for term in terms), index, start, text))
         chosen = sorted(sorted(candidates, key=lambda p: (-p[0], p[1], p[2]))[:max_count], key=lambda p: (p[1], p[2]))
         return tuple(DocumentExcerpt(self.id, self.content_sha256, index, start, start + len(text), text,
                                      kind=self.candidate.kind)
@@ -321,24 +484,24 @@ class ResearchDocument:
                     omitted_trailing_characters=self.omitted_trailing_characters)
 
 
-def _sentence_excerpts(paragraph, maximum):
-    """Keep whole paragraphs or sentences; never manufacture a number by slicing it."""
-    if len(paragraph) <= maximum:
-        return ((0, paragraph),)
-    result, start, text = [], None, ""
+def _sentence_excerpts(paragraph, maximum, candidate):
+    """Keep continuous substantive source spans, without joining across skipped sentences."""
+    result, start, end = [], None, None
+    def emit():
+        if start is not None and _substantive_excerpt(paragraph[start:end]):
+            result.append((start, paragraph[start:end]))
     for match in re.finditer(r".+?(?:[。！？!?]+[”’」』）)]*|$)", paragraph):
-        sentence = match[0]
-        if len(sentence) > maximum:
-            if text:
-                result.append((start, text))
-            start, text = None, ""
+        left = match.start() + len(match[0]) - len(match[0].lstrip())
+        sentence = paragraph[left:match.end()]
+        if len(sentence) > maximum or _boilerplate_paragraph(sentence, candidate):
+            emit()
+            start, end = None, None
             continue
-        if text and len(text) + len(sentence) > maximum:
-            result.append((start, text))
-            start, text = None, ""
+        if start is not None and match.end() - start > maximum:
+            emit()
+            start, end = None, None
         if start is None:
-            start = match.start()
-        text += sentence
-    if text:
-        result.append((start, text))
+            start = left
+        end = match.end()
+    emit()
     return tuple(result)

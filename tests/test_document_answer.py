@@ -20,7 +20,7 @@ UNREAD_TEXT = "未提供的全文另外记载987654.32万元，该段不得用�
 
 
 def document_bundle(*, count=1, title_characters=30, body_companies=None, excerpts_per_document=1, shared_text=False,
-                    complete=True):
+                    complete=True, body_text=BODY_TEXT):
     securities = SECURITIES[:count]
     selected = plan(securities=securities, kinds=("financial", "technical", "news", "announcements"))
     companies, supplemental, items = [], [], []
@@ -45,7 +45,7 @@ def document_bundle(*, count=1, title_characters=30, body_companies=None, excerp
         parent = titles[0]
         candidate = DocumentCandidate(parent.id, prefix, security.name, parent.kind, parent.source,
             parent.display, parent.url, parent.date)
-        text = BODY_TEXT if index == 0 or shared_text else "该公司披露自身业务收入同比增长4.23%，相关业务保持稳定。"
+        text = body_text if index == 0 or shared_text else "该公司披露自身业务收入同比增长4.23%，相关业务保持稳定。"
         document = ResearchDocument(candidate, (text, "仅用于填充原文的背景。" * 60, UNREAD_TEXT),
                                     NOW.isoformat(), "sina-artibody-v3", complete=complete,
                                     incomplete_reasons=() if complete else ('document_tables_omitted',),
@@ -223,6 +223,66 @@ class DocumentAnswerTests(unittest.TestCase):
                                SECURITIES[0].instrument_id, "drivers")
         self.assertIsNotNone(output)
         self.assertEqual(checker.issues, [])
+
+    def test_document_number_unit_whitespace_is_optional_for_complete_literals_only(self):
+        for source, text in (
+            ("公司获批1 类新药，业务收入变动+3.140 %，新增资金314 万元。",
+             "公司获批1类新药，业务收入变动+3.140%，新增资金314万元。"),
+            ("公司获批1类新药，业务收入变动+3.140%，新增资金314万元。",
+             "公司获批1 类新药，业务收入变动+3.140 %，新增资金314 万元。"),
+        ):
+            with self.subTest(source=source):
+                bundle = document_bundle(body_text=source)
+                context = _context(bundle)
+                record = self.body_record(context)
+                checker = _Checker(bundle, context)
+                output = checker.claim(dict(text=text, evidence_ids=[record["id"]],
+                    numbers=[dict(text=text, ref=record["id"])]), SECURITIES[0].instrument_id, "drivers")
+                self.assertIsNotNone(output)
+                self.assertEqual(checker.issues, [])
+
+    def test_document_whitespace_tolerance_preserves_sign_precision_and_unit(self):
+        bundle = document_bundle(body_text="公司获批1 类新药，业务收入变动+3.140 %，新增资金314 万元。")
+        for text in ("公司获批1.0类新药。", "公司获批+1类新药。", "公司获批1项新药。",
+                     "业务收入变动3.140%。", "业务收入变动+3.14%。", "新增资金314.0万元。",
+                     "新增资金0.0314亿元。", "新增资金3140000元。", "业务收入变动+3 .140%。"):
+            with self.subTest(text=text):
+                output, checker = self.claim(text, bundle=bundle)
+                self.assertIsNone(output)
+                self.assertTrue(checker.issues)
+        split = document_bundle(body_text="原始文件记载资金1 23万元，尚需核对。")
+        output, checker = self.claim("资金123万元。", bundle=split)
+        self.assertIsNone(output)
+        self.assertTrue(checker.issues)
+
+    def test_document_count_whitespace_does_not_relax_quotes_supply_or_stock_binding(self):
+        source = "公司获批1 类新药。"
+        bundle = document_bundle(count=2, body_text=source, shared_text=True)
+        output, checker = self.claim("原文写道「公司获批1 类新药」。", bundle=bundle)
+        self.assertIsNotNone(output)
+        self.assertEqual(checker.issues, [])
+        output, checker = self.claim("原文写道「公司获批1类新药」。", bundle=bundle)
+        self.assertIsNone(output)
+        self.assertTrue(checker.issues)
+        context = _context(bundle)
+        other = self.body_record(context, SECURITIES[1].instrument_id)
+        output, checker = self.claim("公司获批1类新药。", bundle=bundle, context=context, references=[other["id"]])
+        self.assertIsNone(output)
+        self.assertTrue(checker.issues)
+        own_id = self.body_record(context)["id"]
+        context["evidence"] = [r for r in context["evidence"] if r["id"] != own_id]
+        checker = _Checker(bundle, context)
+        self.assertIsNone(checker.claim(dict(text="公司获批1类新药。", evidence_ids=[own_id]),
+                                       SECURITIES[0].instrument_id, "drivers"))
+
+    def test_new_count_unit_is_not_parsed_from_titles_or_arbitrary_units(self):
+        from trading_companion.answer_numeric_bindings import atoms
+        record = dict(id="fixture", kind="news", content_kind="title", display="公司获批1 类新药。")
+        self.assertEqual(atoms(record), [])
+        bundle = document_bundle(body_text="公司获批1 项新药。")
+        output, checker = self.claim("公司获批1项新药。", bundle=bundle)
+        self.assertIsNone(output)
+        self.assertTrue(checker.issues)
 
     def test_exact_optional_quote_requires_the_selected_body_reference(self):
         text = "原文写道「相关业务保持稳定」。"

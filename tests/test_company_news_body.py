@@ -47,6 +47,15 @@ class SinaArticleBodyTests(unittest.TestCase):
         self.assertEqual(document.published_at, "2026-11-11T10:15:09+08:00")
         self.assertEqual(document.extractor_version, "sina-artibody-v3")
 
+    def test_short_plain_source_byline_does_not_displace_substantive_news_sentence(self):
+        source = "来源：上海证券报·中国证券网"
+        body = "平安银行000001披露人工业务推进情况，相关产品已获批准上市，后续经营影响仍需结合实际销售进展核对。"
+        document = self.parse(article_html(paragraphs=(source, body)))
+        self.assertEqual(document.paragraphs, (source, body))
+        excerpts = document.excerpts("平安银行最近的新闻主要内容")
+        self.assertEqual([item.text for item in excerpts], [body])
+        self.assertEqual((excerpts[0].paragraph_index, excerpts[0].start, excerpts[0].end), (2, 0, len(body)))
+
     def test_missing_duplicate_and_incomplete_regions_do_not_fall_back_to_whole_page(self):
         source = article_html()
         for text in (source.replace("id='artibody'", "id='other'"),

@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 from trading_companion.api_server import main
 from trading_companion.api_service import ResearchApiService, public_product_turn
-from trading_companion.document_collection import DocumentCollector
+from trading_companion.document_collection import DocumentCollector, document_trigger
 from trading_companion.model import ModelConfigurationError
 from trading_companion.news_triage_shadow import NewsTitleCapture
 from trading_companion.news_triage_sorting import NewsTriageSorter
@@ -100,6 +100,40 @@ class DocumentIntegrationTests(unittest.TestCase):
                 repeated = self.send(service, binding)
                 self.assertEqual(repeated, result)
                 collector.enrich.assert_called_once()
+
+    def test_missed_document_type_questions_reach_trigger_through_legacy_and_v2(self):
+        for enabled in (False, True):
+            for phrase in ('临时股东会通知', '投资者关系活动记录'):
+                with self.subTest(v2=enabled, phrase=phrase):
+                    seen = []
+                    collector = DocumentCollector()
+                    def inspect(bundle, *, question, **_):
+                        seen.append((bundle.plan.kinds, document_trigger(bundle.plan, question)))
+                        return bundle
+                    collector.enrich = Mock(side_effect=inspect)
+                    intent = IntentFixture([draft(research_kinds=[dict(kind='announcements', phrase=phrase)])])
+                    service, binding, _ = self.service(enabled=enabled, intent=intent,
+                        research_documents='events', document_collector=collector)
+                    result = self.send(service, binding, '平安银行最近的' + phrase + '里讲了哪些内容？')
+                    self.assertEqual(result['stage'], 'company_research', result)
+                    self.assertEqual(seen, [(('announcements',), None)])
+                    collector.enrich.assert_called_once()
+
+    def test_same_eight_acceptance_questions_pass_the_deterministic_document_trigger(self):
+        questions = (
+            ('恒瑞医药最近发布了什么公告？对公司有什么影响？', ('announcements',)),
+            ('上汽集团最近的董事会决议公告说了什么？', ('announcements',)),
+            ('中信证券最近有什么重要公告或新闻？', ('news', 'announcements')),
+            ('工商银行最近的临时股东会通知讲了哪些议案？', ('announcements',)),
+            ('迈瑞医疗控股股东解除质押的公告是怎么回事？', ('announcements',)),
+            ('中芯国际最近有什么新闻事件？现在能买吗？', ('news',)),
+            ('美的集团最近发生了什么事？', ('news',)),
+            ('澜起科技最近的投资者关系活动记录里说了什么？', ('announcements',)),
+        )
+        baseline = document_bundle().plan
+        for question, kinds in questions:
+            with self.subTest(question=question):
+                self.assertIsNone(document_trigger(replace(baseline, kinds=kinds), question))
 
     def test_capture_then_documents_then_sorter_then_answer(self):
         events = []

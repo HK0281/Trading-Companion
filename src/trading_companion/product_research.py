@@ -578,7 +578,8 @@ def model_research_context(bundle, *, limit=14500):
         pinned = [r for r in records if r["content_kind"] == "trade_plan"
                   or r["label"] in ("营收同比", "归母净利润同比")
                   or r.get('temporal_scope') == 'completed_week_atr_derived']
-        if len(json.dumps({**payload, "evidence": pinned}, ensure_ascii=False)) > limit:
+        if len(json.dumps({**payload, "evidence": pinned,
+                           "omitted_from_model": len(records) - len(pinned)}, ensure_ascii=False)) > limit:
             raise ValueError("decision_context_too_large")
     # Reserve opportunities across both companies and domains; scenario data must survive later trimming.
     selected = list(pinned)
@@ -621,7 +622,8 @@ def model_research_context(bundle, *, limit=14500):
                 if not queue:
                     continue
                 candidate = queue.pop(0)
-                trial = {**payload, "evidence": [*selected, candidate]}
+                trial = {**payload, "evidence": [*selected, candidate],
+                         "omitted_from_model": len(records) - len(selected) - 1}
                 if len(json.dumps(trial, ensure_ascii=False)) <= limit:
                     selected.append(candidate)
     from trading_companion.news_triage_sorting import apply_context_order
@@ -636,19 +638,36 @@ def _document_context(bundle, *, limit):
     payload = model_research_context(base, limit=limit)
     selected = payload['evidence']
     positions = {item.id: f'E{i}' for i, item in enumerate(base.evidence, 1)}
+    parents = {item.id: item for item in base.evidence if item.content_kind == 'title'}
+    protected = set()
     added = []
     for index, item in enumerate(bundle.supplemental_evidence, len(base.evidence) + 1):
-        parent = positions.get((item.document or {}).get('parent_title_id'))
-        if parent not in {record['id'] for record in selected}:
+        parent_id = (item.document or {}).get('parent_title_id')
+        original = parents.get(parent_id)
+        if original is None or (original.instrument_id, original.kind) != (item.instrument_id, item.kind):
             continue
+        parent = positions[parent_id]
         record = {key: value for key, value in item.to_dict().items() if key not in (
             'dependencies', 'url', 'published_at', 'retrieved_at', 'raw_value') and value is not None}
         record.update(id=f'E{index}', display=item.display[:480])
         if len(json.dumps([*added, record], ensure_ascii=False)) > 3000:
             continue
         trial = list(selected)
-        while len(json.dumps({**payload, 'evidence': [*trial, record]}, ensure_ascii=False)) > limit:
-            removable = next((r for r in reversed(trial) if r['id'] != parent
+        if parent not in {record['id'] for record in trial}:
+            # A relevant older title may have lost its baseline slot. Replace only
+            # this issuer/domain's title, retaining the actual parent's global ID.
+            slot = next((i for i in range(len(trial) - 1, -1, -1)
+                if trial[i]['instrument_id'] == item.instrument_id and trial[i]['kind'] == item.kind
+                and trial[i]['content_kind'] == 'title' and trial[i]['id'] not in protected), None)
+            if slot is None:
+                continue
+            title = {key: value for key, value in original.to_dict().items() if key not in (
+                'dependencies', 'url', 'published_at', 'retrieved_at', 'raw_value') and value is not None}
+            trial[slot] = {**title, 'id': parent, 'display': original.display[:480]}
+        while len(json.dumps({**payload, 'evidence': [*trial, record],
+                              'omitted_from_model': len(bundle.evidence) - len(trial) - 1},
+                             ensure_ascii=False)) > limit:
+            removable = next((r for r in reversed(trial) if r['id'] != parent and r['id'] not in protected
                 and r['instrument_id'] == item.instrument_id and r['kind'] == item.kind
                 and r['content_kind'] == 'title'), None)
             if removable is None:
@@ -657,6 +676,7 @@ def _document_context(bundle, *, limit):
         else:
             selected = [*trial, record]
             added.append(record)
+            protected.add(parent)
     payload['evidence'] = selected
     payload['omitted_from_model'] = len(bundle.evidence) - len(selected)
     return payload

@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from trading_companion.product_plan import (
     RESEARCH_KINDS, is_explicit_technical_request, prepare_product_plan, wants_product_research,
 )
+from trading_companion.product_scope import document_request_scope, has_company_domain
 from tests.test_product_plan import NOW, REFERENCE, _arguments, _directory, _response
 
 
@@ -42,6 +43,50 @@ class ProductScopeNegationTests(unittest.TestCase):
         plan, _ = self.prepare("只看平安银行的基本面，不要技术面和新闻")
         self.assertEqual(plan.status, "ready")
         self.assertEqual(plan.kinds, ("profile", "financial"))
+
+    def test_document_types_share_positive_domains_without_generic_content_authority(self):
+        for phrase in ("临时股东会通知", "董事会决议", "股东会议案", "投资者关系活动记录表", "调研记录",
+                       "会议记录", "交流纪要", "业绩说明会", "董事会工作报告", "监事会年度工作报告"):
+            question = "平安银行最近的" + phrase + "具体说了什么？"
+            with self.subTest(phrase=phrase):
+                positive, excluded, kinds = document_request_scope(question)
+                self.assertEqual(positive, question)
+                self.assertEqual(excluded, frozenset())
+                self.assertEqual(kinds, frozenset(("announcements",)))
+                self.assertTrue(has_company_domain(question))
+        for question in ("具体内容", "报告说了什么", "记录讲了什么", "记录平安银行的SMA20参数",
+                         "分析平安银行的交易记录", "平安银行财务报告的具体内容", "平安银行技术报告讲了什么",
+                         "通知我平安银行的价格", "不要通知我", "通知设置"):
+            with self.subTest(question=question):
+                self.assertEqual(document_request_scope(question)[2], frozenset())
+
+    def test_document_negations_share_front_and_local_postfix_masks(self):
+        for phrase in ("不看通知", "不要读投资者关系活动记录", "无需阅读董事会工作报告", "别展开纪要",
+                       "不需要读取说明会", "公告内容不用看", "纪要不看", "投资者关系活动记录的内容不要读"):
+            with self.subTest(phrase=phrase):
+                _, excluded, kinds = document_request_scope("分析平安银行，" + phrase)
+                self.assertEqual(excluded, frozenset(("announcements",)))
+                self.assertEqual(kinds, frozenset())
+                plan, _ = self.prepare("分析平安银行，" + phrase)
+                self.assertEqual((plan.status, plan.kinds), ("ready", ("profile", "financial", "news", "technical")))
+
+    def test_document_alias_lists_stop_before_a_positive_clause(self):
+        _, excluded, kinds = document_request_scope("不要新闻和通知以及会议记录，公告内容值得关注")
+        self.assertEqual(excluded, frozenset(("news", "announcements")))
+        self.assertEqual(kinds, frozenset())
+        plan, _ = self.prepare("平安银行只看技术，不用看公告内容")
+        self.assertEqual((plan.status, plan.kinds), ("ready", ("technical",)))
+        plan, _ = self.prepare("只看平安银行的财务报告具体内容，不看会议纪要")
+        self.assertEqual((plan.status, plan.kinds), ("ready", ("profile", "financial")))
+
+    def test_negated_document_only_never_becomes_a_document_exclusion(self):
+        question = "分析平安银行，不要只看会议纪要"
+        _, excluded, kinds = document_request_scope(question)
+        self.assertEqual((excluded, kinds), (frozenset(), frozenset()))
+        plan, _ = self.prepare(question, kinds=("announcements",))
+        self.assertEqual((plan.status, plan.kinds), ("ready", RESEARCH_KINDS))
+        plan, _ = self.prepare("不要只看会议纪要，只看平安银行的财务")
+        self.assertEqual((plan.status, plan.kinds), ("ready", ("profile", "financial")))
 
     def test_known_list_separators_are_supported_without_consuming_another_clause(self):
         for separator in ("和", "与", "及", "以及", "、", "或", " / "):

@@ -10,6 +10,38 @@ from trading_companion.trace_cli import parse_record
 
 
 class DocumentTraceTests(unittest.TestCase):
+    def test_fallback_attempt_counts_are_bounded_and_do_not_export_source_details(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            counts = dict(requests=4, attempted=4, available=3, complete=2, partial=1,
+                fallback_attempted=1, fallback_available=1, no_substantive_excerpts=1)
+            with trace_message(JsonlTraceSink(root), mode='normal', provider='fake', history=False):
+                trace_documents({**counts, 'title': 'private chosen title', 'parent_title_id': 'private parent'})
+                trace_documents(dict(documents_skipped_reason='documents_context_capacity'))
+            record = json.loads(next(root.glob('*.jsonl')).read_text(encoding='utf-8').splitlines()[0])
+            summary = record['research_documents']
+            self.assertEqual({key: summary[key] for key in counts}, counts)
+            self.assertNotIn('private', json.dumps(record))
+            parse_record(json.dumps(record).encode())
+
+    def test_invalid_or_inconsistent_document_counters_do_not_replace_valid_counts(self):
+        counts = dict(requests=4, attempted=4, available=2, complete=2, partial=0,
+            fallback_attempted=2, fallback_available=2, no_substantive_excerpts=0)
+        for invalid in (dict(requests=5), dict(attempted=True), dict(fallback_attempted=-1),
+                        dict(fallback_attempted=3), dict(fallback_available=3),
+                        dict(no_substantive_excerpts=3), dict(complete=1), dict(response_bytes=2048001),
+                        dict(fallback_available='private counter')):
+            with self.subTest(invalid=invalid), TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                with trace_message(JsonlTraceSink(root), mode='normal', provider='fake', history=False):
+                    trace_documents(counts)
+                    trace_documents(invalid)
+                record = json.loads(next(root.glob('*.jsonl')).read_text(encoding='utf-8').splitlines()[0])
+                summary = record['research_documents']
+                self.assertEqual({key: summary[key] for key in counts}, counts)
+                self.assertNotIn('private', json.dumps(record))
+                parse_record(json.dumps(record).encode())
+
     def test_complete_and_partial_counts_survive_without_source_details(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

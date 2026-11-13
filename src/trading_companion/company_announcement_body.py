@@ -14,10 +14,20 @@ from trading_companion.research_documents import (
 from trading_companion.security_directory import _normalized as normalized_security_name
 
 
-EXTRACTOR_VERSION = "eastmoney-announcement-body-v2"
+EXTRACTOR_VERSION = "eastmoney-announcement-body-v3"
 _VOID = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"))
 _HIDDEN = frozenset(("script", "style", "noscript", "iframe", "template", "ins", "button", "form", "svg"))
 _BLOCKS = frozenset(("p", "div", "section", "article", "h1", "h2", "h3", "h4", "li", "tr", "br"))
+_PLAIN_END = re.compile(r"[。！？；：][\"'”’）)】\]》」』]*$")
+_PLAIN_SECTION = re.compile(
+    r"^(?:[一二三四五六七八九十百零〇两]+[、．.]"
+    r"|[（(][一二三四五六七八九十百零〇两0-9]+[）)]"
+    r"|[0-9]+(?:\.[0-9]+)+(?=\s|[、．:：]|$)|[0-9]+[.、．](?![0-9])"
+    r"|第[一二三四五六七八九十百零〇两0-9]+条|附件"
+    r"|(?:公告|内容)?摘要[：:]|(?:公告)?正文[：:])")
+_TRUTH_STATEMENT = re.compile(
+    r"^(?:本公司|公司(?:董事会|及董事会|及全体)).{0,80}?(?:保证|声明)"
+    r"(?=.{0,160}(?:真实|虚假记载|误导性|重大遗漏))")
 
 
 def _visible_characters(value):
@@ -33,6 +43,52 @@ def _visible_characters(value):
         else:
             raise DocumentError("document_layout_invalid")
     return "".join(parts), replaced
+
+
+def _plain_paragraphs(content):
+    """Rejoin PDF visual lines without inferring table or numeric semantics."""
+    lines = [normalized_text(line) for line in content.splitlines()]
+    visual_lines = [line for line in lines if line]
+    if (len(visual_lines) > MAX_ANNOUNCEMENT_PARAGRAPHS
+            or len("\n\n".join(visual_lines)) > MAX_ANNOUNCEMENT_CHARACTERS):
+        raise DocumentError("document_too_large")
+    # Only an explicit truthfulness statement identifies front matter. Without
+    # one, ordinary text starts at the first line rather than staying fragmented.
+    statement = next((index for index, line in enumerate(lines)
+                      if line and _TRUTH_STATEMENT.match("".join(lines[index:index + 6])[:300])), 0)
+    paragraphs, parts = [], []
+
+    def flush():
+        if parts:
+            paragraphs.append("".join(parts))
+            parts.clear()
+
+    signature = False
+    for index, line in enumerate(lines):
+        if not line:
+            flush()
+            continue
+        if index < statement or signature or line.startswith("特此公告"):
+            flush()
+            paragraphs.append(line)
+            signature = signature or line.startswith("特此公告")
+            continue
+        if parts and (_PLAIN_END.search(parts[-1]) or _PLAIN_SECTION.match(line)):
+            flush()
+        if parts:
+            previous, following = parts[-1][-1], line[0]
+            left_edge = unicodedata.normalize("NFKC", previous)[-1]
+            right_edge = unicodedata.normalize("NFKC", following)[0]
+            numeric_boundary = (
+                left_edge.isdecimal() and (right_edge.isdecimal() or right_edge.isascii())
+                or right_edge.isdecimal() and (left_edge.isdecimal() or left_edge.isascii()))
+            # Preserve original glyphs, while preventing even compatible digits
+            # such as full-width １ and ２３ from becoming a new number on reflow.
+            if previous.isascii() and following.isascii() or numeric_boundary:
+                parts.append(" ")
+        parts.append(line)
+    flush()
+    return tuple(paragraphs)
 
 
 class _Body(HTMLParser):
@@ -274,7 +330,10 @@ def parse_eastmoney_announcement(payload, candidate, *, retrieved_at):
         raise DocumentError("document_layout_invalid") from None
     if "<" not in content:
         content, replaced = _visible_characters(content)
-        paragraphs = tuple(normalized_text(line) for line in content.splitlines() if normalized_text(line))
+        paragraphs = _plain_paragraphs(content)
+        # Reflow must not turn repeated titles or an explicit summary into body.
+        visual_lines = tuple(normalized_text(line) for line in content.splitlines() if normalized_text(line))
+        _require_substantive_body(visual_lines, candidate.title, attachment)
     else:
         parser = _Body()
         try:
@@ -289,8 +348,8 @@ def parse_eastmoney_announcement(payload, candidate, *, retrieved_at):
             raise DocumentError("document_layout_invalid") from None
         paragraphs = tuple(parser.paragraphs)
         replaced = parser.private_use_characters_replaced
-    # Check the original extraction before trimming: a partial prefix cannot
-    # make an oversized source fit the document limits.
+    # Check the retained extraction as well as the original visual lines above,
+    # before trimming: neither reflow nor a partial prefix may evade the limits.
     if len(paragraphs) > MAX_ANNOUNCEMENT_PARAGRAPHS or len("\n\n".join(paragraphs)) > MAX_ANNOUNCEMENT_CHARACTERS:
         raise DocumentError("document_too_large")
     _require_substantive_body(paragraphs, candidate.title, attachment)

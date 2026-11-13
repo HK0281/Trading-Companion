@@ -103,11 +103,14 @@ class LocalDocumentReplayTests(unittest.TestCase):
         news = self.row(news_candidate(), 'news/partial.html')
         ann = self.row(announcement_candidate(), 'ann/partial.json')
         broken = self.row(news_candidate(), 'news/broken.html')
-        news_body = article_html().replace('</div><!-- 正文 end -->',
+        news_body = article_html(paragraphs=(
+            '平安银行000001披露人工业务推进情况，相关生产安排仍需结合后续公告及已知条件核对。',
+            '公司披露人工经营风险可能影响收入确认进度，后续变化应以已核验来源信息为准。',
+        )).replace('</div><!-- 正文 end -->',
             '<table><tr><td>PRIVATE_TABLE_SENTINEL12345万元</td></tr></table>'
             '<p>PRIVATE_UNFINISHED_NEWS_SENTINEL12345</p></div><!-- 正文 end -->')
         ann_body = detail_payload(page_size=2,
-            notice_content='平安银行人工\ue001公告正文。\nPRIVATE_UNFINISHED_ANN_SENTINEL12345')
+            notice_content='平安银行人工\ue001公告披露业务推进情况，相关安排仍需以已公布的后续进展和风险条件为准。\nPRIVATE_UNFINISHED_ANN_SENTINEL12345')
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             self.write_samples(root, [news, ann, broken], {

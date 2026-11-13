@@ -43,9 +43,76 @@ class EastmoneyAnnouncementBodyTests(unittest.TestCase):
         document = self.parse(detail_payload(notice_content=content))
         self.assertIn("仅保留文字", document.text)
         self.assertNotIn("ignored.invalid", document.text)
-        self.assertEqual(document.extractor_version, "eastmoney-announcement-body-v2")
+        self.assertEqual(document.extractor_version, "eastmoney-announcement-body-v3")
         self.assertTrue(document.complete)
         self.assertEqual(document.incomplete_reasons, ())
+
+    def test_plain_visual_lines_rejoin_a_synthetic_board_resolution_before_excerpt_selection(self):
+        content = "\n".join((
+            "证券代码：000001 证券简称：平安银行", "平安银行股份有限公司", "人工董事会会议决议公告", "",
+            "本公司董事会及全体董事保证本公告内容不存在任何虚假记载、误导性",
+            "陈述或者重大遗漏，并对其内容的真实性、准确性和完整性承担法律责任。", "",
+            "平安银行第十届董事会人工会议通知于", "2026 年 11 月 1 日以电子邮件形式送达。本次董事会会议",
+            "于 2026 年 11 月 3 日以通讯方式召开，应参加会议董事 7 人，实际",
+            "收到 7 名董事的有效表决票。会议的召集和召开符合相关规定。", "",
+            "经与会董事审议，表决通过了以下人工合资议案：", "",
+            "关于公司与人工合作方共同设立合资公司的议案", "",
+            "为加强人工技术研发能力并提升服务质量，同意公司与人工合作方共同设立合资公司，",
+            "公司认缴出资 7,500 万元人民币，持股 25%；人工合作方认缴出",
+            "资 22,500 万元人民币，持股 75%。董事会授权管理层办理相关手续。",
+            "（同意 7 票，反对 0 票，弃权 0 票）", "", "特此公告。", "平安银行股份有限公司", "董事会", "2026 年 11 月 4 日"))
+        document = self.parse(detail_payload(notice_content=content))
+        self.assertEqual(document.paragraphs[:3], ("证券代码：000001 证券简称：平安银行", "平安银行股份有限公司", "人工董事会会议决议公告"))
+        self.assertIn("误导性陈述或者重大遗漏", document.paragraphs[3])
+        self.assertIn("通知于2026 年", document.paragraphs[4])
+        self.assertIn("实际收到 7 名董事", document.paragraphs[4])
+        self.assertIn("认缴出资 22,500 万元", document.paragraphs[7])
+        self.assertEqual(document.paragraphs[-4:], ("特此公告。", "平安银行股份有限公司", "董事会", "2026 年 11 月 4 日"))
+        fragments = document.excerpts("表决通过的议案中同意、反对和弃权各几票", max_count=2)
+        self.assertTrue(any("表决通过" in fragment.text and "议案" in fragment.text for fragment in fragments))
+        self.assertTrue(any("同意 7 票" in fragment.text for fragment in fragments))
+        self.assertFalse(any(fragment.text in document.paragraphs[:4] for fragment in fragments))
+        for fragment in fragments:
+            self.assertIn(fragment.text, document.paragraphs[fragment.paragraph_index - 1])
+
+    def test_plain_visual_boundaries_use_only_explicit_punctuation_sections_and_empty_lines(self):
+        for ending in ("。", "！", "？", "；", "：", "。”", "；’", "。）", "！)", "？】", "。』"):
+            with self.subTest(ending=ending):
+                first = "人工已披露完整内容" + ending
+                document = self.parse(detail_payload(notice_content=first + "\n后续人工正文。"))
+                self.assertEqual(document.paragraphs, (first, "后续人工正文。"))
+        for marker in ("一、", "（一）", "(1)", "1.", "1、", "1.1 ", "第十二条", "第1条", "附件", "附件一：", "正文："):
+            with self.subTest(marker=marker):
+                document = self.parse(detail_payload(notice_content="上一项人工标题\n" + marker + "下一项人工内容。"))
+                self.assertEqual(document.paragraphs, ("上一项人工标题", marker + "下一项人工内容。"))
+        document = self.parse(detail_payload(notice_content="连续视觉\n正文需要拼接\n\n空行之后另起\n完整一段。"))
+        self.assertEqual(document.paragraphs, ("连续视觉正文需要拼接", "空行之后另起完整一段。"))
+
+    def test_plain_join_preserves_ascii_word_and_number_boundaries_without_adding_chinese_spaces(self):
+        content = "人工中文跨\n行不加空格。\nProject\nAlpha\nCo.\nLtd.\n1\n23\n45.\n67。"
+        document = self.parse(detail_payload(notice_content=content))
+        self.assertEqual(document.paragraphs, ("人工中文跨行不加空格。", "Project Alpha Co. Ltd. 1 23", "45. 67。"))
+        self.assertNotIn("123", document.text)
+        self.assertNotIn("45.67", document.text)
+        self.assertEqual(self.parse(detail_payload(notice_content="收入1\n23万元。")).paragraphs, ("收入1 23万元。",))
+        self.assertEqual(self.parse(detail_payload(notice_content="收入1\n.23万元。")).paragraphs, ("收入1 .23万元。",))
+        self.assertEqual(self.parse(detail_payload(
+            notice_content="披露新增资金为\n1.23亿元，后续安排仍按已披露条件执行。"
+        )).paragraphs, ("披露新增资金为1.23亿元，后续安排仍按已披露条件执行。",))
+
+    def test_html_line_and_block_extraction_stays_unchanged_when_version_advances(self):
+        document = self.parse(detail_payload(notice_content="<p>人工视觉\n换行文本</p><p>仍为第二段</p>"))
+        self.assertEqual(document.paragraphs, ("人工视觉 换行文本", "仍为第二段"))
+        self.assertEqual(document.extractor_version, "eastmoney-announcement-body-v3")
+
+    def test_plain_join_keeps_unicode_and_compatible_numeric_endpoints_separate(self):
+        for left, right in (("１", "23万元。"), ("1", "２３万元。"), ("１", "２３万元。"),
+                            ("¹", "23万元。"), ("①", "㉓万元。"), ("١", "٢٣万元。"),
+                            ("１", "．２３万元。"), ("１．", "２３万元。"),
+                            ("１", ".23万元。"), ("1", "．23万元。")):
+            with self.subTest(left=left, right=right):
+                document = self.parse(detail_payload(notice_content="人工金额" + left + "\n" + right))
+                self.assertEqual(document.paragraphs, ("人工金额" + left + " " + right,))
 
     def test_id_security_exchange_and_supplied_company_name_bind_to_candidate(self):
         cases = (dict(art_code="AN202611110009999999"),
@@ -227,11 +294,11 @@ class EastmoneyAnnouncementBodyTests(unittest.TestCase):
         document = self.parse(detail_payload(page_size=2, notice_content=content))
         self.assertEqual(document.paragraphs, ("已完成第一项议案。",))
         self.assertNotIn("123.45", document.text)
-        self.assertEqual(document.omitted_trailing_characters, len("\n\n".join(content.splitlines())) - len(document.text))
+        self.assertEqual(document.omitted_trailing_characters, len("\n\n预计收入123.45万元，尚未满足后续批准条件"))
         for excerpt in document.excerpts("123.45万元"):
             self.assertIn(excerpt.text, document.paragraphs[excerpt.paragraph_index - 1])
             self.assertNotIn("123.45", excerpt.text)
-        self.assertEqual(self.parse(detail_payload(notice_content=content)).paragraphs[-1], "后续批准条件")
+        self.assertEqual(self.parse(detail_payload(notice_content=content)).paragraphs[-1], "预计收入123.45万元，尚未满足后续批准条件")
         for content in ("预计收入123.45万元", "预计收入123.", "预计收入123万元；尚未批准", "人工章节：未完成"):
             self.assert_code("document_empty_body", detail_payload(page_size=2, notice_content=content))
         document = self.parse(detail_payload(page_size=2, notice_content='已披露“条件尚未满足。”\n附件清单未完'))
@@ -241,15 +308,18 @@ class EastmoneyAnnouncementBodyTests(unittest.TestCase):
         self.assertEqual(document.private_use_characters_replaced, 1)
 
     def test_partial_trimming_never_bypasses_pretrim_limits(self):
-        for content in ("完整句。" + "甲" * 32000, "\n".join(["完整句。"] * 401)):
-            self.assert_code("document_too_large", detail_payload(page_size=2, notice_content=content))
+        for pages in (1, 2):
+            for content in ("完整句。" + "甲" * 32000, "\n".join(["完整句。"] * 401),
+                            "\n".join(["未完的人工视觉行"] * 401), "\n".join(["甲" * 79] * 400)):
+                with self.subTest(pages=pages, size=len(content)):
+                    self.assert_code("document_too_large", detail_payload(page_size=pages, notice_content=content))
 
     def test_announcement_paragraph_limit_is_400_before_partial_trimming(self):
         for pages in (1, 2):
             for html in (False, True):
                 for count in (128, 129, 400):
                     with self.subTest(pages=pages, html=html, count=count):
-                        paragraphs = ["人工公告段落。"] * (count - 1) + ["末段特定问题。"]
+                        paragraphs = ["人工公告段落。"] * (count - 1) + ["末段特定问题已由公司董事会正式确认，相关安排将按已经披露的具体条件执行。"]
                         content = "".join("<p>" + paragraph + "</p>" for paragraph in paragraphs) if html else "\n".join(paragraphs)
                         document = self.parse(detail_payload(page_size=pages, notice_content=content))
                         self.assertEqual(len(document.paragraphs), count)
@@ -334,7 +404,7 @@ class EastmoneyAnnouncementBodyTests(unittest.TestCase):
 
     def test_body_containing_only_title_is_not_full_text_even_in_a_heading(self):
         title = self.candidate.title
-        for content in (title, '<h1>' + title + '</h1>', '<p>' + title + '</p><p>' + title + '</p>'):
+        for content in (title, title + '\n' + title, '<h1>' + title + '</h1>', '<p>' + title + '</p><p>' + title + '</p>'):
             for attachment in (False, True):
                 with self.subTest(content=content, attachment=attachment):
                     payload = detail_payload(notice_content=content)
@@ -343,7 +413,8 @@ class EastmoneyAnnouncementBodyTests(unittest.TestCase):
                     self.assert_code('document_attachment_only' if attachment else 'document_empty_body', payload)
 
     def test_explicit_summary_only_is_rejected_but_short_body_and_following_body_section_survive(self):
-        for content in ('摘要：人工公告的摘要。', '<h2>公告摘要</h2><p>人工公告的摘要。</p>',
+        for content in ('摘要：人工公告的摘要。', self.candidate.title + '\n内容摘要：人工公告的摘要。',
+                        '<h2>公告摘要</h2><p>人工公告的摘要。</p>',
                         '<h1>' + self.candidate.title + '</h1><p>内容摘要：人工公告的摘要。</p>'):
             self.assert_code('document_empty_body', detail_payload(notice_content=content))
             self.assert_code('document_attachment_only', detail_payload(

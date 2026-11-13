@@ -159,9 +159,23 @@ distinct; no cost prices or position sizes are stored. Existing v1 personal data
 transactionally to v2 when opened; older app versions cannot open an upgraded file. Removing
 a watchlist stock preserves its preferences, and deleting preferences preserves the watchlist
 and chat history. A user-selected research draft contains only the stock code and question
-type, stays editable and is sent only after pressing Send. Research review, news inboxes,
-important alerts and background notifications remain unimplemented. The current preference
-changes await review; see the [personal-memory boundaries](docs/personal-memory-design.md).
+type, stays editable and is sent only after pressing Send. Watchlists and holding preferences
+are committed and pushed as `9aa98af` and `4faea64`; see the
+[personal-memory boundaries](docs/personal-memory-design.md). News inboxes, important alerts
+and background notifications remain unimplemented.
+
+The current **research-review** changes are uncommitted and await Claude's review.
+With local chat history enabled, the separate panel finds one stock's original verdicts and
+reference levels, opens a single original Q&A without switching the research session, and
+loads later daily closes only when clicked. Each page scans at most 20 original results;
+an empty matching page may still offer Continue. New records use their saved completion time;
+old records start after the source conversation's latest saved Shanghai date, which can omit
+earlier prices and move later when that conversation continues. Price-basis checks happen
+before requests; incompatible or unknown adjustment disables loading. Tencent prices are
+unadjusted and provider-reported, not independently verified. Loading is limited to 366 calendar
+days, two yearly requests and an eight-second cooperative budget, with no model calls or
+performance statistics. Deleting source chat history invalidates its reviews. See the
+[review contracts, limits and legacy-time notice](docs/research-review-design.md).
 
 To enable the optional document stage for normal company research:
 
@@ -212,7 +226,7 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
-- **Local personal memory.** Watchlists are committed and pushed as `9aa98af`. The current holding/preference changes await review: up to 50 separate per-stock category records, strict transactional v1-to-v2 migration, explicit edits/deletion and drafts that copy no personal fields. Personal memory is explicitly enabled with `--personal-memory-db`, remains off in `start.cmd`, and is never automatically sent to models. Research review, news inboxes, important alerts and background notifications remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/personal-memory-design.md).
+- **Local memory and research review.** Watchlists and holding preferences are committed and pushed as `9aa98af` and `4faea64`. Personal memory stays explicitly enabled with `--personal-memory-db`, off in `start.cmd`, and is never automatically sent to models. The third module, [research review](docs/research-review-design.md), is implemented in the uncommitted workspace and awaits Claude's review: bounded reads from source chat history, original Q&A and click-to-load later daily closes, with no accuracy or return statistics. News inboxes, important alerts and background notifications remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/personal-memory-design.md).
 - **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The switch remains off by default pending the user's decision. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's HTML header-filtering change is committed and pushed as `b076461`; this adds no new live-acceptance result. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
 - **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
 - **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-triage-integration-design.md) and [product-v2 results](docs/news-triage-product-v2.md).

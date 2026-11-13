@@ -3,13 +3,14 @@
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from hmac import compare_digest
 from importlib.util import find_spec
+import json
 from math import isfinite
 from secrets import token_urlsafe
-from threading import Lock
+from threading import Event, Lock
 from time import monotonic
 from uuid import uuid4
 
@@ -27,6 +28,10 @@ from trading_companion.market_context import build_market_context
 from trading_companion.conversation_memory import (MAX_DIGESTS, TurnDigest, digest_turn, encode_digest,
     is_recall_question, recall_answer, render_history)
 from trading_companion.memory_store import LOCAL_USER, ConversationStore, MemoryStoreError
+from trading_companion.research_review import (
+    VERSION as REVIEW_VERSION, ReviewError, list_reviews, load_review,
+)
+from trading_companion.research_review_prices import ReviewPriceError, read_tencent_review_days
 from trading_companion.personal_memory import (VERSION as PERSONAL_VERSION, MAX_WATCHLIST, DISABLED_MESSAGE,
     PREFERENCES_VERSION, MAX_PREFERENCES, PersonalMemoryError, checked_instrument_id,
     checked_preferences_changes, checked_revision)
@@ -336,7 +341,7 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
-                 personal_memory_store=None,
+                 personal_memory_store=None, review_price_loader=None,
                  research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None,
                  news_triage_sorting=False, news_sorter=None, research_documents="off", document_collector=None):
         from trading_companion.news_triage_shadow import NewsTitleCapture
@@ -415,6 +420,10 @@ class ResearchApiService:
         self._active = 0
         self._chart_active = 0
         self._chart_hourly_loader = chart_hourly_loader or read_tencent_hours
+        if review_price_loader is not None and not callable(review_price_loader):
+            raise ModelConfigurationError("Use a trusted review price loader")
+        self._review_price_loader = review_price_loader or read_tencent_review_days
+        self._review_active = None
         self._closed = False
 
     def _clear_charts(self, entry):
@@ -753,6 +762,145 @@ class ResearchApiService:
         stored["turns"] = [{k: v for k, v in turn.items() if k != "digest"} for turn in stored["turns"]]
         return stored
 
+    @property
+    def research_review_enabled(self):
+        return (self._conversation_store is not None and self.data_mode != "synthetic"
+                and self._trace_mode == "normal" and self.provider != "fake")
+
+    def _review_problem(self, error):
+        code = error.code
+        if code in ("review_invalid_request", "review_invalid_cursor"):
+            return ApiProblem(422, code, "回顾筛选或游标无效，请使用完整代码和有效日期重新查询。")
+        if code == "review_not_found":
+            return ApiProblem(404, code, "原研判不存在、已删除或不属于当前数据模式。")
+        if code == "review_corrupt":
+            return ApiProblem(409, code, "原记录无法安全读取，未加载后续走势。")
+        return ApiProblem(503, "review_store_unavailable", "本机研判回顾暂不可用，请稍后手动重试。")
+
+    def _review_store(self):
+        if self._closed:
+            raise ApiProblem(503, "service_closed", "服务正在关闭。")
+        if not self.research_review_enabled:
+            raise ApiProblem(404, "review_disabled", "当前模式未开启本机研判回顾。")
+        return self._conversation_store
+
+    def research_reviews(self, instrument_id, *, from_date=None, to_date=None, cursor=None):
+        if not self.research_review_enabled:
+            return dict(version=REVIEW_VERSION, enabled=False, items=[], scanned=0,
+                        skipped_invalid=0, has_more=False, next_cursor=None)
+        try:
+            return list_reviews(self._review_store(), LOCAL_USER, data_mode=self.data_mode,
+                instrument_id=instrument_id, from_date=from_date, to_date=to_date,
+                cursor=cursor, now=self._wall_clock())
+        except ReviewError as error:
+            raise self._review_problem(error) from None
+
+    def research_review(self, conversation_id, sequence, request_id, instrument_id):
+        try:
+            return load_review(self._review_store(), LOCAL_USER, data_mode=self.data_mode,
+                conversation_id=conversation_id, sequence=sequence, request_id=request_id,
+                instrument_id=instrument_id, now=self._wall_clock())
+        except ReviewError as error:
+            raise self._review_problem(error) from None
+
+    def research_review_prices(self, conversation_id, sequence, request_id, instrument_id, *, cancelled=None):
+        """Explicit one-stock work, independent of research sessions; no persisted review copy."""
+        original = self.research_review(conversation_id, sequence, request_id, instrument_id)
+        item = original["item"]
+
+        def unavailable(code, message):
+            return dict(version=REVIEW_VERSION, status="unavailable", code=code, message=message,
+                item=item, source="tencent", price_adjustment="unadjusted",
+                data_authenticity="provider_reported", retrieved_at=None, points=[])
+
+        if not item["prices"]["enabled"]:
+            return unavailable(item["prices"]["code"], item["prices"]["message"])
+        stop = Event()
+        active = (conversation_id, stop)
+        with self._lock:
+            if self._closed:
+                raise ApiProblem(503, "service_closed", "服务正在关闭。")
+            if self._review_active is not None:
+                raise ApiProblem(429, "review_prices_busy", "另一次回顾取数尚未结束，请稍后手动加载。")
+            self._review_active = active
+        try:
+            deadline = self._clock() + 8
+
+            def stopped():
+                return stop.is_set() or self._closed or (cancelled is not None and cancelled.is_set())
+
+            def check_source():
+                latest = self.research_review(conversation_id, sequence, request_id, instrument_id)
+                if latest["item"] != item or latest["result"] != original["result"]:
+                    raise ApiProblem(409, "review_source_changed", "原记录或保存边界已变化，请重新查询后再加载。")
+
+            # Registration closes the gap where deletion could otherwise miss the active worker.
+            check_source()
+            if stopped():
+                return unavailable("review_prices_cancelled", "本次回顾取数已取消，原判断仍可查看。")
+
+            error = None
+            points = []
+            try:
+                points = self._review_price_loader(instrument_id,
+                    start_date=date.fromisoformat(item["prices"]["start_date"]),
+                    end_date=date.fromisoformat(item["prices"]["end_date"]), now=self._wall_clock(),
+                    deadline=deadline, cancelled=stopped, clock=self._clock)
+            except ReviewPriceError as failure:
+                error = failure.code
+            except Exception:
+                error = "review_prices_transport"
+            # Always re-read the source, even after transport errors; deletion wins over cached output.
+            check_source()
+            if stopped():
+                return unavailable("review_prices_cancelled", "本次回顾取数已取消，原判断仍可查看。")
+            if self._clock() >= deadline:
+                error = "review_prices_timeout"
+            if error is not None:
+                messages = {
+                    "review_prices_timeout": "回顾取数已超过协作期限，未自动重试。",
+                    "review_prices_limit": "行情响应超过读取上限，未展示后续走势。",
+                    "review_prices_invalid_data": "行情数据未通过校验，未展示后续走势。",
+                    "review_prices_cancelled": "本次回顾取数已取消，原判断仍可查看。",
+                }
+                safe_code = error if error in messages else "review_prices_transport"
+                return unavailable(safe_code, messages.get(safe_code, "后续行情暂不可用，没有自动重试。"))
+            try:
+                if type(points) is not list or len(points) > 366:
+                    raise ValueError()
+                previous = None
+                for point in points:
+                    if type(point) is not dict or set(point) != {"date", "close"}:
+                        raise ValueError()
+                    day = date.fromisoformat(point["date"])
+                    close = point["close"]
+                    if (type(close) not in (int, float) or not isfinite(close) or close <= 0
+                            or point["date"] != day.isoformat()
+                            or not item["prices"]["start_date"] <= point["date"] <= item["prices"]["end_date"]
+                            or previous is not None and point["date"] <= previous):
+                        raise ValueError()
+                    previous = point["date"]
+                if not points:
+                    return unavailable("review_prices_empty", "该范围暂未返回后续已完成日线，未补造价格。")
+                value = dict(version=REVIEW_VERSION, status="available", item=item, source="tencent",
+                    price_adjustment="unadjusted", data_authenticity="provider_reported",
+                    retrieved_at=self._wall_clock().astimezone(timezone.utc).isoformat(), points=points)
+                if len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 262144:
+                    raise ValueError()
+                check_source()
+                if stopped():
+                    return unavailable("review_prices_cancelled", "本次回顾取数已取消，原判断仍可查看。")
+                if self._clock() >= deadline:
+                    return unavailable("review_prices_timeout", "回顾取数已超过协作期限，未自动重试。")
+                return value
+            except (TypeError, ValueError, OverflowError):
+                return unavailable("review_prices_invalid_data", "行情数据未通过校验，未展示后续走势。")
+        finally:
+            # The worker owns the slot through actual transport cleanup, even after HTTP disconnect.
+            with self._lock:
+                if self._review_active is active:
+                    self._review_active = None
+
     def delete_conversation(self, conversation_id):
         self.conversation(conversation_id)
         try:
@@ -760,6 +908,8 @@ class ResearchApiService:
         except MemoryStoreError as error:
             raise self._memory_problem(error) from None
         with self._lock:
+            if self._review_active is not None and self._review_active[0] == conversation_id:
+                self._review_active[1].set()
             # A deleted record must not keep reappearing through an open session.
             for entry in self._entries.values():
                 if entry.conversation_id == conversation_id:
@@ -771,6 +921,8 @@ class ResearchApiService:
         except MemoryStoreError as error:
             raise self._memory_problem(error) from None
         with self._lock:
+            if self._review_active is not None:
+                self._review_active[1].set()
             for entry in self._entries.values():
                 entry.conversation_id, entry.digests = None, []
         return {"deleted": removed}
@@ -1157,6 +1309,15 @@ class ResearchApiService:
                 # Optional archival failure never discards a completed research answer.
                 projected["company_research"]["snapshot_status"] = "unavailable"
         projected["market_context"], staged_context = self._market_context_view(entry, result, saved, timestamp)
+        if (self.research_review_enabled and not history and result.session_event == "company_research"
+                and projected.get("company_research") is not None
+                and result.code in ("company_research_completed", "company_research_partial", "company_research_unavailable")
+                and result.runtime is not None and result.runtime.get("stop_code") is None):
+            completed = self._wall_clock()
+            if (isinstance(completed, datetime) and completed.tzinfo is not None
+                    and completed.utcoffset() is not None and completed >= timestamp):
+                projected["review_context"] = dict(version="research-review-context-v1",
+                    event="company_research", completed_at=completed.astimezone(timezone.utc).isoformat())
         reset_contexts = result.code == "session_reset"
         response = {"request_id": request_id, "replayed": False, "result": projected}
         if not history and not reset_contexts:
@@ -1296,6 +1457,8 @@ class ResearchApiService:
     def close(self):
         with self._lock:
             self._closed = True
+            if self._review_active is not None:
+                self._review_active[1].set()
             for entry in self._entries.values():
                 self._clear_charts(entry)
                 if entry.control is not None:

@@ -1,4 +1,6 @@
 /** Browser contracts for the public API, never the Agent's debug export. */
+import { parseResearchReviewDetail, parseResearchReviewPrices, parseResearchReviews, validReviewFilters, validReviewIdentity,
+  type ReviewFilters, type ReviewIdentity, type ResearchReviews, type ResearchReviewDetail, type ResearchReviewPrices } from "./researchReviews";
 export type ApiMode = "normal" | "development";
 export type ModelProvider = "fake" | "deepseek" | "openai";
 export type LiveProvider = Exclude<ModelProvider, "fake">;
@@ -59,6 +61,7 @@ export interface PublicTurn {
   knowledge?: unknown;
   screening?: unknown;
   personal_memory?: unknown;
+  review_context?: unknown;
   parameters: { instrument_id: string; start_date: string; as_of_date: string; source?: string;
     indicators?: { kind: string; [key: string]: string | number }[] } | null;
   chart?: unknown;
@@ -149,6 +152,9 @@ export interface ResearchApi {
   conversations?(): Promise<ConversationSummary[] | null>;
   conversation?(id: string): Promise<StoredConversation>;
   deleteConversation?(id: string): Promise<void>;
+  researchReviews?(filters: ReviewFilters, signal?: AbortSignal): Promise<ResearchReviews>;
+  researchReview?(identity: ReviewIdentity, signal?: AbortSignal): Promise<ResearchReviewDetail>;
+  researchReviewPrices?(identity: ReviewIdentity, signal?: AbortSignal): Promise<ResearchReviewPrices>;
   watchlist?(): Promise<Watchlist>;
   searchWatchlist?(query: string): Promise<WatchlistSearch>;
   addWatchlist?(instrumentId: string): Promise<Watchlist>;
@@ -187,6 +193,10 @@ const errors: Record<string, string> = {
   invalid_preferences: "持仓与偏好只支持固定类别，至少填写一项；不记录成本价、仓位比例或其他内容。",
   memory_store_unavailable: "本机对话记录暂不可用；当前研究不受影响。",
   memory_disabled: "本服务未开启对话记录。",
+  review_not_found: "原记录不存在或已删除，请重新查找研判回顾。",
+  review_source_changed: "原记录已变化，请重新查找后再加载走势。",
+  review_prices_busy: "仍有一条走势请求在收尾，请稍后手动重试。",
+  review_prices_cancelled: "走势加载已取消，原判断仍保留。",
 };
 
 export class ApiError extends Error {
@@ -319,7 +329,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
   if (serviceMode !== "normal" && serviceMode !== "development") throw new ConnectionError();
   const prefix = serviceMode === "development" ? "/dev-api" : "";
   async function request<T>(path: string, check: (value: unknown) => value is T,
-    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
+    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean; maxBytes?: number; headers?: Record<string, string> } = {}): Promise<T> {
     if (options.session) {
       const boundMode = credentialModes.get(options.session);
       // Unmarked legacy callers remain root-only; development credentials must be minted here.
@@ -357,7 +367,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
             const { done, value: chunk } = await reader.read();
             if (done) break;
             size += chunk.byteLength;
-            if (size > 256 * 1024) { await reader.cancel(); throw new ConnectionError(); }
+            if (size > (options.maxBytes ?? 256 * 1024)) { await reader.cancel(); throw new ConnectionError(); }
             chunks.push(chunk);
           }
         } finally { reader.releaseLock(); }
@@ -443,6 +453,30 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     deleteConversation: async (id) => {
       if (serviceMode === "development" || !identifier(id)) throw new ConnectionError();
       await request(`/v1/conversations/${id}`, (value): value is null => value === null, { method: "DELETE" });
+    },
+    researchReviews: (filters, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "memory_disabled");
+      if (!validReviewFilters(filters)) throw new ConnectionError();
+      const query = new URLSearchParams({ instrument_id: filters.instrument_id });
+      for (const key of ["from_date", "to_date", "cursor"] as const) if (filters[key] !== undefined) query.set(key, filters[key]!);
+      return request(`/v1/research-reviews?${query}`, (value): value is ResearchReviews => parseResearchReviews(value, filters.instrument_id) !== null,
+        { signal, bounded: true });
+    },
+    researchReview: (identity, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "memory_disabled");
+      if (!validReviewIdentity(identity)) throw new ConnectionError();
+      const query = new URLSearchParams({ request_id: identity.request_id, instrument_id: identity.instrument_id });
+      return request(`/v1/research-reviews/${identity.conversation_id}/${identity.sequence}?${query}`,
+        (value): value is ResearchReviewDetail => parseResearchReviewDetail(value, identity) !== null && record(value)
+          && message({ request_id: identity.request_id, replayed: false, result: value.result }),
+        { signal, bounded: true, maxBytes: 2 * 1024 * 1024 });
+    },
+    researchReviewPrices: (identity, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "memory_disabled");
+      if (!validReviewIdentity(identity)) throw new ConnectionError();
+      return request(`/v1/research-reviews/${identity.conversation_id}/${identity.sequence}/prices`,
+        (value): value is ResearchReviewPrices => parseResearchReviewPrices(value, identity) !== null,
+        { method: "POST", body: { request_id: identity.request_id, instrument_id: identity.instrument_id }, signal, bounded: true });
     },
     watchlist: () => serviceMode === "development"
       ? Promise.resolve({ version: watchlistVersion, enabled: false, limit: 50, items: [] })

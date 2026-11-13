@@ -2,6 +2,8 @@
 import { ApiError, ConnectionError, availableLiveProviders, type ConversationSummary, type Health, type LiveProvider,
   type MessageResponse, type ResearchApi, type SessionCredentials, type SessionView, type Watchlist, type WatchlistSearch } from "./api";
 import type { PreferenceChanges, Preferences, SecuritySummary } from "./api";
+import { parseResearchReviewDetail, parseResearchReviewPrices, parseResearchReviews, sameReview, validReviewFilters,
+  type ReviewFilters, type ReviewIdentity, type ResearchReviews, type ResearchReviewDetail, type ResearchReviewPrices, type ResearchReviewItem } from "./researchReviews";
 
 export interface Entry {
   id: string;
@@ -45,6 +47,18 @@ export interface WorkspaceState {
   preferencesSearchLoading: boolean;
   preferencesSearchError: string | null;
   preferencesEditor: { security: SecuritySummary; generation: number } | null;
+  reviewsOpen: boolean;
+  reviewFilters: ReviewFilters | null;
+  reviews: ResearchReviews | null;
+  reviewsLoading: boolean;
+  reviewsError: string | null;
+  selectedReview: ReviewIdentity | null;
+  reviewDetail: ResearchReviewDetail | null;
+  reviewDetailLoading: boolean;
+  reviewDetailError: string | null;
+  reviewPrices: ResearchReviewPrices | null;
+  reviewPricesLoading: boolean;
+  reviewPricesError: string | null;
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
@@ -68,6 +82,10 @@ export class ResearchController {
   private preferencesRead = 0;
   private preferencesSearchRead = 0;
   private preferencesEditorGeneration = 0;
+  private reviewEpoch = 0;
+  private reviewListAbort: AbortController | null = null;
+  private reviewDetailAbort: AbortController | null = null;
+  private reviewPricesAbort: AbortController | null = null;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
     health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
@@ -75,7 +93,10 @@ export class ResearchController {
     conversations: null, conversationId: null, watchlist: null, watchlistLoading: false, watchlistSaving: false,
     watchlistError: null, watchlistNotice: null, watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null,
     preferences: null, preferencesLoading: false, preferencesSaving: false, preferencesError: null, preferencesNotice: null,
-    preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null, preferencesEditor: null };
+    preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null, preferencesEditor: null,
+    reviewsOpen: false, reviewFilters: null, reviews: null, reviewsLoading: false, reviewsError: null, selectedReview: null,
+    reviewDetail: null, reviewDetailLoading: false, reviewDetailError: null,
+    reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null };
 
   constructor(api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
@@ -142,6 +163,7 @@ export class ResearchController {
       // The development endpoint cannot revoke the capability advertised by the root endpoint.
       this.update({ health, mode: "development" });
     }
+    if (!this.reviewsAvailable()) this.closeResearchReviews();
   }
 
   async load() {
@@ -168,6 +190,7 @@ export class ResearchController {
     if (!targetApi) return false;
     this.running = true;
     this.clearPersonalState();
+    this.closeResearchReviews();
     this.update({ loading: true, switching: true });
     try {
       if (this.credentials) {
@@ -293,6 +316,7 @@ export class ResearchController {
         void this.refreshWatchlist(); void this.refreshPreferences();
       }
       if (response.conversation_id && this.credentials === credentials) {
+        this.invalidateReviewConversation(response.conversation_id);
         const created = response.conversation_id !== this.state.conversationId;
         this.update({ conversationId: response.conversation_id });
         if (created || this.state.conversations !== null) void this.refreshConversations();
@@ -574,7 +598,8 @@ export class ResearchController {
       return true;
     } catch (error) {
       if (this.api === api && this.personalEpoch === epoch)
-        this.update({ preferencesError: `资料变更未确认，请刷新后核对。${explanation(error)}` });
+        this.update({ preferencesError: error instanceof ApiError && error.code === "preference_revision_conflict"
+          ? explanation(error) : `资料变更未确认，请刷新后核对。${explanation(error)}` });
       return false;
     } finally {
       if (this.api === api && this.personalEpoch === epoch) this.update({ preferencesSaving: false });
@@ -593,6 +618,143 @@ export class ResearchController {
     } catch {
       // The history list is optional; research continues without it.
     }
+  }
+
+  /** Review browsing is independent of research credentials, work and message allowances. */
+  private reviewsAvailable() {
+    return this.state.mode === "normal" && this.api === this.normalApi && !this.state.switching
+      && this.state.health?.memory_enabled === true && this.state.health.data_mode !== "synthetic"
+      && this.state.health.provider !== "fake";
+  }
+
+  openResearchReviews(): boolean {
+    if (!this.reviewsAvailable() || !this.api.researchReviews) return false;
+    this.update({ reviewsOpen: true });
+    return true;
+  }
+
+  clearResearchReviews() {
+    this.reviewEpoch++;
+    this.reviewListAbort?.abort(); this.reviewDetailAbort?.abort(); this.reviewPricesAbort?.abort();
+    this.reviewListAbort = this.reviewDetailAbort = this.reviewPricesAbort = null;
+    this.update({ reviewFilters: null, reviews: null, reviewsLoading: false, reviewsError: null, selectedReview: null,
+      reviewDetail: null, reviewDetailLoading: false, reviewDetailError: null,
+      reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null });
+  }
+
+  closeResearchReviews() { this.clearResearchReviews(); this.update({ reviewsOpen: false }); }
+
+  private invalidateReviewConversation(id: string) {
+    if (this.state.reviews?.items.some(item => item.conversation_id === id) || this.state.selectedReview?.conversation_id === id
+      || this.state.reviewsLoading) {
+      this.clearResearchReviews();
+      if (this.state.reviewsOpen) this.update({ reviewsError: "历史已变化，请重新查找；旧记录的后续走势起点可能已后移。" });
+    }
+  }
+
+  async findResearchReviews(filters: ReviewFilters): Promise<boolean> {
+    if (!this.reviewsAvailable() || !this.state.reviewsOpen || !this.api.researchReviews || !validReviewFilters(filters)) return false;
+    const api = this.api;
+    this.clearResearchReviews();
+    const epoch = this.reviewEpoch, abort = new AbortController(); this.reviewListAbort = abort;
+    const saved = { ...filters };
+    this.update({ reviewFilters: saved, reviewsLoading: true });
+    try {
+      const response = await api.researchReviews!(saved, abort.signal);
+      if (this.reviewEpoch !== epoch || this.api !== api || abort.signal.aborted) return false;
+      const reviews = parseResearchReviews(response, saved.instrument_id);
+      if (!reviews) throw new ConnectionError();
+      this.update({ reviews });
+      return true;
+    } catch (error) {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted)
+        this.update({ reviewsError: `研判回顾读取失败。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted) this.update({ reviewsLoading: false });
+    }
+  }
+
+  continueResearchReviews() {
+    const filters = this.state.reviewFilters, page = this.state.reviews;
+    if (!filters || !page?.has_more || !page.next_cursor || this.state.reviewsLoading) return Promise.resolve(false);
+    return this.findResearchReviews({ ...filters, cursor: page.next_cursor });
+  }
+
+  private selectReview(item: ResearchReviewItem): boolean {
+    if (!this.reviewsAvailable() || !this.state.reviewsOpen || !this.state.reviews?.items.some(value => sameReview(value, item))) return false;
+    if (!this.state.selectedReview || !sameReview(this.state.selectedReview, item)) {
+      this.reviewDetailAbort?.abort(); this.reviewPricesAbort?.abort();
+      this.update({ selectedReview: { conversation_id: item.conversation_id, sequence: item.sequence, request_id: item.request_id, instrument_id: item.instrument_id },
+        reviewDetail: null, reviewDetailLoading: false, reviewDetailError: null,
+        reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null });
+    }
+    return true;
+  }
+
+  private refreshReviewItem(item: ResearchReviewItem, fromDetail: boolean) {
+    const page = this.state.reviews, previous = page?.items.find(value => sameReview(value, item));
+    // A slower old detail must not move a legacy cutoff back after a newer response.
+    if (!page || !previous || previous.prices.basis_at && item.prices.basis_at
+      && Date.parse(item.prices.basis_at) < Date.parse(previous.prices.basis_at)) throw new ConnectionError();
+    const changed = JSON.stringify(previous.prices) !== JSON.stringify(item.prices);
+    if (fromDetail && changed) this.reviewPricesAbort?.abort();
+    this.update({ reviews: { ...page, items: page.items.map(value => sameReview(value, item) ? item : value) },
+      ...(this.state.reviewDetail && sameReview(this.state.reviewDetail.item, item) ? { reviewDetail: { ...this.state.reviewDetail, item } } : {}),
+      ...(fromDetail && changed ? { reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null } : {}) });
+  }
+
+  async loadResearchReview(item: ResearchReviewItem): Promise<boolean> {
+    if (!this.api.researchReview || !this.selectReview(item)) return false;
+    this.reviewDetailAbort?.abort();
+    const api = this.api, epoch = this.reviewEpoch, abort = new AbortController(); this.reviewDetailAbort = abort;
+    this.update({ reviewDetail: null, reviewDetailLoading: true, reviewDetailError: null });
+    try {
+      const response = await api.researchReview!(this.state.selectedReview!, abort.signal);
+      if (this.reviewEpoch !== epoch || this.api !== api || abort.signal.aborted) return false;
+      const detail = parseResearchReviewDetail(response, item);
+      if (!detail) throw new ConnectionError();
+      this.refreshReviewItem(detail.item, true);
+      this.update({ reviewDetail: detail });
+      return true;
+    } catch (error) {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted) {
+        if (error instanceof ApiError && ["review_not_found", "conversation_not_found"].includes(error.code)) this.clearResearchReviews();
+        this.update({ reviewDetailError: `原记录读取失败。${explanation(error)}` });
+      }
+      return false;
+    } finally {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted) this.update({ reviewDetailLoading: false });
+    }
+  }
+
+  async loadResearchReviewPrices(item: ResearchReviewItem): Promise<boolean> {
+    if (this.state.reviewPricesLoading || !item.prices.enabled || !this.api.researchReviewPrices || !this.selectReview(item)) return false;
+    this.reviewPricesAbort?.abort();
+    const api = this.api, epoch = this.reviewEpoch, abort = new AbortController(); this.reviewPricesAbort = abort;
+    this.update({ reviewPrices: null, reviewPricesLoading: true, reviewPricesError: null });
+    try {
+      const response = await api.researchReviewPrices!(this.state.selectedReview!, abort.signal);
+      if (this.reviewEpoch !== epoch || this.api !== api || abort.signal.aborted) return false;
+      const prices = parseResearchReviewPrices(response, item);
+      if (!prices) throw new ConnectionError();
+      this.refreshReviewItem(prices.item, false);
+      this.update({ reviewPrices: prices });
+      return true;
+    } catch (error) {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted) {
+        if (error instanceof ApiError && ["review_not_found", "conversation_not_found", "review_source_changed"].includes(error.code)) this.clearResearchReviews();
+        this.update({ reviewPricesError: `后续走势加载失败。${explanation(error)}` });
+      }
+      return false;
+    } finally {
+      if (this.reviewEpoch === epoch && this.api === api && !abort.signal.aborted) this.update({ reviewPricesLoading: false });
+    }
+  }
+
+  cancelResearchReviewPrices() {
+    this.reviewPricesAbort?.abort(); this.reviewPricesAbort = null;
+    this.update({ reviewPricesLoading: false, reviewPricesError: "已停止等待走势。服务端可能仍在收尾；没有自动重试。" });
   }
 
   /** Show a saved conversation; the next question continues it in a fresh session. */
@@ -625,6 +787,7 @@ export class ResearchController {
     this.update({ loading: true });
     try {
       await this.api.deleteConversation(id);
+      this.invalidateReviewConversation(id);
       if (this.state.conversationId === id) {
         const keep = this.pending !== null;
         this.update({ conversationId: null, ...(keep ? {} : { entries: this.credentials ? this.state.entries : [] }) });

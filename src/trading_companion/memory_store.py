@@ -13,6 +13,8 @@ MAX_RESULT_BYTES = 1_048_576
 MAX_TURNS = 500
 MAX_TITLE_CHARACTERS = 40
 LIST_LIMIT = 100
+REVIEW_SCAN_LIMIT = 20
+REVIEW_QUESTION_LIMIT = 2000
 
 
 class MemoryStoreError(ValueError):
@@ -57,6 +59,9 @@ class ConversationStore:
     def append(self, user_id, conversation_id, *, request_id, asked_at, question, result, digest): raise NotImplementedError
     def list(self, user_id, *, data_mode, limit=LIST_LIMIT): raise NotImplementedError
     def load(self, user_id, conversation_id): raise NotImplementedError
+    def scan_results(self, user_id, *, data_mode, asked_from=None, asked_before=None, after=None,
+                     limit=REVIEW_SCAN_LIMIT): raise NotImplementedError
+    def get_result(self, user_id, conversation_id, *, sequence, request_id, data_mode): raise NotImplementedError
     def delete(self, user_id, conversation_id): raise NotImplementedError
     def clear(self, user_id, *, data_mode): raise NotImplementedError
     def close(self): raise NotImplementedError
@@ -198,6 +203,97 @@ class SqliteConversationStore(ConversationStore):
                 raise MemoryStoreError("memory_corrupt") from None
         return {"conversation_id": row[0], "title": row[1], "provider": row[2], "data_mode": row[3],
                 "created_at": row[4], "updated_at": row[5], "turns": output}
+
+    def _review_rows(self, where, arguments, *, limit, detail=False):
+        # CASE keeps corrupt/oversized bodies out of Python, including TEXT whose
+        # character count is smaller than its UTF-8 byte count. Never read digests.
+        question = (f"CASE WHEN length(t.question) <= {REVIEW_QUESTION_LIMIT} THEN t.question ELSE NULL END" if detail
+                    else "substr(t.question, 1, 160)")
+        return self._connection.execute(
+            "SELECT substr(t.conversation_id, 1, 33), t.sequence, substr(t.request_id, 1, 101), "
+            "substr(t.asked_at, 1, 100), " + question + ", substr(c.updated_at, 1, 100), "
+            "CASE WHEN typeof(t.result) IN ('blob', 'text') AND length(CAST(t.result AS BLOB)) <= ? "
+            "THEN t.result ELSE NULL END FROM turns t JOIN conversations c "
+            "ON c.conversation_id = t.conversation_id WHERE " + where +
+            " ORDER BY t.asked_at DESC, t.conversation_id DESC, t.sequence DESC LIMIT ?",
+            (MAX_RESULT_BYTES, *arguments, limit)).fetchall()
+
+    @staticmethod
+    def _review_result(row):
+        def unique(pairs):
+            value = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError()
+                value[key] = item
+            return value
+
+        def constant(value):
+            raise ValueError()
+
+        invalid = (type(row[0]) is not str or len(row[0]) != 32 or any(c not in "0123456789abcdef" for c in row[0])
+                   or type(row[1]) is not int or row[1] < 1 or type(row[2]) is not str or not 1 <= len(row[2]) <= 100
+                   or type(row[4]) is not str)
+        body = None
+        try:
+            body = json.loads(row[6], object_pairs_hook=unique, parse_constant=constant)
+            invalid = invalid or type(body) is not dict
+        except (TypeError, ValueError, RecursionError):
+            invalid = True
+        return dict(conversation_id=row[0], sequence=row[1], request_id=row[2], asked_at=row[3],
+                    question=row[4], conversation_updated_at=row[5], result=None if invalid else body,
+                    invalid=invalid)
+
+    def scan_results(self, user_id, *, data_mode, asked_from=None, asked_before=None, after=None,
+                     limit=REVIEW_SCAN_LIMIT):
+        """Read at most twenty original results; the continuation probe reads keys only."""
+        if type(limit) is not int or not 1 <= limit <= REVIEW_SCAN_LIMIT:
+            raise MemoryStoreError("invalid_memory_limit")
+        where, arguments = "c.user_id = ? AND c.data_mode = ?", [_user(user_id), str(data_mode)]
+        for boundary, operator in ((asked_from, ">="), (asked_before, "<")):
+            if boundary is not None:
+                where += " AND t.asked_at " + operator + " ?"
+                arguments.append(_timestamp(boundary))
+        if after is not None:
+            if (type(after) not in (tuple, list) or len(after) != 3 or type(after[0]) is not str
+                    or len(after[0]) > 100 or type(after[1]) is not str or len(after[1]) > 33
+                    or type(after[2]) is not int):
+                raise MemoryStoreError("invalid_memory_cursor")
+            where += " AND (t.asked_at, t.conversation_id, t.sequence) < (?, ?, ?)"
+            arguments.extend(after)
+        with self._lock:
+            self._open()
+            try:
+                rows = self._review_rows(where, arguments, limit=limit)
+                has_more = False
+                if rows:
+                    last = rows[-1]
+                    has_more = self._connection.execute(
+                        "SELECT 1 FROM turns t JOIN conversations c ON c.conversation_id = t.conversation_id "
+                        "WHERE " + where + " AND (t.asked_at, t.conversation_id, t.sequence) < (?, ?, ?) LIMIT 1",
+                        (*arguments, last[3], last[0], last[1])).fetchone() is not None
+            except sqlite3.Error:
+                raise MemoryStoreError("memory_store_unavailable") from None
+        return {"rows": [self._review_result(row) for row in rows], "has_more": has_more}
+
+    def get_result(self, user_id, conversation_id, *, sequence, request_id, data_mode):
+        """Read one owned source turn without loading the rest of its conversation."""
+        if (type(sequence) is not int or sequence < 1 or type(request_id) is not str
+                or not 1 <= len(request_id) <= 100 or not request_id.isprintable()):
+            raise MemoryStoreError("conversation_not_found")
+        with self._lock:
+            self._open()
+            try:
+                rows = self._review_rows(
+                    "c.user_id = ? AND c.data_mode = ? AND t.conversation_id = ? "
+                    "AND t.sequence = ? AND t.request_id = ?",
+                    (_user(user_id), str(data_mode), _identifier(conversation_id), sequence, request_id),
+                    limit=1, detail=True)
+            except sqlite3.Error:
+                raise MemoryStoreError("memory_store_unavailable") from None
+        if not rows:
+            raise MemoryStoreError("conversation_not_found")
+        return self._review_result(rows[0])
 
     def delete(self, user_id, conversation_id):
         with self._lock:

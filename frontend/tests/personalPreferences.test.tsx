@@ -198,6 +198,7 @@ describe("preferences local forms and explicit drafts", () => {
     api.patchPreferences.mockRejectedValueOnce(new ApiError(409, "preference_revision_conflict"));
     fireEvent.click(within(form).getByRole("button", { name: "保存持仓与偏好" }));
     await screen.findByText(/这份资料已被另一个操作修改/);
+    expect(screen.queryByText(/资料变更未确认，请刷新后核对。/)).not.toBeInTheDocument();
     expect(within(form).getByRole("combobox", { name: "风险偏好" })).toHaveValue("high");
     setPreferences(prefs([{ ...record, revision: NEXT, horizon: "short" }]));
     await act(async () => { await controller.refreshPreferences(); });
@@ -242,6 +243,17 @@ describe("preferences local forms and explicit drafts", () => {
     expect(JSON.stringify(api.send.mock.calls[1])).not.toContain("holding_status");
     expect(JSON.stringify(api.send.mock.calls[1])).not.toContain("2026-10-01");
     expect(JSON.stringify(api.send.mock.calls[1])).not.toContain("long");
+  });
+
+  it("explains a disabled draft next to its button and keeps unknown write failures unconfirmed", async () => {
+    const { api, controller } = preferencesController(); await controller.load(); await controller.send("分析平安银行");
+    api.patchPreferences.mockRejectedValueOnce(new ConnectionError());
+    await controller.savePreferences(stock.instrument_id, REV, { risk: "high" });
+    expect(controller.snapshot().preferencesError).toContain("资料变更未确认，请刷新后核对。");
+    render(<PersonalPreferenceHint securities={[stock]} state={controller.snapshot()} openEditor={vi.fn()} onDraft={vi.fn()} />);
+    const draft = screen.getByRole("button", { name: "放入退出条件研究草稿" });
+    expect(draft).toBeDisabled(); expect(draft).toHaveAccessibleDescription("资料待刷新核对，请先在面板刷新资料。");
+    expect(screen.getByText("资料待刷新核对，请先在面板刷新资料。")).toBeVisible();
   });
 
   it.each(["unknown", null] as const)("offers no generated question for an uncertain or unfilled holding status %s", async holding_status => {

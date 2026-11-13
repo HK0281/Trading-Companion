@@ -1,6 +1,8 @@
 # Trading Companion：总体技术架构设计
 
-2026-11-12：[本机自选股](personal-memory-design.md)已提交推送 `9aa98af`；当前增加逐股持仓与偏好，改动待审核。独立个人 SQLite 库由精确 v1 严格事务升级 v2，保留自选，新增最多50份类别资料；升级后旧程序拒绝打开，失败整体回滚。仍通过 `--personal-memory-db PATH` 显式开启，默认关闭、`start.cmd` 不默认启用；`--no-memory` 优先禁用聊天历史/摘要和个人库。确定性管理命令在意图模型前处理并跳过聊天记忆；`/v1/personal/watchlist` 与 `/v1/personal/preferences` 面板接口独立于研究会话和彼此删除。资料不自动发给模型，主动研究草稿只放代码和问题类型，须用户发送；管理不改变研究主体、待澄清或价位算法。Dev Mode、demo、synthetic 不打开真实个人库。研判回顾、消息收件箱、重要提醒和后台推送均未实现。
+2026-11-12：[本机自选股及持仓偏好](personal-memory-design.md)已分别提交推送 `9aa98af`、`4faea64`。独立个人 SQLite 库由精确 v1 严格事务升级 v2，保留自选，新增最多50份类别资料；升级后旧程序拒绝打开，失败整体回滚。仍通过 `--personal-memory-db PATH` 显式开启，默认关闭、`start.cmd` 不默认启用；`--no-memory` 优先禁用聊天历史/摘要、回顾和个人库。确定性管理命令在意图模型前处理并跳过聊天记忆；`/v1/personal/watchlist` 与 `/v1/personal/preferences` 面板接口独立于研究会话和彼此删除。资料不自动发给模型，主动研究草稿只放代码和问题类型，须用户发送；管理不改变研究主体、待澄清或价位算法。Dev Mode、demo、synthetic 不打开真实个人库。消息收件箱、重要提醒和后台推送均未实现。
+
+第三模块[研判回顾](research-review-design.md)已在工作区实现，未提交、待 Claude 审核：`memory_store.py` 有界读取聊天库原 `turns.result`，`research_review.py` 投影原判断/价位与走势资格，`research_review_prices.py` 提供独立固定腾讯HTTPS传输；`/v1/research-reviews` 三接口和独立页面不切研究会话、不复制判断到个人库、不调用模型。每页最多20原项、每项1 MiB；新完成时间优先，旧记录按 #625 取源对话最近保存日期后一天，不能用90秒预算推算硬截止。走势先核复权和真实性，点击才取，最多366日/两次年请求、512 KiB每响应、8秒协作期限，槽位在真实连接清理后释放；源删除后不发布迟到结果。规则 `personal-memory-review-v1` 以 `personal-memory-preferences-v1` 为父版，不包含统计校准。
 
 2026-10-30 第2a批新增独立指数执行器：五指数真实日线、完整周证据、共享价格计算内核、独立点单位、受控模型回答、最近主体隔离及日/周图；公共结果为可选 `index_research`。股票入口继续使用原严格身份与单位。指数可选归档复用存储框架但使用独立版本负载。指数点位计划和小时图分后续批次，详见[指数研究设计](index-research-design.md)。下图为之前的股票处理链路。
 

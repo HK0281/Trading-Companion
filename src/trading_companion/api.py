@@ -1,9 +1,11 @@
 """Loopback-only FastAPI adapter; request DTOs never configure models or data sources."""
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
+from threading import Event
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, Path, Query, Response
+from fastapi import Depends, FastAPI, Header, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -62,6 +64,22 @@ class PreferenceRequest(EmptyRequest):
     changes: PreferenceChanges
 
 
+class ReviewListQuery(EmptyRequest):
+    instrument_id: InstrumentId
+    from_date: Annotated[str, StringConstraints(strict=True, max_length=10)] | None = None
+    to_date: Annotated[str, StringConstraints(strict=True, max_length=10)] | None = None
+    cursor: Annotated[str, StringConstraints(strict=True, max_length=2048)] | None = None
+
+
+class ReviewRecordQuery(EmptyRequest):
+    request_id: Identifier
+    instrument_id: InstrumentId
+
+
+class ReviewPricesRequest(ReviewRecordQuery):
+    pass
+
+
 class ChartQuery(EmptyRequest):
     research_id: Annotated[str, StringConstraints(strict=True, pattern=r"^[A-Za-z0-9_.-]{1,100}$")]
     interval: Literal["1w", "60m", "120m"]
@@ -89,6 +107,7 @@ class PublicTurn(BaseModel):
     knowledge: dict | None = None
     screening: dict | None = None
     personal_memory: dict | None = None
+    review_context: dict | None = None
     report: dict | None
     parameters: dict | None
     chart: dict | None
@@ -123,6 +142,37 @@ class MessageResponse(BaseModel):
 
 def _problem(status, code, message):
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
+
+
+async def _review_price_request(request, operation):
+    """Propagate disconnect cooperatively; only the real worker releases its service slot."""
+    cancelled = Event()
+
+    async def watch_disconnect():
+        while not cancelled.is_set():
+            if await request.is_disconnected():
+                cancelled.set()
+                return
+            await asyncio.sleep(0.05)
+
+    worker = asyncio.create_task(asyncio.to_thread(operation, cancelled))
+    watcher = asyncio.create_task(watch_disconnect())
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        cancelled.set()
+        # Shield keeps the synchronous transport alive until its own finally has closed it.
+        # Consume a late error rather than logging an abandoned request's source or data.
+        def consume(task):
+            if not task.cancelled():
+                task.exception()
+        worker.add_done_callback(consume)
+        raise
+    finally:
+        cancelled.set()
+        watcher.cancel()
+        with suppress(asyncio.CancelledError):
+            await watcher
 
 
 class _LocalBoundary:
@@ -269,6 +319,22 @@ def create_app(*, service: ResearchApiService | None = None,
     @app.delete("/v1/conversations")
     def clear_conversations():
         return service.clear_conversations()
+
+    @app.get("/v1/research-reviews")
+    def list_research_reviews(query: Annotated[ReviewListQuery, Query()]):
+        return service.research_reviews(query.instrument_id, from_date=query.from_date,
+                                        to_date=query.to_date, cursor=query.cursor)
+
+    @app.get("/v1/research-reviews/{conversation_id}/{sequence}")
+    def read_research_review(conversation_id: SessionPath,
+            sequence: Annotated[int, Path(ge=1, le=500)], query: Annotated[ReviewRecordQuery, Query()]):
+        return service.research_review(conversation_id, sequence, query.request_id, query.instrument_id)
+
+    @app.post("/v1/research-reviews/{conversation_id}/{sequence}/prices")
+    async def load_research_review_prices(request: Request, conversation_id: SessionPath,
+            sequence: Annotated[int, Path(ge=1, le=500)], body: ReviewPricesRequest):
+        return await _review_price_request(request, lambda cancelled: service.research_review_prices(
+            conversation_id, sequence, body.request_id, body.instrument_id, cancelled=cancelled))
 
     # Same-origin single local user, independent of research sessions and their quotas.
     @app.get("/v1/personal/watchlist")

@@ -121,11 +121,14 @@ class HistoricalBaselineTests(unittest.TestCase):
 
     def test_current_identity_is_upgraded_and_previous_identity_is_preserved(self):
         current = baselines.current_baseline()
-        self.assertEqual(current['rule_baseline_version'], 'personal-memory-preferences-v1')
-        self.assertEqual(current['parent_version'], 'personal-memory-watchlist-v1')
+        self.assertEqual(current['rule_baseline_version'], 'personal-memory-review-v1')
+        self.assertEqual(current['parent_version'], 'personal-memory-preferences-v1')
         previous = next(r for r in self.registry['previous_rules']
                         if r['rule_baseline_version'] == current['parent_version'])
-        self.assertEqual(previous['source_digest'], 'fe108e492a59bfee15cac6e7fc80e8b83e342c3ce6368ae9f96e569acdc37a03')
+        self.assertEqual(previous['source_digest'], 'e49ce64cb33d182db0f5c976b1a66861b6fa1794fb65a5b77ebfb37853025d27')
+        watchlist = next(r for r in self.registry['previous_rules']
+                         if r['rule_baseline_version'] == 'personal-memory-watchlist-v1')
+        self.assertEqual(watchlist['source_digest'], 'fe108e492a59bfee15cac6e7fc80e8b83e342c3ce6368ae9f96e569acdc37a03')
         self.assertEqual(sum(r['rule_baseline_version'] == current['parent_version']
                              for r in self.registry['previous_rules']), 1)
         document_v3 = next(r for r in self.registry['previous_rules']

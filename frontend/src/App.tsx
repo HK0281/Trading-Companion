@@ -7,6 +7,7 @@ import { parsePresentation, sourceLabel } from "./presentation";
 import { parseCompanyAnswer } from "./ProductResearch";
 import { WatchlistActions, WatchlistPanel } from "./Watchlist";
 import { PersonalPreferenceHint, PersonalPreferencesPanel, preferenceDescription, type PreferenceDraftRequest } from "./PersonalPreferences";
+import { ResearchReview } from "./ResearchReview";
 
 const samples = (development: boolean) => [
   { label: "个股研究", question: development ? "分析平安银行，2026-09-21 至 2026-09-25，只看SMA3和RSI2"
@@ -288,8 +289,11 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
     <main className="main">
       <header className="topbar"><div className="topbar-title"><button className="mobile-menu" aria-label="展开导航" aria-expanded={navigationOpen}
         aria-controls="navigation" onClick={() => setNavigationOpen(!navigationOpen)}><Icon name="menu" /></button>
-        <h1>研究对话</h1><span className="header-divider" /><span className="market-badge">A 股</span></div>
-        <div className="header-status"><span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}
+        <h1>{state.reviewsOpen ? "研判回顾" : "研究对话"}</h1><span className="header-divider" /><span className="market-badge">A 股</span></div>
+        <div className="header-status"><button type="button" className="review-toggle" aria-expanded={state.reviewsOpen}
+          disabled={state.switching || state.mode !== "normal" || health?.memory_enabled !== true || health.data_mode === "synthetic" || health.provider === "fake"}
+          onClick={() => { setNavigationOpen(false); if (state.reviewsOpen) controller.closeResearchReviews(); else controller.openResearchReviews(); }}>研判回顾</button>
+          <span className={health?.data_mode === "synthetic" ? "source-pill synthetic-label" : "source-pill"}
           title={health ? sourceLabel(health.data_mode) : "服务未连接"}>
           {health?.data_mode === "synthetic" ? "人工行情 · 非真实" : health ? sourceLabel(health.data_mode) : "连接中"}</span>
           {!development && providers.length > 1 ? <select className="model-pill" aria-label="研究模型"
@@ -308,7 +312,9 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
         const element = scrollArea.current;
         if (element) followBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
       }}>
-        <section className={`conversation ${!state.entries.length ? "is-empty" : ""}`} aria-label="研究对话" aria-busy={phase === "working"}>
+        {state.reviewsOpen ? <ResearchReview state={state} controller={controller} openConversation={id => {
+          void controller.openConversation(id).then(opened => { if (opened) { controller.closeResearchReviews(); followBottom.current = true; } });
+        }} /> : <section className={`conversation ${!state.entries.length ? "is-empty" : ""}`} aria-label="研究对话" aria-busy={phase === "working"}>
           {!state.entries.length ? <div className="empty-state"><div className="empty-mark" aria-hidden="true"><Icon name="chart" /></div>
             <span className="eyebrow">TRADING COMPANION</span><h2>把行情，聊清楚。</h2>
             <p>{development ? <>研究一只股票，读懂一组指标。<br />从你的问题开始。</>
@@ -324,7 +330,7 @@ export default function App({ controller: supplied }: { controller?: ResearchCon
             state={state} controller={controller} canManage={canSend && !!session && !state.cancelPending && index === state.entries.length - 1}
             elementRef={index === state.entries.length - 1 ? latest : undefined} canChoose={canSend && !!session && !state.cancelPending
               && session.view.model_calls_forwarded < session.modelLimit && index === state.entries.length - 1} />)}
-        </section>
+        </section>}
       </div>
 
       <div className="composer-dock"><div className="composer-container">

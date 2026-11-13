@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { PreferenceChanges, PreferenceFields, PreferenceRecord, SecuritySummary } from "./api";
 import type { ResearchController, WorkspaceState } from "./controller";
 
@@ -125,8 +125,11 @@ export function PersonalPreferencesPanel({ state, controller }: Props) {
 export function PersonalPreferenceHint({ securities, state, openEditor, onDraft }: {
   securities: SecuritySummary[]; state: WorkspaceState; openEditor: (security: SecuritySummary) => void; onDraft: (request: PreferenceDraftRequest) => void;
 }) {
+  const hintId = useId();
   if (state.mode !== "normal" || state.switching || state.health?.personal_memory_enabled !== true || !state.preferences?.enabled) return null;
   const ready = confirmed(state) && !state.preferencesSaving;
+  const draftDisabledReason = !ready ? state.preferencesSaving ? "资料正在保存，请稍后核对。" : "资料待刷新核对，请先在面板刷新资料。"
+    : state.loading || state.phase !== "idle" ? "研究正在处理，请结束后再放入草稿。" : null;
   return <div className="personal-preference-hints" aria-label="当前研究对象的本机资料">
     {securities.map(security => {
       const item = state.preferences!.items.find(value => value.instrument_id === security.instrument_id);
@@ -135,13 +138,14 @@ export function PersonalPreferenceHint({ securities, state, openEditor, onDraft 
         {item ? <><p>{item.holding_status === null ? "持有状态尚未填写。" : `你曾记录为${holdings[item.holding_status]}。`}</p>
           <p>{preferenceDescription(item)}</p><small>记录最后修改：{recordTime(item.updated_at)}；不是持仓核实时间。</small></>
           : <p>尚未记录持仓与偏好；自选不代表持有。</p>}
-        {!ready && <p className="watchlist-note">资料状态尚未确认，请先在面板刷新核对。</p>}
         <div className="preference-hint-actions"><button type="button" disabled={!ready} onClick={() => openEditor(security)}>{item ? "修改本机资料" : "记录持仓与偏好"}</button>
           {item && (item.holding_status === "held" || item.holding_status === "not_held") && <button type="button"
+            aria-describedby={draftDisabledReason ? `${hintId}-${security.instrument_id}` : undefined}
             disabled={!ready || state.loading || state.phase !== "idle"} onClick={() => onDraft({ instrumentId: security.instrument_id,
               kind: item.holding_status === "held" ? "exit" : "entry" })}>
             {item.holding_status === "held" ? "放入退出条件研究草稿" : "放入买入条件研究草稿"}</button>}
-        </div><p className="watchlist-note">提示仅在本机显示；研究草稿只含股票代码和问题，不复制上述类别。按发送后才交给当前模型，并按普通聊天规则保存。</p>
+        </div>{draftDisabledReason && <p className="watchlist-note" id={`${hintId}-${security.instrument_id}`}>{draftDisabledReason}</p>}
+        <p className="watchlist-note">提示仅在本机显示；研究草稿只含股票代码和问题，不复制上述类别。按发送后才交给当前模型，并按普通聊天规则保存。</p>
       </section>;
     })}
   </div>;

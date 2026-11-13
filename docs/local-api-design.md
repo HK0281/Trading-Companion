@@ -2,7 +2,7 @@
 
 初版：2026-10-22。Web 启动与模式更新：2026-10-25。已实现本机单进程接口及离线验证，不是公网或多用户生产部署。
 
-2026-11-12：[本机自选股](personal-memory-design.md)已提交推送 `9aa98af`；本轮增加 `/v1/personal/preferences` 持仓与偏好接口，改动待审核。个人记忆代码默认关闭，以 `--personal-memory-db PATH` 显式开启，`start.cmd` 不默认启用。`--no-memory` 优先禁用聊天历史/摘要和个人库，关闭不删除文件。demo、synthetic 及网页 Dev Mode 不接真实个人库。正常打开旧个人库时严格事务升级 v1→v2，旧程序将无法打开升级后的文件；聊天库格式不变。
+2026-11-12：[本机自选股及持仓偏好](personal-memory-design.md)已分别提交推送 `9aa98af`、`4faea64`；本轮增加[研判回顾](research-review-design.md)三个接口，未提交、待 Claude 审核。个人记忆代码默认关闭，以 `--personal-memory-db PATH` 显式开启，`start.cmd` 不默认启用。`--no-memory` 优先禁用聊天历史/摘要、回顾和个人库，关闭不删除文件。demo、synthetic 及网页 Dev Mode 不接真实个人库或回顾历史。正常打开旧个人库时严格事务升级 v1→v2，旧程序将无法打开升级后的文件；聊天库格式不变。
 
 后续增加[最小Web工作台](web-workspace-design.md)、[历史图表](chart-workspace-design.md)及[本地证券状态／交易日历背景](market-context-design.md)：构建后访问根路径 `/`，同源调用下列API，不需要Swagger手动复制令牌。正常API路径不变，公共结果增加可选chart和market_context；Dev Mode 在 `/dev-api` 前缀下提供隔离的固定离线服务。下文906项及旧版本1054项Python／256项前端为历史记录，不是新模式验收数字。
 
@@ -92,6 +92,16 @@ $apiReply.result.answer
 明确聊天自选命令仍通过下列 messages 接口，占一条会话消息，沿用忙碌和编号重放；面板不消耗研究额度。管理命令在意图模型前本地处理，结果通过可选 `personal_memory` 字段返回，不调用模型/行情、不写聊天历史或摘要、不改变研究待澄清状态。“平安银行值得加入自选吗”“分析自选股里的平安银行”继续研究明确对象，不自动读取清单；“清空自选”只引导面板确认。
 
 持仓偏好响应版本为 `personal-memory-preferences-v1`：`GET /v1/personal/preferences` 返回 `version/enabled/limit/items/collection_revision`，最多50份，与自选独立计数。`PATCH /v1/personal/preferences/{instrument_id}` 仅接受 `{expected_revision, changes:{holding_status?,horizon?,risk?}}`；新建 `expected_revision:null`，省略类别保持原值，显式 `null` 清除此项，禁止全空记录。类别为持有状态 `null/unknown/held/not_held`、期限 `null/short/medium/long`、风险 `null/low/medium/high`，不接受成本/比例/自由文本。`DELETE` 单股通过 `If-Match` 传裸32位十六进制记录标识，清空同路径传裸64位清单标识，网页分别确认；该请求头只传固定修改标识，不实现ETag协议。过期返回409/`preference_revision_conflict`，不静默覆盖或自动重试，写后刷新失败仍提示变更未确认。完整字段和升级边界见[个人记忆设计](personal-memory-design.md)。
+
+研判回顾使用独立 `research-review-v1`，无需研究会话令牌，沿用本机同源保护：
+
+| 接口 | 输入与边界 |
+| --- | --- |
+| `GET /v1/research-reviews` | `instrument_id`，可选上海提问日期 `from_date/to_date` 和 `cursor`；最多扫描20个原结果，返回扫描/异常数和下一页状态 |
+| `GET /v1/research-reviews/{conversation_id}/{sequence}` | 查询参数 `request_id/instrument_id`，只读返回这一条原问答与投影，不切研究会话 |
+| `POST /v1/research-reviews/{conversation_id}/{sequence}/prices` | 请求体仅 `request_id/instrument_id`；服务端从原记录计算资格和日期，客户端不能指定来源、地址、复权或价位 |
+
+回顾依赖聊天库，与个人库开关独立；原结果不复制到第二个库。列表/详情零模型、零行情，价格请求也零模型且不占研究额度。新结果可选 `review_context` 记录程序完成时刻；旧结果按 #625 取源对话最近保存上海日期之后，清楚标明可能遗漏较早走势。复权及真实性在联网前核验；单实例最多一个实际取数，取消等待后仍由工作器真实清理释放槽位。源删除最终拒绝发布。完整DTO、错误降级和366日/两请求/8秒协作预算见[研判回顾设计](research-review-design.md)，本轮待审核。
 
 明确“记住我持有平安银行”等个人管理指令在本机执行、跳过模型和历史摘要；成本/仓位管理整条固定拒绝，不部分写入。普通“我持有平安银行，分析走势”“如何设置仓位”继续研究/知识。当前研究页的主动草稿只填完整代码和研究问题类型，`held`提供退出、`not_held`提供买入观察条件，`unknown`/未填写无该按钮；不复制类别、时间或资料对象，不自动发送。删除资料保留自选和历史，普通研究接口不附带个人资料。
 

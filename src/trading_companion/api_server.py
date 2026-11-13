@@ -119,7 +119,9 @@ def main(argv=None) -> int:
                         help="Open the local UI after successful startup (enabled by start.cmd)")
     parser.add_argument("--snapshot-db", help="Optional local SQLite evidence archive; excludes chat and model prose")
     parser.add_argument("--memory-db", help="Local SQLite conversation history and earlier-turn digests (enabled by start.cmd)")
-    parser.add_argument("--personal-memory-db", help="Opt-in local SQLite watchlist; normal public-source mode only")
+    parser.add_argument("--personal-memory-db", help="Local SQLite personal memory; normal public-source mode only (enabled by start.cmd)")
+    parser.add_argument("--no-personal-memory", action="store_true",
+                        help="Disable personal memory while keeping conversation history, regardless of database option order")
     parser.add_argument("--no-memory", action="store_true",
                         help="Disable conversation history, earlier-turn digests and personal memory")
     parser.add_argument("--research-intent-v2", action=argparse.BooleanOptionalAction, default=True,
@@ -134,7 +136,8 @@ def main(argv=None) -> int:
     parser.add_argument("--news-triage-sorting", action="store_true",
                         help="Opt-in headline ordering for intent-v2 DeepSeek company research (default: disabled)")
     parser.add_argument("--research-documents", choices=("off", "events"), default="off",
-                        help="Read bounded news/announcement web excerpts for event questions (default: off; no PDFs)")
+                        help="Read bounded news/announcement web excerpts for event questions (default: off; no PDFs); "
+                             "start.cmd enables events; use --research-documents off to disable")
     parser.add_argument("--collection-workers", type=int, choices=(1, 2, 3), default=3,
                         help="Company/Tencent quote I/O width sharing three slots; Eastmoney stays serial (default: 3)")
     parser.add_argument("--screening-data", choices=("tencent", "eastmoney"), default="tencent",
@@ -148,6 +151,7 @@ def main(argv=None) -> int:
         parser.error("Choose a port between 1 and 65535")
     if args.no_memory:
         args.memory_db = None
+    if args.no_memory or args.no_personal_memory:
         args.personal_memory_db = None
     if args.demo and (args.data or args.directory or args.market_context or args.snapshot_db or args.memory_db):
         parser.error("Demo uses pinned fixtures; do not specify data, directory or market context")
@@ -159,7 +163,7 @@ def main(argv=None) -> int:
     if args.personal_memory_db is not None and not args.personal_memory_db.strip():
         parser.error("Personal memory requires a nonempty database configuration")
     if args.personal_memory_db and (args.demo or args.data == "synthetic"):
-        parser.error("Personal memory requires normal public-source mode; use --no-memory to disable it")
+        parser.error("Personal memory requires normal public-source mode; use --no-personal-memory to disable it")
     if args.personal_memory_db:
         try:
             personal_path = Path(args.personal_memory_db).resolve()
@@ -242,7 +246,7 @@ def main(argv=None) -> int:
                     personal_store = SqlitePersonalMemoryStore(Path(args.personal_memory_db))
                 except PersonalMemoryError:
                     raise _StartupError("personal_memory_store_unavailable",
-                        "本机自选股库不可用，请检查 --personal-memory-db 配置，或使用 --no-memory。") from None
+                        "本机个人记忆库不可用，请检查 --personal-memory-db 配置，或使用 --no-personal-memory。") from None
             service = ResearchApiService(model_factory=models[args.provider], model_factories=models, directory_loader=loader,
                 provider=args.provider, data_mode=args.data, development_source=source,
                 reference_date=REFERENCE_DATE if args.data == "synthetic" else None,
@@ -289,7 +293,7 @@ def main(argv=None) -> int:
     elif not args.demo:
         print("对话记录未开启：不保存聊天内容，也不向模型提供前几轮摘要；start.cmd 默认开启。")
     if personal_store is not None:
-        print("自选股保存在本机独立 SQLite 文件中，未加密、不发送模型；使用 --no-memory 可关闭。")
+        print("个人记忆保存在本机独立 SQLite 文件中，未加密、不发送模型；使用 --no-personal-memory 可关闭。")
     elif not args.demo:
         print("自选股未开启；使用 --personal-memory-db 显式开启，--no-memory 可统一关闭记忆。")
     if trace_sink is not None:

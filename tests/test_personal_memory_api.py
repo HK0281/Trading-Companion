@@ -262,6 +262,55 @@ class PersonalMemoryStartupTests(unittest.TestCase):
                 store.assert_not_called()
                 self.assertFalse(path.exists())
 
+    def test_no_personal_memory_keeps_conversation_history_in_either_option_order(self):
+        from trading_companion import api_server
+        for disable_first in (False, True):
+            with self.subTest(disable_first=disable_first), TemporaryDirectory() as root:
+                path = Path(root) / "history.sqlite3"
+                flags = ["--personal-memory-db", str(path)]
+                flags.insert(0 if disable_first else len(flags), "--no-personal-memory")
+
+                def inspect_running(app, **kwargs):
+                    with TestClient(app, base_url="http://127.0.0.1") as client:
+                        health = client.get("/health").json()
+                        self.assertFalse(health["personal_memory_enabled"])
+                        self.assertTrue(health["memory_enabled"])
+
+                with patch("uvicorn.run", side_effect=inspect_running) as server, \
+                        patch.object(api_server, "_prepare_startup_directory"), \
+                        patch("trading_companion.model_registry.configured_models", return_value={"deepseek": lambda: Mock()}), \
+                        patch("trading_companion.personal_memory_store.SqlitePersonalMemoryStore") as store, \
+                        redirect_stdout(StringIO()), redirect_stderr(StringIO()) as errors:
+                    self.assertEqual(api_server.main([*flags, "--memory-db", str(path), "--no-research-intent-v2"]), 0)
+                    self.assertEqual(errors.getvalue(), "")
+                server.assert_called_once()
+                store.assert_not_called()
+                self.assertTrue(path.is_file())
+
+    def test_no_personal_memory_precedes_offline_mode_and_empty_path_checks(self):
+        from trading_companion import api_server
+        for mode in (["--demo"], ["--data", "synthetic"]):
+            for path in ("", "must-not-exist.sqlite3"):
+                with self.subTest(mode=mode, path=path), patch("uvicorn.run"), \
+                        patch("trading_companion.model_registry.configured_models", return_value={"deepseek": lambda: Mock()}), \
+                        patch("trading_companion.personal_memory_store.SqlitePersonalMemoryStore") as store, \
+                        redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                    self.assertEqual(api_server.main([*mode, "--no-personal-memory", "--personal-memory-db", path,
+                                                     "--no-research-intent-v2"]), 0)
+                store.assert_not_called()
+
+    def test_direct_server_defaults_keep_personal_memory_and_document_reads_off(self):
+        from trading_companion import api_server
+        with patch("uvicorn.run"), patch.object(api_server, "_prepare_startup_directory"), \
+                patch("trading_companion.model_registry.configured_models", return_value={"deepseek": lambda: Mock()}), \
+                patch("trading_companion.api_service.ResearchApiService", wraps=ResearchApiService) as factory, \
+                patch("trading_companion.personal_memory_store.SqlitePersonalMemoryStore") as store, \
+                redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(api_server.main(["--no-research-intent-v2"]), 0)
+        self.assertIsNone(factory.call_args.kwargs["personal_memory_store"])
+        self.assertEqual(factory.call_args.kwargs["research_documents"], "off")
+        store.assert_not_called()
+
     def test_personal_database_is_rejected_in_synthetic_modes_and_same_file(self):
         from trading_companion import api_server
         for flags in (("--demo",), ("--data", "synthetic"), ("--memory-db", "same.sqlite3"),

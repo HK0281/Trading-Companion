@@ -118,7 +118,7 @@ Then start normal mode:
 .\start.cmd
 ```
 
-`start.cmd` builds missing frontend assets, refreshes a missing or expired security-name directory from the public SSE/SZSE lists, enables local tracing in `data/traces/`, and opens <http://127.0.0.1:8765/>. It never installs packages or overwrites configuration. Normal questions can call paid model APIs and public data sources.
+`start.cmd` builds missing frontend assets, refreshes a missing or expired security-name directory from the public SSE/SZSE lists, enables local tracing in `data/traces/`, conversation history in `data/conversations.sqlite3`, personal memory in `data/personal_memory.sqlite3` and bounded event-document reading, and opens <http://127.0.0.1:8765/>. It creates the personal database on first normal startup. It never installs packages or overwrites configuration. Normal questions can call paid model APIs and public data sources. Demo and synthetic-data launches omit the two new implicit defaults; explicitly requesting either feature in those modes still follows the server's existing validation.
 
 DeepSeek sessions use intent v2 by default. To start with the legacy entry:
 
@@ -135,20 +135,24 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--provider openai` | Default to OpenAI when only it is configured |
 | `--no-research-intent-v2` | Restore legacy DeepSeek routing for this server run |
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
-| `--personal-memory-db PATH` | Default off: keep up to 50 watchlist stocks, separate holding/preferences and a bounded public-title inbox in a local SQLite file ([design](docs/personal-memory-design.md)) |
+| `--personal-memory-db PATH` | Change the personal database used by `start.cmd` (default `data/personal_memory.sqlite3`); direct server runs require an explicit path. Keep up to 50 watchlist stocks, separate holding/preferences and a bounded public-title inbox locally ([design](docs/personal-memory-design.md)) |
+| `--no-personal-memory` | Disable only personal memory; conversation history and research review remain enabled |
 | `--no-memory` | Disable conversation history, earlier-turn digests and personal memory; existing files are retained |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
 | `--capture-news-titles` | Opt in to bounded public-title capture for live DeepSeek company research; no classifier calls |
-| `--research-documents events` | Default off: read bounded, verified web text for explicit news, announcement or event questions ([design](docs/news-body-design.md)) |
+| `--research-documents events` / `--research-documents off` | Read bounded, verified web text for explicit news, announcement or event questions; `start.cmd` defaults to `events`, direct server runs to `off` ([design](docs/news-body-design.md)) |
 | `--news-triage-sorting` | Default off: prioritize important related headlines in the new DeepSeek research path; paired live acceptance and user approval are still pending ([design](docs/news-triage-integration-design.md)) |
 | `--screening-coverage expanded` | Larger, slower screening sample |
 
 When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/local-environment.md) and [Dev Mode design](docs/dev-mode-design.md).
 
-To enable personal memory, run `start.cmd --personal-memory-db data\personal_memory.sqlite3`.
-It is off by default, including in `start.cmd`. The sidebar supports local directory search,
+`start.cmd` enables personal memory in `data/personal_memory.sqlite3` by default.
+Use `start.cmd --no-personal-memory` to disable it while keeping chat history and research review,
+or `start.cmd --no-memory` to disable all memory. Both disable flags override database paths
+regardless of argument order and retain existing files. Direct `python -m trading_companion.api_server`
+runs still require `--personal-memory-db PATH`. The sidebar supports local directory search,
 add/remove and confirmed clearing; checked company-result cards also offer add/remove buttons.
-Explicit chat commands such as “把平安银行加入自选” and “查看自选” run locally without
+Explicit Chinese chat commands (for example, add Ping An Bank to the watchlist, or show the watchlist) run locally without
 model or market-data calls. They still count as one session message; the separate panel remains
 available after research message limits are reached. New chats, restarts and deleting chat
 history preserve the watchlist. The unencrypted file stays on this computer, and its contents
@@ -176,7 +180,7 @@ days, two yearly requests and an eight-second cooperative budget, with no model 
 performance statistics. Deleting source chat history invalidates its reviews. See the
 [review contracts, limits and legacy-time notice](docs/research-review-design.md).
 
-The **message inbox** changes are uncommitted and await Claude's review. Opening the panel,
+The **message inbox** is reviewed, committed and pushed as `3306114`. Opening the panel,
 refreshing and paging read saved local titles only. An explicit check reads at most five
 watchlist stocks from fixed Sina news and Eastmoney announcement lists, with at most ten
 actual HTTP attempts, five titles per source and a thirty-day lookback. Each next batch needs
@@ -186,10 +190,11 @@ can also be saved with no extra source or model requests, without advancing manu
 watermarks. Mark-read and confirmed inbox clearing stay local. Important alerts, background
 timers and push notifications remain unimplemented. See the [inbox limits and lifecycle](docs/watchlist-news-design.md).
 
-To enable the optional document stage for normal company research:
+`start.cmd` enables the bounded document stage for normal company research by default.
+To disable it for this run:
 
 ```powershell
-.\start.cmd --research-documents events
+.\start.cmd --research-documents off
 ```
 
 This stage reads supported Sina Finance article pages and Eastmoney announcement detail JSON
@@ -212,9 +217,11 @@ passed 3,849 unittest tests, 244 pytest cases, 884 frontend tests, the build and
 Announcement extractor v3 may change paragraph positions and hashes; saved v1/v2 records
 retain their original identities. At most one same-company, same-kind alternative is allowed
 after a failed read within the original four-request, twelve-second budget. A-3 addresses
-headers mixed with body text in HTML and was reviewed, committed and pushed as `b076461`. The switch
-remains off by default; enabling it by default requires the user's decision. Enabling it does
-not enable headline triage sorting.
+headers mixed with body text in HTML and was reviewed, committed and pushed as `b076461`.
+The user approved the `start.cmd` default on November 12, 2026. Direct server runs and
+`ResearchApiService` callers retain their disabled defaults. Eligible turns can add at most
+four public HTTP requests and about twelve seconds of cooperative reading time. Enabling
+document reading does not enable headline triage sorting.
 
 ## Development
 
@@ -235,8 +242,8 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
-- **Local memory and research review.** Watchlists, holding preferences and [research review](docs/research-review-design.md) are committed and pushed as `9aa98af`, `4faea64` and `f2484cf`. The fourth module, [message inbox](docs/watchlist-news-design.md), is in the uncommitted workspace awaiting review: local unread titles, explicit batches of at most five watchlist stocks/ten actual source attempts, and ordinary-research title reuse without additional requests. Personal memory stays explicitly enabled with `--personal-memory-db`, off in `start.cmd`, and is never automatically sent to models. Important alerts, timers and push remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/personal-memory-design.md).
-- **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The switch remains off by default pending the user's decision. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's HTML header-filtering change is committed and pushed as `b076461`; this adds no new live-acceptance result. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
+- **Local memory and research review.** Watchlists, holding preferences, [research review](docs/research-review-design.md) and [message inbox](docs/watchlist-news-design.md) are committed and pushed as `9aa98af`, `4faea64`, `f2484cf` and `3306114`. The inbox offers local unread titles, explicit batches of at most five watchlist stocks/ten actual source attempts, and ordinary-research title reuse without additional requests. `start.cmd` enables personal memory in `data/personal_memory.sqlite3` by default; `--no-personal-memory` disables only that database and `--no-memory` disables all memory. Personal memory is never automatically sent to models. Important alerts, timers and push remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/personal-memory-design.md).
+- **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The user approved enabling this stage by default in `start.cmd`; use `--research-documents off` to disable it. Direct server and service defaults remain off. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's HTML header-filtering change is committed and pushed as `b076461`; this adds no new live-acceptance result. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
 - **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
 - **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-triage-integration-design.md) and [product-v2 results](docs/news-triage-product-v2.md).
 

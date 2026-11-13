@@ -9,6 +9,31 @@ button:hover:not(:disabled) { background: #f0f4ef; border-color: #b8c9bd; }
 button:disabled { cursor: not-allowed; opacity: .4; }
 :focus-visible { outline: 3px solid #70bba4; outline-offset: 3px; }
 .review-toggle { font-size: 12px; padding: 5px 9px; white-space: nowrap; }
+.memory-navigation { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.inbox-unread-badge { display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 4px; border-radius: 10px; color: #28735c; background: #e8f0e5; font-size: 10px; }
+.message-inbox { width: min(100%, 1020px); margin: auto; padding: 32px clamp(18px, 4vw, 48px) 48px; overflow-wrap: anywhere; }
+.inbox-limit { display: inline-block; margin-top: 18px; padding: 4px 10px; color: #7e6b43; background: #f7f2e5; border: 1px solid #e6dcc1; border-radius: 6px; font-size: 12px; }
+.inbox-check-actions, .inbox-local-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 15px 0; }
+.inbox-check-actions button, .inbox-local-actions button, .inbox-message > button { font-size: 12px; padding: 6px 10px; }
+.inbox-local-actions > span { margin-left: auto; color: #5d7560; font-size: 12px; }
+.inbox-notice { margin: 12px 0; font-size: 12px; color: #4d7256; }
+.inbox-check-receipt { border: 1px solid #dbe5d7; background: #f8faf5; border-radius: 9px; padding: 16px; margin: 18px 0; }
+.inbox-check-receipt h3 { font-size: 14px; font-weight: 550; }
+.inbox-check-results, .inbox-source-states ul { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 9px; }
+.inbox-check-results li, .inbox-source-states li { display: grid; gap: 3px; font-size: 12px; border-top: 1px solid #e1e8dc; padding-top: 9px; }
+.inbox-check-results li small, .inbox-source-states li small { color: #70816e; font-size: 11px; }
+.inbox-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; border-top: 1px solid #e2e8dd; margin-top: 24px; padding-top: 20px; }
+.inbox-filters label { display: grid; gap: 5px; font-size: 12px; color: #526c58; flex: 1 1 170px; }
+.inbox-filters input, .inbox-filters select { min-width: 0; width: 100%; padding: 7px; border: 1px solid #cbd6cb; border-radius: 6px; background: #fff; }
+.inbox-filters button { font-size: 12px; padding: 7px 10px; }
+.inbox-clear-confirm { margin: 16px 0; }
+.inbox-messages { display: grid; gap: 14px; margin: 16px 0; }
+.inbox-message { border: 1px solid #dfe7da; border-radius: 9px; padding: 17px; background: #fff; }
+.inbox-message-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.inbox-message-heading strong span { font-weight: 400; color: #72836e; margin-left: 5px; }
+.inbox-message h3 { margin: 10px 0; font-size: 15px; font-weight: 550; }
+.inbox-source-states { margin-top: 25px; border-top: 1px solid #e2e8dd; padding-top: 16px; }
+.inbox-source-states summary { cursor: pointer; color: #5e785d; font-size: 12px; }
 .research-review { width: min(100%, 1020px); padding: 32px clamp(18px, 4vw, 48px) 48px; margin: auto; overflow-wrap: anywhere; }
 .review-heading, .review-record-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .review-heading h2 { margin-top: 5px; font-size: 25px; font-weight: 550; }
@@ -328,6 +353,9 @@ textarea::placeholder { color: #a1aaa0; }
 @media (min-width: 1500px) { .conversation { max-width: 950px; } .composer-container { max-width: 878px; } }
 @media (max-width: 1050px) { .workspace { grid-template-columns: 220px minmax(0, 1fr); } .sidebar { padding-right: 13px; padding-left: 13px; } .brand { font-size: 12px; } .conversation { padding-right: 26px; padding-left: 26px; } .composer-dock { padding-right: 26px; padding-left: 26px; } .starter-grid { gap: 8px; } .starter-card { padding: 15px 12px; } }
 @media (max-width: 760px) {
+  .main { grid-template-rows: 104px minmax(0, 1fr) auto; }
+  .topbar { flex-wrap: wrap; align-content: center; row-gap: 5px; }
+  .memory-navigation { order: 3; flex-basis: 100%; justify-content: flex-end; }
   .workspace { grid-template-columns: 1fr; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: 270px; z-index: 30; display: none; padding: 25px 18px; }
   .navigation-open .sidebar { display: flex; }

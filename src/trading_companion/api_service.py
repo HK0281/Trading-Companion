@@ -37,6 +37,9 @@ from trading_companion.personal_memory import (VERSION as PERSONAL_VERSION, MAX_
     checked_preferences_changes, checked_revision)
 from trading_companion.personal_memory_store import PersonalMemoryStore
 from trading_companion.personal_memory_commands import parse_personal_memory_command, preference_reply
+from trading_companion.watchlist_news import WatchlistNewsError
+from trading_companion.watchlist_news_service import WatchlistInboxService, disabled_inbox
+from trading_companion.watchlist_news_sidecar import bind_research_inbox
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
 from trading_companion.tool_model import ToolMessage, validate_tool_messages
 from trading_companion.errors import DataSourceError, DataValidationError, InvalidRequestError
@@ -341,7 +344,7 @@ class ResearchApiService:
                  workflow_enabled=True, product_data_service=None, snapshot_store=None, model_factories=None,
                  screening_source=None, market_background_source=None, trace_sink=None, trace_mode="normal",
                  chart_hourly_loader=None, conversation_store=None, conversation_context=False,
-                 personal_memory_store=None, review_price_loader=None,
+                 personal_memory_store=None, review_price_loader=None, inbox_source_reader=None,
                  research_intent_v2_enabled=False, intent_model_factory=None, headline_capture=None,
                  news_triage_sorting=False, news_sorter=None, research_documents="off", document_collector=None):
         from trading_companion.news_triage_shadow import NewsTitleCapture
@@ -425,6 +428,8 @@ class ResearchApiService:
         self._review_price_loader = review_price_loader or read_tencent_review_days
         self._review_active = None
         self._closed = False
+        self._inbox = (WatchlistInboxService(self._personal_memory_store, clock=self._wall_clock,
+            reader=inbox_source_reader) if self._personal_memory_store is not None else None)
 
     def _clear_charts(self, entry):
         entry.chart_generation += 1
@@ -554,6 +559,7 @@ class ResearchApiService:
         try:
             checked_instrument_id(instrument_id)
             self._personal_store().remove(LOCAL_USER, instrument_id=instrument_id)
+            self._inbox.invalidate()
         except PersonalMemoryError as error:
             raise self._personal_problem(error) from None
         return self.watchlist()
@@ -561,9 +567,55 @@ class ResearchApiService:
     def clear_watchlist(self):
         try:
             self._personal_store().clear(LOCAL_USER)
+            self._inbox.invalidate()
         except PersonalMemoryError as error:
             raise self._personal_problem(error) from None
         return self.watchlist()
+
+    def _inbox_problem(self, error):
+        code = getattr(error, "code", "inbox_store_unavailable")
+        if code in ("inbox_invalid_request", "inbox_invalid_cursor", "inbox_invalid_title"):
+            return ApiProblem(422, code, "消息请求格式无效，请刷新后核对。")
+        if code in ("inbox_busy", "inbox_request_conflict", "inbox_request_retired", "inbox_snapshot_changed",
+                    "inbox_revision_conflict", "inbox_conflict"):
+            return ApiProblem(409, code, "消息或自选已变化、检查在途或原编号不可重放；请刷新核对，不自动重试。")
+        if code == "inbox_request_limit":
+            return ApiProblem(429, code, "本次服务的消息检查编号容量已满，请重启本机服务后再主动检查。")
+        if code == "inbox_not_found":
+            return ApiProblem(404, code, "该消息已不存在，请刷新本机收件箱。")
+        return ApiProblem(503, "inbox_store_unavailable", "本机消息暂不可用，变更未确认；请刷新核对。")
+
+    def inbox(self, *, unread_only=True, instrument_id=None, cursor=None):
+        if self._inbox is None:
+            return disabled_inbox()
+        try:
+            page = self._personal_store().list_inbox(LOCAL_USER, unread_only=unread_only,
+                instrument_id=instrument_id, cursor=cursor, now=self._wall_clock())
+            return dict(page, sidecar_status=self._inbox.sidecar_status)
+        except (WatchlistNewsError, PersonalMemoryError) as error:
+            raise self._inbox_problem(error) from None
+
+    def mark_inbox_read(self, message_id):
+        try:
+            self._personal_store().mark_inbox_read(LOCAL_USER, message_id=message_id)
+            return self.inbox()
+        except (WatchlistNewsError, PersonalMemoryError) as error:
+            raise self._inbox_problem(error) from None
+
+    def clear_inbox(self, expected_revision):
+        try:
+            self._personal_store().clear_inbox(LOCAL_USER, expected_revision=expected_revision)
+            self._inbox.invalidate()
+            return self.inbox()
+        except (WatchlistNewsError, PersonalMemoryError) as error:
+            raise self._inbox_problem(error) from None
+
+    def check_inbox(self, request_id, cursor=None, *, cancelled=None):
+        self._personal_store()
+        try:
+            return self._inbox.check(request_id, cursor, cancelled=cancelled)
+        except (WatchlistNewsError, PersonalMemoryError) as error:
+            raise self._inbox_problem(error) from None
 
     def preferences(self):
         if not self.personal_memory_enabled:
@@ -1245,10 +1297,13 @@ class ResearchApiService:
             if command is not None:
                 projected = self._personal_turn(command, control)
                 response = {"request_id": request_id, "replayed": False, "result": projected}
-            elif self._research_intent_v2_enabled and entry.provider == 'deepseek':
-                result, directory, timestamp = self._intent_turn(entry, control, question, history=history)
             else:
-                result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
+                with bind_research_inbox(self._personal_memory_store if not history else None,
+                        report=self._inbox.note_sidecar if self._inbox is not None else None):
+                    if self._research_intent_v2_enabled and entry.provider == 'deepseek':
+                        result, directory, timestamp = self._intent_turn(entry, control, question, history=history)
+                    else:
+                        result, directory, timestamp = self._legacy_turn(entry, control, question, history=history)
             if command is None:
                 response, staged_context, reset_contexts, remembered = self._project_message(
                     entry, result, directory, timestamp, request_id, question, history=history)
@@ -1455,6 +1510,8 @@ class ResearchApiService:
             del self._entries[session_id]
 
     def close(self):
+        if self._inbox is not None:
+            self._inbox.close()
         with self._lock:
             self._closed = True
             if self._review_active is not None:

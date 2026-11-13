@@ -7,6 +7,7 @@ import json
 from math import isfinite
 import re
 from time import monotonic
+from urllib.parse import urlsplit
 
 from trading_companion.company_research_contracts import (
     SHANGHAI, ResearchDataRequest, ResearchDataSection, ResearchEvidence, aware,
@@ -90,6 +91,43 @@ def _safe_article_url(url):
         r"|cj\.sina\.cn/articles/view/[0-9]+/[A-Za-z0-9]+)", url))
 
 
+def _well_formed_sina_url(url):
+    """Recognize bounded Sina links for filtering, never for fetching or saving."""
+    if (type(url) is not str or not 1 <= len(url) <= 600 or not url.isprintable()
+            or any(character.isspace() for character in url) or "\\" in url
+            or re.search(r"%(?![0-9A-Fa-f]{2})", url)):
+        return False
+    try:
+        parsed = urlsplit(url)
+        host, port = parsed.hostname, parsed.port
+        if (parsed.scheme not in ("http", "https") or host is None or parsed.username is not None
+                or parsed.password is not None or parsed.netloc.endswith(":")
+                or port is not None and not 1 <= port <= 65535
+                or len(host) > 253 or not parsed.path or not parsed.path.isprintable()):
+            return False
+        if not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in host.split(".")):
+            return False
+        return any(host == domain or host.endswith("." + domain) for domain in ("sina.cn", "sina.com.cn"))
+    except ValueError:
+        return False
+
+
+def _watchlist_row_shape(stamp, title, url):
+    """Validate before benign filtering, without changing ordinary research order."""
+    if (type(title) is not str or not title or len(title) > 600 or not title.isprintable()
+            or not _well_formed_sina_url(url)):
+        raise _Unavailable("invalid_news_title_or_url")
+    if (type(stamp) is not str
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}", stamp)):
+        raise _Unavailable("invalid_publication_timestamp")
+    try:
+        datetime.strptime(stamp, "%Y-%m-%d %H:%M")
+    except ValueError:
+        raise _Unavailable("invalid_publication_timestamp") from None
+    if not _safe_article_url(url):
+        raise _Unavailable("news_link_form_unsupported")
+
+
 class SinaCompanyNewsAdapter:
     def __init__(self, *, session=None, clock=None, timeout_seconds=6.0):
         if (type(timeout_seconds) not in (int, float) or not isfinite(timeout_seconds)
@@ -103,7 +141,7 @@ class SinaCompanyNewsAdapter:
             raise InvalidRequestError("News retrieval clock must be timezone-aware")
         return value
 
-    def fetch_section(self, request, *, deadline=None, scope=None):
+    def fetch_section(self, request, *, deadline=None, scope=None, _watchlist_counts=None):
         if type(request) is not ResearchDataRequest or request.as_of > self._now():
             raise InvalidRequestError("News needs a validated historical research request")
         deadline = monotonic() + 10 if deadline is None else deadline
@@ -124,7 +162,10 @@ class SinaCompanyNewsAdapter:
                 raise _Unavailable("news_page_instrument_mismatch")
             if parser.lists != 1 or parser.depth or parser.href is not None:
                 raise _Unavailable("news_list_missing_or_incomplete")
-            items, skipped = self._parse_rows(request, parser.rows)
+            if _watchlist_counts is None:
+                items, skipped = self._parse_rows(request, parser.rows)
+            else:
+                items, skipped = self._parse_rows(request, parser.rows, _watchlist_counts=_watchlist_counts)
             return ResearchDataSection("news", _SOURCE, "available" if items else "empty", tuple(items),
                 "bounded_evidence_available" if items else "no_eligible_evidence_in_bounded_response",
                 "已取得与该证券匹配的新闻标题。" if items else "本次列表没有可核验标题；不代表没有相关新闻。",
@@ -179,11 +220,13 @@ class SinaCompanyNewsAdapter:
             if response is not None:
                 response.close()
 
-    def _parse_rows(self, request, rows):
+    def _parse_rows(self, request, rows, *, _watchlist_counts=None):
         items, skipped, seen, retrieved = [], 0, set(), self._now()
         cutoff = request.as_of.astimezone(SHANGHAI)
         for stamp, title, url in rows:
             try:
+                if _watchlist_counts is not None:
+                    _watchlist_row_shape(stamp, title, url)
                 if (not title or len(title) > 600 or not _safe_article_url(url)
                         or request.security_name not in title and request.instrument_id[:6] not in title):
                     raise _Unavailable("news_title_association_unverified")
@@ -208,6 +251,11 @@ class SinaCompanyNewsAdapter:
                         "date" if date_only else "datetime", retrieved, content_kind="title", warnings=_WARNING))
                 if len(items) >= request.limit:
                     break
-            except _Unavailable:
-                skipped += 1
+            except _Unavailable as error:
+                if (_watchlist_counts is not None and str(error) in (
+                        "news_title_association_unverified", "news_outside_publication_window",
+                        "news_link_form_unsupported")):
+                    _watchlist_counts["filtered_count"] += 1
+                else:
+                    skipped += 1
         return items, skipped

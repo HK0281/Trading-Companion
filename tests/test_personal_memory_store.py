@@ -366,7 +366,7 @@ class PersonalMemoryMigrationTests(unittest.TestCase):
         current = SqlitePersonalMemoryStore(self.path, clock=lambda: NOW + timedelta(days=1))
         self.addCleanup(current.close)
         after = self.snapshot()
-        self.assertEqual(after[0], (2,))
+        self.assertEqual(after[0], (3,))
         self.assertEqual(after[1], before[1])
         self.assertEqual(after[3], before[3])
         self.assertEqual([row for row in after[2] if row[2] == "watchlist"], before[2])
@@ -380,7 +380,7 @@ class PersonalMemoryMigrationTests(unittest.TestCase):
         reopened.close()
         with self.assertRaisesRegex(ValueError, "personal_memory_schema_mismatch"):
             with legacy_v1_store(self.path, clock=lambda: NOW):
-                self.fail("The old application must reject v2")
+                self.fail("The old application must reject v3")
 
     def test_failure_after_table_and_version_change_rolls_back_the_complete_migration(self):
         self.generate_v1()

@@ -5,6 +5,14 @@ import { ResearchReviewChart } from "./ResearchReviewChart";
 import { reviewKey, reviewPriceLabels, reviewTime, reviewType, sameReview, validReviewFilters, type ResearchReviewItem } from "./researchReviews";
 import { sourceLabel } from "./presentation";
 
+/** Round only the displayed historical ratio; keep all saved decimals unchanged. */
+function fixedReviewRatio(value: string) {
+  const [integer, fraction = ""] = value.split(".");
+  const cents = BigInt(integer) * 100n + BigInt((fraction + "00").slice(0, 2)) + (Number(fraction[2] ?? "0") >= 5 ? 1n : 0n);
+  const rounded = cents.toString().padStart(3, "0");
+  return `${rounded.slice(0, -2)}.${rounded.slice(-2)}`;
+}
+
 function OriginalReview({ item }: { item: ResearchReviewItem }) {
   const plan = item.trade_plan;
   return <>
@@ -16,7 +24,7 @@ function OriginalReview({ item }: { item: ResearchReviewItem }) {
     <dl className="review-verdict"><div><dt>原评级</dt><dd>{item.rating ?? "未记录"}</dd></div><div><dt>原方向</dt><dd>{item.direction ?? "未记录"}</dd></div>
       <div><dt>原把握</dt><dd>{item.conviction ?? "未记录"}</dd></div><div><dt>原期限</dt><dd>{item.horizon ?? "未记录"}</dd></div></dl>
     {plan ? <><div className="table-scroll"><table className="reference-plan"><caption>当时程序参考价位 · 行情 {plan.source_date}</caption><thead><tr><th>项目</th><th>原参考值</th></tr></thead>
-      <tbody>{Object.entries(plan.values).map(([key, value]) => <tr key={key}><th scope="row">{reviewPriceLabels[key] ?? key}</th><td>{value}{key.startsWith("reward_risk") || key === "atr_multiple" ? " 倍" : " 元"}</td></tr>)}</tbody></table></div>
+      <tbody>{Object.entries(plan.values).map(([key, value]) => <tr key={key}><th scope="row">{reviewPriceLabels[key] ?? key}</th><td>{key.startsWith("reward_risk") ? fixedReviewRatio(value) : value}{key.startsWith("reward_risk") || key === "atr_multiple" ? " 倍" : " 元"}</td></tr>)}</tbody></table></div>
       <p className="review-meta">来源 {plan.source ? sourceLabel(plan.source) : "未记录"} · {plan.price_adjustment === "unadjusted" ? "不复权" : "复权口径未确认"} ·
         {plan.data_authenticity === "provider_reported" ? "供应商报告，未经独立核实" : plan.data_authenticity === "synthetic" ? "人工样例，非真实行情" : "真实性未确认"}<br />
         方法 {plan.method === "atr_reference_plan_v2" ? "按期限的 ATR 参考计划" : "ATR 参考计划"}；原价位不代表当前建议或真实成交。</p></>

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from trading_companion.api_service import ApiProblem, ResearchApiService
+from trading_companion.watchlist_news_service import InboxCancellation
 from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures, load_development_market_context
 from trading_companion.followup_demo import ConversationDemoModel
 from trading_companion.web_ui import add_web_routes
@@ -62,6 +63,28 @@ class PreferenceChanges(EmptyRequest):
 class PreferenceRequest(EmptyRequest):
     expected_revision: Identifier | None
     changes: PreferenceChanges
+
+
+class InboxListQuery(EmptyRequest):
+    unread_only: bool = True
+    instrument_id: InstrumentId | None = None
+    cursor: Annotated[str, StringConstraints(strict=True, max_length=2048)] | None = None
+
+
+class InboxCheckRequest(EmptyRequest):
+    request_id: Identifier
+    cursor: Annotated[str, StringConstraints(strict=True, max_length=2048)] | None = None
+
+
+class InboxReadRequest(EmptyRequest):
+    read: Literal[True]
+
+    @field_validator("read", mode="before")
+    @classmethod
+    def strictly_true(cls, value):
+        if value is not True:
+            raise ValueError("Use the literal boolean true")
+        return value
 
 
 class ReviewListQuery(EmptyRequest):
@@ -144,9 +167,9 @@ def _problem(status, code, message):
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
 
-async def _review_price_request(request, operation):
+async def _review_price_request(request, operation, *, signal_factory=Event):
     """Propagate disconnect cooperatively; only the real worker releases its service slot."""
-    cancelled = Event()
+    cancelled = signal_factory()
 
     async def watch_disconnect():
         while not cancelled.is_set():
@@ -337,6 +360,24 @@ def create_app(*, service: ResearchApiService | None = None,
             conversation_id, sequence, body.request_id, body.instrument_id, cancelled=cancelled))
 
     # Same-origin single local user, independent of research sessions and their quotas.
+    @app.get("/v1/personal/inbox")
+    def list_inbox(query: Annotated[InboxListQuery, Query()]):
+        return service.inbox(unread_only=query.unread_only, instrument_id=query.instrument_id, cursor=query.cursor)
+
+    @app.post("/v1/personal/inbox/check")
+    async def check_inbox(request: Request, body: InboxCheckRequest):
+        return await _review_price_request(request,
+            lambda cancelled: service.check_inbox(body.request_id, body.cursor, cancelled=cancelled),
+            signal_factory=InboxCancellation)
+
+    @app.patch("/v1/personal/inbox/{message_id}")
+    def mark_inbox_read(message_id: Annotated[str, Path(pattern=r"^[0-9a-f]{64}$")], body: InboxReadRequest):
+        return service.mark_inbox_read(message_id)
+
+    @app.delete("/v1/personal/inbox")
+    def clear_inbox(if_match: Annotated[str, Header(pattern=r"^[0-9a-f]{64}$")]):
+        return service.clear_inbox(if_match)
+
     @app.get("/v1/personal/watchlist")
     def list_watchlist():
         return service.watchlist()

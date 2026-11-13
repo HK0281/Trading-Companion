@@ -202,6 +202,23 @@ describe("independent review controller", () => {
 });
 
 describe("review page and chart", () => {
+  it("rounds only historical ratios to fixed two decimals and preserves all source strings", async () => {
+    const { api, controller } = reviewController();
+    const original = item({ rating: "买入", direction: "偏多" });
+    original.trade_plan = { ...original.trade_plan!, purpose: "conditional_entry", values: {
+      reference_entry: "10.123456789012345", reference_stop: "9.1", target_1: "11.5", target_2: "12.5",
+      reward_risk_1: "2.000000", reward_risk_2: "1.485714", atr: "0.6667123456789012", atr_multiple: "1.5",
+    } };
+    const frozen = structuredClone(original); api.researchReviews.mockResolvedValue(page([original]));
+    await controller.load(); controller.openResearchReviews(); await controller.findResearchReviews(filters);
+    render(<App controller={controller} />);
+    expect(screen.getByRole("cell", { name: "2.00 倍" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "1.49 倍" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "10.123456789012345 元" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "0.6667123456789012 元" })).toBeVisible();
+    expect(original).toEqual(frozen); expect(controller.snapshot().reviews?.items[0]).toEqual(frozen);
+  });
+
   it("shows bounded empty-page continuation and loads a single old original question without research", async () => {
     const { api, controller } = reviewController(); api.researchReviews.mockResolvedValueOnce(page([]));
     render(<App controller={controller} />); const open = screen.getByRole("button", { name: "研判回顾" });

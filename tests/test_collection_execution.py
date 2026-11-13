@@ -2,9 +2,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
-from threading import Barrier, Event, Lock, Thread
+from threading import Barrier, Event, Lock, Thread, get_ident
 from time import monotonic
 import unittest
+from unittest.mock import patch
 
 from trading_companion.collection_execution import CollectionExecutor, CollectionScope, CollectionUnavailable, QuoteCollectionScope
 from trading_companion.errors import InvalidRequestError
@@ -54,6 +55,53 @@ class CollectionExecutionTests(unittest.TestCase):
     def setUp(self):
         self.pool = CollectionExecutor()
         self.addCleanup(self.pool.close, wait=True)
+
+    def test_inline_runs_in_callers_thread_without_submitting_a_future(self):
+        current = scope()
+        with patch.object(self.pool._pool, "submit", side_effect=AssertionError("No nested future")):
+            self.assertEqual(self.pool.run_inline(get_ident, scope=current), get_ident())
+        self.assertEqual(self.pool.run_inline(lambda: "next", scope=current), "next")
+
+    def test_inline_waits_for_the_same_three_permits_and_does_not_run_after_deadline(self):
+        clock, release, entered = MutableClock(), Event(), Barrier(4)
+        def blocked():
+            entered.wait(5)
+            if not release.wait(5):
+                raise AssertionError("Unreleased worker")
+        background = BackgroundCall(lambda: self.pool.run((blocked,) * 3,
+            scope=scope(clock=clock, timeout=1), max_workers=3))
+        try:
+            entered.wait(5)
+            clock.set(2)
+            self.assertEqual(background.result(), (None, None, None))
+            called = Event()
+            with self.assertRaises(CollectionUnavailable):
+                self.pool.run_inline(called.set, scope=scope(timeout=0.03))
+            self.assertFalse(called.is_set())
+        finally:
+            release.set()
+        self.assertEqual(self.pool.run_inline(lambda: "available", scope=scope()), "available")
+
+    def test_inline_keeps_permit_until_actual_call_exits_even_when_scope_expires(self):
+        clock, release, entered = MutableClock(), Event(), [Event() for _ in range(3)]
+        def blocked(index):
+            entered[index].set()
+            if not release.wait(5):
+                raise AssertionError("Unreleased inline call")
+            return index
+        calls = [BackgroundCall(lambda i=i: self.pool.run_inline(lambda: blocked(i),
+            scope=scope(clock=clock, timeout=1))) for i in range(3)]
+        try:
+            for item in entered:
+                self.assertTrue(item.wait(5))
+            clock.set(2)
+            self.assertFalse(self.pool._permits.acquire(blocking=False))
+        finally:
+            release.set()
+        self.assertEqual([call.result() for call in calls], [0, 1, 2])
+        with self.assertRaisesRegex(ValueError, "planned failure"):
+            self.pool.run_inline(lambda: (_ for _ in ()).throw(ValueError("planned failure")), scope=scope())
+        self.assertEqual(self.pool.run_inline(lambda: "released", scope=scope()), "released")
 
     def test_quote_twenty_descriptions_share_three_permits_without_expanding_company_limits(self):
         current = QuoteCollectionScope(deadline=monotonic() + 20, requests=20)

@@ -4,6 +4,8 @@ import { ApiError, ConnectionError, availableLiveProviders, type ConversationSum
 import type { PreferenceChanges, Preferences, SecuritySummary } from "./api";
 import { parseResearchReviewDetail, parseResearchReviewPrices, parseResearchReviews, sameReview, validReviewFilters,
   type ReviewFilters, type ReviewIdentity, type ResearchReviews, type ResearchReviewDetail, type ResearchReviewPrices, type ResearchReviewItem } from "./researchReviews";
+import { parseInboxCheck, parseMessageInbox, validInboxFilters, validInboxMessageId,
+  type InboxCheckResult, type InboxFilters, type MessageInboxData } from "./inboxMessages";
 
 export interface Entry {
   id: string;
@@ -59,14 +61,30 @@ export interface WorkspaceState {
   reviewPrices: ResearchReviewPrices | null;
   reviewPricesLoading: boolean;
   reviewPricesError: string | null;
+  inboxOpen: boolean;
+  inboxFilters: InboxFilters;
+  inboxData: MessageInboxData | null;
+  inboxLoading: boolean;
+  inboxError: string | null;
+  inboxNotice: string | null;
+  inboxWriting: boolean;
+  inboxReadSavingId: string | null;
+  inboxCheckLoading: boolean;
+  inboxCheckUncertain: boolean;
+  inboxCheckResult: InboxCheckResult | null;
+  inboxNextCheckCursor: string | null;
 }
 
 const emptyView = (): SessionView => ({ state: "idle", active_request_id: null, messages_used: 0, model_calls_forwarded: 0 });
+const disabledInbox = (): MessageInboxData => ({ version: "personal-memory-notifications-v1", enabled: false, limit: 20,
+  items: [], unread_count: 0, source_states: [], collection_revision: null, has_more: false, next_cursor: null });
 const explanation = (error: unknown) => error instanceof ApiError || error instanceof ConnectionError
   ? error.message : "本次操作未得到可确认结果，没有自动重试。";
 const terminalCodes = new Set(["session_message_limit", "session_not_found", "session_token_required", "request_id_conflict",
   "request_id_retired", "directory_unusable", "research_internal_error", "invalid_request", "service_closed",
   "json_required", "request_too_large", "invalid_content_length", "origin_not_allowed"]);
+const terminalInboxChecks = new Set(["inbox_invalid_request", "inbox_invalid_cursor", "inbox_snapshot_changed",
+  "inbox_request_conflict", "inbox_request_retired", "inbox_request_limit"]);
 
 export class ResearchController {
   private api: ResearchApi;
@@ -86,6 +104,13 @@ export class ResearchController {
   private reviewListAbort: AbortController | null = null;
   private reviewDetailAbort: AbortController | null = null;
   private reviewPricesAbort: AbortController | null = null;
+  private inboxEpoch = 0;
+  private inboxListRead = 0;
+  private inboxListAbort: AbortController | null = null;
+  private inboxWriteAbort: AbortController | null = null;
+  private inboxCheckAbort: AbortController | null = null;
+  private inboxPendingCheck: { requestId: string; cursor: string | null } | null = null;
+  private inboxContinuation: string | null = null;
   private listeners = new Set<() => void>();
   private state: WorkspaceState = { mode: "normal", developmentModeAvailable: false, switching: false,
     health: null, selectedProvider: null, session: null, phase: "idle", loading: false,
@@ -96,7 +121,10 @@ export class ResearchController {
     preferencesSearch: null, preferencesSearchLoading: false, preferencesSearchError: null, preferencesEditor: null,
     reviewsOpen: false, reviewFilters: null, reviews: null, reviewsLoading: false, reviewsError: null, selectedReview: null,
     reviewDetail: null, reviewDetailLoading: false, reviewDetailError: null,
-    reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null };
+    reviewPrices: null, reviewPricesLoading: false, reviewPricesError: null,
+    inboxOpen: false, inboxFilters: { unread_only: true }, inboxData: null, inboxLoading: false, inboxError: null,
+    inboxNotice: null, inboxWriting: false, inboxReadSavingId: null, inboxCheckLoading: false, inboxCheckUncertain: false,
+    inboxCheckResult: null, inboxNextCheckCursor: null };
 
   constructor(api: ResearchApi,
     private readonly nextId: () => string = () => crypto.randomUUID().replaceAll("-", ""),
@@ -164,6 +192,7 @@ export class ResearchController {
       this.update({ health, mode: "development" });
     }
     if (!this.reviewsAvailable()) this.closeResearchReviews();
+    if (!this.personalAvailable()) { this.clearInboxView(); this.update({ inboxOpen: false }); }
   }
 
   async load() {
@@ -177,6 +206,7 @@ export class ResearchController {
       await this.refreshConversations();
       await this.refreshWatchlist();
       await this.refreshPreferences();
+      await this.refreshInbox();
     } catch (error) { this.update({ health: null, notice: explanation(error), noticeLevel: "error" }); }
     finally { this.running = false; this.update({ loading: false }); }
   }
@@ -221,6 +251,7 @@ export class ResearchController {
       this.running = false; this.update({ loading: false, switching: false });
       void this.refreshWatchlist();
       void this.refreshPreferences();
+      void this.refreshInbox();
     }
   }
 
@@ -311,6 +342,7 @@ export class ResearchController {
       const response = await this.api.send(credentials, pending.id, pending.question);
       this.amend(pending.id, { response });
       this.pending = null;
+      if (this.personalAvailable()) void this.refreshInbox();
       // A replay is an earlier receipt, never the current personal list.
       if (response.result.personal_memory != null) {
         void this.refreshWatchlist(); void this.refreshPreferences();
@@ -414,6 +446,7 @@ export class ResearchController {
   }
 
   private clearPersonalState() {
+    this.clearInboxView(); this.update({ inboxOpen: false });
     this.personalEpoch++; this.watchlistRead++; this.watchlistSearchRead++;
     this.preferencesRead++; this.preferencesSearchRead++; this.preferencesEditorGeneration++;
     this.update({ watchlist: null, watchlistLoading: false, watchlistSaving: false, watchlistError: null,
@@ -441,6 +474,7 @@ export class ResearchController {
       const watchlist = await api.watchlist!();
       if (this.api === api && this.personalEpoch === epoch && request === this.watchlistRead) {
         if (!watchlist.enabled) this.watchlistSearchRead++;
+        this.invalidateInboxWatchlist(watchlist);
         this.update({ watchlist, ...(!watchlist.enabled ? { watchlistSearch: null, watchlistSearchLoading: false, watchlistSearchError: null } : {}) });
       }
     } catch (error) {
@@ -494,6 +528,7 @@ export class ResearchController {
         : action === "add" ? await api.addWatchlist!(id!) : await api.removeWatchlist!(id!);
       if (!result.enabled) throw new ApiError(409, "personal_memory_disabled");
       if (this.api === api && this.personalEpoch === epoch) {
+        this.invalidateInboxWatchlist(result);
         this.update({ watchlist: result, watchlistNotice: action === "add" ? "已保存自选。" : action === "remove" ? "已移除自选。" : "已清空自选；聊天历史未删除。" });
         await this.refreshWatchlist();
       }
@@ -606,6 +641,150 @@ export class ResearchController {
     }
   }
 
+  private clearInboxView(clearPending = false) {
+    this.inboxEpoch++; this.inboxListRead++;
+    this.inboxListAbort?.abort(); this.inboxWriteAbort?.abort(); this.inboxCheckAbort?.abort();
+    this.inboxListAbort = this.inboxWriteAbort = this.inboxCheckAbort = null;
+    if (clearPending) { this.inboxPendingCheck = null; this.inboxContinuation = null; }
+    this.update({ inboxData: null, inboxFilters: { unread_only: true }, inboxLoading: false, inboxError: null, inboxNotice: null,
+      inboxWriting: false, inboxReadSavingId: null, inboxCheckLoading: false, inboxCheckUncertain: false,
+      inboxCheckResult: null, inboxNextCheckCursor: null });
+  }
+
+  openMessageInbox(): boolean {
+    if (!this.personalAvailable() || this.state.switching || !this.api.inbox) return false;
+    if (this.state.reviewsOpen) this.closeResearchReviews();
+    this.update({ inboxOpen: true, inboxCheckUncertain: this.inboxPendingCheck !== null,
+      inboxNextCheckCursor: this.inboxContinuation,
+      inboxNotice: this.inboxPendingCheck ? "上批检查结果尚未确认；可重查原批结果，不会自动开始新批次。" : null });
+    void this.refreshInbox();
+    return true;
+  }
+
+  closeMessageInbox() { this.clearInboxView(); this.update({ inboxOpen: false }); }
+
+  private invalidateInboxWatchlist(next: Watchlist) {
+    const previous = this.state.watchlist;
+    if (!previous || previous.enabled === next.enabled && previous.items.map(item => item.instrument_id).join() === next.items.map(item => item.instrument_id).join()) return;
+    this.clearInboxView(); this.inboxContinuation = null;
+    this.update({ inboxCheckUncertain: this.state.inboxOpen && this.inboxPendingCheck !== null,
+      inboxNotice: "自选已变化，对应本机消息和检查记录已更新；下一批需重新开始。" });
+    if (this.personalAvailable() && this.api.inbox) void this.refreshInbox();
+  }
+
+  async refreshInbox(filters: InboxFilters = this.state.inboxFilters): Promise<boolean> {
+    if (this.state.switching || !validInboxFilters(filters)) return false;
+    if (!this.personalAvailable() || !this.api.inbox) {
+      this.clearInboxView(); this.update({ inboxData: disabledInbox() });
+      return false;
+    }
+    this.inboxListAbort?.abort();
+    const api = this.api, epoch = this.inboxEpoch, read = ++this.inboxListRead, abort = new AbortController(); this.inboxListAbort = abort;
+    const saved = { ...filters };
+    this.update({ inboxFilters: saved, inboxLoading: true, inboxError: null });
+    try {
+      const response = await api.inbox!(saved, abort.signal);
+      if (this.api !== api || this.inboxEpoch !== epoch || read !== this.inboxListRead || abort.signal.aborted) return false;
+      const data = parseMessageInbox(response, saved); if (!data) throw new ConnectionError();
+      this.update({ inboxData: data });
+      return true;
+    } catch (error) {
+      if (this.api === api && this.inboxEpoch === epoch && read === this.inboxListRead && !abort.signal.aborted)
+        this.update({ inboxError: `本机消息读取失败。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.inboxEpoch === epoch && read === this.inboxListRead && !abort.signal.aborted) this.update({ inboxLoading: false });
+    }
+  }
+
+  nextInboxPage() {
+    const data = this.state.inboxData;
+    if (!data?.has_more || !data.next_cursor || this.state.inboxLoading) return Promise.resolve(false);
+    return this.refreshInbox({ ...this.state.inboxFilters, cursor: data.next_cursor });
+  }
+
+  markInboxRead(messageId: string) { return this.writeInbox("read", messageId); }
+  clearInbox(revision: string) { return this.writeInbox("clear", revision); }
+
+  private async writeInbox(action: "read" | "clear", identity: string): Promise<boolean> {
+    if (!this.personalAvailable() || this.state.switching || this.state.inboxWriting || !this.state.inboxData?.enabled || !validInboxMessageId(identity)
+      || (action === "read" ? !this.api.markInboxRead || !this.state.inboxData.items.some(item => item.message_id === identity && !item.read)
+        : !this.api.clearInbox || this.state.inboxCheckLoading)) return false;
+    this.inboxListAbort?.abort(); this.inboxListRead++;
+    const api = this.api, epoch = this.inboxEpoch, abort = new AbortController(); this.inboxWriteAbort = abort;
+    const filters = { ...this.state.inboxFilters, cursor: undefined };
+    this.update({ inboxWriting: true, inboxLoading: false, inboxReadSavingId: action === "read" ? identity : null, inboxError: null, inboxNotice: null });
+    try {
+      const response = action === "read" ? await api.markInboxRead!(identity, abort.signal) : await api.clearInbox!(identity, abort.signal);
+      if (this.api !== api || this.inboxEpoch !== epoch || abort.signal.aborted) return false;
+      const data = parseMessageInbox(response); if (!data?.enabled) throw new ConnectionError();
+      if (action === "clear") {
+        this.clearInboxView(true);
+        this.update({ inboxNotice: "已清空消息和检查记录；自选、持仓与聊天保留。下次主动检查重新建立基线。" });
+      } else this.update({ inboxNotice: "已标为已读；正在刷新本机消息。" });
+      await this.refreshInbox(filters);
+      return true;
+    } catch (error) {
+      if (this.api === api && this.inboxEpoch === epoch && !abort.signal.aborted)
+        this.update({ inboxError: error instanceof ApiError && ["inbox_conflict", "inbox_not_found"].includes(error.code)
+          ? explanation(error) : `消息变更未确认，请刷新本机消息核对。${explanation(error)}` });
+      return false;
+    } finally {
+      if (this.api === api && this.inboxEpoch === epoch && !abort.signal.aborted) this.update({ inboxWriting: false, inboxReadSavingId: null });
+    }
+  }
+
+  async startInboxCheck(nextBatch = false): Promise<boolean> {
+    if (!this.personalAvailable() || this.state.switching || !this.state.inboxOpen || !this.state.inboxData?.enabled || !this.api.checkInbox
+      || this.state.inboxCheckLoading || this.state.inboxWriting || this.inboxPendingCheck || nextBatch && !this.inboxContinuation) return false;
+    const pending = { requestId: this.nextId(), cursor: nextBatch ? this.inboxContinuation : null };
+    this.inboxPendingCheck = pending;
+    return this.executeInboxCheck(pending);
+  }
+
+  retryInboxCheck(): Promise<boolean> {
+    if (!this.personalAvailable() || this.state.switching || !this.state.inboxOpen || !this.state.inboxData?.enabled
+      || !this.api.checkInbox || this.state.inboxCheckLoading || this.state.inboxWriting || !this.inboxPendingCheck) return Promise.resolve(false);
+    return this.executeInboxCheck(this.inboxPendingCheck);
+  }
+
+  private async executeInboxCheck(pending: { requestId: string; cursor: string | null }): Promise<boolean> {
+    this.inboxCheckAbort?.abort();
+    const api = this.api, epoch = this.inboxEpoch, abort = new AbortController(); this.inboxCheckAbort = abort;
+    this.update({ inboxCheckLoading: true, inboxCheckUncertain: false, inboxError: null,
+      inboxNotice: "正在检查一批自选消息；最多5股，新闻与公告分别检查。" });
+    try {
+      const response = await api.checkInbox!(pending.requestId, pending.cursor, abort.signal);
+      if (this.api !== api || this.inboxEpoch !== epoch || abort.signal.aborted || this.inboxPendingCheck !== pending) return false;
+      const result = parseInboxCheck(response, pending.requestId); if (!result) throw new ConnectionError();
+      this.inboxPendingCheck = null; this.inboxContinuation = result.next_cursor;
+      this.update({ inboxCheckResult: result, inboxCheckUncertain: false, inboxNextCheckCursor: result.next_cursor,
+        inboxNotice: result.replayed ? "已取回原批回执，没有再次联网；当前消息以本机刷新为准。"
+          : result.status === "cancelled" ? "本批检查已取消，已保存部分保留；未检查部分可主动继续。"
+            : result.status === "partial" ? "本批仅部分完成，请核对各来源结果；没有自动重试。" : "本批有限检查已完成，请核对各来源结果。" });
+      // A replay contains an earlier snapshot, never the current read/clear state.
+      await this.refreshInbox({ ...this.state.inboxFilters, cursor: undefined });
+      return true;
+    } catch (error) {
+      if (this.api === api && this.inboxEpoch === epoch && !abort.signal.aborted && this.inboxPendingCheck === pending) {
+        const terminal = error instanceof ApiError && terminalInboxChecks.has(error.code);
+        if (terminal) { this.inboxPendingCheck = null; this.inboxContinuation = null; }
+        this.update({ inboxCheckUncertain: !terminal, ...(terminal ? { inboxNextCheckCursor: null } : {}),
+          inboxError: terminal ? explanation(error) : `本批检查结果未确认，已保留原编号；请重查原批结果或刷新本机消息核对。${explanation(error)}` });
+      }
+      return false;
+    } finally {
+      if (this.api === api && this.inboxEpoch === epoch && !abort.signal.aborted) this.update({ inboxCheckLoading: false });
+    }
+  }
+
+  cancelInboxCheck() {
+    if (!this.state.inboxCheckLoading) return;
+    this.inboxCheckAbort?.abort(); this.inboxCheckAbort = null;
+    this.update({ inboxCheckLoading: false, inboxCheckUncertain: this.inboxPendingCheck !== null,
+      inboxNotice: "已停止等待检查，已保存部分可能保留，服务端可能仍在收尾。原批编号已保留，不会自动重试。" });
+  }
+
   async refreshConversations() {
     const api = this.api;
     if (!api.conversations || this.state.health?.memory_enabled !== true) {
@@ -629,6 +808,7 @@ export class ResearchController {
 
   openResearchReviews(): boolean {
     if (!this.reviewsAvailable() || !this.api.researchReviews) return false;
+    if (this.state.inboxOpen) this.closeMessageInbox();
     this.update({ reviewsOpen: true });
     return true;
   }

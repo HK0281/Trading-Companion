@@ -225,6 +225,27 @@ class CollectionExecutor:
         future.add_done_callback(lambda completed: self._permits.release())
         return future
 
+    def run_inline(self, function, *, scope):
+        """Run one synchronous source in this thread under the same three permits.
+
+        The trusted scope supplies cooperative cancellation and a remaining deadline.
+        No future is submitted, and a stopped caller cannot release unfinished I/O.
+        """
+        if (not callable(function) or not callable(getattr(scope, "check", None))
+                or not callable(getattr(scope, "remaining", None))):
+            raise InvalidRequestError("Use one synchronous source and a bounded collection scope")
+        scope.check()
+        while not self._permits.acquire(timeout=min(POLL_SECONDS, scope.remaining())):
+            scope.check()
+        try:
+            with self._lock:
+                if self._closed:
+                    raise InvalidRequestError("Collection executor is closed")
+            scope.check()
+            return function()
+        finally:
+            self._permits.release()
+
     def run(self, tasks, *, scope, max_workers):
         if type(max_workers) is not int or not 1 <= max_workers <= 3:
             raise InvalidRequestError("Choose one to three collection workers")

@@ -275,7 +275,7 @@ describe("watchlist controls", () => {
     await act(async () => { await controller.addWatchlist(stock.instrument_id); });
     fireEvent.click(within(panel).getByRole("button", { name: "清空自选" }));
     expect(api.clearWatchlist).not.toHaveBeenCalled();
-    expect(within(panel).getByText("清空全部自选股？聊天历史不会删除。")).toBeVisible();
+    expect(within(panel).getByText("清空全部自选股及对应本机消息和检查记录？持仓资料与聊天历史不会删除。")).toBeVisible();
     fireEvent.click(within(panel).getByRole("button", { name: "确认清空自选" }));
     await vi.waitFor(() => expect(api.clearWatchlist).toHaveBeenCalledOnce());
     expect(api.create).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();

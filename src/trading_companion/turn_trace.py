@@ -136,13 +136,14 @@ _OPERATIONS = frozenset("""
 research workflow execute daily_bars company_section company_collect directory market_context_load market_background answer_validation
 screening_snapshot knowledge_search tool_history tool_request tool_scope research_response workflow_response
 indicator_relations company_batch product_answer knowledge_answer intent_shape intent_rule local_date_expression rewrite_decision model_rewrite
-daily_source daily_records index_daily
+daily_source daily_records index_daily inbox_sidecar
 """.split())
 _EVENT_STATUSES = ("ok", "limited", "rejected", "failed", "stopped", "skipped", "unfinished")
 _TOOLS = {"analyze_daily_indicators": "primary_analysis_completed", "get_indicator_knowledge": "indicator_knowledge_returned",
           "inspect_research_snapshot": "snapshot_summary_returned", "analyze_additional_indicators": "additional_analysis_completed"}
 # Event-only codes are deliberately separate from public turn outcome codes.
 _EVENT_CODES = frozenset("""
+inbox_sidecar_ready inbox_sidecar_saved inbox_sidecar_unavailable
 knowledge_response_type_invalid knowledge_response_too_long knowledge_json_invalid knowledge_json_too_deep
 knowledge_json_duplicate_key knowledge_json_nonfinite_number knowledge_payload_type_invalid
 knowledge_payload_keys_invalid knowledge_version_invalid knowledge_paragraphs_type_invalid
@@ -184,6 +185,7 @@ source_deadline_exceeded source_request_failed source_http_unavailable invalid_n
 news_source_unavailable news_source_invalid news_identity_unverified
 news_list_not_unique invalid_news_list_markup sina_news_exchange_unverified news_layout_invalid
 news_page_instrument_mismatch news_list_missing_or_incomplete invalid_source_encoding news_title_association_unverified
+invalid_news_title_or_url news_link_form_unsupported
 """.split())
 from trading_companion.research_documents import _ERROR_CODES as _DOCUMENT_CODES
 _EVENT_CODES |= _DOCUMENT_CODES | frozenset('''

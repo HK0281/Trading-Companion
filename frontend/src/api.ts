@@ -1,6 +1,8 @@
 /** Browser contracts for the public API, never the Agent's debug export. */
 import { parseResearchReviewDetail, parseResearchReviewPrices, parseResearchReviews, validReviewFilters, validReviewIdentity,
   type ReviewFilters, type ReviewIdentity, type ResearchReviews, type ResearchReviewDetail, type ResearchReviewPrices } from "./researchReviews";
+import { parseInboxCheck, parseMessageInbox, validInboxCursor, validInboxFilters, validInboxMessageId, validInboxRequestId,
+  type InboxFilters, type InboxCheckResult, type MessageInboxData } from "./inboxMessages";
 export type ApiMode = "normal" | "development";
 export type ModelProvider = "fake" | "deepseek" | "openai";
 export type LiveProvider = Exclude<ModelProvider, "fake">;
@@ -164,6 +166,10 @@ export interface ResearchApi {
   patchPreferences?(instrumentId: string, expectedRevision: string | null, changes: PreferenceChanges): Promise<Preferences>;
   deletePreference?(instrumentId: string, revision: string): Promise<Preferences>;
   clearPreferences?(collectionRevision: string): Promise<Preferences>;
+  inbox?(filters: InboxFilters, signal?: AbortSignal): Promise<MessageInboxData>;
+  checkInbox?(requestId: string, cursor?: string | null, signal?: AbortSignal): Promise<InboxCheckResult>;
+  markInboxRead?(messageId: string, signal?: AbortSignal): Promise<MessageInboxData>;
+  clearInbox?(collectionRevision: string, signal?: AbortSignal): Promise<MessageInboxData>;
 }
 
 const errors: Record<string, string> = {
@@ -197,6 +203,15 @@ const errors: Record<string, string> = {
   review_source_changed: "原记录已变化，请重新查找后再加载走势。",
   review_prices_busy: "仍有一条走势请求在收尾，请稍后手动重试。",
   review_prices_cancelled: "走势加载已取消，原判断仍保留。",
+  inbox_invalid_request: "消息检查请求格式不符合要求，本批未被接纳。",
+  inbox_invalid_cursor: "消息检查位置无效，请从新批次重新开始。",
+  inbox_snapshot_changed: "自选或收件箱已变化，原批次已失效；请刷新后重新开始。",
+  inbox_request_conflict: "原批编号与请求内容不一致，不能继续使用。",
+  inbox_request_retired: "原批编号已失效，不能重查；请刷新本机消息后重新开始。",
+  inbox_request_limit: "检查批次记录已达本次服务上限，请检查服务状态后再操作。",
+  inbox_busy: "仍有消息检查在执行或收尾，请稍后重查原批结果。",
+  inbox_conflict: "本机消息已被另一个操作修改，请刷新后重新确认清空；本次没有自动覆盖。",
+  inbox_not_found: "这条本机消息不存在或已被清理，请刷新消息列表。",
 };
 
 export class ApiError extends Error {
@@ -329,7 +344,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
   if (serviceMode !== "normal" && serviceMode !== "development") throw new ConnectionError();
   const prefix = serviceMode === "development" ? "/dev-api" : "";
   async function request<T>(path: string, check: (value: unknown) => value is T,
-    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; signal?: AbortSignal; bounded?: boolean; maxBytes?: number; headers?: Record<string, string> } = {}): Promise<T> {
+    options: { method?: string; session?: SessionCredentials; body?: unknown; long?: boolean; timeoutMs?: number; signal?: AbortSignal; bounded?: boolean; maxBytes?: number; headers?: Record<string, string> } = {}): Promise<T> {
     if (options.session) {
       const boundMode = credentialModes.get(options.session);
       // Unmarked legacy callers remain root-only; development credentials must be minted here.
@@ -341,7 +356,7 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
     options.signal?.addEventListener("abort", cancel, { once: true });
     if (options.signal?.aborted) abort.abort();
     // Client timeout is not server-side cancellation; never retry automatically.
-    const timer = setTimeout(() => abort.abort(), options.long ? 120_000 : 10_000);
+    const timer = setTimeout(() => abort.abort(), options.timeoutMs ?? (options.long ? 120_000 : 10_000));
     try {
       const response = await fetcher(prefix + path, {
         method: options.method ?? "GET", cache: "no-store", credentials: "omit", redirect: "error",
@@ -520,6 +535,32 @@ export function createApi(fetcher: typeof fetch = (...args) => fetch(...args), s
       if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
       if (!collectionRevision(revision)) throw new ConnectionError();
       return request("/v1/personal/preferences", preferences, { method: "DELETE", headers: { "If-Match": revision }, bounded: true });
+    },
+    inbox: (filters, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!validInboxFilters(filters)) throw new ConnectionError();
+      const query = new URLSearchParams({ unread_only: String(filters.unread_only) });
+      for (const key of ["instrument_id", "cursor"] as const) if (filters[key] !== undefined) query.set(key, filters[key]!);
+      return request(`/v1/personal/inbox?${query}`, (value): value is MessageInboxData => parseMessageInbox(value, filters) !== null,
+        { signal, bounded: true });
+    },
+    checkInbox: (requestId, cursor, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!validInboxRequestId(requestId) || cursor != null && !validInboxCursor(cursor)) throw new ConnectionError();
+      return request("/v1/personal/inbox/check", (value): value is InboxCheckResult => parseInboxCheck(value, requestId) !== null,
+        { method: "POST", body: { request_id: requestId, ...(cursor == null ? {} : { cursor }) }, signal, bounded: true, timeoutMs: 25_000 });
+    },
+    markInboxRead: (messageId, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!validInboxMessageId(messageId)) throw new ConnectionError();
+      return request(`/v1/personal/inbox/${messageId}`, (value): value is MessageInboxData => parseMessageInbox(value) !== null,
+        { method: "PATCH", body: { read: true }, signal, bounded: true });
+    },
+    clearInbox: (revision, signal) => {
+      if (serviceMode === "development") throw new ApiError(404, "personal_memory_disabled");
+      if (!validInboxMessageId(revision)) throw new ConnectionError();
+      return request("/v1/personal/inbox", (value): value is MessageInboxData => parseMessageInbox(value) !== null,
+        { method: "DELETE", headers: { "If-Match": revision }, signal, bounded: true });
     },
   };
 }

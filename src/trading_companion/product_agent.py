@@ -250,6 +250,8 @@ def _execute_plan(plan, *, question, session, model, directory, now, reference, 
             session_event="company_clarification", user_question=question)
     # New research consumes the old base before any external reads, including failed or cancelled work.
     session.begin_research(preserve_screening=bool(selected_securities) or continuation is not None)
+    from trading_companion.watchlist_news_sidecar import prepare_research_inbox
+    inbox_sink = prepare_research_inbox(plan, development=development_source is not None)
     try:
         bundle = collect_product_research(plan, data_service=data_service, now=now,
             development_source=development_source, source_factory=source_factory,
@@ -260,6 +262,9 @@ def _execute_plan(plan, *, question, session, model, directory, now, reference, 
             model_responses=responses, model_calls_attempted=plan.model_calls_attempted,
             failure_code="company_evidence_invalid", user_question=question)
     checkpoint()
+    if inbox_sink is not None:
+        inbox_sink.capture(bundle)
+        checkpoint()
     if headline_capture is not None and development_source is None and not plan.explicit_historical:
         headline_capture.capture(bundle, captured_at=now)
         checkpoint()

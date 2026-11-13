@@ -11,7 +11,7 @@ from trading_companion.errors import InvalidRequestError
 
 VERSION = "personal-memory-watchlist-v1"
 PREFERENCES_VERSION = "personal-memory-preferences-v1"
-STORE_VERSION = "personal-memory-store-v2"
+STORE_VERSION = "personal-memory-store-v3"
 LOCAL_USER = "local"
 MAX_WATCHLIST = 50
 MAX_PREFERENCES = 50

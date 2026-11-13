@@ -64,7 +64,7 @@ export function WatchlistPanel({ state, controller, openPreferences }: Props) {
                       onClick={() => openPreferences(item)}>资料</button>}</div>
                 </li>)}</ul>)}
               {confirmation && <div className="confirm-panel" role="group" aria-label="确认自选操作">
-                <p>{confirmation === "all" ? "清空全部自选股？聊天历史不会删除。" : `从自选移除${confirmation.name}（${confirmation.instrument_id}）？聊天历史不会删除。`}</p>
+                <p>{confirmation === "all" ? "清空全部自选股及对应本机消息和检查记录？持仓资料与聊天历史不会删除。" : `从自选移除${confirmation.name}（${confirmation.instrument_id}）并清除其本机消息和检查记录？持仓资料与聊天历史不会删除。`}</p>
                 <button type="button" disabled={busy} onClick={confirm}>确认{confirmation === "all" ? "清空自选" : "移除"}</button>
                 <button type="button" disabled={busy} onClick={() => setConfirmation(null)}>返回</button>
               </div>}
@@ -86,7 +86,7 @@ export function WatchlistActions({ securities, state, controller }: Props & { se
         {item.name} · {saved ? "移除自选" : "加入自选"}</button>;
     })}
     {removing && <div className="confirm-panel" role="group" aria-label="确认移除研究对象自选">
-      <p>从自选移除{removing.name}（{removing.instrument_id}）？聊天历史不会删除。</p>
+      <p>从自选移除{removing.name}（{removing.instrument_id}）并清除其本机消息和检查记录？持仓资料与聊天历史不会删除。</p>
       <button type="button" disabled={state.watchlistSaving} onClick={() => {
         void controller.removeWatchlist(removing.instrument_id).then(saved => { if (saved) setRemoving(null); });
       }}>确认移除</button>

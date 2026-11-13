@@ -1,6 +1,6 @@
 """Bounded public A-share context. No model dependency, URL input, login, retry or silent failover."""
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from html.parser import HTMLParser
@@ -243,6 +243,24 @@ class ResearchDataService:
             raise InvalidRequestError("Choose one supported research section")
         return self.collect(request, (kind,)).source_results[0]
 
+    def read_watchlist_section(self, request, source, *, deadline, scope, session, filter_counts=None):
+        """Read one fixed inbox source inline; the caller owns transport and permit.
+
+        This narrow entry never dispatches collection futures or inherits the
+        ordinary research provider selection.
+        """
+        self._validate(request)
+        if (source not in ("sina_company_news", "eastmoney_announcements") or request.limit != 5
+                or filter_counts is not None and type(filter_counts) is not dict
+                or request.publication_start != request.as_of.astimezone(SHANGHAI).date() - timedelta(days=30)):
+            raise InvalidRequestError("Use a fixed thirty-day watchlist title source")
+        adapter = ResearchDataService(session=session, clock=self._clock, timeout_seconds=6.0,
+            announcement_provider="eastmoney", news_provider="sina", monotonic_clock=self._timer)
+        adapter._scope = scope
+        adapter._watchlist_filter_counts = {} if filter_counts is None else filter_counts
+        adapter._watchlist_filter_counts["filtered_count"] = 0
+        return adapter._fetch(request, "news" if source == "sina_company_news" else "announcements", deadline)
+
     def _allowances(self, request, kinds):
         requests = response_bytes = 0
         for kind in kinds:
@@ -368,6 +386,11 @@ class ResearchDataService:
 
     def _fetch_checked(self, request, kind, deadline):
         if kind == "news" and self._news_provider == "sina":
+            watchlist_counts = getattr(self, "_watchlist_filter_counts", None)
+            if watchlist_counts is not None:
+                return SinaCompanyNewsAdapter(session=self._session, clock=self._clock,
+                    timeout_seconds=self._timeout).fetch_section(request, deadline=deadline, scope=self._scope,
+                        _watchlist_counts=watchlist_counts)
             return SinaCompanyNewsAdapter(session=self._session, clock=self._clock,
                 timeout_seconds=self._timeout).fetch_section(request, deadline=deadline, scope=self._scope)
         source = "cninfo_announcements" if kind == "announcements" and self._announcement_provider == "cninfo" else _SOURCES[kind]

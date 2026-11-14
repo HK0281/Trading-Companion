@@ -113,19 +113,23 @@ class CollectNewsTitlesTests(unittest.TestCase):
         self.assertEqual(report["capture"]["titles_written"], 500)
         self.assertTrue(all(b-a >= 1 for a, b in zip(self.session.starts, self.session.starts[1:])))
 
-    def test_third_batch_is_distinct_locally_verified_feature_sample_and_paced(self):
-        from trading_companion.security_directory import load_security_directory
-        directory = load_security_directory(Path(__file__).resolve().parents[1]/"data/security_directory_live.json")
-        names = {s.instrument_id: s.name for s in directory.securities}
+    def test_third_batch_is_distinct_board_consistent_feature_sample_and_paced(self):
+        # Names were checked once against the git-ignored local live directory when the batch was
+        # chosen. That file is absent in CI and changes as ST statuses change, so this regression
+        # test pins only properties that the committed batch itself determines.
+        from trading_companion.news_triage_product_split import board_for
         old = {r[0] for r in (*COMPANIES, *SECOND_COMPANIES)}
         self.assertEqual(len(THIRD_COMPANIES), 50)
         self.assertFalse(old & {r[0] for r in THIRD_COMPANIES})
         self.assertEqual(len({r[0] for r in THIRD_COMPANIES}), 50)
         self.assertEqual({b: sum(r[2] == b for r in THIRD_COMPANIES) for b in ("sh_main", "sz_main", "chinext", "star")},
                          {"sh_main": 15, "sz_main": 15, "chinext": 10, "star": 10})
-        for code, name, _, rationale in THIRD_COMPANIES:
-            self.assertEqual(name, names[code])
-            self.assertTrue(rationale)
+        for code, name, board, rationale in THIRD_COMPANIES:
+            with self.subTest(code=code):
+                self.assertEqual(board_for(code), board)
+                self.assertTrue(name.strip())
+                self.assertTrue(rationale)
+                self.assertEqual("ST" in name, rationale.startswith("本地ST名称"))
         self.assertGreaterEqual(sum("ST" in r[1] for r in THIRD_COMPANIES), 10)
         report = self.collect(selected=None, batch="third", limit=100)
         self.assertEqual(report["status"], "completed")

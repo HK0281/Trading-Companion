@@ -2,8 +2,8 @@
 from copy import deepcopy
 import unittest
 
-from trading_companion import technical_answer_evaluation as evaluation
-from trading_companion.technical_answer_evaluation_checks import grade_turn, quality_metrics, unexpected_indicators
+from evaluation_tools import technical_answer_evaluation as evaluation
+from evaluation_tools.technical_answer_evaluation_checks import grade_turn, quality_metrics, unexpected_indicators
 
 
 class TechnicalCheckTests(unittest.TestCase):

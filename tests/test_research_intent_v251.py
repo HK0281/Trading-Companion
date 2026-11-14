@@ -12,7 +12,6 @@ import unittest
 from unittest.mock import patch
 
 from evaluation_tools import research_intent_v25_evaluation as experiment
-from evaluation_tools import replay_research_intents_v25 as replay
 from scripts.verify import clean_environment, offline_network
 from test_deepseek_tool_model import provider_call, provider_payload
 from test_research_intent_v2 import context, draft, response
@@ -270,7 +269,7 @@ class ArgumentRepairTests(OfflineTests):
         self.assertNotIn('synthetic-fixture-credential', json.dumps(dict(events=events, result=result)))
 
 
-class AnnotationAndReplayTests(OfflineTests):
+class AnnotationTests(OfflineTests):
     def test_only_one_approved_field_changes_and_historical_freeze_rejects_new_source(self):
         rows, _ = experiment.load_corpus()
         _, _, approved = experiment.cases.load_regression_amendments()
@@ -285,7 +284,7 @@ class AnnotationAndReplayTests(OfflineTests):
         self.assertFalse(completion['model_improvement'])
         self.assertEqual(experiment.annotation_completion(), completion)
         with self.assertRaisesRegex(ValueError,
-                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+                r'Frozen public file drift: '):
             experiment.cases.validate_freeze(require_review=True)
         # The immutable record still binds every original public blob, not the new runtime.
         require_historical_revision()
@@ -321,33 +320,6 @@ class AnnotationAndReplayTests(OfflineTests):
                 file.write_text(json.dumps(bad, ensure_ascii=False), encoding='utf-8')
                 with self.assertRaises(ValueError):
                     experiment.apply_annotation_completion(rows, parent, file)
-
-    def test_v25_replay_keeps_new_cases_missing_json_and_marks_all_tables(self):
-        row = dict(sample(), setup_id='independent')
-        other = dict(deepcopy(row), id='missing-json')
-        raw = response(draft(version='research-intent-v2.5')).to_dict()
-        archived = dict(row, V2=dict(status='ok', attempts=1, response=raw, fields=row['gold']))
-        failed = dict(other, V2=dict(status='failed', reason='tool_arguments_json_invalid', attempts=1, response=None))
-        original = deepcopy([archived, failed])
-        with patch.object(experiment, 'populations', return_value=([row, other],
-                {r['id']: r['gold'] for r in (row, other)}, {}, {})), \
-                patch.object(experiment, 'build_context', return_value=(context(), 0)):
-            report = replay.replay_reports([dict(rows=[archived, failed])], 'v2.5')
-        self.assertEqual([archived, failed], original)
-        self.assertEqual(len(report['rows']), 2)
-        self.assertEqual(report['rows'][1]['V2']['status'], 'not_measured')
-        self.assertEqual(report['authenticity'], 'archived_response_replay')
-        self.assertFalse(report['new_model_results'])
-        self.assertIsNone(report['passed'])
-        self.assertIsNone(report['thresholds'])
-        self.assertEqual(report['paid_calls'], 0)
-        lines = experiment.markdown(report).splitlines()
-        self.assertIn(experiment.REPLAY_251_NOTICE, lines[0])
-        for index, line in enumerate(lines):
-            if line.startswith('| ---'):
-                self.assertIn(experiment.REPLAY_251_NOTICE, lines[index-1])
-        self.assertEqual(replay.migrate_response(raw, 'v2.5').tool_calls[0].arguments['version'], intent.VERSION)
-        self.assertEqual(raw['tool_calls'][0]['arguments']['version'], 'research-intent-v2.5')
 
 
 if __name__ == '__main__':

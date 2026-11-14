@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 
-from trading_companion.intent_router_metrics import (scores,provider_metrics,calibration,selective,choose_threshold,THRESHOLDS,
+from evaluation_tools.intent_router_metrics import (scores,provider_metrics,calibration,selective,choose_threshold,THRESHOLDS,
     cascade,wilson,cutover)
 from tests.test_news_triage_metrics import prices
 

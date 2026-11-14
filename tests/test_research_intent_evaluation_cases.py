@@ -10,8 +10,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from trading_companion import research_intent_evaluation_cases as cases
-from trading_companion import research_intent_evaluation as evaluation
+from evaluation_tools import research_intent_evaluation_cases as cases
+from evaluation_tools import research_intent_evaluation as evaluation
 from trading_companion import intent_rule_baseline as baselines
 
 

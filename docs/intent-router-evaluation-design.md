@@ -6,7 +6,7 @@
 
 2026-10-30 当前规则升级`decision-horizon-v1`，父版本`technical-parameter-grounding-v1`完整移入previous_rules。原304题、划分、标注、历史manifest及旧锁均不改写；新登记加入期限与参考计划语义依赖的源码摘要。旧版锁和参考报告不能用于当前规则，即使固定题库输出相同。期限确认是正式执行器在取数前执行的确定性流程，不新增路由分类模型。
 
-2026-10-29 B2日期规则：当前版本升级为 `contextual-routing-b2-dates-v1`，父版本为 `contextual-routing-b-v1`。原题库、标注、划分、manifest及B的23个源码摘要均保留，B摘要单独存入规则描述的 `previous_rules`；新摘要反映日期补认及共用调用方的历史标记/日期标记清理。B的阈值锁与参考报告不能用于B2，即使304题的分类输出不变，也不能据此宣称规则相同。版本和源码摘要均按既有校验路径核对；[B2边界与基线](request-routing-b2-dates-deltas.md)说明细节。
+2026-10-29 B2日期规则：当前版本升级为 `contextual-routing-b2-dates-v1`，父版本为 `contextual-routing-b-v1`。原题库、标注、划分、manifest及B的23个源码摘要均保留，B摘要单独存入规则描述的 `previous_rules`；新摘要反映日期补认及共用调用方的历史标记/日期标记清理。B的阈值锁与参考报告不能用于B2，即使304题的分类输出不变，也不能据此宣称规则相同。版本和源码摘要均按既有校验路径核对；B2边界与基线说明细节。
 
 2026-10-29 B批版本迁移：原304题、逐题标注、划分、24个消融配对及历史manifest（记录语料来源与摘要的清单）全部保留。B迁移时的规则与题库历史来源独立登记在[规则描述](../data/evaluation/intent-rule-baselines-v1.json)，版本为`contextual-routing-b-v1`；23个语义依赖源码按LF规范化计算SHA-256内容指纹，并核对聚合摘要，任一不符就拒绝评估。
 
@@ -65,7 +65,7 @@
 
 ## 冻结规则与公平口径
 
-A2（#175/#176）因统一原文对象识别修改了 `product_agent.py` 和 `product_plan.py`。原304题及manifest不改写；仅登记这两份源码的精确历史/当前摘要对，仍拒绝未知变更。新计划公开实际源码摘要，参考报告兼容检查也核对它；历史摘要继续标明题库编写时的来源。117轮零差异与独立名称测试见[A2记录](request-routing-a2-deltas.md)。这不是2a标签或阈值调整，也未接入模型路由。
+A2（#175/#176）因统一原文对象识别修改了 `product_agent.py` 和 `product_plan.py`。原304题及manifest不改写；仅登记这两份源码的精确历史/当前摘要对，仍拒绝未知变更。新计划公开实际源码摘要，参考报告兼容检查也核对它；历史摘要继续标明题库编写时的来源。117轮零差异与独立名称测试见A2记录。这不是2a标签或阈值调整，也未接入模型路由。
 
 [基线适配器](../src/trading_companion/intent_router_baseline.py)调用真实的知识提前分支和 `route_research_request`，固定人工证券目录、合法筛选状态和时钟，不另写简化关键词分类器，不读行情、不调用模型、不修改生产源文件。
 
@@ -89,7 +89,7 @@ A2（#175/#176）因统一原文对象识别修改了 `product_agent.py` 和 `pr
 
 ## 指标与费用
 
-[指标实现](../src/trading_companion/intent_router_metrics.py)保留每个比率的分子、分母和值，空分母为null：
+[指标实现](../evaluation_tools/intent_router_metrics.py)保留每个比率的分子、分母和值，空分母为null：
 
 - 准确率＝正确条数／全部计划题数；每类准确率实际为该类召回率，另给precision、recall、F1。F1＝2TP/(2TP+FP+FN)，macro-F1固定8类等权平均；非clarify子集固定7类。混淆矩阵另设failed和not_run列。
 - 误路由率＝业务题被判成其他业务类别的数／N；反问率＝合法clarify输出／N。正确反问、过度反问及gold=clarify时强行选业务分列，失败或未运行不伪装为反问。

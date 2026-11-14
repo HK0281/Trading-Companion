@@ -72,10 +72,6 @@ def capture():
     from tests.routing_technical_support import validate_current_contracts
     originals = read_baseline(TARGET)['scenarios'] + read_baseline(ROOT/'tests/fixtures/request-routing-v3.json')['scenarios']
     scenarios = []
-    lines = ['# 持有期限功能的117轮差异', '',
-        '父级为v6及回答核对覆盖层；v1～v6、原问题和三个历史观察器均保持原字节。',
-        '缺期限的价位问题先澄清，后续原消息照实受待确认状态影响，未插入额外回答。',
-        '其余差异为新方法标记、无默认期限的研判、价格来源核对及序列化摘要。续接成功由独立期限测试验证。', '']
     for scenario in originals:
         before = parent.overlay(scenario['id'], scenario['observed'])
         if scenario['id'].startswith('decision-'):
@@ -88,16 +84,12 @@ def capture():
         for index, (old, full) in enumerate(zip(before, observed, strict=True), 1):
             fields = field_deltas(old, project_observation(full))
             turns.append(dict(index=index, fields=fields))
-            explanation = CONTRACTS.get((scenario['id'], index))
-            lines.append(f'- {scenario["id"]}/{index}：' + (f'期限状态变化 {explanation}；' if explanation else '')
-                + (', '.join('`'+f['path']+'`' for f in fields) if fields else '无差异') + '。')
         scenarios.append(dict(id=scenario['id'], turns=turns))
     payload = dict(metadata=dict(corpus_version='request-routing-v7', base_revision='639d33e',
         source_kind='uncommitted_worktree_candidate', parents_sha256_lf={name:baseline_digest((PATH.parent/name).read_bytes())
             for name in ('request-routing-v2.json','request-routing-v3.json','request-routing-v6.json','request-routing-validation-v1.json')}),
         scenarios=scenarios)
     PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2)+'\n', encoding='utf-8', newline='\n')
-    (ROOT/'docs/request-routing-horizon-deltas.md').write_text('\n'.join(lines)+'\n', encoding='utf-8', newline='\n')
 
 
 if __name__ == '__main__':

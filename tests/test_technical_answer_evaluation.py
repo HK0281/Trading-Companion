@@ -10,10 +10,10 @@ import unittest
 from unittest.mock import patch
 
 from scripts import evaluate_technical_answers as cli
-from trading_companion import technical_answer_evaluation as evaluation
+from evaluation_tools import technical_answer_evaluation as evaluation
 from trading_companion.company_research_contracts import ResearchDataRequest
 from trading_companion.model import ModelCallError
-from trading_companion.technical_answer_evaluation_fixtures import NOW, TechnicalContractModel, TechnicalFixedSources
+from evaluation_tools.technical_answer_evaluation_fixtures import NOW, TechnicalContractModel, TechnicalFixedSources
 from trading_companion.tool_model import ToolModelResponse
 
 

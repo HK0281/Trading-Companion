@@ -44,7 +44,7 @@ RSI条件和否定限制收窄到所在分句：前一分句“趋势可能反�
 
 `numeric_validation_version=source-bindings-v2`、`sentence_count_version=sentence-counts-v2`。整句消失才计deleted_sentences，部分保留计partially_retained_sentences；同时公开generated_clauses、retained_clauses、deleted_clauses和分句删除率。忽略非数字标注、忽略字段、无效引用回退成功/失败、本地RSI及参考介绍各自计数。去重删除仍单列，不当作普通数字分句删除。
 
-**删句统计由v1变为v2，不能直接比较历史17.5%、26.9%和当前整句率。** 两套报告同时显示整句率、分句率、部分保留数，旧字段缺失保留未知。117轮差异单独封存于[新覆盖层](answer-validation-routing-deltas.md)，历史v1～v6和三个观察器不变。
+**删句统计由v1变为v2，不能直接比较历史17.5%、26.9%和当前整句率。** 两套报告同时显示整句率、分句率、部分保留数，旧字段缺失保留未知。117轮差异单独封存于新覆盖层，历史v1～v6和三个观察器不变。
 
 可复用回放入口为`scripts/replay_answer_validation.py`，输入诊断及对应正式报告，默认旧规则b5d77eb，以独立源码副本比较相同草稿。输入摘要、逐字段原句/保留句/拒绝位置、逐稿与首稿/修正稿统计只写`.agentbus/tmp/`。无法证明同轮公开事实对应关系的项目列replay_context_unavailable；不从被测正文推导参数或补取行情，不等同真实重跑删句率或完整评级形成率。
 

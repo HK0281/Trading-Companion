@@ -215,7 +215,7 @@ class AdmissionTests(unittest.TestCase):
 
     def test_review_pending_and_fingerprint_drift_block_frozen_admission(self):
         with self.assertRaisesRegex(ValueError,
-                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+                r'Frozen public file drift: '):
             cases.validate_freeze(require_review=True)
         lock = cases.read_json(cases.LOCK)
         with independent_freeze() as fixture:

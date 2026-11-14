@@ -6,7 +6,7 @@ from trading_companion.research_instruments import complete_mentions,research_sp
 from trading_companion.security_directory import Security,SecurityDirectory
 from trading_companion.product_plan import prepare_product_plan
 from trading_companion.tool_model import FakeToolModel
-from trading_companion.decision_answer_evaluation import load_corpus
+from evaluation_tools.decision_answer_evaluation import load_corpus
 from tests.test_product_plan import _arguments,_response,REFERENCE,NOW
 
 

@@ -14,7 +14,7 @@ from trading_companion.errors import DataSourceError, DataValidationError
 from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.local_env import load_model_environment
-from trading_companion.mvp_evaluation_cases import SCENARIOS
+from evaluation_tools.mvp_evaluation_cases import SCENARIOS
 from trading_companion.research_followup import FOLLOWUP_TOOL_NAME
 from trading_companion.research_intent import INTENT_TOOL_NAME
 from trading_companion.research_session import ResearchSession

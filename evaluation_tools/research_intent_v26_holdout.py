@@ -15,9 +15,9 @@ from evaluation_tools import research_intent_v26_evaluation as evaluation
 from scripts.verify import clean_environment, offline_network
 from trading_companion import research_intent_v2 as intent
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.research_intent_evaluation import field_scores
-from trading_companion.research_intent_evaluation_baseline import rule_observation
-from trading_companion.research_intent_evaluation_cases import ROOT, input_state, load_corpus
+from evaluation_tools.research_intent_evaluation import field_scores
+from evaluation_tools.research_intent_evaluation_baseline import rule_observation
+from evaluation_tools.research_intent_evaluation_cases import ROOT, input_state, load_corpus
 
 
 LOCK_NAME = 'data/evaluation/research-intent-v2.6-lock.json'

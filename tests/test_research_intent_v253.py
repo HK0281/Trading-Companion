@@ -6,7 +6,6 @@ import unittest
 from unittest.mock import Mock, patch
 
 from evaluation_tools import research_intent_v25_evaluation as experiment
-from evaluation_tools import replay_research_intents_v25 as replay
 from test_deepseek_tool_model import provider_call, provider_payload
 from test_research_intent_v2 import context, draft, response
 from test_research_intent_v25_evaluation import OfflineTests, sample
@@ -15,7 +14,7 @@ from trading_companion.agent_input import InputIssue
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.deepseek_tool_model import DeepSeekToolModel
 from trading_companion.model import ModelCallError, ModelConfigurationError
-from trading_companion.tool_model import ToolDefinition, ToolMessage, ToolModelResponse
+from trading_companion.tool_model import ToolDefinition, ToolMessage
 from trading_companion.turn_control import TurnControl, TurnLimits, request_timeout
 
 
@@ -275,25 +274,6 @@ class ClarificationTests(OfflineTests):
         value['exclusions'] = []
         value['subject']['mentions'] = ['虚构科技公司']
         self.assertEqual(intent.check_response('虚构科技公司未来0天值得买入吗', response(value), context=context()).outcome, 'clarify_identity')
-
-
-class ReplayTests(OfflineTests):
-    def test_current_archive_replay_never_simulates_missing_retry_and_marks_every_table(self):
-        row, missing = sample(), dict(sample(), id='missing')
-        old = response(draft(version='research-intent-v2.5.2')).to_dict()
-        reports = [dict(rows=[dict(row, V2=dict(response=old)), dict(missing, V2=dict(response=None))])]
-        with patch.object(experiment, 'populations', return_value=([row, missing],
-                {r['id']:r['gold'] for r in (row, missing)}, {}, {})):
-            report = replay.replay_reports(reports, 'v2.5.2')
-        self.assertEqual(report['rows'][1]['V2']['status'], 'not_measured')
-        self.assertEqual(report['format_retries']['total'], 0)
-        self.assertIsNone(report['passed'])
-        self.assertFalse(report['new_model_results'])
-        self.assertEqual(report['paid_calls'], 0)
-        lines = experiment.markdown(report).splitlines()
-        for i, line in enumerate(lines):
-            if line.startswith('| ---'):
-                self.assertIn(experiment.REPLAY_253_NOTICE, lines[i-1])
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
-from trading_companion.decision_answer_evaluation import build_plan,evaluate,write_report
+from evaluation_tools.decision_answer_evaluation import build_plan,evaluate,write_report
 from trading_companion.workflow_evaluation_runtime import check_output_root,PlanError
 
 

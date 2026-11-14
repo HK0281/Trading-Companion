@@ -101,7 +101,7 @@ P01 的三家公司各取财务和新闻，只有第三家新闻被闸门挡住�
 
 API 返回后才释放迟到响应，关闭执行器后再核对追踪文件与返回前完全相同。同步 HTTP 工作退出前仍占用许可，不能把逻辑超时当成线程已经终止。这些场景都带人工故障标签，未来不能混入真实来源超时比例。
 
-[evaluation_common.py](../src/trading_companion/evaluation_common.py) 在委托前原子扣整次额度，调用抛错也保留未知用量位置。它独立于单轮和会话上限；支持跨场景、会话及重复的总限制。达到上限后剩余计划步骤标记 `not_run`，不补问法、不补上下文、不重跑。某步失败后依序执行后续步骤，并继续其他独立场景。原 [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) 和 [mvp_evaluation.py](../src/trading_companion/mvp_evaluation.py) 的首错停止、输出和契约没有改变。
+[evaluation_common.py](../src/trading_companion/evaluation_common.py) 在委托前原子扣整次额度，调用抛错也保留未知用量位置。它独立于单轮和会话上限；支持跨场景、会话及重复的总限制。达到上限后剩余计划步骤标记 `not_run`，不补问法、不补上下文、不重跑。某步失败后依序执行后续步骤，并继续其他独立场景。原 [agent_evaluation.py](../evaluation_tools/agent_evaluation.py) 和 [mvp_evaluation.py](../evaluation_tools/mvp_evaluation.py) 的首错停止、输出和契约没有改变。
 
 公司评估原 `_SuiteModel`/`_usage` 名称保留为兼容层，继续默认五场景/九次假模型方法调用。用量总计只加已报告字段，缺失保留 null；未知、部分和不一致用量不算完整，报告完整请求数及未知请求数。零模型尝试与真实零 token 也不是同一件事。
 

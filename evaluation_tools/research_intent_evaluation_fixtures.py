@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from trading_companion.api_service import ResearchApiService, ApiProblem
 from trading_companion.decision_demo import DecisionDemoModel
-from trading_companion.research_intent_evaluation_cases import valid_context
+from evaluation_tools.research_intent_evaluation_cases import valid_context
 from trading_companion.decision_horizon import canonical
 from trading_companion.request_routing import RoutingSessionView
 from trading_companion.workflow_evaluation import _fixed_authenticity

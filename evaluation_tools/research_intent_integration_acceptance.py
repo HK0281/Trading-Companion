@@ -97,7 +97,7 @@ def scenarios():
 
 def public_inputs():
     from evaluation_tools import research_intent_v26_cases as cases
-    from trading_companion.research_intent_v2_evaluation import prefix_library
+    from evaluation_tools.research_intent_v2_evaluation import prefix_library
     rows = cases.load_cases()
     old = [json.loads(line) for line in (ROOT / 'data/evaluation/research-intent-v2.jsonl').read_text(
         encoding='utf-8').splitlines()]
@@ -122,8 +122,8 @@ def production_request(row, prefixes, setups):
 
 def historical_reference(rows, *, history=HISTORICAL, reference=REFERENCE):
     """Read only public reports/responses; never re-admit current code to old locks."""
-    from trading_companion.research_intent_evaluation import field_scores
-    from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS
+    from evaluation_tools.research_intent_evaluation import field_scores
+    from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS
     try:
         value = json.loads(Path(history).read_text(encoding='utf-8'))
         expected = {r['id']: r for r in rows}
@@ -363,7 +363,7 @@ def token_summary(runtime):
 def replay_dev(plan, model, observer):
     from trading_companion import research_intent_v2 as intent
     from trading_companion.research_intent_context import IntentContextError
-    from trading_companion.research_intent_evaluation import field_scores
+    from evaluation_tools.research_intent_evaluation import field_scores
     from trading_companion.turn_control import TurnControl, TurnLimits
     rows, prefixes, setups = public_inputs()
     results = []
@@ -770,7 +770,7 @@ def unmeasured_products(plan, *, label=None):
 
 
 def unmeasured_dev(plan):
-    from trading_companion.research_intent_evaluation import field_scores
+    from evaluation_tools.research_intent_evaluation import field_scores
     rows, _, _ = public_inputs()
     result = [dict(id=r['id'], question=r['question'], gold=r['gold'],
                    V2=dict(status='not_measured', reason='not_run', fields={})) for r in rows]

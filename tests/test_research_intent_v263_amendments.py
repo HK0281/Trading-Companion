@@ -1,5 +1,6 @@
 """Approval, layer integrity and score provenance for the six public v2.6.3 reviews."""
 
+from contextlib import ExitStack
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -8,8 +9,21 @@ from unittest.mock import patch
 
 from evaluation_tools import research_intent_v263_amendments as addendum
 from evaluation_tools import research_intent_v26_evaluation as evaluation
+from research_intent_v26_freeze_support import recorded_v26_public_files
 from test_research_intent_v25_evaluation import OfflineTests
 from trading_companion.intent_router_task import digest, read_json
+
+
+_RETIRED_FREEZE = ExitStack()
+
+
+def setUpModule():
+    # The v2.6 freeze retired at tag research-intent-v2.6-freeze-valid; reuse its recorded public fingerprints.
+    _RETIRED_FREEZE.enter_context(recorded_v26_public_files())
+
+
+def tearDownModule():
+    _RETIRED_FREEZE.close()
 
 
 class V263AmendmentTests(OfflineTests):

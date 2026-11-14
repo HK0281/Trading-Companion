@@ -196,7 +196,7 @@ class PendingSelectionTests(GuardedTests):
 class CrossSubjectApiTests(unittest.TestCase):
     def test_both_cross_kind_orders_choose_last_published_identity_at_same_time(self):
         from trading_companion.api_service import ResearchApiService
-        from trading_companion.decision_answer_evaluation import DecisionContractModel, DecisionFixedSources, load_corpus
+        from evaluation_tools.decision_answer_evaluation import DecisionContractModel, DecisionFixedSources, load_corpus
         from trading_companion.workflow_evaluation_fixtures import NOW as API_NOW, REFERENCE_DATE
 
         cases, _ = load_corpus()

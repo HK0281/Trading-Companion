@@ -19,12 +19,12 @@ from trading_companion.model import ModelConfigurationError
 from trading_companion.product_plan import ProductPlan
 from trading_companion.agent_input import InputIssue
 from trading_companion.errors import InvalidRequestError, DataValidationError
-from trading_companion.research_intent_evaluation import field_scores, same
-from trading_companion.research_intent_evaluation_baseline import UNKNOWN
-from trading_companion.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, input_state, load_corpus, valid_context
-from trading_companion.research_intent_evaluation_fixtures import fixed_execution
+from evaluation_tools.research_intent_evaluation import field_scores, same
+from evaluation_tools.research_intent_evaluation_baseline import UNKNOWN
+from evaluation_tools.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, input_state, load_corpus, valid_context
+from evaluation_tools.research_intent_evaluation_fixtures import fixed_execution
 from trading_companion.research_intent_v2 import TEMPERATURE, IntentContext, check_response, local_preflight, safe_failure, understand
-from trading_companion.research_intent_v2_annotations import load_amendments, revised_rows
+from evaluation_tools.research_intent_v2_annotations import load_amendments, revised_rows
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.research_session import ResearchSession, PendingResearch
 from trading_companion.research_intent import ResearchConditions
@@ -437,7 +437,7 @@ def _live_model(timeout_seconds):
 
 def evaluate_development(*, live=False, split='dev', maximum=MAX_CALLS, timeout_seconds=45, report_dir=None):
     """Only this explicit live entry can read the selected credential or use a provider."""
-    from trading_companion.research_intent_evaluation import build_v2_plan, format_report
+    from evaluation_tools.research_intent_evaluation import build_v2_plan, format_report
     if split != 'dev' or type(live) is not bool:
         raise ValueError('Holdout requires a separately reviewed version lock')
     AttemptBudget(maximum)

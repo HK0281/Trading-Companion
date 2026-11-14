@@ -214,8 +214,8 @@ class PythonChannelIntegrationTests(unittest.TestCase):
             stack.enter_context(patch.object(unittest.defaultTestLoader, "discover", return_value=unittest.TestSuite()))
             suite = stack.enter_context(patch.object(verify, "run_strict_suite", return_value=3))
             functions = stack.enter_context(patch.object(verify, "run_strict_pytest", side_effect=run_functions))
-            stack.enter_context(patch("trading_companion.agent_evaluation.run_evaluation", return_value={}))
-            stack.enter_context(patch("trading_companion.mvp_evaluation.run_mvp_evaluation", return_value={}))
+            stack.enter_context(patch("evaluation_tools.agent_evaluation.run_evaluation", return_value={}))
+            stack.enter_context(patch("evaluation_tools.mvp_evaluation.run_mvp_evaluation", return_value={}))
             stack.enter_context(patch("scripts.evaluate_company_research.evaluate_company_research", return_value={}))
             for name in ("check_evaluation", "check_mvp_evaluation", "check_company_evaluation"):
                 stack.enter_context(patch.object(verify, name))

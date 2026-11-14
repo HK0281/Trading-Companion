@@ -12,16 +12,17 @@ from time import perf_counter
 from unittest.mock import patch
 from uuid import uuid4
 
+from evaluation_tools.source_paths import source_file
 from trading_companion.api_service import ResearchApiService, ensure_data_mode_dependencies
 from trading_companion.answer_diagnostics import AnswerDiagnostics, bind_diagnostics, check_diagnostics_root, diagnostic_location
-from trading_companion.decision_answer_evaluation import TimedMeter, _send, _latency
+from evaluation_tools.decision_answer_evaluation import TimedMeter, _send, _latency
 from trading_companion.deepseek_model import ANSWER_OUTPUT_TOKENS, TOOL_OUTPUT_TOKENS
 from trading_companion.evaluation_common import EvaluationModelMeter, reported_usage
 from trading_companion.evaluation_pricing import DEFAULT_PRICES, MODEL_ID, actual_cost, estimate_cost, load_prices, price_for, unique_object
 from trading_companion.product_research import collect_product_research
 from trading_companion.security_directory import load_security_directory
-from trading_companion.technical_answer_evaluation_checks import FAILURE_CODES, grade_turn
-from trading_companion.technical_answer_evaluation_fixtures import TechnicalContractModel, TechnicalFixedSources, NOW, REFERENCE_DATE
+from evaluation_tools.technical_answer_evaluation_checks import FAILURE_CODES, grade_turn
+from evaluation_tools.technical_answer_evaluation_fixtures import TechnicalContractModel, TechnicalFixedSources, NOW, REFERENCE_DATE
 from trading_companion.turn_trace import JsonlTraceSink
 from trading_companion.workflow_evaluation import _revision, _dirty, _fixed_authenticity
 from trading_companion.workflow_evaluation_metrics import ratio
@@ -29,7 +30,7 @@ from trading_companion.workflow_evaluation_runtime import (
     PlanError, require, check_output_root, build_real_model, live_sources, model_network_boundary,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'data/evaluation/technical-answer-v1.jsonl'
 MANIFEST = CORPUS.with_suffix('.manifest.json')
 VERSION = 'technical-answer-evaluation-v1'
@@ -49,7 +50,7 @@ def implementation_fingerprint():
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii') + b'\0')
-        digest.update(Path(__file__).with_name(name).read_bytes().replace(b'\r\n', b'\n'))
+        digest.update(source_file(name).read_bytes().replace(b'\r\n', b'\n'))
     return digest.hexdigest()
 
 
@@ -148,7 +149,7 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
             if mode == 'live' else ['artificial_directory_company_transport_400_weekday_bars'],
         fixture=None if mode == 'live' else dict(version='technical-fixed-data-v1', reference_time=NOW.isoformat(),
             bars=400, authenticity='fixed_synthetic', implementation_sha256=implementation_fingerprint()))
-    from trading_companion.evaluation_horizon import descriptor
+    from evaluation_tools.evaluation_horizon import descriptor
     plan.update(horizon_delta=descriptor('technical'), planned_original_turns=14, maximum_supplemental_turns=2,
                 fixed_horizon_reply='中线')
     if mode == 'live':
@@ -273,7 +274,7 @@ def _run(cases, plan, meter, delegate, trace_root):
                         forwarded, blocked = meter.forwarded, meter.blocked
                         with CollectionAudit(sources) as audit, diagnostic_location(case_id=case['id'], phase=row['turns'][index]['phase']):
                             result, elapsed, trace = _send(service, credentials, expected['question'], path, seen)
-                            from trading_companion.evaluation_horizon import turn_record, complete_horizon
+                            from evaluation_tools.evaluation_horizon import turn_record, complete_horizon
                             row['turns'][index]['original_turn'] = turn_record(result, expected['question'], elapsed, trace)
                             result, elapsed, trace, extras = complete_horizon(
                                 lambda question: _send(service, credentials, question, path, seen), result, elapsed, trace,
@@ -320,7 +321,7 @@ def _run(cases, plan, meter, delegate, trace_root):
 
 
 def aggregate_turns(selected):
-    from trading_companion.answer_validation_metrics import clause_metrics
+    from evaluation_tools.answer_validation_metrics import clause_metrics
     known = [t for t in selected if type(t.get('generated_sentences')) is int and type(t.get('deleted_sentences')) is int]
     generated, deleted = (sum(t[key] for t in known) for key in ('generated_sentences', 'deleted_sentences'))
     unknown = len(selected) - len(known)

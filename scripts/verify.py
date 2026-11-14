@@ -275,9 +275,9 @@ def python_checks():
         suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT / "tests"))
         count = run_strict_suite(suite)
         function_count = run_strict_pytest()
-        from trading_companion.agent_evaluation import run_evaluation
+        from evaluation_tools.agent_evaluation import run_evaluation
         from trading_companion.api_demo import main as api_demo
-        from trading_companion.mvp_evaluation import run_mvp_evaluation
+        from evaluation_tools.mvp_evaluation import run_mvp_evaluation
         from scripts.evaluate_company_research import evaluate_company_research
 
         check_evaluation(run_evaluation(provider="fake", case="all"))

@@ -1,4 +1,4 @@
-"""Independent scalar repair, unused evidence, date-prefix and saved-argument replay boundaries."""
+"""Independent scalar repair, unused evidence and date-prefix boundaries."""
 
 from copy import deepcopy
 from datetime import timedelta
@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 
 from evaluation_tools import research_intent_v25_evaluation as experiment
-from evaluation_tools import replay_research_intents_v25 as replay
 from test_deepseek_tool_model import provider_call, provider_payload
 from test_research_intent_v2 import context, draft, response
 from test_research_intent_v25_evaluation import OfflineTests, sample
@@ -213,88 +212,6 @@ class MeteredTests(OfflineTests):
         self.assertEqual(plan['tool_arguments_policy']['retry_repairs'], ['unquoted_scalar'])
         self.assertIn('unquoted_scalar', plan['tool_arguments_policy']['allowed_repairs'])
         self.assertTrue(plan['tool_arguments_policy']['global_budget_includes_retries'])
-
-
-def archived_failure(text, number=1):
-    try:
-        json.loads(text)
-    except json.JSONDecodeError as error:
-        event = dict(call_index=0, arguments_length=len(text), finish_reason='tool_calls', category='invalid_syntax',
-            position=error.pos, line=error.lineno, column=error.colno, repair=None, correction=None,
-            arguments_raw=text, arguments_raw_truncated=False, target_attempt=number)
-    return dict(target_attempt=number, response=None, failure='intent_v2_model_tool_arguments_json_invalid',
-                call_ms=None, argument_diagnostics=[event])
-
-
-class ReplayTests(OfflineTests):
-    def run_replay(self, history, row=None):
-        row = row or dict(sample(), question='研究平安银行，不用价位')
-        original = dict(attempts=len(history), response=history[-1].get('response'), fields={},
-            attempt_history=history, argument_diagnostics=[e for h in history for e in h['argument_diagnostics']],
-            format_retry=dict(attempted=len(history)==2, successful=history[-1].get('response') is not None))
-        archive = dict(row, V2=original)
-        before = deepcopy(archive)
-        with patch.object(experiment, 'populations', return_value=([row], {row['id']:row['gold']}, {}, {})), \
-                patch.object(experiment, 'build_context', return_value=(context(), 0)):
-            report = replay.replay_reports([dict(rows=[archive])])
-        self.assertEqual(archive, before)
-        return report
-
-    def test_all_saved_attempts_are_separate_first_is_selected_and_carrier_is_disclosed(self):
-        text = bare(version='v2.5.3')
-        report = self.run_replay([archived_failure(text), archived_failure(text, 2)])
-        self.assertEqual(report['saved_argument_replay_summary'], dict(saved=2, repaired=2, selected=1))
-        self.assertEqual([e['selected'] for e in report['saved_argument_replays']], [True,False])
-        row = report['rows'][0]['V2']
-        self.assertEqual((row['status'], row['selected_archived_attempt']), ('ok',1))
-        self.assertEqual(row['raw']['status'], 'failed')
-        self.assertIsNone(row['response'])
-        self.assertTrue(row['validation_carrier']['synthetic'])
-        self.assertIsNone(row['validation_carrier']['original_call_id'])
-        self.assertIsNone(row['validation_carrier']['original_usage'])
-        self.assertEqual(report['historical_format_retries']['total'], 1)
-        self.assertEqual((report['paid_calls'], report['format_retries']['total']), (0,0))
-        self.assertEqual(report['telemetry']['attempts'], 0)
-        self.assertIsNone(report['passed'])
-        self.assertIsNone(report['thresholds'])
-        self.assertFalse(report['new_model_results'])
-        lines = experiment.markdown(report).splitlines()
-        for i,line in enumerate(lines):
-            if line.startswith('| ---'):
-                self.assertIn(experiment.REPLAY_254_NOTICE, lines[i-1])
-
-    def test_first_checked_result_wins_without_using_gold_or_choosing_later_success(self):
-        # The first saved proposal is syntactically repairable but semantically invalid.
-        # It still ends interpretation; a later recorded response cannot conceal that.
-        text = bare(draft(plan_phrase='不用价位', objective_phrase='fabricated'), version='v2.5.3')
-        later = dict(target_attempt=2, response=response(draft(version='research-intent-v2.5.3')).to_dict(),
-                     failure=None, call_ms=None, argument_diagnostics=[])
-        report = self.run_replay([archived_failure(text), later])
-        self.assertEqual(report['rows'][0]['V2']['status'], 'invalid')
-        self.assertEqual(report['rows'][0]['V2']['selected_archived_attempt'], 1)
-
-    def test_missing_or_invalid_raw_stays_unmeasured_and_no_retry_is_fabricated(self):
-        text = bare(version='v2.5.3')
-        valid = archived_failure(text)
-        variants = []
-        for key,value in (('arguments_raw_truncated',True), ('arguments_length',len(text)+1),
-                          ('position',0), ('call_index',1), ('target_attempt',2), ('finish_reason','length')):
-            bad = deepcopy(valid)
-            bad['argument_diagnostics'][0][key] = value
-            variants.append(bad)
-        bad = deepcopy(valid)
-        bad['argument_diagnostics'][0].pop('arguments_raw')
-        variants.append(bad)
-        for attempt in variants:
-            report = self.run_replay([attempt])
-            self.assertEqual(report['rows'][0]['V2']['status'], 'not_measured')
-            self.assertEqual(report['format_retries']['total'], 0)
-            self.assertEqual(report['saved_argument_replay_summary']['selected'], 0)
-
-    def test_fixed_public_sources_only_and_current_default(self):
-        self.assertEqual(set(replay.SOURCES_BY_VERSION), {'v2.4','v2.5','v2.5.1','v2.5.2','v2.5.3'})
-        self.assertIn('3c0ba9d', str(replay.SOURCES_BY_VERSION['v2.5.3']['dev']))
-        self.assertIn('30339be', str(replay.SOURCES_BY_VERSION['v2.5.2']['regression']))
 
 
 if __name__ == '__main__':

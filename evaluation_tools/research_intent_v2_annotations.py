@@ -4,7 +4,7 @@ from copy import deepcopy
 from hashlib import sha256
 
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.research_intent_evaluation_cases import ROOT, valid_row
+from evaluation_tools.research_intent_evaluation_cases import ROOT, valid_row
 
 
 AMENDMENTS = ROOT / 'data/evaluation/research-intent-v2-dev-amendments.json'

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from trading_companion.daily_bar import DailyBar
-from trading_companion.decision_answer_evaluation import DecisionFixedSources
+from evaluation_tools.decision_answer_evaluation import DecisionFixedSources
 from trading_companion.decision_demo import scripted_narrative
 from trading_companion.product_plan import PRODUCT_INTENT_TOOL_NAME
 from trading_companion.tool_model import ToolCall, ToolModelResponse, validate_tool_messages

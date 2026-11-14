@@ -14,7 +14,7 @@ from trading_companion.news_triage_reporting import cell
 from trading_companion.typesafe_jev import decode
 from trading_companion.workflow_evaluation_fixtures import PHASES, SCRIPT_KEYS
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "data/evaluation/research-intent-v2.jsonl"
 MANIFEST = CORPUS.with_suffix(".manifest.json")
 VERSION = "research-intent-evaluation-v2"
@@ -37,10 +37,10 @@ BOOL_CONTEXT = ("has_company", "has_technical", "has_index", "company_enabled", 
 PENDING = ("none", "company_identity", "company_horizon", "technical", "indicator", "index_identity",
            "index_horizon", "conflict")
 IMPLEMENTATION = (
-    "src/trading_companion/research_intent_evaluation_cases.py",
-    "src/trading_companion/research_intent_evaluation_baseline.py",
-    "src/trading_companion/research_intent_evaluation_fixtures.py",
-    "src/trading_companion/research_intent_evaluation.py",
+    "evaluation_tools/research_intent_evaluation_cases.py",
+    "evaluation_tools/research_intent_evaluation_baseline.py",
+    "evaluation_tools/research_intent_evaluation_fixtures.py",
+    "evaluation_tools/research_intent_evaluation.py",
     "scripts/evaluate_research_intents.py",
     "src/trading_companion/intent_router_task.py", "src/trading_companion/news_triage_reporting.py",
     "src/trading_companion/classification_metrics.py", "src/trading_companion/typesafe_jev.py",

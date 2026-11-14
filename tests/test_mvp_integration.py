@@ -12,8 +12,8 @@ from trading_companion.agent import run_natural_research_turn, run_research_turn
 from trading_companion.api_service import ResearchApiService, public_turn
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.development_fixtures import REFERENCE_DATE, load_development_fixtures
-from trading_companion.mvp_evaluation import FixtureModel, NOW
-from trading_companion.mvp_evaluation_cases import SCENARIOS
+from evaluation_tools.mvp_evaluation import FixtureModel, NOW
+from evaluation_tools.mvp_evaluation_cases import SCENARIOS
 from trading_companion.research_followup import render_saved_answer
 from trading_companion.research_session import ResearchSession
 from trading_companion.turn_control import TurnControl, TurnLimits

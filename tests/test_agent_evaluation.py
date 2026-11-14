@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from trading_companion.agent import run_research_turn
-from trading_companion.agent_evaluation import (
+from evaluation_tools.agent_evaluation import (
     CASES, ROOT, SUITE_VERSION, _MeteredModel, _fake_model, _usage_summary, main, run_evaluation,
 )
 from trading_companion.agent_input import request_arguments
@@ -63,7 +63,7 @@ class GuardedTests(unittest.TestCase):
 
     def scripted(self, responses, *, case="complete"):
         model = FakeToolModel(responses)
-        with patch("trading_companion.agent_evaluation._build_model", return_value=model):
+        with patch("evaluation_tools.agent_evaluation._build_model", return_value=model):
             report = run_evaluation(case=case)
         return report, model
 
@@ -109,7 +109,7 @@ class GuardedTests(unittest.TestCase):
 
 class OfflineEvaluationTests(GuardedTests):
     def test_default_is_one_offline_case_without_any_credential_reads(self):
-        with patch("trading_companion.agent_evaluation.DeepSeekConfig.from_env",
+        with patch("evaluation_tools.agent_evaluation.DeepSeekConfig.from_env",
                    side_effect=AssertionError("No credential reads")):
             code, report = self.cli()
         self.assertEqual((code, report["status"]), (0, "passed"))
@@ -168,7 +168,7 @@ class OfflineEvaluationTests(GuardedTests):
             self.assertEqual(run_evaluation()["status"], "passed")
 
     def test_invalid_provider_and_case_fail_before_fixtures_or_credentials(self):
-        with patch("trading_companion.agent_evaluation._fixtures", side_effect=AssertionError("No fixture reads")):
+        with patch("evaluation_tools.agent_evaluation._fixtures", side_effect=AssertionError("No fixture reads")):
             for kwargs in ({"provider": "other"}, {"provider": None}, {"case": "unknown"}, {"case": []}):
                 with self.assertRaises(ModelConfigurationError):
                     run_evaluation(**kwargs)
@@ -184,7 +184,7 @@ class OfflineEvaluationTests(GuardedTests):
 
     def test_missing_fixture_stops_before_live_configuration(self):
         with patch.object(Path, "read_bytes", side_effect=OSError(SECRET)), \
-             patch("trading_companion.agent_evaluation.DeepSeekConfig.from_env",
+             patch("evaluation_tools.agent_evaluation.DeepSeekConfig.from_env",
                    side_effect=AssertionError("No credentials before fixture verification")):
             code, report = self.cli(["--provider", "deepseek"])
         self.assertEqual((code, report["code"]), (1, "evaluation_fixture_unusable"))
@@ -193,7 +193,7 @@ class OfflineEvaluationTests(GuardedTests):
 
     def test_modified_fixture_cannot_be_silently_labeled_as_known_synthetic_data(self):
         with patch.object(Path, "read_bytes", return_value=SECRET.encode()), \
-             patch("trading_companion.agent_evaluation.DeepSeekConfig.from_env",
+             patch("evaluation_tools.agent_evaluation.DeepSeekConfig.from_env",
                    side_effect=AssertionError("No credentials for unpinned fixtures")):
             report = run_evaluation(provider="deepseek", case="all")
         self.assertEqual(report["code"], "evaluation_fixture_unusable")
@@ -220,12 +220,12 @@ class OfflineEvaluationTests(GuardedTests):
         self.assertIn("not_language_or_investment_quality", report["evaluation_scope"])
 
     def test_elapsed_time_is_measured_not_a_hard_deadline(self):
-        with patch("trading_companion.agent_evaluation.perf_counter", side_effect=[10.0, 10.125]):
+        with patch("evaluation_tools.agent_evaluation.perf_counter", side_effect=[10.0, 10.125]):
             report = run_evaluation()
         self.assertEqual(report["cases"][0]["elapsed_ms"], 125)
 
     def test_clean_process_default_uses_no_credentials(self):
-        result = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m", "trading_companion.agent_evaluation"],
+        result = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m", "evaluation_tools.agent_evaluation"],
             cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True,
             text=True, encoding="utf-8", timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -266,7 +266,7 @@ class EvaluationFailureTests(GuardedTests):
 
     def test_first_failed_case_skips_remaining_cases_without_hidden_retries(self):
         model = FakeToolModel([ToolModelResponse("complete", SECRET)])
-        with patch("trading_companion.agent_evaluation._build_model", return_value=model) as factory:
+        with patch("evaluation_tools.agent_evaluation._build_model", return_value=model) as factory:
             report = run_evaluation(case="all")
         self.assertEqual(report["status"], "failed")
         self.assertEqual((report["summary"]["executed"], report["summary"]["failed"],
@@ -278,7 +278,7 @@ class EvaluationFailureTests(GuardedTests):
     def test_model_timeout_is_counted_without_guessing_usage_or_leaking_details(self):
         model = Mock()
         model.complete.side_effect = [proposal(), ModelCallError("timeout", SECRET)]
-        with patch("trading_companion.agent_evaluation._build_model", return_value=model):
+        with patch("evaluation_tools.agent_evaluation._build_model", return_value=model):
             report = run_evaluation()
         result = report["cases"][0]
         self.assertEqual(result["observed"]["failure_code"], "timeout")
@@ -291,7 +291,7 @@ class EvaluationFailureTests(GuardedTests):
     def test_unrecognized_failure_code_is_not_forwarded_as_untrusted_text(self):
         model = Mock()
         model.complete.side_effect = ModelCallError(SECRET, SECRET)
-        with patch("trading_companion.agent_evaluation._build_model", return_value=model):
+        with patch("evaluation_tools.agent_evaluation._build_model", return_value=model):
             report = run_evaluation()
         self.assertEqual(report["cases"][0]["observed"]["failure_code"], "unclassified_failure")
         self.assertNotIn(SECRET, json.dumps(report))
@@ -319,7 +319,7 @@ class EvaluationFailureTests(GuardedTests):
         original = run_research_turn
         def wrong_counter(*args, **kwargs):
             return replace(original(*args, **kwargs), model_calls_attempted=1)
-        with patch("trading_companion.agent_evaluation.run_research_turn", side_effect=wrong_counter):
+        with patch("evaluation_tools.agent_evaluation.run_research_turn", side_effect=wrong_counter):
             report = run_evaluation()
         self.assertEqual(report["status"], "failed")
         self.assertFalse(report["cases"][0]["checks"]["agent_model_count_matches_meter"])
@@ -328,7 +328,7 @@ class EvaluationFailureTests(GuardedTests):
         original = run_research_turn
         def wrong_status(*args, **kwargs):
             return replace(original(*args, **kwargs), status="completed", code="research_completed")
-        with patch("trading_companion.agent_evaluation.run_research_turn", side_effect=wrong_status):
+        with patch("evaluation_tools.agent_evaluation.run_research_turn", side_effect=wrong_status):
             report = run_evaluation(case="partial")
         self.assertEqual(report["status"], "failed")
         self.assertTrue(report["cases"][0]["checks"]["missing_sma20_preserved"])
@@ -339,7 +339,7 @@ class EvaluationFailureTests(GuardedTests):
         model = Mock()
         model.complete.side_effect = lambda messages, *, tools: replace(
             delegate.complete(messages, tools=tools), provider="deepseek", is_mock=False)
-        with patch("trading_companion.agent_evaluation._build_model", return_value=model):
+        with patch("evaluation_tools.agent_evaluation._build_model", return_value=model):
             report = run_evaluation()
         self.assertEqual(report["status"], "failed")
         self.assertFalse(report["cases"][0]["checks"]["provider_mode"])

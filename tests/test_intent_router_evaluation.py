@@ -12,9 +12,9 @@ from unittest.mock import Mock, patch
 import requests
 
 from scripts.evaluate_intent_router import main
-from trading_companion import intent_router_evaluation as evaluation
-from trading_companion.intent_router_models import fixture_post
-from trading_companion.intent_router_reporting import write_report
+from evaluation_tools import intent_router_evaluation as evaluation
+from evaluation_tools.intent_router_models import fixture_post
+from evaluation_tools.intent_router_reporting import write_report
 from trading_companion.intent_router_task import load_corpus, input_state, digest
 from trading_companion.typesafe_jev import ClassifierError
 
@@ -56,7 +56,7 @@ class IntentEvaluationTests(unittest.TestCase):
 
     def test_clarification_advantage_cannot_hide_worse_business_classification(self):
         from trading_companion.evaluation_pricing import DEFAULT_PRICES, load_prices
-        from trading_companion.intent_router_metrics import metrics, cutover
+        from evaluation_tools.intent_router_metrics import metrics, cutover
         report=deepcopy(self.holdout)
         for row in report['rows']:
             row['results']['jev'].update(prediction=row['gold'],confidence=.99)

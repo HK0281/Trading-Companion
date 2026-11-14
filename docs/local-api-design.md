@@ -23,7 +23,7 @@ HTTP请求 → FastAPI / Pydantic校验
 
 - [api.py](../src/trading_companion/api.py)：HTTP输入/响应模型、正常/开发固定路由、请求体限制、同源与Host保护、统一错误。
 - [api_service.py](../src/trading_companion/api_service.py)：独立于FastAPI的服务层，拥有进程内会话和模型实例，协调配额及幂等记录。
-- [request_routing.py](../src/trading_companion/request_routing.py)：语义意图、固定原因码和执行入口分开；六条原研究/知识路径与受控本地答复按静态优先级选择，知识插问保留待澄清，身份/指标回复交原所有者。两阶段目录策略与名单惰性时钟保留，授权和状态变化仍在执行器。v1保留35场景/105轮旧事实，v2逐轮核对目标与完整差异，详见[请求路由设计](request-routing-design.md)及[六项修正](request-routing-1b-deltas.md)。
+- [request_routing.py](../src/trading_companion/request_routing.py)：语义意图、固定原因码和执行入口分开；六条原研究/知识路径与受控本地答复按静态优先级选择，知识插问保留待澄清，身份/指标回复交原所有者。两阶段目录策略与名单惰性时钟保留，授权和状态变化仍在执行器。v1保留35场景/105轮旧事实，v2逐轮核对目标与完整差异，详见[请求路由设计](request-routing-design.md)及六项修正。
 - [api_server.py](../src/trading_companion/api_server.py)：正常默认及显式离线启动、服务端模型/数据配置，固定127.0.0.1及一个worker。
 - [api_demo.py](../src/trading_companion/api_demo.py)：TestClient进程内HTTP演示，不开监听端口、不请求真实模型或行情。
 

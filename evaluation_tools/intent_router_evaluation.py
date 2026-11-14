@@ -10,6 +10,7 @@ import random
 import sys
 from time import monotonic
 
+from evaluation_tools.source_paths import source_file
 from trading_companion.deepseek_model import DeepSeekConfig
 from trading_companion.evaluation_pricing import DEFAULT_PRICES, MODEL_ID, load_prices, estimate_cost, price_for
 from trading_companion.local_env import load_evaluation_key_environment
@@ -17,9 +18,9 @@ from trading_companion.news_triage_evaluation import network_boundary, TIMEOUT_S
 from trading_companion.typesafe_jev import JevConfig, ClassifierError, require
 from trading_companion.intent_router_task import load_corpus, input_state, digest, read_json, definition_digest, frozen_sources, LABELS
 from trading_companion.intent_router_baseline import rule_classify, protected_reason
-from trading_companion.intent_router_models import JevIntent, DeepSeekIntent, fixture_post, TEMPLATE
+from evaluation_tools.intent_router_models import JevIntent, DeepSeekIntent, fixture_post, TEMPLATE
 from trading_companion.intent_rule_baseline import current_baseline
-from trading_companion.intent_router_metrics import metrics, choose_threshold, cutover, scores, ratio, paired
+from evaluation_tools.intent_router_metrics import metrics, choose_threshold, cutover, scores, ratio, paired
 from trading_companion.workflow_evaluation_runtime import PlanError, check_output_root
 
 SOURCE_FILES = ("intent_router_task.py", "intent_router_models.py", "intent_router_baseline.py", "intent_router_evaluation.py",
@@ -33,7 +34,7 @@ def need(condition, code, detail):
 
 
 def implementation_digest():
-    return digest({f: sha256((Path(__file__).parent/f).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for f in SOURCE_FILES})
+    return digest({f: sha256(source_file(f).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for f in SOURCE_FILES})
 
 
 def failure(error):

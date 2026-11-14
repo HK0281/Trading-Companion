@@ -8,7 +8,7 @@ from unittest.mock import patch
 from trading_companion.answer_diagnostics import (ROOT,AnswerDiagnostics,bind_diagnostics,check_diagnostics_root)
 from trading_companion.product_answer import synthesize_product_answer
 from trading_companion.turn_trace import JsonlTraceSink,trace_message
-from trading_companion.decision_answer_evaluation import evaluate,build_plan
+from evaluation_tools.decision_answer_evaluation import evaluate,build_plan
 from tests.test_product_narrative_answer import NarrativeModel
 from tests.test_product_decision_answer import decision_bundle
 
@@ -99,7 +99,7 @@ class AnswerDiagnosticTests(unittest.TestCase):
                     check_diagnostics_root(Path(folder)/'link')
             collector=AnswerDiagnostics(folder)
             collector.failed=True
-            with patch('trading_companion.decision_answer_evaluation.AnswerDiagnostics',return_value=collector):
+            with patch('evaluation_tools.decision_answer_evaluation.AnswerDiagnostics',return_value=collector):
                 result=evaluate(diagnostics_dir=folder,model_call_limit=2)
             self.assertEqual(result['code'],'evaluation_diagnostics_incomplete')
             self.assertFalse(result['diagnostics']['complete'])
@@ -129,7 +129,7 @@ class AnswerDiagnosticTests(unittest.TestCase):
         self.assertFalse(target.exists())
 
     def test_evaluation_binds_case_ids_but_keeps_raw_out_of_formal_report(self):
-        from trading_companion.decision_answer_evaluation import DecisionContractModel
+        from evaluation_tools.decision_answer_evaluation import DecisionContractModel
         class BadModel(DecisionContractModel):
             def complete(self,messages,*,tools):
                 response=super().complete(messages,tools=tools)
@@ -140,7 +140,7 @@ class AnswerDiagnosticTests(unittest.TestCase):
                     return ToolModelResponse('complete',json.dumps(payload,ensure_ascii=False))
                 return response
         ROOT.mkdir(parents=True,exist_ok=True)
-        with TemporaryDirectory(dir=ROOT) as folder,patch('trading_companion.decision_answer_evaluation.DecisionContractModel',BadModel):
+        with TemporaryDirectory(dir=ROOT) as folder,patch('evaluation_tools.decision_answer_evaluation.DecisionContractModel',BadModel):
             result=evaluate(diagnostics_dir=folder,model_call_limit=3)
             diagnostic=result['diagnostics']
             self.assertTrue(diagnostic['complete'])

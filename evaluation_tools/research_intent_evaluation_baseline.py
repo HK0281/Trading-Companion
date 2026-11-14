@@ -11,7 +11,7 @@ from trading_companion.screening import ScreeningCondition, ScreeningRequest
 from trading_companion.screening_context import SavedScreening
 from trading_companion.workflow_evaluation_fixtures import SECURITIES, NOW
 from trading_companion.security_directory import SecurityDirectory
-from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, valid_context
+from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS, valid_context
 
 UNKNOWN = "not_determined"
 

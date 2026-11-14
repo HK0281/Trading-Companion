@@ -8,8 +8,8 @@ import sys
 # Direct script startup must also find the shared offline guards in scripts.verify.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from trading_companion.research_intent_evaluation_cases import load_corpus, annotation_review
-from trading_companion.research_intent_evaluation import build_plan, build_v2_plan, diagnose_baseline, evaluate, write_report
+from evaluation_tools.research_intent_evaluation_cases import load_corpus, annotation_review
+from evaluation_tools.research_intent_evaluation import build_plan, build_v2_plan, diagnose_baseline, evaluate, write_report
 from trading_companion.typesafe_jev import ClassifierError
 
 
@@ -31,7 +31,7 @@ def main(argv=None):
             print(annotation_review(*load_corpus()), end="")
             return 0
         if options.v2_live:
-            from trading_companion.research_intent_v2_evaluation import evaluate_development
+            from evaluation_tools.research_intent_v2_evaluation import evaluate_development
             report = evaluate_development(live=True, split=options.split, maximum=options.max_calls,
                 timeout_seconds=options.timeout_seconds, report_dir=options.report_dir)
         elif options.v2_plan_only:

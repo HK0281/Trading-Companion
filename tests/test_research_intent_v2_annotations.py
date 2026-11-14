@@ -7,8 +7,8 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from trading_companion.intent_router_task import digest
-from trading_companion.research_intent_evaluation_cases import load_corpus
-from trading_companion.research_intent_v2_annotations import AMENDMENTS, load_amendments, revised_rows
+from evaluation_tools.research_intent_evaluation_cases import load_corpus
+from evaluation_tools.research_intent_v2_annotations import AMENDMENTS, load_amendments, revised_rows
 
 
 class AmendmentTests(unittest.TestCase):

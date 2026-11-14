@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluation_tools import research_intent_v26_cases as cases
+from research_intent_v26_freeze_support import recorded_v26_public_files
 
 
 class V26AdmissionTests(unittest.TestCase):
@@ -271,7 +272,13 @@ class V26AdmissionTests(unittest.TestCase):
                     command.main()
                 self.assertEqual(error.exception.code,2)
 
+    def test_v26_freeze_is_retired_on_the_current_tree(self):
+        # Public files moved or deleted after tag research-intent-v2.6-freeze-valid fail closed as drift.
+        with self.assertRaisesRegex(ValueError, 'Public file drift: '):
+            cases.validate_freeze()
+
     def test_frozen_preflight_and_review_counts_cannot_claim_completion(self):
+        self.enterContext(recorded_v26_public_files())
         freeze=cases.validate_freeze()
         for mutation in ('review_count','build_count','scoring','denominator','isolation'):
             value=deepcopy(freeze)
@@ -290,6 +297,7 @@ class V26AdmissionTests(unittest.TestCase):
                     cases.validate_freeze(self.write_json(folder,value))
 
     def test_freeze_requires_approval_and_isolation_and_rejects_drift(self):
+        self.enterContext(recorded_v26_public_files())
         freeze=cases.validate_freeze()
         self.assertEqual(freeze['status'],'frozen')
         self.assertTrue(freeze['frozen_at'])

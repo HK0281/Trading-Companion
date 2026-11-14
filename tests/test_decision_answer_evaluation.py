@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from scripts import evaluate_decision_answers as cli
 from scripts.verify import clean_environment, offline_network
-from trading_companion import decision_answer_evaluation as evaluation
+from evaluation_tools import decision_answer_evaluation as evaluation
 from trading_companion.model import ModelCallError, TokenUsage
 from trading_companion.tool_model import ToolCall, ToolModelResponse
 

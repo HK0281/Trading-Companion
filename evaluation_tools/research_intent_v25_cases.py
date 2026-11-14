@@ -15,9 +15,9 @@ import re
 import unicodedata
 
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, require, valid_context, valid_row, load_corpus
-from trading_companion.research_intent_v2_annotations import load_amendments, revised_rows
-from trading_companion import research_intent_v2_evaluation as core
+from evaluation_tools.research_intent_evaluation_cases import ROOT, GOLD_FIELDS, require, valid_context, valid_row, load_corpus
+from evaluation_tools.research_intent_v2_annotations import load_amendments, revised_rows
+from evaluation_tools import research_intent_v2_evaluation as core
 from trading_companion.typesafe_jev import decode
 
 VERSION = 'research-intent-v2.5-cases-v1'
@@ -62,8 +62,14 @@ def file_sha256(path):
 
 
 def public_sha256(path):
-    """Git public files have LF-canonical hashes; sealed files retain exact bytes."""
-    return sha256(Path(path).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+    """Git public files have LF-canonical hashes; sealed files retain exact bytes.
+
+    A file deleted after its freeze has no hash, so a retired freeze fails as drift, not as an I/O error.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return None
+    return sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def valid_new_row(row):

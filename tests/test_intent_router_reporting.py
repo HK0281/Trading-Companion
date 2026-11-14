@@ -6,8 +6,8 @@ import tempfile
 import unittest
 
 from scripts.evaluate_intent_router import main
-from trading_companion.intent_router_evaluation import evaluate
-from trading_companion.intent_router_reporting import annotation_review, format_report, write_report
+from evaluation_tools.intent_router_evaluation import evaluate
+from evaluation_tools.intent_router_reporting import annotation_review, format_report, write_report
 from trading_companion.intent_router_task import load_corpus
 
 

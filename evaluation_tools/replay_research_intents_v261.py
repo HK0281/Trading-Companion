@@ -16,8 +16,8 @@ from evaluation_tools import research_intent_v26_evaluation as evaluation
 from scripts.verify import clean_environment, offline_network
 from trading_companion import research_intent_v2 as intent
 from trading_companion.model import TokenUsage
-from trading_companion.research_intent_evaluation_baseline import rule_observation
-from trading_companion.research_intent_evaluation_cases import ROOT, input_state
+from evaluation_tools.research_intent_evaluation_baseline import rule_observation
+from evaluation_tools.research_intent_evaluation_cases import ROOT, input_state
 from trading_companion.tool_model import ToolCall, ToolModelResponse
 
 SOURCES = {split: ROOT/'.agentbus/evaluation-runs/research-intent-v2.6/public'/split/'report.json'

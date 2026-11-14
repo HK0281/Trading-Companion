@@ -13,9 +13,9 @@ from evaluation_tools import research_intent_v263_amendments as amendments
 from trading_companion import research_intent_v2 as intent
 from trading_companion.intent_router_task import digest
 from trading_companion.model import ModelConfigurationError
-from trading_companion.research_intent_evaluation import field_scores, same
-from trading_companion.research_intent_evaluation_baseline import UNKNOWN, rule_observation
-from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
+from evaluation_tools.research_intent_evaluation import field_scores, same
+from evaluation_tools.research_intent_evaluation_baseline import UNKNOWN, rule_observation
+from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
 from trading_companion.turn_control import TurnControl, TurnLimits
 
 core = previous.core
@@ -61,13 +61,6 @@ def fingerprints():
     paths.update(ROOT/name for name in (*cases.PUBLIC_FILES, *cases.PARENT_FILES,
         'data/evaluation/research-intent-v2.6-freeze.json', 'data/evaluation/research-intent-v2.4-holdout-population.json',
         'tests/test_deepseek_tool_model.py', 'tests/test_turn_control.py', 'README.md',
-        'docs/research-intent-v2.6-implementation.md', 'docs/research-intent-v2.6.1-implementation.md',
-        'docs/research-intent-v2.6.2-implementation.md',
-        'docs/research-intent-v2.6.3-implementation.md',
-        'docs/research-intent-v2.6.4-implementation.md',
-        'docs/research-intent-v2.6.5-implementation.md',
-        'docs/research-intent-v2.6.6-implementation.md',
-        'docs/research-intent-v2.6.7-implementation.md',
         'docs/research-intent-v2.6.8-implementation.md',
         'data/evaluation/research-intent-v2.6.2-amendments.json',
         'data/evaluation/research-intent-v2.6.3-amendments.json'))

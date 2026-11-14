@@ -7,8 +7,8 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
-from trading_companion.intent_router_evaluation import build_plan, evaluate, export_lock, failure
-from trading_companion.intent_router_reporting import write_report, annotation_review
+from evaluation_tools.intent_router_evaluation import build_plan, evaluate, export_lock, failure
+from evaluation_tools.intent_router_reporting import write_report, annotation_review
 from trading_companion.intent_router_task import load_corpus
 from trading_companion.typesafe_jev import ClassifierError
 

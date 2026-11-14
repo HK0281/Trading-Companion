@@ -204,9 +204,9 @@ API服务通过`request_routing.py`集中选择原一般知识、筛选修改、
 | 自动化验收与CI | [verify.py](../scripts/verify.py)、[ci.yml](../.github/workflows/ci.yml) | Windows本地与Actions共用；严格零跳过、Agent/API离线契约、真实构建的ASGI/干净wheel检查；单一Windows任务，无模型密钥及部署 |
 | 安全事实展示 | [research_report.py](../src/trading_companion/research_report.py)、[report_demo.py](../src/trading_companion/report_demo.py) | 本轮请求/证据绑定，程序生成最新字段与缺项摘要；模型草稿仅供调试，不代表自由文本检查已完成 |
 | 受限关系解读 | [relation_explanation.py](../src/trading_companion/relation_explanation.py)、[explanation_demo.py](../src/trading_companion/explanation_demo.py) | 模型仅提交有界JSON论断；核对本轮证据、依赖及原精度关系后程序渲染，整段失败则回退；不检查任意文字或预测 |
-| 固定场景评估 | [agent_evaluation.py](../src/trading_companion/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
+| 固定场景评估 | [agent_evaluation.py](../evaluation_tools/agent_evaluation.py) | 默认人工数据/假模型；显式选择DeepSeek；独立预期与调用计数、夹具校验、失败停止及JSON报告，不是产品对话入口 |
 | 跨指标综合 | [research_synthesis.py](../src/trading_companion/research_synthesis.py) | 最新/紧邻前一数值证据重查，四维度、相容/分歧/未知及条件观察；程序生成，不额外调用模型或行情，不投票或预测 |
-| MVP重复评估 | [mvp_evaluation.py](../src/trading_companion/mvp_evaluation.py)、[mvp_evaluation_cases.py](../src/trading_companion/mvp_evaluation_cases.py) | 30场景、最多3次独立重复；解释和综合均核对，调用额度读配置前检查，首错停止，真实效果须另行人工验收 |
+| MVP重复评估 | [mvp_evaluation.py](../evaluation_tools/mvp_evaluation.py)、[mvp_evaluation_cases.py](../evaluation_tools/mvp_evaluation_cases.py) | 30场景、最多3次独立重复；解释和综合均核对，调用额度读配置前检查，首错停止，真实效果须另行人工验收 |
 | 验证 | [tests/](../tests/)、[前端测试](../frontend/tests/) | 2026-10-22 Windows本地记录为Python1172项、前端269项零跳过通过，Agent 4/4、MVP 90/90、API 8/8；当前远端Windows验收看对应Actions，不等于真实模型质量验收 |
 
 当前已有本机FastAPI、最小Web、历史K线/指标及独立本地证券状态／日历背景展示。真实主数据／日历适配器尚无；默认是明确人工夹具。也尚无生产多用户部署、DuckDB持久化、Jev、新闻/基本面、筛选、完整证据台账或严格point-in-time系统。

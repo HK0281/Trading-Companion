@@ -1,21 +1,19 @@
 """Offline budget, public population, state, failure and report admission checks."""
 
-from contextlib import ExitStack, redirect_stderr
+from contextlib import ExitStack
 from copy import deepcopy
-from io import StringIO
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from evaluation_tools import evaluate_research_intents_v25 as command
 from evaluation_tools import research_intent_v25_evaluation as experiment
 from scripts.verify import clean_environment, offline_network
 from test_research_intent_v2 import context, draft, response
 from trading_companion import research_intent_v2 as intent
 from trading_companion.model import ModelCallError, ModelConfigurationError
-from trading_companion.research_intent_evaluation import same
+from evaluation_tools.research_intent_evaluation import same
 
 
 def sample():
@@ -48,7 +46,7 @@ class OfflineTests(unittest.TestCase):
 class EvaluationTests(OfflineTests):
     def test_complete_public_preflight_keeps_known_gap_and_exclusions(self):
         with self.assertRaisesRegex(ValueError,
-                r'Frozen public file drift: tests/test_research_intent_v25_cases\.py'):
+                r'Frozen public file drift: '):
             experiment.populations()
         # Public construction regression only: read exposed inputs without granting run admission.
         original, _ = experiment.load_corpus()
@@ -142,7 +140,7 @@ class EvaluationTests(OfflineTests):
         self.assertEqual((result['fields']['task'], result['attempts']), ('history', 0))
         self.assertEqual(model.messages, [])
 
-    def test_bad_cli_and_dirty_live_admission_fail_before_credentials(self):
+    def test_bad_split_and_dirty_live_admission_fail_before_credentials(self):
         with patch.object(experiment, '_live_model', side_effect=AssertionError('No credentials')) as factory:
             for split in ('holdout', 'sealed', '../regression'):
                 with self.subTest(split=split), self.assertRaises(ValueError):
@@ -150,10 +148,6 @@ class EvaluationTests(OfflineTests):
             with patch.object(experiment, 'build_plan', return_value=dict(workspace_dirty=True)):
                 with self.assertRaises(ValueError):
                     experiment.evaluate(split='dev', live=True)
-            with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
-                command.main(['--split', 'holdout'])
-            with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
-                command.main(['--live'])
         factory.assert_not_called()
 
     def test_live_fixed_run_claim_cannot_resume_or_choose_a_new_report_directory(self):

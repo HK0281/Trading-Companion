@@ -13,10 +13,10 @@ from unittest.mock import patch
 
 from scripts import evaluate_research_intents as command
 from scripts.verify import clean_environment, offline_network
-from trading_companion import research_intent_v2_evaluation as experiment
+from evaluation_tools import research_intent_v2_evaluation as experiment
 from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
-from trading_companion.research_intent_evaluation import format_report, write_report
-from trading_companion.research_intent_evaluation_baseline import UNKNOWN
+from evaluation_tools.research_intent_evaluation import format_report, write_report
+from evaluation_tools.research_intent_evaluation_baseline import UNKNOWN
 from trading_companion.research_intent_v2 import TOOL_NAME, VERSION
 from trading_companion.tool_model import ToolCall, ToolModelResponse
 
@@ -139,7 +139,7 @@ class AdmissionTests(unittest.TestCase):
             with clean_environment(), offline_network(), patch.object(experiment, 'BASELINE', baseline), \
                     patch.object(experiment, 'load_corpus', return_value=([sample], dict(annotation_status='reviewed', corpus_sha256='independent'))), \
                     patch.object(experiment, 'load_amendments', return_value={}), \
-                    patch('trading_companion.research_intent_evaluation.build_v2_plan', return_value=dict(corpus_sha256='independent', baseline={}, temperature=0)), \
+                    patch('evaluation_tools.research_intent_evaluation.build_v2_plan', return_value=dict(corpus_sha256='independent', baseline={}, temperature=0)), \
                     patch.object(experiment, '_live_model', return_value=RecordingModel()) as factory:
                 report = experiment.evaluate_development(live=True, report_dir=folder)
             factory.assert_called_once_with(45)

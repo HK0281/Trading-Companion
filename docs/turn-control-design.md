@@ -97,7 +97,7 @@ $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.turn_control_demo
 .\.venv\Scripts\python.exe -X utf8 -B -m unittest discover -s tests -p test_turn_control.py
 .\.venv\Scripts\python.exe -X utf8 -B -m unittest discover -s tests
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation --case all
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.agent_evaluation --case all
 ```
 
 演示用假单调时钟覆盖成功、提议迟到、解释迟到、取消、调用额度五种情形，不实际等待90秒。`elapsed_ms=90000`是构造场景，不是性能测量；脚本中取消由Fake响应钩子发出，不代表终端已支持后台取消。

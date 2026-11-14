@@ -3,7 +3,7 @@ import json
 import unittest
 
 from trading_companion.deepseek_model import DeepSeekConfig
-from trading_companion.intent_router_models import JevIntent,DeepSeekIntent,fixture_post
+from evaluation_tools.intent_router_models import JevIntent,DeepSeekIntent,fixture_post
 from trading_companion.intent_router_task import load_corpus,input_state,questions,LABELS
 from trading_companion.news_triage_models import _FakeResponse
 from trading_companion.typesafe_jev import JevConfig,ClassifierError

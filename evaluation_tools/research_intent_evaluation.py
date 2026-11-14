@@ -8,11 +8,11 @@ from uuid import uuid4
 
 from trading_companion.classification_metrics import ratio
 from trading_companion.news_triage_reporting import cell, rate
-from trading_companion.research_intent_evaluation_cases import (
+from evaluation_tools.research_intent_evaluation_cases import (
     VERSION, GOLD_FIELDS, load_corpus, input_state, implementation_hashes, fault_expectation,
 )
-from trading_companion.research_intent_evaluation_baseline import UNKNOWN, rule_observation
-from trading_companion.research_intent_evaluation_fixtures import fixed_execution
+from evaluation_tools.research_intent_evaluation_baseline import UNKNOWN, rule_observation
+from evaluation_tools.research_intent_evaluation_fixtures import fixed_execution
 from trading_companion.product_scope import _indicator
 from trading_companion.workflow_evaluation import _revision, _dirty
 
@@ -40,19 +40,19 @@ def build_v2_plan():
     from hashlib import sha256
     from trading_companion.intent_router_task import digest
     from trading_companion.research_intent_v2 import VERSION, GUARD_VERSION, INSTRUCTION, TOOL, TEMPERATURE
-    from trading_companion.research_intent_v2_evaluation import exposure_registry
-    from trading_companion.research_intent_v2_annotations import load_amendments, amendment_fingerprint
+    from evaluation_tools.research_intent_v2_evaluation import exposure_registry
+    from evaluation_tools.research_intent_v2_annotations import load_amendments, amendment_fingerprint
     rows, manifest = load_corpus()
     plan = _plan(rows, manifest, 'dev')
     amendments = load_amendments(rows, manifest['corpus_sha256'])
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[1]
     paths = ('src/trading_companion/research_intent_v2.py', 'src/trading_companion/turn_control.py',
-             'src/trading_companion/tool_model.py', 'src/trading_companion/research_intent_v2_evaluation.py',
+             'src/trading_companion/tool_model.py', 'evaluation_tools/research_intent_v2_evaluation.py',
              'src/trading_companion/deepseek_tool_model.py', 'src/trading_companion/deepseek_model.py',
              'src/trading_companion/local_env.py', 'data/evaluation/research-intent-v2-exposure.json',
-             'src/trading_companion/research_intent_v2_annotations.py',
-             'src/trading_companion/research_intent_evaluation.py',
-             'src/trading_companion/research_intent_evaluation_fixtures.py',
+             'evaluation_tools/research_intent_v2_annotations.py',
+             'evaluation_tools/research_intent_evaluation.py',
+             'evaluation_tools/research_intent_evaluation_fixtures.py',
              'data/evaluation/research-intent-v2-dev-amendments.json', 'data/evaluation/research-intent-v2-setups.json')
     return {**plan, 'kind': 'v2_contract_preparation', 'contract_version': VERSION,
             'guard_version': GUARD_VERSION, 'exposure': exposure_registry(),

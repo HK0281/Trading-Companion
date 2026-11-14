@@ -60,8 +60,8 @@
 
 ```powershell
 $env:PYTHONPATH='src'
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation --case all
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.agent_evaluation
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.agent_evaluation --case all
 ```
 
 这两条命令均离线、不读取模型凭据、不写报告文件。只想运行一个场景时，使用表中的名称。
@@ -69,7 +69,7 @@ $env:PYTHONPATH='src'
 自行确认模型配置后，显式运行真实模型单场景：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.agent_evaluation --provider deepseek --case complete
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.agent_evaluation --provider deepseek --case complete
 ```
 
 此命令最多转发2次可能计费的模型调用；不请求真实行情或目录。无需在报告中提供密钥。建议先检查这一项的JSON，再决定是否显式运行其余场景，而不是因失败反复重试。
@@ -125,7 +125,7 @@ CLI退出码：全部选中场景通过为0，模型配置错误为2，场景失
 完整离线调用为：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.mvp_evaluation --case all --repeat 3 --model-call-limit 201
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.mvp_evaluation --case all --repeat 3 --model-call-limit 201
 ```
 
 30场景×3已离线90/90通过；固定回答只证明行为契约，不证明语言理解。加 `--provider deepseek` 才会显式启用潜在付费调用，开发中未执行。报告保留日期、逐响应型号、系统/工具指纹、已知usage和步骤耗时；缺失保持未知，质量始终待人工验收。完整场景、命令和边界见 [MVP交付说明](mvp-completion.md#5-新的30场景评估)。本文件以前的一次真实`complete`记录不因此升级为90项真实通过。

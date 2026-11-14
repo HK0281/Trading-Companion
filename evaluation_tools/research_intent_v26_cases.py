@@ -14,7 +14,7 @@ import unicodedata
 
 from evaluation_tools import research_intent_v25_cases as previous
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, require, valid_row
+from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, require, valid_row
 from trading_companion.typesafe_jev import decode
 
 VERSION = 'research-intent-v2.6-cases-v1'

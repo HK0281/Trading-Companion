@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 from scripts.verify import offline_network
 from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
-from trading_companion.mvp_evaluation import FixtureModel, _percentile, _usage, main, run_mvp_evaluation
-from trading_companion.mvp_evaluation_cases import SCENARIOS
+from evaluation_tools.mvp_evaluation import FixtureModel, _percentile, _usage, main, run_mvp_evaluation
+from evaluation_tools.mvp_evaluation_cases import SCENARIOS
 from trading_companion.tool_model import ToolModelResponse
 
 
@@ -80,7 +80,7 @@ class MvpEvaluationTests(unittest.TestCase):
         self.assertTrue(all(item["steps"][2]["observed"]["analyses"] == 1 for item in result["cases"]))
 
     def test_inadequate_whole_run_allowance_rejects_before_fixture_or_credentials(self):
-        with patch("trading_companion.mvp_evaluation.load_development_fixtures", side_effect=AssertionError("No fixture read")):
+        with patch("evaluation_tools.mvp_evaluation.load_development_fixtures", side_effect=AssertionError("No fixture read")):
             for provider in ("fake", "deepseek"):
                 with self.subTest(provider=provider), self.assertRaises(ModelConfigurationError):
                     run_mvp_evaluation(provider=provider, case="all", repeat=3, model_call_limit=12)
@@ -101,7 +101,7 @@ class MvpEvaluationTests(unittest.TestCase):
 
     def test_fixture_failure_is_reported_without_paths_or_model_work(self):
         from trading_companion.errors import DataValidationError
-        with patch("trading_companion.mvp_evaluation.load_development_fixtures", side_effect=DataValidationError(PRIVATE)):
+        with patch("evaluation_tools.mvp_evaluation.load_development_fixtures", side_effect=DataValidationError(PRIVATE)):
             result = run_mvp_evaluation(provider="deepseek")
         self.assertEqual(result["code"], "fixture_unavailable")
         self.assertEqual(result["summary"]["executed"], 0)
@@ -144,7 +144,7 @@ class MvpEvaluationTests(unittest.TestCase):
         self.assertNotIn(PRIVATE, json.dumps(result))
 
     def test_unexpected_runtime_exception_is_not_echoed(self):
-        with patch("trading_companion.mvp_evaluation.run_research_turn", side_effect=RuntimeError(PRIVATE)):
+        with patch("evaluation_tools.mvp_evaluation.run_research_turn", side_effect=RuntimeError(PRIVATE)):
             result = run_mvp_evaluation()
         step = result["cases"][0]["steps"][0]
         self.assertEqual(step["code"], "evaluation_internal_error")
@@ -155,7 +155,7 @@ class MvpEvaluationTests(unittest.TestCase):
         def wrong(*args, **kwargs):
             outcome = real(*args, **kwargs)
             return replace(outcome, confirmed_request=replace(outcome.confirmed_request, instrument_id="600519.SH"))
-        with patch("trading_companion.mvp_evaluation.run_research_turn", side_effect=wrong):
+        with patch("evaluation_tools.mvp_evaluation.run_research_turn", side_effect=wrong):
             result = run_mvp_evaluation()
         self.assertEqual(result["status"], "failed")
         self.assertFalse(result["cases"][0]["steps"][0]["checks"]["confirmed_scope"])

@@ -83,13 +83,13 @@ $env:PYTHONPATH='src'
 默认只运行一项离线场景：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.mvp_evaluation
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.mvp_evaluation
 ```
 
 完整离线执行：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -B -m trading_companion.mvp_evaluation --case all --repeat 3 --model-call-limit 201
+.\.venv\Scripts\python.exe -X utf8 -B -m evaluation_tools.mvp_evaluation --case all --repeat 3 --model-call-limit 201
 ```
 
 场景涵盖七类单指标、完整组合、历史不足、默认参数、名称/代码/歧义、多股票、日期边界、知识、不支持的交易/新闻任务、澄清续接、指标修改、刷新、相对日期及保存结果。

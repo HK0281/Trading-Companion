@@ -14,15 +14,15 @@ from unittest.mock import patch
 
 from evaluation_tools import research_intent_v25_cases as cases
 from trading_companion import research_intent_v2 as intent
-from trading_companion import research_intent_v2_evaluation as core
+from evaluation_tools import research_intent_v2_evaluation as core
 from trading_companion.agent_input import InputIssue
 from trading_companion.deepseek_tool_model import retry_tool_arguments
 from trading_companion.errors import DataValidationError, InvalidRequestError
 from trading_companion.intent_router_task import digest, read_json
 from trading_companion.model import ModelCallError, ModelConfigurationError
-from trading_companion.research_intent_evaluation import field_scores, same
-from trading_companion.research_intent_evaluation_baseline import UNKNOWN, rule_observation
-from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
+from evaluation_tools.research_intent_evaluation import field_scores, same
+from evaluation_tools.research_intent_evaluation_baseline import UNKNOWN, rule_observation
+from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS, ROOT, input_state, load_corpus
 from trading_companion.turn_control import TurnControl, TurnLimits
 
 NOT_APPLICABLE = {'V2222', 'V2223'}

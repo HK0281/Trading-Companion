@@ -8,7 +8,7 @@ from tests.test_answer_technical_validation import technical_context
 from tests.test_product_decision_answer import decision_bundle
 from trading_companion.answer_validation import check_claim, HARD
 from trading_companion.answer_numeric_bindings import COUNTERS, RELAXATION_COUNTERS, CLAUSE_COUNTERS
-from trading_companion.answer_validation_metrics import clause_metrics
+from evaluation_tools.answer_validation_metrics import clause_metrics
 
 
 class RelaxedValidationTests(unittest.TestCase):

@@ -15,6 +15,7 @@ from time import perf_counter
 from unittest.mock import patch
 from uuid import uuid4
 
+from evaluation_tools.source_paths import source_file
 from trading_companion.answer_validation import normalize_horizon
 from trading_companion.deepseek_model import ANSWER_OUTPUT_TOKENS, TOOL_OUTPUT_TOKENS
 from trading_companion.answer_diagnostics import (
@@ -39,7 +40,7 @@ from trading_companion.workflow_evaluation_runtime import (
     PlanError, require, check_output_root, build_real_model, live_sources, model_network_boundary,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'data/evaluation/decision-answer-v1.jsonl'
 MANIFEST = CORPUS.with_suffix('.manifest.json')
 VERSION = 'decision-answer-evaluation-v1'
@@ -60,7 +61,7 @@ def _implementation_fingerprint():
     digest = sha256()
     for name in names:
         digest.update(name.encode('ascii')+b'\0')
-        digest.update(Path(__file__).with_name(name).read_bytes().replace(b'\r\n', b'\n'))
+        digest.update(source_file(name).read_bytes().replace(b'\r\n', b'\n'))
     return digest.hexdigest()
 
 
@@ -93,7 +94,7 @@ def load_corpus(path=CORPUS, manifest_path=MANIFEST):
     require(dict(Counter(c['group'] for c in cases)) == manifest.get('groups') == dict.fromkeys(GROUPS, 5)
             and [c['id'] for c in cases if c['requires_batch_b']] == manifest.get('requires_batch_b'),
             code='decision_corpus_invalid', detail='分组或B批依赖标记与冻结题库不符。')
-    from trading_companion.evaluation_horizon import project_cases
+    from evaluation_tools.evaluation_horizon import project_cases
     return project_cases(cases, 'decision'), manifest
 
 
@@ -161,7 +162,7 @@ def make_plan(*, mode='offline', provider=None, model=None, model_call_limit=Non
                 code='decision_directory_missing_security', detail='真实目录必须将20题的名称或已知别名唯一解析到预设证券代码。')
         plan.update(directory=str(path.absolute()), directory_sha256=sha256(path.read_bytes()).hexdigest(),
                     directory_metadata=snapshot.metadata())
-    from trading_companion.evaluation_horizon import descriptor
+    from evaluation_tools.evaluation_horizon import descriptor
     plan.update(horizon_delta=descriptor('decision'), planned_original_turns=sum(1+len(c['setup_questions']) for c in cases),
                 maximum_supplemental_turns=len(descriptor('decision')['clarification_cases']), fixed_horizon_reply='中线')
     return plan, cases, price_data
@@ -348,7 +349,7 @@ def summarize(cases):
         repair_draft=totals['repair_output_truncations'] if not unknown else None,
         affected_questions=sum(q['output_truncations']>0 for q in known) if not unknown else None,
         known_subtotals=totals, unknown_questions=unknown)
-    from trading_companion.answer_validation_metrics import clause_metrics, deletion_metrics
+    from evaluation_tools.answer_validation_metrics import clause_metrics, deletion_metrics
     result.update(clause_metrics([c.get('quality') or {} for c in cases]))
     target_quality = [c.get('quality') or {} for c in cases]
     setup_quality = [s.get('quality') or {} for c in cases for s in c.get('setup', [])]
@@ -424,7 +425,7 @@ def _run(cases, plan, meter, delegate, trace_root):
                         target_before = meter.forwarded
                         with diagnostic_location(case_id=case['id'],phase='target'):
                             result, elapsed, trace = _send(service,credentials,case['question'],path,seen)
-                            from trading_companion.evaluation_horizon import turn_record, complete_horizon
+                            from evaluation_tools.evaluation_horizon import turn_record, complete_horizon
                             row['original_target'] = turn_record(result, case['question'], elapsed, trace)
                             result, elapsed, trace, row['clarification_turns'] = complete_horizon(
                                 lambda question: _send(service, credentials, question, path, seen), result, elapsed, trace,

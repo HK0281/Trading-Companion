@@ -254,7 +254,7 @@ Not in scope yet: arbitrary-source document collection, PDF filing analysis, com
 ```
 src/trading_companion/   Backend: data adapters, indicators, research workflows, routing, API
 frontend/                React/TypeScript workspace
-evaluation_tools/        Offline and bounded live evaluation tooling
+evaluation_tools/        Offline and bounded live evaluation tooling (not part of the installed package)
 data/evaluation/         Frozen evaluation corpora, manifests and locks
 docs/                    Design documents (mostly in Chinese)
 scripts/verify.py        Local and CI acceptance gates

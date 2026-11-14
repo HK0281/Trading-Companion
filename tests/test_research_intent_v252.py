@@ -3,15 +3,11 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
-from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from evaluation_tools import research_intent_v25_evaluation as experiment
-from evaluation_tools import replay_research_intents_v25 as replay
 from test_research_intent_v2 import context, draft, response
 from test_research_intent_v251 import OfflineTests
-from test_research_intent_v25_evaluation import sample
 from trading_companion import research_intent_v2 as intent
 from trading_companion.agent_input import InputIssue
 from trading_companion.security_directory import SecurityDirectory
@@ -155,29 +151,6 @@ class OrdinalTests(OfflineTests):
         self.assertEqual(self.check('上次筛选名单里的第二只', ctx, scope='shortlist').bound_subjects, ())
         with self.assertRaises(InputIssue):
             intent.check_response('继续研究', response(draft(subject=dict(source='previous', mentions=[], selection='第二只'))), context=ctx)
-
-
-class ReplayTests(OfflineTests):
-    def test_v251_archive_is_default_and_every_table_names_current_replay(self):
-        row = sample()
-        raw = response(draft(version='research-intent-v2.5.1')).to_dict()
-        archived = dict(row, V2=dict(status='ok', attempts=1, response=raw, fields=row['gold']))
-        original = deepcopy(archived)
-        with patch.object(experiment, 'populations', return_value=([row], {row['id']: row['gold']}, {}, {})):
-            report = replay.replay_reports([dict(rows=[archived])], 'v2.5.1')
-        self.assertEqual(archived, original)
-        self.assertEqual(report['rows'][0]['V2']['status'], 'ok')
-        self.assertEqual(replay.migrate_response(raw, 'v2.5.1').tool_calls[0].arguments['version'], intent.VERSION)
-        self.assertIsNone(report['passed'])
-        self.assertIsNone(report['thresholds'])
-        self.assertFalse(report['new_model_results'])
-        self.assertEqual(report['paid_calls'], 0)
-        self.assertEqual(report['authenticity'], 'archived_response_replay')
-        lines = experiment.markdown(report).splitlines()
-        self.assertIn(experiment.REPLAY_252_NOTICE, lines[0])
-        for index, line in enumerate(lines):
-            if line.startswith('| ---'):
-                self.assertIn(experiment.REPLAY_252_NOTICE, lines[index-1])
 
 
 if __name__ == '__main__':

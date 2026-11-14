@@ -117,7 +117,7 @@ def quality_metrics(quality):
     counts['output_truncations'] = (quality.get('output_truncations')
         if quality.get('output_truncation_version') == 'answer-output-v1'
         and type(quality.get('output_truncations')) is int else None)
-    from trading_companion.answer_validation_metrics import clause_metrics
+    from evaluation_tools.answer_validation_metrics import clause_metrics
     counts.update(clause_metrics([quality]))
     return counts
 

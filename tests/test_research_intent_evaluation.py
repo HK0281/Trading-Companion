@@ -13,10 +13,10 @@ import unittest
 from unittest.mock import patch
 
 from scripts import evaluate_research_intents as command
-from trading_companion import research_intent_evaluation as evaluation
-from trading_companion.research_intent_evaluation_baseline import rule_observation, UNKNOWN
-from trading_companion.research_intent_evaluation_cases import GOLD_FIELDS
-from trading_companion.research_intent_evaluation_fixtures import fixed_execution
+from evaluation_tools import research_intent_evaluation as evaluation
+from evaluation_tools.research_intent_evaluation_baseline import rule_observation, UNKNOWN
+from evaluation_tools.research_intent_evaluation_cases import GOLD_FIELDS
+from evaluation_tools.research_intent_evaluation_fixtures import fixed_execution
 
 
 def context(**changes):
@@ -114,12 +114,12 @@ class ExecutionTests(unittest.TestCase):
             except Exception:
                 pass
             return dict(status='ok', fields={})
-        with patch('trading_companion.research_intent_evaluation_fixtures._fixed_execution', side_effect=swallowed):
+        with patch('evaluation_tools.research_intent_evaluation_fixtures._fixed_execution', side_effect=swallowed):
             self.assertEqual(probe('取消')['status'], 'failed')
 
     def test_local_credential_file_reads_are_forbidden(self):
         from trading_companion import local_env
-        with patch('trading_companion.research_intent_evaluation_fixtures._fixed_execution',
+        with patch('evaluation_tools.research_intent_evaluation_fixtures._fixed_execution',
                    side_effect=lambda *args: local_env._read_local_values()):
             self.assertEqual(probe('取消')['status'], 'failed')
 
@@ -269,7 +269,7 @@ root = script.parent.parent
 # Reproduce direct script startup without the repository root provided by a test runner.
 sys.path = [str(script.parent), str(root / 'src')] + [p for p in sys.path if p and Path(p).resolve() != root]
 namespace = runpy.run_path(str(script))
-from trading_companion import research_intent_evaluation as evaluation
+from evaluation_tools import research_intent_evaluation as evaluation
 row = json.load(sys.stdin)
 manifest = dict(annotation_status='reviewed', corpus_sha256='independent', split_sha256='independent', baseline={})
 evaluation.load_corpus = lambda: ([row], manifest)

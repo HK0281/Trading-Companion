@@ -256,7 +256,8 @@ class LocalEnvironmentTests(unittest.TestCase):
         self.assertNotIn("DEEPSEEK_API_KEY", os.environ)
 
     def test_offline_entries_never_load_local_environment(self):
-        from trading_companion import agent_cli, agent_evaluation, api_server, model_cli, mvp_evaluation, tool_smoke
+        from trading_companion import agent_cli, api_server, model_cli, tool_smoke
+        from evaluation_tools import agent_evaluation, mvp_evaluation
         entries = (
             lambda: model_cli.main(["Hello"]), lambda: tool_smoke.run_smoke_test(),
             lambda: agent_evaluation.run_evaluation(), lambda: mvp_evaluation.run_mvp_evaluation(case="single_sma"),
@@ -277,7 +278,8 @@ class LocalEnvironmentTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 0)
 
     def test_all_six_live_entries_pass_merged_values_to_validation_before_network(self):
-        from trading_companion import agent_cli, agent_evaluation, api_server, model_cli, mvp_evaluation, tool_smoke
+        from trading_companion import agent_cli, api_server, model_cli, tool_smoke
+        from evaluation_tools import agent_evaluation, mvp_evaluation
         self.write_file()
         entries = (
             lambda: model_cli.main(["Hello", "--provider", "deepseek"]),

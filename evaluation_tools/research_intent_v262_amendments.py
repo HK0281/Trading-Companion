@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from evaluation_tools import research_intent_v26_cases as cases
 from trading_companion.intent_router_task import digest, read_json
-from trading_companion.research_intent_evaluation_cases import ROOT, require
+from evaluation_tools.research_intent_evaluation_cases import ROOT, require
 
 
 VERSION = 'research-intent-v2.6.2-amendments-v1'

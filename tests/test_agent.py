@@ -1,7 +1,5 @@
-from contextlib import redirect_stdout
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -10,7 +8,6 @@ import unittest
 from unittest.mock import Mock, patch
 
 from trading_companion.agent import run_research_turn
-from trading_companion.agent_demo import main
 from trading_companion.agent_input import (
     InputIssue, QUESTION_EXAMPLE, parse_research_question, proposal_matches_request, request_arguments,
 )
@@ -390,20 +387,6 @@ class AgentTurnTests(GuardedTests):
         for values in ({"source": "csv"}, {"source": "other"}, {"development_source": "path.csv"}):
             with self.assertRaises(ModelConfigurationError):
                 run_research_turn(QUESTION_EXAMPLE, model=Mock(), **values)
-
-    def test_offline_demo_emits_strict_json_and_remains_explicitly_fake(self):
-        output = StringIO()
-        with redirect_stdout(output):
-            code = main()
-        result = json.loads(output.getvalue())
-        self.assertEqual(code, 0)
-        self.assertEqual(result["mode"], "offline_synthetic_agent_demo")
-        self.assertFalse(result["model_network_used"])
-        self.assertFalse(result["market_network_used"])
-        self.assertTrue(result["is_mock"])
-        self.assertEqual(result["result"]["status"], "limited")
-        self.assertEqual(result["result"]["analyses_used"], 1)
-        json.dumps(result, allow_nan=False)
 
 
 if __name__ == "__main__":

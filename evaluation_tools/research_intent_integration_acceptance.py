@@ -96,18 +96,12 @@ def scenarios():
 
 
 def public_inputs():
-    from evaluation_tools import research_intent_v26_cases as cases
-    from evaluation_tools.research_intent_v2_evaluation import prefix_library
-    rows = cases.load_cases()
-    old = [json.loads(line) for line in (ROOT / 'data/evaluation/research-intent-v2.jsonl').read_text(
-        encoding='utf-8').splitlines()]
-    prefixes = prefix_library([row for row in old if row['split'] == 'dev'])
-    setups = cases.load_setups()
-    return rows, prefixes, setups
+    from evaluation_tools import research_intent_setups as cases
+    return cases.load_cases(), cases.public_prefixes(), cases.load_setups()
 
 
 def production_request(row, prefixes, setups):
-    from evaluation_tools.research_intent_v26_cases import build_context
+    from evaluation_tools.research_intent_setups import build_context
     from trading_companion.conversation_memory import TurnDigest
     from trading_companion.research_intent_context import prepare_intent_request
     # Neither target text nor evaluation metadata goes into the setup executor.
@@ -190,11 +184,10 @@ def build_plan(*, suite='all', max_calls=None):
         source_sha256_lf={str(p.relative_to(ROOT)): fingerprint(p) for p in sorted([
             * (ROOT / 'src/trading_companion').glob('*.py'), Path(__file__),
             ROOT / 'scripts/evaluate_research_intent_integration.py',
-            ROOT / 'evaluation_tools/research_intent_v26_cases.py',
-            ROOT / 'evaluation_tools/research_intent_v25_cases.py'])},
+            ROOT / 'evaluation_tools/research_intent_setups.py'])},
         setup_sha256_lf={name: fingerprint(ROOT / name) for name in (
             'data/evaluation/research-intent-v2.jsonl', 'data/evaluation/research-intent-v2-setups.json',
-            'data/evaluation/research-intent-v2.5-setups.json', 'data/evaluation/research-intent-v2.6-setups.json')},
+            'data/evaluation/research-intent-v2.6-setups.json')},
         historical_reference=historical_reference(rows), dev_count=len(dev), dev=dev,
         product_scripts=scripts, product_messages_per_entry=messages, product_entries=['legacy', 'intent_v2'],
         product_actions_per_entry=sum(len(s['steps']) for s in scripts) - messages,

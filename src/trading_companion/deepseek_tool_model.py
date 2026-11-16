@@ -20,6 +20,8 @@ from trading_companion.tool_model import (
 
 
 MAX_FAILED_ARGUMENT_CHARACTERS = 10000
+# Argument repair/capture is tied to the one intent protocol in production (research_intent_v2.VERSION).
+SUPPORTED_INTENT_VERSION = 'research-intent-v2.6.8'
 _RETRY_ARGUMENTS = ContextVar('retry_candidate_tool_arguments', default=False)
 
 
@@ -331,10 +333,8 @@ class DeepSeekToolModel:
         history, definitions, seen_ids = validate_tool_messages(messages, tools=tools)
         if (self.repair_tool_arguments or self.save_failed_arguments) and (len(definitions) != 1
                 or definitions[0].name != 'interpret_research_intent_v2'
-                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum') not in
-                    (['research-intent-v2.5.4'], ['research-intent-v2.6'], ['research-intent-v2.6.1'],
-                     ['research-intent-v2.6.2'], ['research-intent-v2.6.3'], ['research-intent-v2.6.4'],
-                     ['research-intent-v2.6.5'], ['research-intent-v2.6.6'], ['research-intent-v2.6.7'], ['research-intent-v2.6.8'])):
+                or definitions[0].parameters.get('properties', {}).get('version', {}).get('enum')
+                    != [SUPPORTED_INTENT_VERSION]):
             raise ModelConfigurationError('Argument repair and capture require an explicitly supported intent candidate')
         body = {
             "model": self.config.model,

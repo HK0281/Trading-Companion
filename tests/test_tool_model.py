@@ -1,8 +1,6 @@
 import json
 import unittest
-from contextlib import redirect_stdout
 from dataclasses import FrozenInstanceError
-from io import StringIO
 from unittest.mock import patch
 
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError, TokenUsage
@@ -10,7 +8,6 @@ from trading_companion.tool_model import (
     FakeToolModel, ToolCall, ToolDefinition, ToolMessage, ToolModelResponse,
     validate_tool_messages,
 )
-from trading_companion.tool_model_demo import main, run_demo
 
 
 SECRET = "synthetic-sensitive-marker"
@@ -402,22 +399,6 @@ class FakeToolModelTests(unittest.TestCase):
         calls = tuple(ToolCall(f"call_{i}", "inspect_fixture", {"x": "a" * 9000}) for i in range(3))
         with self.assertRaises(ModelCallError):
             proposal(*calls)
-
-    def test_demo_is_explicitly_mock_and_injects_only_fixed_artificial_results(self):
-        first, second = run_demo(), run_demo()
-        self.assertEqual(first, second)
-        self.assertEqual(first["status"], "offline_mock_demo")
-        self.assertTrue(first["is_mock"])
-        self.assertFalse(first["executed_tools"])
-        self.assertFalse(first["network_used"])
-        self.assertEqual(first["injected_result"]["result"]["value"], 7)
-        self.assertEqual(first["proposal"]["status"], "tool_calls")
-        self.assertEqual(first["final_response"]["status"], "complete")
-        output = StringIO()
-        with redirect_stdout(output):
-            self.assertEqual(main(), 0)
-        self.assertEqual(json.loads(output.getvalue()), first)
-        self.post.assert_not_called()
 
 
 if __name__ == "__main__":

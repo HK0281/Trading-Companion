@@ -8,10 +8,10 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from evaluation_tools import research_intent_v26_evaluation as evaluation
+from evaluation_tools.research_intent_setups import row_context
 from trading_companion.agent_input import InputIssue
 from trading_companion.intent_router_task import digest
-from trading_companion.model import TokenUsage, ModelCallError
+from trading_companion.model import TokenUsage
 from trading_companion.model_registry import configured_intent_model
 from trading_companion import research_intent_v2 as intent
 from trading_companion.tool_model import ToolCall, ToolModelResponse
@@ -33,16 +33,16 @@ def saved_response(value):
 
 
 class CandidateIdentityTests(unittest.TestCase):
-    def test_prompt_tool_and_guard_still_match_the_historical_lock(self):
+    def test_prompt_tool_and_guard_still_match_the_historical_candidate(self):
+        # The v2.6 lock that pinned this candidate retired with the sealed evaluation
+        # (tag research-intent-v2.6-freeze-valid); the replay metadata keeps the same prompt and tool.
         ref = json.loads(REFERENCE.read_text('utf-8'))['metadata']
-        lock = json.loads((ROOT/'data/evaluation/research-intent-v2.6-lock.json').read_text('utf-8'))
         self.assertEqual(ref['source_commit'], 'a11323834b6d0b0d615b39d896bb34c83ba905e4')
         self.assertTrue(ref['historical_lock_validated'])
-        self.assertEqual(ref['candidate_sha256'], digest(lock['candidate']))
         self.assertEqual(ref['prompt'], dict(text=intent.INSTRUCTION,
             sha256_utf8=sha256(intent.INSTRUCTION.encode()).hexdigest()))
         self.assertEqual(ref['tool'], dict(definition=intent.TOOL.to_dict(), sha256=digest(intent.TOOL.to_dict())))
-        self.assertEqual(intent.GUARD_VERSION, lock['candidate']['guard_version'])
+        self.assertEqual((intent.VERSION, intent.GUARD_VERSION), ('research-intent-v2.6.8', 'intent-v2-guards-v18'))
 
     def test_all_64_saved_responses_match_the_pre_change_checker_with_production_context(self):
         corpus = json.loads(REFERENCE.read_text('utf-8'))
@@ -51,7 +51,7 @@ class CandidateIdentityTests(unittest.TestCase):
         for row, saved in zip(rows, corpus['rows'], strict=True):
             with self.subTest(row=saved['id']):
                 self.assertEqual(row, saved['input'])
-                original, _ = evaluation.build_context(row, prefixes, setups)
+                original, _ = row_context(row, prefixes, setups)
                 ctx = build_intent_context(**configuration(original))
                 self.assertEqual(ctx.model_context(), saved['model_context'])
                 corrections = []

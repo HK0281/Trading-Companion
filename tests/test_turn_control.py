@@ -6,7 +6,6 @@ from threading import Event, Thread
 from types import SimpleNamespace
 import json
 import os
-import subprocess
 import sys
 import unittest
 from unittest.mock import Mock, patch
@@ -629,16 +628,6 @@ class TransportAndTerminalTests(OfflineTests):
         self.assertEqual(control.to_dict()["model_calls_attempted"], 2)
         response.close.assert_called_once()
 
-    def test_runtime_demo_passes_all_five_cases_in_separate_process(self):
-        process = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m", "trading_companion.turn_control_demo"],
-                                 capture_output=True, text=True, encoding="utf-8", timeout=10,
-                                 env={**os.environ, "PYTHONPATH": str(self.source.path.parent.parent / "src")})
-        self.assertEqual(process.returncode, 0, process.stderr)
-        report = json.loads(process.stdout)
-        self.assertEqual(report["status"], "passed")
-        self.assertFalse(report["market_data_requested"])
-        self.assertEqual(len(report["cases"]), 5)
-        self.assertTrue(all(case["passed"] for case in report["cases"]))
 
     def test_deepseek_timeout_is_clamped_through_nested_conversation_meter(self):
         control = self.control(timeout_seconds=2)

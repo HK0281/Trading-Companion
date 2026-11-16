@@ -1,22 +1,16 @@
-from contextlib import redirect_stdout
 from dataclasses import replace
 from datetime import date, timedelta
-from io import StringIO
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 import unittest
 from unittest.mock import Mock, patch
 
 from trading_companion.agent import run_research_turn
 from trading_companion.agent_input import parse_research_question, request_arguments
 from trading_companion.data_source import CsvDailyBarSource
-from trading_companion.explanation_demo import main
 from trading_companion.explanation_demo_model import ExplanationDemoModel
 from trading_companion.model import ModelCallError
-from trading_companion.natural_agent_demo import run_demo as natural_demo
 from trading_companion.relation_explanation import (
     EXPLANATION_VERSION, MAX_CLAIMS, validate_indicator_explanation,
 )
@@ -485,10 +479,6 @@ class AgentExplanationTests(GuardedTests):
         self.assertIn("debug_only", payload["model_draft_policy"])
         json.dumps(payload, allow_nan=False)
 
-    def test_natural_entry_shares_the_checker_without_an_extra_model_call(self):
-        result = natural_demo()["result"]
-        self.assertEqual(result["explanation_validation"]["status"], "accepted")
-        self.assertEqual((result["model_calls_attempted"], result["analyses_used"]), (3, 1))
 
     def test_identity_selection_uses_current_evidence_not_pending_aliases(self):
         result = session_demo()
@@ -521,22 +511,6 @@ class AgentExplanationTests(GuardedTests):
         self.assertEqual(model.responses_consumed, 1)
         with self.assertRaises(ModelCallError):
             model.complete(messages, tools=(RESEARCH_TOOL_DEFINITION,))
-
-    def test_display_demo_prints_checked_text_without_raw_json(self):
-        output = StringIO()
-        with redirect_stdout(output):
-            self.assertEqual(main(), 0)
-        text = output.getvalue()
-        self.assertIn("人工样例 / 非真实行情", text)
-        self.assertIn("收盘价高于SMA(3)", text)
-        self.assertNotIn('"evidence_id"', text)
-
-    def test_demo_is_runnable_in_a_clean_process_without_credentials(self):
-        result = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m", "trading_companion.explanation_demo"],
-            cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True,
-            text=True, encoding="utf-8", timeout=15)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("已核对的指标关系", result.stdout)
 
 
 if __name__ == "__main__":

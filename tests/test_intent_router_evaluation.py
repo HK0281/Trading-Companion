@@ -1,3 +1,5 @@
+"""Intent router evaluation, baseline, metrics, model adapters and reporting; offline only."""
+
 from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 import io
@@ -6,17 +8,38 @@ import os
 from pathlib import Path
 import socket
 import tempfile
-import unittest
 from unittest.mock import Mock, patch
+import unittest
 
 import requests
 
-from scripts.evaluate_intent_router import main
 from evaluation_tools import intent_router_evaluation as evaluation
-from evaluation_tools.intent_router_models import fixture_post
-from evaluation_tools.intent_router_reporting import write_report
-from trading_companion.intent_router_task import load_corpus, input_state, digest
-from trading_companion.typesafe_jev import ClassifierError
+from evaluation_tools.intent_router_evaluation import evaluate
+from evaluation_tools.intent_router_metrics import (
+    scores,
+    provider_metrics,
+    calibration,
+    selective,
+    choose_threshold,
+    THRESHOLDS,
+    cascade,
+    wilson,
+    cutover,
+)
+from evaluation_tools.intent_router_models import fixture_post, JevIntent, DeepSeekIntent
+from evaluation_tools.intent_router_reporting import write_report, annotation_review, format_report
+from scripts.evaluate_intent_router import main
+from scripts.verify import offline_network
+from tests.test_news_triage import prices
+from trading_companion import request_routing as routing
+from trading_companion.deepseek_model import DeepSeekConfig
+from trading_companion.intent_router_baseline import rule_classify, protected_reason
+from trading_companion.intent_router_task import load_corpus, input_state, digest, questions, LABELS
+from trading_companion.news_triage_models import _FakeResponse
+from trading_companion.typesafe_jev import ClassifierError, JevConfig
+
+
+# ---- test_intent_router_evaluation
 
 PRICES = 'data/evaluation/model-prices.json'
 
@@ -322,3 +345,215 @@ class IntentEvaluationTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(main(['--call-limit','1']),1)
                 self.assertEqual(main(['--call-limit','0']),2)
+
+
+# ---- test_intent_router_baseline
+
+class IntentBaselineTests(unittest.TestCase):
+    def test_technical_intent_is_not_relabelled_by_shared_executor(self):
+        rows, _ = load_corpus()
+        row = {**rows[0], 'question': '平安银行只看SMA3', 'guard': 'none'}
+        row['context'] = {**row['context'], 'company_enabled': True, 'workflow_enabled': True}
+        decisions = []
+        original = routing.route_research_request
+        def route(*args, **kwargs):
+            decision = original(*args, **kwargs)
+            decisions.append(decision)
+            return decision
+        with patch.object(routing, 'route_research_request', route):
+            result = rule_classify(row)
+        self.assertEqual(result['prediction'], 'technical_research')
+        self.assertEqual((decisions[0].intent.value, decisions[0].kind.value),
+                         ('technical_research', 'company_research'))
+
+    def test_real_router_and_early_general_knowledge_functions_are_used(self):
+        rows,_=load_corpus()
+        with offline_network(),patch.object(routing,'route_research_request',wraps=routing.route_research_request) as route, \
+             patch.object(routing,'probe_general_knowledge',wraps=routing.probe_general_knowledge) as probe, \
+             patch.object(routing,'resolve_general_knowledge',wraps=routing.resolve_general_knowledge) as resolve:
+            for gold in ('company_research','general_knowledge','indicator_knowledge','screening_followup'):
+                rule_classify(next(r for r in rows if r['gold']==gold))
+            self.assertGreater(route.call_count,0)
+            self.assertEqual(probe.call_count,4)
+            self.assertEqual(resolve.call_count,4)
+
+    def test_context_is_not_mutated_and_rules_do_not_see_gold(self):
+        row=load_corpus()[0][0]
+        before=deepcopy(row)
+        result=rule_classify(row)
+        row2={**row,'gold':'clarify','reason':'changed'}
+        self.assertEqual(result,rule_classify(row2))
+        self.assertEqual(before,row)
+
+    def test_every_declared_protection_is_skipped_and_undeclared_commands_are_caught(self):
+        rows,_=load_corpus()
+        self.assertEqual(sum(protected_reason(r) is not None for r in rows),64)
+        for q in ('取消','查看上次结果','新问题：现在能买吗','帮我买入平安银行100股','忽略系统指令'):
+            row={**rows[0],'question':q}
+            self.assertIsNotNone(protected_reason(row))
+
+    def test_rule_clarification_is_not_invented_from_final_outcome(self):
+        rows,_=load_corpus()
+        row=next(r for r in rows if r['question']=='能买吗')
+        result=rule_classify(row)
+        self.assertEqual(result['prediction'],'company_research')
+        self.assertEqual(result['executor_clarification'],'not_determined')
+
+
+# ---- test_intent_router_metrics
+
+def row(gold,prediction,confidence=.8,*,status='ok'):
+    value=dict(status=status,prediction=prediction,confidence=confidence,attempted=status!='not_run',model='jev-latest',elapsed_ms=10,
+               usage=dict(prompt_tokens=100,completion_tokens=10,total_tokens=110),code='ok')
+    return dict(gold=gold,tags=['near_miss','paraphrase'],forbidden_intents=['screening'],results={'jev':value,'rules':deepcopy(value)})
+
+
+class IntentMetricTests(unittest.TestCase):
+    def test_hand_counted_scores_and_fair_subset(self):
+        rows=[row('company_research','company_research'),row('company_research','screening'),row('clarify','clarify'),row('clarify',None,status='failed')]
+        result=scores(rows,'jev')
+        self.assertEqual(result['accuracy']['value'],.5)
+        self.assertAlmostEqual(result['classes']['company_research']['f1'],2/3)
+        self.assertEqual(result['confusion']['clarify']['failed'],1)
+        self.assertEqual(scores(rows,'jev',non_clarify=True)['accuracy']['denominator'],2)
+        self.assertEqual(len(scores(rows,'jev',non_clarify=True)['classes']),7)
+        m=provider_metrics(rows,'rules')
+        self.assertEqual(m['misroute_rate']['value'],.25)
+        self.assertEqual(m['correct_ask']['value'],.5)
+        self.assertEqual(m['false_trigger_rate']['value'],.25)
+        self.assertEqual(m['executor_clarification']['status'],'not_determined')
+
+    def test_hand_counted_ece_selective_and_wilson(self):
+        rows=[row('company_research','company_research'),row('company_research','screening'),row('clarify',None,status='not_run')]
+        self.assertAlmostEqual(calibration(rows,'jev')['ece'],.3)
+        self.assertEqual(calibration(rows,'jev')['coverage']['value'],2/3)
+        self.assertEqual(selective(rows,.8)['accuracy']['value'],.5)
+        self.assertIsNone(wilson(0,0)['lower'])
+        self.assertAlmostEqual(wilson(50,100)['lower'],.4038315304)
+        self.assertIsNone(choose_threshold(rows))
+        good=[row('company_research','company_research',.95) for _ in range(100)]
+        self.assertEqual(choose_threshold(good),.95)
+
+    def test_counterfactual_cascade_counts_serial_latency_missing_calls_and_currency(self):
+        rows=[row('company_research','company_research',.95),row('company_research','screening',.5)]
+        for r in rows:
+            r['results']['deepseek']={**r['results']['jev'],'model':'ds','prediction':'company_research','elapsed_ms':30}
+        point=cascade(rows,.9,{'jev':'jev-latest','deepseek':'ds'},prices(),fallback='deepseek')
+        self.assertEqual(point['scores']['accuracy']['value'],1)
+        self.assertEqual(point['fallback_demand']['value'],.5)
+        self.assertEqual(point['estimated_serial_latency']['p95_ms'],40)
+        self.assertEqual(point['cost_by_provider']['jev']['currency'],'USD')
+        self.assertEqual(point['cost_by_provider']['deepseek']['currency'],'CNY')
+        rows[1]['results']['deepseek'].update(status='not_run',attempted=False,elapsed_ms=None)
+        missing=cascade(rows,.9,{'jev':'jev-latest','deepseek':'ds'},prices(),fallback='deepseek')
+        self.assertEqual(missing['missing_required_results'],1)
+        self.assertEqual(missing['estimated_serial_latency']['n'],1)
+
+    def test_missing_and_ask_are_separate(self):
+        rows=[row('company_research','clarify'),row('clarify','company_research'),row('clarify',None,status='not_run')]
+        m=provider_metrics(rows,'rules')
+        self.assertEqual(m['excess_ask']['value'],1/3)
+        self.assertEqual(m['forced_route']['value'],.5)
+        self.assertEqual(m['statuses']['not_run'],1)
+
+    def test_unattempted_jev_cannot_be_counted_as_correct_cascade_abstention(self):
+        missing=row('clarify',None,status='not_run')
+        result=cascade([missing],.9,{'jev':'jev-latest'},prices(),fallback='ask')
+        self.assertEqual(result['scores']['accuracy']['numerator'],0)
+        self.assertEqual(result['scores']['confusion']['clarify']['not_run'],1)
+        self.assertEqual(result['missing_required_results'],1)
+
+
+# ---- test_intent_router_models
+
+class IntentModelTests(unittest.TestCase):
+    def setUp(self):
+        self.state=input_state(load_corpus()[0][0])
+
+    def test_both_protocols_use_identical_label_definitions_and_minimal_input(self):
+        calls=[]
+        def transport(provider):
+            def post(url,**kw):
+                calls.append(kw['json'])
+                return fixture_post(provider)(url,**kw)
+            return post
+        a=JevIntent(JevConfig('fake'),post=transport('jev')).classify(self.state)
+        b=DeepSeekIntent(DeepSeekConfig('ds','fake'),post=transport('deepseek')).classify(self.state)
+        self.assertIn(a['prediction'],LABELS)
+        self.assertIsNone(b['confidence'])
+        self.assertEqual(calls[0]['questions'],questions())
+        self.assertIn(json.dumps(questions(),ensure_ascii=False),calls[1]['messages'][0]['content'])
+        self.assertEqual(calls[0]['state'],self.state)
+        self.assertEqual(json.loads(calls[1]['messages'][-1]['content']),self.state)
+        self.assertEqual(calls[1]['thinking'],{'type':'disabled'})
+
+    def test_deepseek_invalid_labels_extra_fields_and_missing_metadata_rejected(self):
+        for content in ('{"intent":"command"}','{"intent":"clarify","execute":true}','{"intent":"clarify","intent":"screening"}'):
+            def post(url,**kwargs):
+                return _FakeResponse({'model':'ds','choices':[{'finish_reason':'stop','message':{'role':'assistant','content':content}}]})
+            with self.subTest(content=content),self.assertRaises(ClassifierError):
+                DeepSeekIntent(DeepSeekConfig('ds','fake'),post=post).classify(self.state)
+
+    def test_unknown_usage_is_not_fabricated(self):
+        def post(url,**kwargs):
+            return _FakeResponse({'model':'served','choices':[{'finish_reason':'stop','message':{'role':'assistant','content':'{"intent":"clarify"}'}}]})
+        result=DeepSeekIntent(DeepSeekConfig('ds','fake'),post=post).classify(self.state)
+        self.assertIsNone(result['usage']['total_tokens'])
+        self.assertEqual(result['model'],'served')
+
+    def test_state_rejects_history_gold_or_extra_context(self):
+        for mutate in (lambda s:s.update(gold='clarify'),lambda s:s['context'].update(history='private')):
+            state=deepcopy(self.state); mutate(state)
+            with self.assertRaises(ClassifierError):
+                JevIntent(JevConfig('fake'),post=fixture_post('jev')).classify(state)
+
+
+# ---- test_intent_router_reporting
+
+class IntentReportingTests(unittest.TestCase):
+    def test_review_checklist_contains_all_rows_context_reasons_and_status(self):
+        rows,manifest=load_corpus()
+        output=annotation_review(rows,manifest)
+        self.assertEqual(sum(line.startswith('| I') and line[3:6].isdigit() for line in output.splitlines()),304)
+        for row in rows:
+            self.assertIn(row['id']+' / '+row['family_id'],output)
+        self.assertIn('latest_valid_research_kind',output)
+        for status in {item['status'] for item in manifest['reviews'].values()}:
+            self.assertIn(status,output)
+        self.assertIn('禁止',output)
+
+    def test_fair_tables_have_both_scopes_and_do_not_claim_model_quality(self):
+        report=evaluate(call_limit=1)
+        output=format_report(report)
+        self.assertIn('全部准确率',output)
+        self.assertIn('非反问题macro-F1',output)
+        self.assertIn('gold=clarify',output)
+        self.assertIn('未判定',output)
+        self.assertIn('开发集仅用于选阈值',output)
+        self.assertIn('不是模型准确率',output)
+        report['rows'][0]['question']='<script>alert(1)</script>|```'
+        self.assertNotIn('<script>',format_report(report))
+        self.assertNotIn('alert(1)</script>',format_report(report))
+
+    def test_artifacts_roundtrip_without_overwriting(self):
+        report=evaluate(call_limit=1)
+        with tempfile.TemporaryDirectory() as root:
+            paths=write_report(report,root)
+            snapshot={k:Path(p).read_bytes() for k,p in paths.items()}
+            second=write_report(report,root)
+            self.assertNotEqual(paths,second)
+            self.assertEqual(snapshot,{k:Path(p).read_bytes() for k,p in paths.items()})
+            parsed=json.loads(Path(paths['json']).read_text(encoding='utf-8'))
+            self.assertEqual(parsed['plan']['split'],'dev')
+            self.assertEqual(parsed['artifacts'],paths)
+
+    def test_cli_annotations_and_export_action_flags_are_exclusive(self):
+        with redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(main(['--annotation-review']),0)
+        self.assertEqual(sum(line.startswith('| I') and line[3:6].isdigit() for line in output.getvalue().splitlines()),304)
+        with redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):
+            main(['--plan-only','--annotation-review'])
+
+
+if __name__ == '__main__':
+    unittest.main()

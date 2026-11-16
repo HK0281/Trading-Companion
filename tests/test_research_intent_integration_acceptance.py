@@ -61,7 +61,7 @@ class AcceptancePlanTests(unittest.TestCase):
                     main(args)
 
     def test_input_builder_and_model_context_never_receive_gold_or_case_ids(self):
-        from evaluation_tools import research_intent_v26_cases as cases
+        from evaluation_tools import research_intent_setups as cases
         rows, prefixes, setups = acceptance.public_inputs()
         original = cases.build_context
 

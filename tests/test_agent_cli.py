@@ -731,28 +731,6 @@ class ConditionUpdateCliTests(GuardedTests):
             self.assertIsNone(captured[-1].confirmed)
             self.assertIsNone(captured[-1].to_dict()["saved_result"])
 
-    def test_condition_update_demo_is_offline_and_explicit_about_intended_data_failure(self):
-        from trading_companion.condition_update_demo import main as update_demo_main
-        output = StringIO()
-        with patch("trading_companion.deepseek_model.DeepSeekConfig.from_env", side_effect=AssertionError("No credentials")), \
-             redirect_stdout(output):
-            self.assertEqual(update_demo_main(), 0)
-        text = output.getvalue()
-        self.assertIn("Fake模型调用10次，分析尝试5次", text)
-        self.assertIn("[failed/research_data_failed]", text)
-        self.assertIn("历史查看", text)
-        self.assertIn("预期的跨股票样例拒绝已发生", text)
-
-    def test_condition_update_demo_runs_in_an_independent_process_without_credentials(self):
-        environment = {key: value for key, value in os.environ.items() if not key.startswith("DEEPSEEK_")}
-        environment["PYTHONPATH"] = str(ROOT / "src")
-        completed = subprocess.run([sys.executable, "-X", "utf8", "-B", "-m",
-                                   "trading_companion.condition_update_demo"], cwd=ROOT,
-            env=environment, text=True, encoding="utf-8", capture_output=True, timeout=20)
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(completed.stderr, "")
-        self.assertIn("Fake模型调用10次", completed.stdout)
-
 
 if __name__ == "__main__":
     unittest.main()

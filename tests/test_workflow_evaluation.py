@@ -1,28 +1,41 @@
-"""Real message routing/collection with artificial inputs; no model-quality claims."""
+"""Real message routing/collection with artificial inputs; no model-quality claims. Also covers workflow metrics and reporting."""
 
 from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 from datetime import date
-from io import StringIO
 from hashlib import sha256
+from io import StringIO
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Barrier
-import unittest
 from unittest.mock import patch
+import unittest
 
-from scripts import evaluate_research_workflows as command
+from scripts import evaluate_research_workflows as command, compare_research_workflows as compare_command
 from scripts.verify import offline_network
 from trading_companion import workflow_evaluation as evaluation
 from trading_companion.api_service import ResearchApiService
 from trading_companion.company_research_contracts import ResearchDataRequest
 from trading_companion.request_routing import ROUTE_SPECS, IntentKind
-from trading_companion.trace_cli import TraceReader, TraceSummary
 from trading_companion.tool_model import ToolModelResponse
+from trading_companion.trace_cli import TraceReader, TraceSummary
 from trading_companion.turn_trace import JsonlTraceSink, TraceLimits
+from trading_companion.workflow_evaluation import evaluate_workflows
 from trading_companion.workflow_evaluation_fixtures import FixedSources, ScriptedWorkflowModel, NOW
+from trading_companion.workflow_evaluation_metrics import summarize_steps, evaluation_metrics
+from trading_companion.workflow_evaluation_reporting import (
+    manual_review,
+    verified_facts,
+    format_report,
+    write_report,
+    load_report,
+    compare_reports,
+    format_comparison,
+)
 
+
+# ---- test_workflow_evaluation: Real message routing/collection with artificial inputs; no model-quality claims.
 
 class WorkflowIntegrationTests(unittest.TestCase):
     @classmethod
@@ -431,3 +444,248 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["mode"], "offline")
         with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             self.assertEqual(command.main(["--mode", "live-model"]), 2)
+
+
+# ---- test_workflow_evaluation_metrics: Hand-checked denominators, legal alternatives, repair history and incomplete trace details.
+
+class MetricTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.report = evaluate_workflows(selected_cases=["K02", "S02", "M03", "P01", "P02", "D02", "D03", "R01"])
+        assert cls.report["status"] == "passed", cls.report["code"]
+
+    def steps(self, *ids):
+        return deepcopy([step for step in self.report["steps"] if step["case_id"] in ids])
+
+    def test_failure_and_unrun_stay_in_route_and_scenario_denominators(self):
+        steps = self.steps("K02", "S02", "R01")
+        # Four steps, three scenarios; the two R01 steps share one scenario.
+        steps[1]["status"] = "failed"
+        steps[1]["observed"]["route"] = "unrouted"
+        steps[2].update(status="not_run", observed=None, trace=None, outside_acceptable=None)
+        output = summarize_steps(steps)
+        self.assertEqual(output["planned_steps"], 4)
+        self.assertEqual(output["execution_coverage"]["value"], 3/4)
+        self.assertEqual(output["step_success"]["value"], 2/4)
+        self.assertEqual(output["scenario_success"]["value"], 1/3)
+        self.assertEqual(output["route_accuracy"]["value"], 2/4)
+        self.assertEqual(output["route_accuracy"]["unknown"], 1)
+        self.assertEqual(output["route_accuracy_executed"]["value"], 2/3)
+        self.assertEqual(output["result_categories"]["not_run"], 1)
+        self.assertEqual(output["joint_evidence_checks"]["applicable"], 4)
+        self.assertEqual(output["joint_evidence_checks"]["not_executed"], 1)
+
+    def test_quality_counts_steps_and_does_not_become_safety(self):
+        steps = self.steps("S02")
+        steps[0].update(status="failed", quality_requirement_failures=["answer_origin", "answer_status"])
+        output = summarize_steps(steps)
+        self.assertEqual(output["quality_requirement_failures"], 1)
+        self.assertEqual(output["hard_requirement_violations"], 0)
+        self.assertEqual(output["outside_acceptable"], 0)
+
+    def test_legal_alternative_does_not_change_static_confusion_row(self):
+        steps = self.steps("M03")
+        steps[0]["observed"].update(category="rejected", status="out_of_scope", code="product_request_out_of_scope")
+        output = summarize_steps(steps)
+        self.assertEqual(output["result_categories"]["expected_by_actual"]["clarification"]["rejected"], 1)
+        self.assertEqual(output["result_categories"]["accepted_alternative_categories"], 1)
+        self.assertEqual(output["step_success"]["value"], 1)
+
+    def test_rejected_first_draft_and_final_fallback_are_visible_separately(self):
+        output = summarize_steps(self.steps("R01"))
+        checks = output["joint_evidence_checks"]
+        self.assertEqual((checks["applicable"], checks["passed"], checks["failed"]), (2, 1, 1))
+        self.assertEqual((checks["attempts"], checks["rejected_attempts"]), (4, 3))
+        self.assertEqual(output["repairs"]["model_rewrite"]["affected_steps"], 2)
+        self.assertEqual(output["fallback"]["applicable"]["value"], 1/2)
+        self.assertEqual(output["quality_requirement_failures"], 0)
+
+    def test_skipped_rule_is_not_counted_as_an_entered_correction(self):
+        steps = self.steps("D02")
+        rule = {'kind': 'repair', 'operation': 'intent_rule', 'entered': False, 'status': 'skipped', 'code': 'rule_skipped'}
+        steps[0]['trace']['event_records'].append(rule)
+        self.assertEqual(summarize_steps(steps)["repairs"]["rule_correction"]["affected_steps"], 0)
+        rule.update(entered=True, code="rule_applied", status="ok")
+        output = summarize_steps(steps)["repairs"]["rule_correction"]
+        self.assertEqual(output["entered_attempts"], 1)
+        self.assertEqual(output["applicable"]["value"], 1)
+
+    def test_deadline_partial_all_missing_and_ordinary_error_are_distinct(self):
+        output = summarize_steps(self.steps("P01", "P02", "D03"))["source_deadline"]
+        self.assertEqual((output["planned_company_steps"], output["entered_collection"]), (3, 3))
+        self.assertEqual((output["partial_deadline"], output["all_missing"], output["ordinary_source_failure"]), (1, 1, 1))
+        self.assertEqual(output["partial_per_planned_company"]["value"], 1/3)
+        self.assertEqual(output["natural_partial_deadline"], 0)
+        self.assertIsNone(output["natural_partial_per_planned_company"]["value"])
+        for missing in ("code", "evidence", "display"):
+            steps = self.steps("P01")
+            if missing == "code":
+                for company in steps[0]["observed"]["coverage"]:
+                    for section in company["sections"]:
+                        section["code"] = "other"
+            elif missing == "evidence":
+                steps[0]["observed"]["company_research"]["evidence"] = []
+            else:
+                steps[0]["observed"]["answer"] = ""
+            with self.subTest(missing=missing):
+                self.assertEqual(summarize_steps(steps)["source_deadline"]["partial_deadline"], 0)
+
+    def test_truncated_details_are_unknown_even_with_aggregate_stopped_count(self):
+        steps = self.steps("P01")
+        steps[0]["trace"]["truncated"] = True
+        output = summarize_steps(steps)
+        self.assertEqual(output["source_deadline"]["unknown"], 1)
+        self.assertEqual(output["source_deadline"]["partial_deadline"], 0)
+        self.assertEqual(output["joint_evidence_checks"]["unknown"], 1)
+        self.assertEqual(output["trace"]["event_summaries"]["sources"]["stopped"], 1)
+
+    def test_nearest_rank_latency_includes_failed_steps_and_keeps_empty_unknown(self):
+        steps = self.steps("K02", "S02", "P01")
+        for step, elapsed in zip(steps, (10, 20, 100)):
+            step["trace"]["total_elapsed_ms"] = elapsed
+        steps[-1]["status"] = "failed"
+        output = summarize_steps(steps)
+        self.assertEqual(output["trace"]["overall"]["total_elapsed_ms"], {"n": 3, "p50_ms": 20, "p95_ms": 100})
+        empty = summarize_steps([])
+        self.assertIsNone(empty["route_accuracy"]["value"])
+        self.assertIsNone(empty["trace"]["overall"]["total_elapsed_ms"]["p95_ms"])
+
+    def test_tag_groups_overlap_but_each_uses_the_same_planned_denominator(self):
+        report = deepcopy(self.report)
+        report["steps"] = self.steps("P01")
+        metrics = evaluation_metrics(report)
+        self.assertEqual(metrics["overall"]["planned_steps"], 1)
+        self.assertEqual(metrics["by_tag"]["fault_injected"]["planned_steps"], 1)
+        self.assertEqual(metrics["by_tag"]["comparison"]["planned_steps"], 1)
+        self.assertGreater(sum(g["planned_steps"] for g in metrics["by_tag"].values()), 1)
+
+
+# ---- test_workflow_evaluation_reporting: Exported reports preserve unknowns, human blanks, failures and unpaired comparison rows.
+
+class ReportingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.report = evaluate_workflows(selected_cases=["K01", "K02", "C01", "R01"], repeat=3)
+        assert cls.report["status"] == "passed", cls.report["code"]
+
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
+    def test_sampling_is_bounded_stable_independent_of_step_order_and_leaves_human_blanks(self):
+        a = manual_review(self.report)
+        reversed_report = {**self.report, "steps": list(reversed(self.report["steps"]))}
+        self.assertEqual(a, manual_review(reversed_report))
+        self.assertEqual(a["sampled"], 10)
+        self.assertTrue(all(all(value is None for value in item["human"].values()) for item in a["items"]))
+        self.assertTrue(all("question" in item and "run_id" in item and "evidence_index" in item for item in a["items"]))
+        empty = manual_review({"steps": []})
+        self.assertEqual((empty["sampled"], empty["empty_reason"]), (0, "no_generated_answers"))
+
+    def test_artifacts_match_stdout_schema_and_never_overwrite_previous_runs(self):
+        report = deepcopy(self.report)
+        first = write_report(report, self.temp.name)
+        old = Path(first["json"]).read_bytes()
+        second = write_report(report, self.temp.name)
+        self.assertNotEqual(first, second)
+        self.assertEqual(Path(first["json"]).read_bytes(), old)
+        loaded = load_report(second["json"])
+        self.assertEqual(loaded["summary"], report["summary"])
+        self.assertEqual(json.loads(Path(second["manual_review"]).read_text(encoding="utf-8")), report["manual_review"])
+        markdown = Path(second["markdown"]).read_text(encoding="utf-8")
+        self.assertLess(markdown.index("| Verified facts |"), markdown.index("## 分母与覆盖"))
+        for text in ("Offline contract evaluation", "人工抽查", "未知", "未运行"):
+            self.assertIn(text, markdown)
+        for private in ("private-evaluation-draft", "access_token", '"messages":', '"tool_results":'):
+            self.assertNotIn(private, json.dumps(loaded, ensure_ascii=False))
+
+    def test_readme_facts_row_is_mode_specific_and_markdown_escapes_untrusted_text(self):
+        report = deepcopy(self.report)
+        report["mode"] = "live-model"
+        row = verified_facts(report)
+        self.assertIn("Live-model evaluation (corpus research-api-v1", row)
+        self.assertIn("scenarios /", row)
+        report["manual_review"]["items"][0]["answer"] = "<script>alert(1)</script> [link](https://example.invalid) | extra"
+        markdown = format_report(report)
+        self.assertNotIn("<script>", markdown)
+        self.assertIn("&lt;script&gt;", markdown)
+        self.assertIn("\\[link\\]", markdown)
+        self.assertIn("\\| extra", markdown)
+
+    def test_comparison_includes_failures_and_latency_uses_all_recorded_steps(self):
+        left, right = deepcopy(self.report), deepcopy(self.report)
+        right["plan"]["collection_workers"] = right["collection_workers"] = 1
+        for step in left["steps"]:
+            step["trace"]["total_elapsed_ms"] = 100
+        for step in right["steps"]:
+            step["trace"]["total_elapsed_ms"] = 50
+        right["steps"][0]["status"] = "failed"
+        for report in (left, right):
+            report["metrics"] = evaluation_metrics(report)
+        result = compare_reports(left, right)
+        self.assertEqual(result["status"], "comparable")
+        self.assertEqual(len(result["rows"]), len(left["steps"]))
+        self.assertTrue(any(row["case_id"] == "K01" and row["repeat"] == 1 and row["right"]["status"] == "failed"
+                            for row in result["rows"]))
+        self.assertEqual(result["latency"]["p95"]["change_percent"], -50)
+
+    def test_missing_side_and_missing_trace_do_not_disappear_or_produce_speed_claim(self):
+        left, right = deepcopy(self.report), deepcopy(self.report)
+        removed = right["steps"].pop()
+        result = compare_reports(left, right)
+        self.assertEqual(result["status"], "incompatible")
+        self.assertIn("step_set", result["incompatible_fields"])
+        self.assertTrue(any(row["right"] is None for row in result["rows"]))
+        self.assertIn("未知", format_comparison(result))
+        right["steps"].append(removed)
+        right["steps"][0]["trace"] = None
+        result = compare_reports(left, right)
+        self.assertEqual(result["status"], "comparable")
+        self.assertFalse(result["controlled_latency_comparison"])
+        self.assertIsNone(result["latency"]["p95"]["change_percent"])
+
+    def test_incompatible_configuration_and_live_source_time_are_not_causal_improvements(self):
+        right = deepcopy(self.report)
+        right["plan"]["model"] = "different-model"
+        result = compare_reports(self.report, right)
+        self.assertIn("model", result["incompatible_fields"])
+        self.assertIsNone(result["latency"]["p50"]["change_percent"])
+        left, right = deepcopy(self.report), deepcopy(self.report)
+        for item in (left, right):
+            item["mode"] = item["plan"]["mode"] = "live"
+        result = compare_reports(left, right)
+        self.assertEqual(result["status"], "comparable")
+        self.assertFalse(result["controlled_latency_comparison"])
+
+    def test_invalid_or_duplicate_steps_are_rejected(self):
+        right = deepcopy(self.report)
+        right["steps"].append(right["steps"][0])
+        with self.assertRaises(ValueError):
+            compare_reports(self.report, right)
+        right = deepcopy(self.report)
+        right["steps"][0]["trace"]["total_elapsed_ms"] = -1
+        with self.assertRaises(ValueError):
+            compare_reports(self.report, right)
+        path = Path(self.temp.name) / "bad.json"
+        path.write_text('{"version":"research-workflow-evaluation-v2","version":"other"}', encoding="utf-8")
+        with self.assertRaises(ValueError):
+            load_report(path)
+
+    def test_cli_exports_and_comparison_reads_without_any_model_execution(self):
+        output = StringIO()
+        with patch.object(command, "evaluate_workflows", return_value=deepcopy(self.report)), redirect_stdout(output):
+            self.assertEqual(command.main(["--report-dir", self.temp.name]), 0)
+        first = json.loads(output.getvalue())["artifacts"]["json"]
+        before = Path(first).read_bytes()
+        output = StringIO()
+        with patch("trading_companion.workflow_evaluation.evaluate_workflows") as execute, redirect_stdout(output):
+            self.assertEqual(compare_command.main(["--left", first, "--right", first, "--report-dir", self.temp.name]), 0)
+            execute.assert_not_called()
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["status"], "comparable")
+        self.assertTrue(Path(result["artifacts"]["markdown"]).is_file())
+        self.assertEqual(Path(first).read_bytes(), before)
+
+
+if __name__ == '__main__':
+    unittest.main()

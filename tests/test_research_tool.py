@@ -1,7 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import redirect_stdout
 from datetime import date, timedelta
-from io import StringIO
 import json
 from pathlib import Path
 from threading import Event
@@ -17,7 +15,6 @@ from trading_companion.research_tool import (
     RELATION_RULE_CATALOG, RESEARCH_TOOL_DEFINITION, SEED_METHOD_CATALOG, TOOL_NAME,
     ResearchToolExecutor, ToolExecutionError, _error, _too_large,
 )
-from trading_companion.research_tool_demo import main, run_demo
 from trading_companion.tool_model import FakeToolModel, ToolCall, ToolMessage, ToolModelResponse, validate_tool_messages
 
 
@@ -398,29 +395,6 @@ class ResearchHistoryAndDemoTests(unittest.TestCase):
         self.assertEqual(executor.analyses_used, 1)
         read.assert_called_once()
         validate_tool_messages([*messages, response.as_message(), *outcome.messages], tools=(RESEARCH_TOOL_DEFINITION,))
-
-    def test_demo_runs_actual_csv_indicators_but_only_fake_model_and_explicit_synthetic_data(self):
-        with patch("requests.get", side_effect=AssertionError("Unexpected HTTP")) as get, patch(
-                "requests.post", side_effect=AssertionError("Unexpected HTTP")) as post:
-            payload = run_demo()
-        self.assertFalse(payload["network_used"])
-        self.assertTrue(payload["executed_tools"])
-        self.assertFalse(payload["real_provider_tool_validated"])
-        self.assertEqual(payload["analyses_used"], 1)
-        view = payload["tool_result"]["result"]
-        self.assertEqual(len(table(view, "indicators")), 3)
-        field = next(row for row in table(view, "latest_fields") if row["indicator"] == "i0")
-        fact = next(row for row in table(view, "numeric_facts") if row["fact"] == field["fact"])
-        self.assertEqual(fact["value"], (10.10 + 10.00 + 10.40) / 3)
-        self.assertEqual(view["data_authenticity"], "synthetic")
-        self.assertTrue(payload["final_response"]["is_mock"])
-        self.assertEqual(payload["final_response"]["status"], "complete")
-        get.assert_not_called()
-        post.assert_not_called()
-        stream = StringIO()
-        with redirect_stdout(stream):
-            self.assertEqual(main(), 0)
-        self.assertEqual(json.loads(stream.getvalue())["status"], "offline_synthetic_research_demo")
 
 
 if __name__ == "__main__":

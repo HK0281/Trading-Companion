@@ -62,7 +62,7 @@ export function parseDecision(value: Record<string, unknown>, securities: Set<st
     purposes.add(purposeKey);
     if (p.status === "available") {
       const fields = fieldSets[p.purpose];
-      // trade-plan-v1 ATR is displayed to 4 decimals; see docs/research-decision-plan-design.md.
+      // trade-plan-v1 ATR is displayed to 4 decimals; see docs/answer-design.md (research decision plan section).
       if (!obj(p.values) || Object.keys(p.values).length !== fields.length || !fields.every(k =>
         typeof (p.values as Record<string, unknown>)[k] === "string" && /^[0-9]{1,18}(?:\.[0-9]{1,12})?$/.test(String((p.values as Record<string, unknown>)[k]))
         && Number((p.values as Record<string, unknown>)[k]) > 0)) return null;

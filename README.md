@@ -22,7 +22,7 @@ A Chinese-language research assistant for China's A-share market. You ask questi
 - Model verdicts are self-assessed and not historically calibrated. Probabilities are never invented.
 - Missing data and rejected model output are shown explicitly rather than hidden.
 
-See [decision contracts and calculation limits](docs/research-decision-plan-design.md).
+See [decision contracts and calculation limits](docs/answer-design.md#参考研判与-atr-条件计划).
 
 ## Architecture
 
@@ -49,14 +49,14 @@ Key design points:
 - **Turns are bounded and inspectable.** Shared call, time and token budgets; idempotent requests; optional trace metadata without questions or answers.
 - **Collection is bounded.** Company evidence and quote batches share at most three concurrent tasks with per-source request and byte limits.
 
-More detail: [architecture](docs/architecture.md) · [request routing](docs/request-routing-design.md) · [company research](docs/company-research-design.md) · [turn control](docs/turn-control-design.md)
+More detail: [architecture](docs/architecture.md#trading-companion总体技术架构设计) · [request routing](docs/request-understanding-design.md#请求路由明确意图优先级与澄清所有权) · [company research](docs/research-data-design.md#多维公司研究流程证据与模型切换) · [turn control](docs/agent-runtime-design.md#整轮运行控制共享预算取消与迟到结果)
 
 The command-line server enables intent v2 by default for DeepSeek sessions, following the user's
 approval on November 9, 2026. Run `start.cmd --no-research-intent-v2` to restore the legacy entry;
 OpenAI and demo sessions retain their existing entry. Direct `ResearchApiService` callers still
 default to `research_intent_v2_enabled=False`. The switch follows user approval, not a passing
 sealed evaluation; historical eligibility reports remain unchanged.
-See [integration status and validation boundaries](docs/research-intent-v2.6-integration.md).
+See [integration status and validation boundaries](docs/request-understanding-design.md#v26-接入验收与默认开启).
 
 The independent integration acceptance tool prints its full public-dev and product-dialogue
 plan by default, including the exact questions, per-flow call bounds and token estimates.
@@ -135,16 +135,16 @@ Useful options (also accepted by `python -m trading_companion.api_server`):
 | `--provider openai` | Default to OpenAI when only it is configured |
 | `--no-research-intent-v2` | Restore legacy DeepSeek routing for this server run |
 | `--snapshot-db PATH` | Keep a local SQLite archive of research evidence |
-| `--personal-memory-db PATH` | Change the personal database used by `start.cmd` (default `data/personal_memory.sqlite3`); direct server runs require an explicit path. Keep up to 50 watchlist stocks, separate holding/preferences and a bounded public-title inbox locally ([design](docs/personal-memory-design.md)) |
+| `--personal-memory-db PATH` | Change the personal database used by `start.cmd` (default `data/personal_memory.sqlite3`); direct server runs require an explicit path. Keep up to 50 watchlist stocks, separate holding/preferences and a bounded public-title inbox locally ([design](docs/memory-design.md#本机个人记忆自选股持仓与偏好)) |
 | `--no-personal-memory` | Disable only personal memory; conversation history and research review remain enabled |
 | `--no-memory` | Disable conversation history, earlier-turn digests and personal memory; existing files are retained |
 | `--trace-dir PATH` / `--no-trace` | Change or disable trace metadata |
 | `--capture-news-titles` | Opt in to bounded public-title capture for live DeepSeek company research; no classifier calls |
-| `--research-documents events` / `--research-documents off` | Read bounded, verified web text for explicit news, announcement or event questions; `start.cmd` defaults to `events`, direct server runs to `off` ([design](docs/news-body-design.md)) |
-| `--news-triage-sorting` | Default off: prioritize important related headlines in the new DeepSeek research path; paired live acceptance and user approval are still pending ([design](docs/news-triage-integration-design.md)) |
+| `--research-documents events` / `--research-documents off` | Read bounded, verified web text for explicit news, announcement or event questions; `start.cmd` defaults to `events`, direct server runs to `off` ([design](docs/research-data-design.md#新闻与公告正文-a来源预算和回答片段)) |
+| `--news-triage-sorting` | Default off: prioritize important related headlines in the new DeepSeek research path; paired live acceptance and user approval are still pending ([design](docs/news-design.md#新闻标题分诊接入记录现状与排序准备)) |
 | `--screening-coverage expanded` | Larger, slower screening sample |
 
-When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/local-environment.md) and [Dev Mode design](docs/dev-mode-design.md).
+When both providers are configured, the web model selector offers each; a session keeps its provider. The **Dev Mode** button switches the page to a separate fake-model, synthetic-data backend. See the [configuration guide](docs/operations.md#本地模型配置与启动) and [Dev Mode design](docs/agent-runtime-design.md#正常模式与-dev-mode).
 
 `start.cmd` enables personal memory in `data/personal_memory.sqlite3` by default.
 Use `start.cmd --no-personal-memory` to disable it while keeping chat history and research review,
@@ -165,7 +165,7 @@ a watchlist stock also clears its inbox but preserves its preferences, and delet
 and chat history. A user-selected research draft contains only the stock code and question
 type, stays editable and is sent only after pressing Send. Watchlists and holding preferences
 are committed and pushed as `9aa98af` and `4faea64`; see the
-[personal-memory boundaries](docs/personal-memory-design.md).
+[personal-memory boundaries](docs/memory-design.md#本机个人记忆自选股持仓与偏好).
 
 **Research review** is reviewed, committed and pushed as `f2484cf`.
 With local chat history enabled, the separate panel finds one stock's original verdicts and
@@ -178,7 +178,7 @@ before requests; incompatible or unknown adjustment disables loading. Tencent pr
 unadjusted and provider-reported, not independently verified. Loading is limited to 366 calendar
 days, two yearly requests and an eight-second cooperative budget, with no model calls or
 performance statistics. Deleting source chat history invalidates its reviews. See the
-[review contracts, limits and legacy-time notice](docs/research-review-design.md).
+[review contracts, limits and legacy-time notice](docs/memory-design.md#研判回顾原记录与按需后续走势).
 
 The **message inbox** is reviewed, committed and pushed as `3306114`. Opening the panel,
 refreshing and paging read saved local titles only. An explicit check reads at most five
@@ -188,7 +188,7 @@ another click. This is a limited check, not complete monitoring; previously save
 remain after cancellation. Verified titles already fetched by ordinary current company research
 can also be saved with no extra source or model requests, without advancing manual-check
 watermarks. Mark-read and confirmed inbox clearing stay local. Important alerts, background
-timers and push notifications remain unimplemented. See the [inbox limits and lifecycle](docs/watchlist-news-design.md).
+timers and push notifications remain unimplemented. See the [inbox limits and lifecycle](docs/news-design.md#自选股消息收件箱有限检查与本机未读).
 
 `start.cmd` enables the bounded document stage for normal company research by default.
 To disable it for this run:
@@ -232,7 +232,7 @@ Run the same gates as CI (Windows, no API key or live data needed):
 .\.venv\Scripts\python.exe -X utf8 -B scripts/verify.py all
 ```
 
-Individual gates are `python`, `web` and `bundle` (run `web` before `bundle`). They fail on skipped or empty tests. The Python gate runs offline unit tests and pytest cases, fixed agent scenarios, repeated MVP scenarios, company workflows and an API walkthrough. Use the actual gate output for current counts. GitHub Actions runs one Windows job on pushes and pull requests. See the [CI design](docs/ci-design.md).
+Individual gates are `python`, `web` and `bundle` (run `web` before `bundle`). They fail on skipped or empty tests. The Python gate runs offline unit tests and pytest cases, fixed agent scenarios, repeated MVP scenarios, company workflows and an API walkthrough. Use the actual gate output for current counts. GitHub Actions runs one Windows job on pushes and pull requests. See the [CI design](docs/operations.md#自动化验收与持续集成).
 
 Inspect trace metadata without starting the server:
 
@@ -242,10 +242,10 @@ Inspect trace metadata without starting the server:
 
 ## Current work
 
-- **Local memory and research review.** Watchlists, holding preferences, [research review](docs/research-review-design.md) and [message inbox](docs/watchlist-news-design.md) are committed and pushed as `9aa98af`, `4faea64`, `f2484cf` and `3306114`. The inbox offers local unread titles, explicit batches of at most five watchlist stocks/ten actual source attempts, and ordinary-research title reuse without additional requests. `start.cmd` enables personal memory in `data/personal_memory.sqlite3` by default; `--no-personal-memory` disables only that database and `--no-memory` disables all memory. Personal memory is never automatically sent to models. Important alerts, timers and push remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/personal-memory-design.md).
-- **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The user approved enabling this stage by default in `start.cmd`; use `--research-documents off` to disable it. Direct server and service defaults remain off. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's HTML header-filtering change is committed and pushed as `b076461`; this adds no new live-acceptance result. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/news-body-design.md).
-- **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/research-intent-v2.6-integration.md), [v2.6 guard principles](docs/research-intent-v2.6-guard-principles.md) and [plan](docs/research-intent-v2.6-plan.md).
-- **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-triage-integration-design.md) and [product-v2 results](docs/news-triage-product-v2.md).
+- **Local memory and research review.** Watchlists, holding preferences, [research review](docs/memory-design.md#研判回顾原记录与按需后续走势) and [message inbox](docs/news-design.md#自选股消息收件箱有限检查与本机未读) are committed and pushed as `9aa98af`, `4faea64`, `f2484cf` and `3306114`. The inbox offers local unread titles, explicit batches of at most five watchlist stocks/ten actual source attempts, and ordinary-research title reuse without additional requests. `start.cmd` enables personal memory in `data/personal_memory.sqlite3` by default; `--no-personal-memory` disables only that database and `--no-memory` disables all memory. Personal memory is never automatically sent to models. Important alerts, timers and push remain unimplemented. Sidebar/history accessibility at widths of 534px or less remains a known limitation. See the [personal-memory design](docs/memory-design.md#本机个人记忆自选股持仓与偏好).
+- **Bounded event documents (A).** A-2 is committed and pushed as `1d6f2c7`: the final eight-question check passed triggering and document choice in 8/8 cases, with 14/15 supplied excerpts substantive. The user approved enabling this stage by default in `start.cmd`; use `--research-documents off` to disable it. Direct server and service defaults remain off. Omitted news tables and first-page-only announcements carry explicit partial-coverage notices into sources, model evidence and saved snapshots. A-3's HTML header-filtering change is committed and pushed as `b076461`; this adds no new live-acceptance result. Announcement PDFs and financial-report PDFs require separate work. See the [document limits and evidence flow](docs/research-data-design.md#新闻与公告正文-a来源预算和回答片段).
+- **Research intent v2.** The command-line default for DeepSeek sessions lets the model interpret the whole request (task, subject, horizon, price-plan intent, exclusions, references) while the program guards actions that would expand authority. The user approved this switch despite known limits: the sealed evaluation scored 89/96, below its threshold; MACD knowledge answers sometimes fail; cancelling an order can be wrongly rejected; changing a screening result to the top two is unsupported. Historical evaluation reports remain unchanged. See [integration status](docs/request-understanding-design.md#v26-接入验收与默认开启), [v2.6 guard principles](docs/request-understanding-design.md#研究意图-v26-护栏原则) and [plan](docs/request-understanding-design.md#研究意图-v26-实现方案).
+- **Headline triage.** The fixed ensemble passed its sealed headline-importance recall gate; answer sorting remains off pending thirty paired live cases and user approval. Preview the approved collection with `python scripts/freeze_news_triage_sorting.py` (at most 256 public HTTP attempts, no model calls) and the paid plan with `python scripts/evaluate_news_triage_sorting.py`. Explicit live modes require bounded allowances, frozen evidence and two completed human annotation files. Triage uses a three-second DeepSeek request limit within a five-second optional window, preserving at least fifteen seconds for the answer; the paired p95 added-latency gate stays at four seconds. Requests without a response retain conservative cost estimates; responses with invalid usage still stop the batch. One-shot claims prevent automatic reruns; only the explicitly approved, hash-bound first-arm interruption permits one complete rerun with its previous costs and attempts retained. Jev cost is explicitly an unverified alias estimate for this acceptance only. See the [collection, annotation, paid-run and blind-review commands](docs/news-design.md#新闻标题分诊接入记录现状与排序准备) and [product-v2 results](docs/news-design.md#真实标题的新三题准备盲标与对照).
 
 Not in scope yet: arbitrary-source document collection, PDF filing analysis, complete document understanding, whole-market completeness, calibrated forecasts, strategy backtesting and public deployment.
 
@@ -263,21 +263,19 @@ tests/                   Offline regression tests
 
 ## Documentation
 
-Most design documents are written in Chinese.
+Design documents are written in Chinese, one per topic. Each keeps the original design notes as sections, with dates and commit references from the time.
 
-- [Project handoff](docs/agent-handoff.md): requirements, working preferences, current capabilities and coordination rules
-- [Architecture and roadmap](docs/architecture.md)
-- [Company research workflow](docs/company-research-design.md)
-- [Bounded news and announcement text](docs/news-body-design.md)
-- [Index research](docs/index-research-design.md)
-- [Holding-horizon rules](docs/holding-horizon-design.md)
-- [Technical analysis and timeframes](docs/technical-analysis-design.md)
-- [Screening](docs/screening-design.md)
-- [Conversation memory](docs/conversation-memory-design.md)
-- [Local watchlist and holding preferences](docs/personal-memory-design.md)
-- [Saved research reviews](docs/research-review-design.md) and [watchlist message inbox](docs/watchlist-news-design.md)
-- [Local API](docs/local-api-design.md) and [web workspace](docs/web-workspace-design.md)
-- [Chart workspace](docs/chart-workspace-design.md)
-- [Turn tracing](docs/turn-tracing-design.md)
-- [Tool-model protocol](docs/tool-model-design.md)
-- [Current module status](docs/module-progress-2026-10-26.md)
+- [Architecture and delivery record](docs/architecture.md): overall design, module boundaries, handoff notes and module status
+- [Product requirements](docs/prd-agent-v0.1.md)
+- [Request understanding](docs/request-understanding-design.md): routing, natural input, identity clarification and research intent v2
+- [Technical analysis](docs/technical-analysis-design.md): indicators, timeframes, numeric grounding and historical replay
+- [Answer generation](docs/answer-design.md): grounded explanations, narratives, decision plans, holding horizons and follow-ups
+- [Research data](docs/research-data-design.md): company research, bounded collection, news/announcement text, sources and knowledge retrieval
+- [Market context and screening](docs/market-and-screening-design.md): listing context, exchange rules, index research and screening
+- [News](docs/news-design.md): headline triage and the watchlist message inbox
+- [Agent runtime](docs/agent-runtime-design.md): model and tool protocols, turn control, turn tracing and the terminal agent
+- [Memory](docs/memory-design.md): conversation memory, local watchlist and holding preferences, research reviews
+- [Web workspace and local API](docs/web-and-api-design.md)
+- [Evaluation](docs/evaluation-design.md): evaluation designs and results
+- [Operations](docs/operations.md): local environment and CI
+- [Learning notes](docs/agent-learning-notes.md): interview-oriented notes on how the agent was built

@@ -1,20 +1,23 @@
 """Independent fixed protocol responses; these tests do not predict corpus questions."""
 
+from contextlib import ExitStack
 from dataclasses import replace
 from datetime import timedelta
+import json
 from types import SimpleNamespace
 from copy import deepcopy
 import unittest
 
+from scripts.verify import clean_environment, offline_network
 from trading_companion.agent_input import InputIssue
-from trading_companion.model import ModelCallError, ModelConfigurationError, TokenUsage
+from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError, TokenUsage
 from trading_companion.research_intent_v2 import (
     IntentContext, SCHEMA, TOOL_NAME, VERSION, check_response, normalize_horizon, understand,
 )
 from trading_companion.research_objective import ResearchObjective
 from trading_companion.research_session import ResearchSession
 from trading_companion.security_directory import Security, SecurityDirectory
-from trading_companion.tool_model import ToolCall, ToolModelResponse, validate_tool_messages
+from trading_companion.tool_model import MAX_TOTAL_CHARACTERS, ToolCall, ToolModelResponse, validate_tool_messages
 from trading_companion.turn_control import TurnControl, TurnLimits
 from trading_companion.workflow_evaluation_fixtures import NOW, REFERENCE_DATE, SECURITIES
 
@@ -29,6 +32,31 @@ def context(*, previous=False, age=0, horizon=None, securities=SECURITIES[:1], k
             source='tencent', development=False, now=NOW-timedelta(seconds=age), scope=scope)
     value = IntentContext(session, SecurityDirectory(SECURITIES, 'v2-fixed', NOW, False), NOW, REFERENCE_DATE)
     return replace(value, **changes)
+
+
+class OfflineTests(unittest.TestCase):
+    """Base for intent boundary tests: no credentials from the environment and no network."""
+
+    def setUp(self):
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(clean_environment())
+        stack.enter_context(offline_network())
+
+
+def measure_request(question, ctx):
+    """Use the same builder, serialization and validator as an actual candidate call."""
+    from trading_companion import research_intent_v2 as intent
+    messages = intent.request_messages(question, ctx)
+    total = sum(len(json.dumps(tool.to_dict(), ensure_ascii=True)) for tool in (intent.TOOL,))
+    total += sum(len(json.dumps(message.to_dict(), ensure_ascii=True)) for message in messages)
+    error = None
+    try:
+        validate_tool_messages(messages, tools=(intent.TOOL,))
+    except ModelRequestError as invalid:
+        error = str(invalid)
+    return dict(serialized_characters=total, headroom=MAX_TOTAL_CHARACTERS-total,
+                valid=error is None, validation_error=error)
 
 
 def draft(*, reference=None, **changes):

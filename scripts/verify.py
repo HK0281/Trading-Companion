@@ -432,7 +432,7 @@ def main(argv=None):
     except (VerificationError, subprocess.SubprocessError, OSError, ImportError, KeyError, TypeError, ValueError) as error:
         # Do not print arbitrary provider responses, environments or credentials.
         detail = str(error) if isinstance(error, VerificationError) else type(error).__name__
-        print(f"FAIL: {detail}. See docs/ci-design.md.", file=sys.stderr)
+        print(f"FAIL: {detail}. See docs/operations.md.", file=sys.stderr)
         return 1
     print("PASS: selected acceptance gates completed", flush=True)
     return 0

@@ -1,12 +1,8 @@
-from contextlib import redirect_stdout
 from dataclasses import replace
 from datetime import date, datetime, timezone
-from io import StringIO
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 import unittest
 from unittest.mock import Mock, patch
 
@@ -17,7 +13,6 @@ from trading_companion.errors import DataSourceError
 from trading_companion.model import ModelCallError, ModelConfigurationError
 from trading_companion.multi_analysis import analyze_indicators
 from trading_companion.multi_contracts import IndicatorSpec
-from trading_companion.report_demo import main
 from trading_companion.research_report import build_research_report
 from trading_companion.research_tool import ResearchToolExecutor, TOOL_NAME
 from trading_companion.session_agent_demo import run_demo as run_session_demo
@@ -402,14 +397,6 @@ class ResearchReportTests(unittest.TestCase):
         self.assertEqual(result.safe_answer.status, "complete")
         self.assertEqual(result.answer_validation, "not_performed")
 
-    def test_safe_demo_prints_only_application_facts(self):
-        output = StringIO()
-        with redirect_stdout(output):
-            code = main()
-        self.assertEqual(code, 0)
-        self.assertIn("人工样例 / 非真实行情", output.getvalue())
-        self.assertIn("SMA(20)：历史记录不足", output.getvalue())
-        self.assertNotIn("离线脚本草稿", output.getvalue())
 
     def test_natural_session_produces_a_report_only_after_a_valid_selection(self):
         payload = run_session_demo()
@@ -417,15 +404,6 @@ class ResearchReportTests(unittest.TestCase):
         self.assertEqual(payload["selection_turn"]["safe_answer"]["status"], "complete")
         self.assertIsNone(payload["repeated_selection"]["safe_answer"])
         self.assertEqual(payload["total_model_responses"], 3)
-
-    def test_safe_demo_module_is_runnable_without_credentials(self):
-        environment = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONIOENCODING": "utf-8"}
-        result = subprocess.run([sys.executable, "-B", "-m", "trading_companion.report_demo"],
-                                cwd=ROOT, env=environment, capture_output=True, text=True,
-                                encoding="utf-8", errors="strict", timeout=15)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("000001.SZ", result.stdout)
-        self.assertNotIn("离线脚本草稿", result.stdout)
 
 
 if __name__ == "__main__":

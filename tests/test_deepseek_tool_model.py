@@ -145,9 +145,11 @@ class DeepSeekToolModelTests(unittest.TestCase):
         self.assertTrue(caught.exception.__suppress_context__)
 
 
-    def test_candidate_repair_accepts_only_explicit_supported_single_versions(self):
-        for version in ('research-intent-v2.5.4', 'research-intent-v2.6', 'research-intent-v2.6.1',
-                        'research-intent-v2.6.2', 'research-intent-v2.6.3', 'research-intent-v2.6.4'):
+    def test_candidate_repair_accepts_only_the_production_intent_version(self):
+        from trading_companion.deepseek_tool_model import SUPPORTED_INTENT_VERSION
+        from trading_companion.research_intent_v2 import VERSION
+        self.assertEqual(SUPPORTED_INTENT_VERSION, VERSION)
+        for version in (VERSION,):
             with self.subTest(version=version):
                 tool = ToolDefinition('interpret_research_intent_v2', 'Synthetic candidate.', {
                     'type': 'object', 'properties': {'version': {'type': 'string', 'enum': [version]}}})
@@ -165,23 +167,12 @@ class DeepSeekToolModelTests(unittest.TestCase):
 
     def test_candidate_repair_and_capture_reject_other_declarations_before_http(self):
         for flags in (dict(repair_tool_arguments=True), dict(save_failed_arguments=True)):
-            for versions, name, extra in ((['research-intent-v2.5.4', 'research-intent-v2.6'],
-                    'interpret_research_intent_v2', False),
-                    (['research-intent-v2.6', 'research-intent-v2.6.1'], 'interpret_research_intent_v2', False),
-                    (['research-intent-v2.6.1', 'research-intent-v2.6.2'], 'interpret_research_intent_v2', False),
-                    (['research-intent-v2.6.2', 'research-intent-v2.6.3'], 'interpret_research_intent_v2', False),
-                    (['research-intent-v2.6.3', 'research-intent-v2.6.4'], 'interpret_research_intent_v2', False),
+            for versions, name, extra in ((['research-intent-v2.6.7'], 'interpret_research_intent_v2', False),
+                    (['research-intent-v2.5.4'], 'interpret_research_intent_v2', False),
+                    (['research-intent-v2.6.7', 'research-intent-v2.6.8'], 'interpret_research_intent_v2', False),
                     (['research-intent-v9'], 'interpret_research_intent_v2', False),
-                    (['research-intent-v2.6'], 'inspect_fixture', False),
-                    (['research-intent-v2.6.1'], 'inspect_fixture', False),
-                    (['research-intent-v2.6.2'], 'inspect_fixture', False),
-                    (['research-intent-v2.6.3'], 'inspect_fixture', False),
-                    (['research-intent-v2.6.4'], 'inspect_fixture', False),
-                    (['research-intent-v2.6.4'], 'interpret_research_intent_v2', True),
-                    (['research-intent-v2.6.3'], 'interpret_research_intent_v2', True),
-                    (['research-intent-v2.6.2'], 'interpret_research_intent_v2', True),
-                    (['research-intent-v2.6.1'], 'interpret_research_intent_v2', True),
-                    (['research-intent-v2.6'], 'interpret_research_intent_v2', True)):
+                    (['research-intent-v2.6.8'], 'inspect_fixture', False),
+                    (['research-intent-v2.6.8'], 'interpret_research_intent_v2', True)):
                 with self.subTest(flags=flags, versions=versions, name=name, extra=extra):
                     tool = ToolDefinition(name, 'Synthetic candidate.', {'type': 'object',
                         'properties': {'version': {'type': 'string', 'enum': versions}}})

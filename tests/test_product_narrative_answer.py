@@ -1,15 +1,29 @@
-"""Current production synthesis: local retention, bounded repair, fallback and frozen prices."""
+"""Current production synthesis: local retention, bounded repair, fallback and frozen prices; plus the JSON parser and window evidence."""
+
 from copy import deepcopy
 from dataclasses import replace
+from decimal import Decimal
 import json
-import unittest
 from unittest.mock import patch
+import unittest
 
-from trading_companion.product_answer import synthesize_product_answer
-from trading_companion.tool_model import ToolModelResponse, validate_tool_messages
-from trading_companion.turn_control import TurnControl, TurnLimits, bind_turn, TurnStopped, ControlledToolModel
 from tests.test_product_decision_answer import decision_bundle
+from trading_companion.financial_periods import quarterly_evidence
+from trading_companion.narrative_answer_parser import parse_narrative
+from trading_companion.product_answer import synthesize_product_answer
+from trading_companion.product_research import ProductEvidence
+from trading_companion.research_price_context import price_context_evidence
+from trading_companion.tool_model import ToolModelResponse, validate_tool_messages
+from trading_companion.turn_control import (
+    TurnControl,
+    TurnLimits,
+    bind_turn,
+    TurnStopped,
+    ControlledToolModel,
+)
 
+
+# ---- test_product_narrative_answer: Current production synthesis: local retention, bounded repair, fallback and frozen prices.
 
 class NarrativeModel:
     def __init__(self, change=None):
@@ -362,3 +376,105 @@ class NarrativeTests(unittest.TestCase):
         self.assertFalse(run.answer.quality['repair_rating_restored'])
         self.assertTrue(run.answer.quality['repair_all_passed'])
 
+
+# ---- test_narrative_answer_parser: Only JSON framing can be repaired; content and ambiguous objects cannot.
+
+class NarrativeParserTests(unittest.TestCase):
+    def setUp(self):
+        self.payload = dict(version='product-research-answer-v3',narratives=[dict(instrument_id='000001.SZ',summary={'text':'原句10.01元。'})],decisions=[])
+        self.raw = json.dumps(self.payload,ensure_ascii=False)
+
+    def test_exact_and_fenced_json_preserve_every_decoded_value(self):
+        for prefix,suffix,recovered in (('','',False),('```json\n','\n```',True),('以下为分析：\n```json\n','\n```\n仅供参考。',True)):
+            with self.subTest(prefix=prefix):
+                result=parse_narrative(prefix+self.raw+suffix)
+                self.assertEqual(result.payload,self.payload)
+                self.assertEqual(result.recovered,recovered)
+                self.assertEqual(result.raw_invalid,recovered)
+
+    def test_complete_prefix_fields_and_array_items_survive_truncated_outer_json(self):
+        raw='{"version":"product-research-answer-v3","narratives":'+json.dumps(self.payload['narratives'])+',"decisions":[{"instrument_id":'
+        result=parse_narrative(raw)
+        self.assertTrue(result.partial)
+        self.assertEqual(result.payload['narratives'],self.payload['narratives'])
+        self.assertNotIn('decisions',result.payload)
+        raw='{"version":"product-research-answer-v3","narratives":['+json.dumps(self.payload['narratives'][0])+',{"summary":'
+        self.assertEqual(parse_narrative(raw).payload['narratives'],self.payload['narratives'])
+
+    def test_duplicate_nonfinite_conflicting_and_unsafe_wrappers_are_refused(self):
+        for raw in (self.raw+self.raw, '保证收益。'+self.raw,
+                    self.raw[:-1]+',"broken":?}'+self.raw,
+                    self.raw[:-1]+',"decisions":[{},BROKEN,{"version":"other"}]',
+                    '```json\n```json\n'+self.raw+'\n```\n```',
+                    self.raw[:-1]+',"version":"product-research-answer-v3"}',
+                    self.raw[:-1]+',"bad":NaN}',
+                    '{"version":"unknown","narratives":[{}],"truncated":',
+                    '{"version":"product-research-answer-v3","narratives":[{"text":',
+                    'x'*26001):
+            with self.subTest(raw=raw[:50]),self.assertRaises((ValueError,RecursionError)):
+                parse_narrative(raw)
+
+
+# ---- test_narrative_evidence: Window/quarter facts are derived from frozen eligible data, without extra collection.
+
+class NarrativeEvidenceTests(unittest.TestCase):
+    def test_windows_need_full_samples_and_ties_use_latest_date(self):
+        bundle = decision_bundle()
+        result = bundle.companies[0].technical
+        evidence = price_context_evidence(result)
+        by_label = {e.label: e for e in evidence}
+        self.assertEqual(by_label["近20日最高价"].date, result.bars[-1].trade_date.isoformat())
+        self.assertEqual(by_label["近20日最低价"].date, result.bars[-1].trade_date.isoformat())
+        self.assertEqual(Decimal(by_label["MA20"].raw_value), Decimal("10"))
+        self.assertEqual(Decimal(by_label["近60日涨跌幅"].raw_value), 0)
+        self.assertEqual(len(by_label["MA60"].dependencies), 60)
+        # Validate the dependency identity against the already frozen bar dates.
+        bars = {b.trade_date.isoformat(): b for b in result.bars}
+        for e in evidence:
+            self.assertEqual(dict(e.calculation_basis)["price_adjustment"], result.price_adjustment)
+            for dependency in e.dependencies:
+                request, scope, day, field = dependency.split("|")
+                self.assertEqual((request, scope), (result.request.request_id, "raw_daily_bar"))
+                self.assertIsNotNone(getattr(bars[day], field))
+
+    def test_full_window_boundaries_are_not_shortened(self):
+        from tests.test_product_research import MemorySourceFactory
+        class ShortSource(MemorySourceFactory):
+            def __call__(self, request):
+                source = super().__call__(request)
+                read = source.read_daily_bars
+                source.read_daily_bars = lambda: read()[-self.count:]
+                return source
+        factory = ShortSource()
+        for count in (5, 6, 19, 20, 60, 61):
+            factory.count = count
+            result = decision_bundle(source=factory).companies[0].technical
+            labels = {e.label for e in price_context_evidence(result)}
+            self.assertEqual("近5日涨跌幅" in labels, count >= 6)
+            self.assertEqual("近60日涨跌幅" in labels, count >= 61)
+            self.assertEqual("MA20" in labels, count >= 20)
+            self.assertEqual("MA60" in labels, count >= 60)
+
+    def test_financial_quarter_difference_dependencies_and_yoy(self):
+        def record(period, amount, **extra):
+            return ProductEvidence(period, "000001.SZ", "financial", "营业收入", "累计", "fixture",
+                date="2026-08-20", report_period=period, raw_value=amount, unit="cny", **extra)
+        records = [record("2026-06-30", 900), record("2026-03-31", 400),
+                   record("2025-06-30", 700), record("2025-03-31", 300)]
+        quarter, yoy = quarterly_evidence(records)
+        self.assertEqual(Decimal(quarter.raw_value), 500)
+        self.assertEqual(quarter.dependencies, ("2026-06-30", "2026-03-31"))
+        self.assertEqual(Decimal(yoy.raw_value), 25)
+        self.assertEqual(len(yoy.dependencies), 4)
+        self.assertEqual(quarter.temporal_scope, "financial_quarter_derived")
+        self.assertEqual(len(quarterly_evidence(records[:2])), 1)
+        self.assertEqual(quarterly_evidence(records[:1]), ())
+        self.assertEqual(quarterly_evidence([records[0], replace(records[1], source="other")]), ())
+        self.assertEqual(quarterly_evidence([records[0], replace(records[1], instrument_id="600000.SH")]), ())
+        self.assertEqual(quarterly_evidence([records[0], replace(records[1], unit="USD")]), ())
+        self.assertEqual(quarterly_evidence([records[0], records[1], records[1]]), ())
+        self.assertEqual(Decimal(quarterly_evidence([records[1]])[0].raw_value), 400)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -7,7 +7,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from evaluation_tools import research_intent_v26_evaluation as evaluation
+from evaluation_tools import research_intent_setups as setups_module
 from tests.test_research_intent_v2 import context
 from trading_companion.conversation_memory import TurnDigest
 from trading_companion.research_intent_context import (
@@ -32,9 +32,7 @@ def public_replay_inputs():
     root = Path(__file__).resolve().parents[1]
     rows = [r['input'] for r in json.loads((root /
         'tests/fixtures/research-intent-v268-public-replay.json').read_text('utf-8'))['rows']]
-    source = [json.loads(line) for line in (root/'data/evaluation/research-intent-v2.jsonl').read_text('utf-8').splitlines()]
-    prefixes = evaluation.core.prefix_library([r for r in source if r['split'] == 'dev'])
-    return rows, prefixes, evaluation.cases.load_setups()
+    return rows, setups_module.public_prefixes(), setups_module.load_setups()
 
 
 class ProductionContextTests(unittest.TestCase):
@@ -68,7 +66,7 @@ class ProductionContextTests(unittest.TestCase):
         covered = set()
         for row in rows:
             with self.subTest(setup=row['setup_id'], question=row['question']):
-                ctx, _ = evaluation.build_context(row, prefixes, setups)
+                ctx, _ = setups_module.row_context(row, prefixes, setups)
                 before = dict(ctx.session.__dict__)
                 generated = build_intent_context(**configuration(ctx))
                 actual = generated.model_context()

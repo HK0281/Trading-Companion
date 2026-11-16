@@ -1,8 +1,6 @@
-from contextlib import redirect_stdout
 from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime, timedelta
-from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -14,7 +12,6 @@ from trading_companion.agent import run_natural_research_turn
 from trading_companion.data_source import CsvDailyBarSource
 from trading_companion.errors import DataSourceError, DataValidationError
 from trading_companion.model import ModelCallError, ModelConfigurationError, ModelRequestError
-from trading_companion.natural_agent_demo import main
 from trading_companion.research_intent import INTENT_TOOL_NAME, prepare_research_question
 from trading_companion.research_tool import ResearchToolExecutor, TOOL_NAME
 from trading_companion.security_directory import Security, SecurityDirectory, load_security_directory
@@ -459,19 +456,6 @@ class NaturalTurnTests(GuardedTests):
         exported = json.dumps(result.to_dict(), ensure_ascii=False)
         self.assertNotIn(SECRET, exported)
         self.assertNotIn(QUESTION, exported)
-
-    def test_demo_is_strict_json_with_separate_research_and_clarification_cases(self):
-        output = StringIO()
-        with redirect_stdout(output):
-            code = main()
-        payload = json.loads(output.getvalue())
-        self.assertEqual(code, 0)
-        self.assertTrue(payload["directory_is_fixture"])
-        self.assertFalse(payload["model_network_used"])
-        self.assertFalse(payload["market_network_used"])
-        self.assertEqual(payload["result"]["model_calls_attempted"], 3)
-        self.assertEqual(payload["clarification_example"]["result"]["analyses_used"], 0)
-        json.dumps(payload, allow_nan=False)
 
 
 if __name__ == "__main__":

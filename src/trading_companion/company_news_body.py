@@ -256,7 +256,10 @@ def parse_sina_article(text, candidate, *, retrieved_at):
     # Sina exposes its original publication in bytedance metadata; article
     # publication metadata can carry a later time without being an update field.
     published = next(times[name] for name in _PUBLICATION_FIELDS if name in times)
-    if (normalized_text("".join(parser.date)) != published.strftime("%Y年%m月%d日 %H:%M")
+    # Keep strftime formats ASCII: Windows encodes them with the locale codec,
+    # so a non-ASCII format fails on English-locale machines such as CI runners.
+    visible_date = f"{published:%Y}年{published:%m}月{published:%d}日 {published:%H:%M}"
+    if (normalized_text("".join(parser.date)) != visible_date
             or published.date().isoformat() != candidate.published_date
             or candidate.published_at is not None and published.replace(second=0, microsecond=0)
                 != timestamp(candidate.published_at).replace(second=0, microsecond=0)):

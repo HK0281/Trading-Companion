@@ -573,6 +573,8 @@ Jev把41条ordinary判为unknown；DeepSeek的high召回13/13、精确13/18；Je
 
 规则 `personal-memory-notifications-v1` 以完整 `personal-memory-review-v1` 为唯一父版，父摘要为 `8519d1a39c79fdd5657dd2507e5cb8c9d7d01070e7142993d583d93707aff5ca`；不改旧题库、历史预期、封存/付费评估锁，不登记重要提醒规则。代码身份登记不代表模型语言质量或真实来源已经验收。
 
+2026-11-16 兼容修复：新浪正文可见日期核对不再把中文写进 `strftime` 格式串（英文区域 Windows 会编码失败，见[研究数据设计](research-data-design.md)）。修复不改变分类、路由或提取规则，因此保留 `personal-memory-notifications-v1` 身份；[规则登记](../data/evaluation/intent-rule-baselines-v1.json)只更新 `company_news_body.py` 的当前源码摘要和源码总摘要，更新前的完整记录追加到 `previous_rules`。旧题库、标注和锁不改；旧阈值锁与参考报告仍因源码总摘要不同而拒绝复用。
+
 Codex使用临时库、固定目录、假时钟和HTTP替身验证迁移/回滚、身份竞态、基线/部分失败、水位、日期精度、去重已读、保留/容量、两类游标、请求编号重放、实际来源上限和共享槽位、取消真实收尾、旁路零新增请求、禁用/开发隔离及页面解析。正式门禁为 `verify.py python`、`web`、`bundle`，实际结果在审核请求记录。
 
 Claude使用临时个人库做页面验收，并在本模块最多5股/10次实际来源请求内抽查真实标题；不读取用户真实聊天/个人库，不运行模型。Codex只修改、验证和发审核请求；Claude审核通过后才提交、推送并确认同步。

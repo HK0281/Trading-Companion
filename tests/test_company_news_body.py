@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from html import escape
+import locale
 import unittest
 from unittest.mock import patch
 
@@ -148,6 +149,14 @@ class SinaArticleBodyTests(unittest.TestCase):
     def test_candidate_time_can_be_date_only_but_document_keeps_exact_page_time(self):
         self.candidate = replace(self.candidate, published_at=None)
         self.assertEqual(self.parse().published_at, "2026-11-11T10:15:09+08:00")
+
+    def test_visible_date_check_does_not_depend_on_the_process_locale(self):
+        # English-locale Windows (CI) cannot encode Chinese strftime formats.
+        previous = locale.setlocale(locale.LC_CTYPE)
+        self.addCleanup(locale.setlocale, locale.LC_CTYPE, previous)
+        locale.setlocale(locale.LC_CTYPE, "C")
+        self.assertEqual(self.parse().published_at, "2026-11-11T10:15:09+08:00")
+        self.assert_code("document_time_mismatch", article_html(visible_date="2026年11月11日 10:16"))
 
     def test_inspected_plain_layout_uses_explicit_qr_container_not_repeated_unclosed_comments(self):
         # Structure follows news0/news2/news4/news5; all prose is invented.
